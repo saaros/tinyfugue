@@ -1,0 +1,26 @@
+This version of TinyFugue is written and maintained by Ken "Hawkeye"
+Keys, who can be currently be reached by email at kkeys@ucsd.edu or
+hawkeye@glia.biostr.washington.edu.
+
+TinyFugue versions 1.5.3 and earlier were written by Greg Hudson.
+
+TinyFugue was intially derived from a client written by Anton Rang and
+modified by Leo Plotkin.
+
+Thanks to:
+
+Russ Smith (Random), for writing the first tinyclient.
+
+Anton Rang (Tarrant), for writing the client this whole thing was based
+on, and for finding some minor bugs in earlier versions.
+
+Greg Hudson (Explorer_Bob), for writing the early versions of TF, without
+which I would have never gotten into this mess.
+
+Leo Plotkin (Grod), for helping Greg and for writing a beautiful (for
+Grodcode), albeit case-sensitive, match routine.
+
+Bruce Sterling Woodcock (Bruce), David Moore (OliverJones), Ben Jackson
+(Ben), the mudders of glia.biostr.washington.edu, and everyone else who
+tested, found bugs, or came up with suggestions.
+

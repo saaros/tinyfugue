@@ -1,0 +1,26 @@
+;;;; This file is not required, but contains examples of commands you
+;;;; might want to use in your personal configuration file (~/.tfrc).
+;;;; Feel free to customize these commands to your own tastes, or ignore them.
+
+;;; Turn on windowing mode.
+/visual on
+
+;;; Turn on paging
+; /more on
+
+;;; Turn on introductory MUD text suppression.
+/quiet on
+
+;;; Disable old-style slash interpretation
+;;; I recommend this unless you have old macros containing multiple slashes.
+; /set oldslash=0
+
+;;; Load files.
+;;; Only useful if you have these files, of course.
+; /loadworld
+; /loadhilite
+; /loadgag
+; /loaddef
+; /loadbind
+; /loadtrig
+

@@ -1,0 +1,541 @@
+Notation for relases pre-1.4.0 beta is not particularly accurate, and
+sometimes changed code was released without updating version numbers.
+I don't do this any more.
+Only the most recent version will have detailed changes described.
+
+3.2 beta 1
+----------
+Changes from 3.1 to 3.2:
+Added REGULAR EXPRESSIONS, and ability to extract arbitrary pieces of
+  of matched text using %Pn.  See: patterns, matching, regmatch, %Pn.
+"Partial hilites" - hilite part of a line.  (see /partial, /def -P).
+Installed utilities directory, includes:  many advanced keybindings
+  (completion, transpose, last word, etc.); /alias; /at; /putfile;
+  speedwalk (like tintin); mapping (like tintin); shell utilities;
+  quoting utilities; logging utilities; /rwho; Diku tick counter (like
+  tintin); and many other useful utilities.  See: /help utilities.
+Added clock to status bar, and %{clock} variable to disable it.
+More useful return values for macro creation commands, /quote, /repeat,
+  and /dokey.
+Symbolic values and type checking for special variables.
+In expressions, "=" does comparison, not assignment.  ("==" still compares).
+In expressions, ":=" does assignment.
+Assignment expressions can create a new global (not local) variable.
+Mecho nests, and doesn't echo invisible macros.
+/send can send a blank line.
+Replaced /rand with rand().
+Added ability to avoid automatic switch when pending connect completes.
+Control constructs (/if and /while) can be used from command line.
+Added kbdel() user function.
+Added %{scroll} and simulated scrolling for terminals without scroll regions.
+Detects and warns about some common user macro mistakes.
+Better handling of toggling %{lp} (e.g., when switching worlds).
+Better error messages for files.
+Internal redesign of screen handling, cursor and write() optimization.
+Other internal changes.
+Fixed \] bug in [...] patterns.
+Improved installation portability.
+
+Changes from 3.2 alpha 13 to 3.2 beta 1:
+Added worldname completion to completion.tf.
+
+Changes from 3.2 alpha 12 to 3.2 alpha 13:
+Increased speed of macro execution by about 15%.
+Fixed minor bug in /bamf old (3.2).
+
+
+3.1 beta 5
+----------
+Fixed divide-by-zero in user expressions.
+Improved error handling for some other expression errors.
+Renamed "signal.h" for stupid compilers.
+
+3.1 beta 4
+----------
+Fixed bug in "[^...]" patterns.
+
+3.1 beta 3
+----------
+Fixed ULTRIX time_t bug (really).
+
+3.1 beta 1
+----------
+New inline nonblocking connect.  Should work automagically on all platforms.
+Added many useful and educational macros in utilities directory.
+Added -T<worldtype> option to /def for triggers and hooks.
+Added expression functions.
+New expression functions: strcmp, strstr, strchr, strrchr, strlen, substr,
+  strrep, toupper, tolower, kbhead, kbtail, kbpoint, kbgoto.
+Added = (assignment) and , (comma) operators to expressions.
+Replaced -~ operator with strcmp() function.
+Macros and builtin commands can be called from expressions as functions.
+  (Passing multiple args to macros-as-functions *will* change in the future).
+Added /escape.
+Recognizes "*^H" as LP editor prompt (useful with /lpquote).
+Handles ^H from server.
+Added %{ignore_sigquit}.
+Replaced -DQUOTED_ARGS with %{quoted_args} (subject to change; not recomended).
+Error checking for patterns in /hilite, /gag, /trig*.
+For backward compatibility with pre-3.0, default world type does not change
+  any flags (lp, always_echo).
+Installation can make symbolic link.  See Config.
+Installation does better job of finding needed libraries.
+Bug fixes for lp prompts (background worlds, etc).
+Bug fix for negative numbers stored as strings.
+Bug fix for redefining worlds with -T.
+Fixed signal (TSTP, ^Z) delay on SVR4.
+Fixed mysterious and rare "2" hilite bug (3.0)
+Fixed world leak in /dc on pending socket.
+Autoconfig tests for time_t, signal handler returns, stdarg.h, etc.
+Better path check in autoconfig.
+Less trust of __STDC__.
+Other portability stuff.
+
+3.0 beta 2
+----------
+Added time arithmetic in expressions.
+Bug fix: identifers in expressions can contain '_' chracters.
+Bug fix: added -T<type> option to /addworld to support extended /add* commands.
+Added <type> argument to WORLD and LOGIN hooks.  May break a few old macros.
+PROCESS and KILL hooks are silent by default.
+Porting: some shells don't like :> in autoconfig; replaced with touch.
+Porting: Makefile doesn't assume MAKE is pre-defined.
+Porting: Autoconfig detects need for -lnsl, uses better PATH, finds more libc's.
+
+3.0 beta 1 (9/11/93)
+--------------------
+NEW COMMANDS:
+/addlp, /addlpp, /addtelnet, /addtiny, /eval, /export, /expr, /for,
+/if, /let, /not, /rand, /recordline, /restrict, /set, /setenv, /shift,
+/suspend, /telnet, /test, /time, /toggle, /unset, /while.
+
+NEW FEATURES:
+Installation is completely automated and configurable.
+Examples directory.
+Variables (local, global, and environment)
+Conditional programming constructs: /if, /then, /elseif, /else, /endif.
+Loop programming constructs: /while /do /done, /for, and /break.
+Evaluation programming constructs:  /eval, /not.
+Math operations with $[...] and /test (see "expressions").
+Command substitution with $(...) (see "expansion").
+Official support for user-defined hiliting (color).
+Timestamps in history /recall.
+Fall-thru triggers and hooks (/def -F), for multiple priority matches.
+LNEXT (^V), SEARCHB (^[p) and SEARCHF (^[n) key functions.
+Added CONFLICT and SHADOW hooks.
+Supports telnet GOAHEAD and EOR end-of-prompt markers (/lp on not required).
+Added -n option to /send.
+Added -a (append) option to /save and /saveworld.
+Secure public installation with /restrict.
+Allows macros to override builtin commands.  Use "/@name" to call builtin.
+
+NEW RUNTIME OPTIONS:
+Variable-controlled features:  MAIL, TERM, TFCONNECT, TFHELP, TFLIBRARY,
+  always_echo, backslash, barattr, bg_output, catch_ctrls, hiliteattr,
+  maildelay, max_recur, oldslash, prompt_sec, prompt_usec, refreshtime,
+  snarf, sockmload, time_format, wraplog.
+
+FIXES/IMPROVEMENTS:
+Much improved handling of LP/Diku prompts (see "prompts").
+Using RECALLB and RECALLF (^P and ^N) will not destroy current line.
+Multiple '/'s in macro expansion are no longer required.
+Added '\' escape character to macro expansion.
+Option arguments may use ' and ` as well as " for delimiters.
+Hexadecimal and octal ascii backslash substitutions and keybindings.
+Removed flaky +|- args from /list -t -b -h.  Use "", "{}", or "0" instead.
+Optimized [] in patterns.
+Uses termcap definitions for arrow keys.
+Supports standout (bold) and underline on more terminals.
+Better support for /visual on wimpy terminals (no "cs" or "ce" termcap entry).
+Supports nonblocking connect on BSD 4.3 Reno and later systems.
+Expands tabs from mud and in /quote and /load input.
+Handles changes in window size during /sh and suspension.
+Correctly handles shell i/o redirection in "/quote !".
+Better handling of spaces with wrapping and /wrapspace.
+Disabled /quiet when autologin is disabled.
+Fixed substitution of "normal" macros of the form "world_*".
+Fixed bug in using /world or other commands in CONFAIL hook.
+Fixed bug in using /world in configuration file.
+Fixed handling of suspend during /sh.
+Fixed bug in nonvisual mode when gagged line is (not) printed.
+Improved efficiency.
+Many portability fixes.
+Many other bug fixes.
+
+
+2.1 beta 2
+----------
+Bug fixes
+
+2.1 beta 1 (9/22/92)
+--------------------
+Added BAMF, SHELL, and LOGIN hooks.
+Added logging by world (/log -ligw).
+Hooks are more like triggers:  multiple hooks, argument patterns, priority.
+File compression.
+Keybindings are now macros (/def -b).
+Fixed nonblocking connect.
+Added redirected output for /quote and /repeat with -w option.
+Added "/world <host> <port>" semantics.
+Added local command quoting (/quote `).
+Improved argument substitution:  %{} syntax, orthogonal default values.
+Added -f<file> command line option.
+Added /retry to library.
+/repeat and keybinding bodies go through macro expansion.
+Added multi-shots.
+Bug fixes.
+Removed /stty.
+
+2.0 beta 2 - 7
+--------------
+Bug fixes
+
+2.0 beta 1 (7/8/92)
+-------------------
+Made installation easier and automated
+New command line syntax:  removed '-', added '-fln' options
+Added standard macro library
+Added hooks (and commands /hook and /unhook)
+Added background triggers, and /background
+Added world-specific triggers (/def -w)
+Added /list (with new format and -s option), /load, /save, /purge, and /send
+Added -a and -w options to /echo
+Added underline, reverse, flash, dim, bell, and norecord attributes
+Added -i invisible macro option
+Added /input (useful for inline keybindings)
+Added world histories, local history, global history, and /recall -lig
+Nonblocking /more
+Nonblocking world connections
+Filenames defined with BINDFILE, HELPFILE, LOGFILE, and WORLDFILE macros
+Added command menu at ^C (exit, borg off, kill processes)
+Replaced builtins /loaddef, /loadhilite, /loadgag, /loadtrig, /savedef,
+  /savehilite, /savegag, /savetrig, /listdef, /listhilite, /listgag,
+  /listtrig, /purgedef, /purgehilite, /purgegag, /purgedeft, and /purgetrig 
+  with (invisible) standard library macros
+Removed /tinytalk, /intr, /intrborg, /refill, /core, and /activity
+/bamf on assumes UnterMUD portals; use /bamf old for old-style bamfing.
+/listworlds doesn't display passwords unless given -c option
+Bug fixes and optimizations
+
+1.5.5 beta3
+-----------
+Bug fix
+
+1.5.5 beta2
+-----------
+Bug fixes for time.h, killing /repeats, etc.
+Fixed /ps output
+
+1.5.5 beta1
+-----------
+Autologin support for untermud cyberportals, with '/bamf unter' command
+Removed /listbind, /act, /reply, /nointr, /nowrap, /nostty, /nolog,
+ /nologme, /nologin, /noquiet, and /qctries
+Flags /stty, /log, /logme, /login and /quiet do not turn on when called
+ with no arguments.
+Expanded /ps and /listsocket output
+Imporoved effeciency of keyboard processing and macro expansion
+Eliminated busy-wait in /more, /shpause, and Yes/No queries
+Command quotes use pipes instead of temp files, and capture standard error
+Removed -DIRIX and -DMANUAL_SWITCH compile flags
+
+1.5.4 beta1 (8/20/91, by Ken Keys)
+-----------
+Added activity notice for non-current worlds, /activity to enable or disable it
+Improved /more paging
+Increased sizes of command and socket recall buffers
+Fixed bug in matching (illegal) patterns of the form "x{y}"
+With /intrborg on (default), ^C will query to turn off /borg.
+Removed extra iteration from /repeat loop (thanks to OliverJones)
+Improved mail check
+Ascii code subs of form "\nnn" are done where ever newline subs are done
+Replaced SUPPRESS_REDEFS compile-time option with "quiet" option to /redef
+Added TINYPREFIX and TINYHELP environment variables
+Default priority for hilites and gags is 0, other triggers 1.
+Added logging flag to status line
+
+1.5.3 beta1 (5/4/91)
+-----------
+Added in Madwand's TF status patch
+Fixed portals and erroneous portal format in tf.help
+Fixed -DOLD_LPPROMPTS option
+The <world name> line will be displayed only if -DLOUD_WORLDS is defined.
+ 
+1.5.2 beta5 (3/9/91)
+-----------
+Fixed a bug with macros deleting themselves
+Fixed a bug with triggers doing /dc
+ 
+1.5.2 beta4 (3/5/91)
+-----------
+Recursion maximum in expand.c
+Added support for AT&T WINS
+Added -DREFRESH_TIME
+/stty on is default
+ 
+1.5.2 beta3 (2/28/91)
+-----------
+Process handling changed
+ 
+1.5.2 beta2 (2/24/91)
+-----------
+Bug fix
+ 
+1.5.2 beta (2/23/91)
+----------
+World macro files changed
+Removed /purgewload, added /sockmload
+Compile-time options: -DSUPPRESS_REDEFS and -DSNARF_BLANKS 
+Off-by-one bugs in ^N and /watchdog
+Setting off a bound key resets the count for the pager
+Descriptor leak in /kill
+
+1.5.1 beta4 (2/15/91)
+-----------
+Bug fixes
+
+1.5.1 beta3 (2/13/91)
+-----------
+Bug fix
+
+1.5.1 beta2 (2/12/91)
+-----------
+Bug fixes
+/more paging is slightly different in visual mode
+
+1.5.1 beta (2/8/91)
+----------
+Bug fixes
+
+1.5.0 beta2 (2/2/91)
+----------
+Bug fixes
+
+1.5.0 beta (2/2/91)
+----------
+Removed /dbs, /packet, /clunused, /bs, /cursopt, /hn, /techo
+Added /mecho, /bind, /unbind, /listbind, /savebind, /loadbind,
+      /dokey, /grab, /cat, /trigger
+Added /sub full option
+Expanded /recall format
+Allowed quoting out of history buffer
+No string maximum lengths
+Added %L, %-L, %R, %E argument subs, and default args
+Added [] and {} pattern matching
+Added mail checking
+
+1.4.17 beta (12/10/90)
+-----------
+Bug fixes
+
+1.4.16 beta (12/10/90)
+-----------
+Nothing external
+
+1.4.15 beta (12/9/90)
+-----------
+Bug fixes
+Macro arguments no longer undergo reentrance substitution.
+Added one-shot triggers
+Added argument grouping by single and double quotes
+Changed default editing keys
+
+1.4.14 beta (12/8/90)
+-----------
+Bug fixes
+Added multiple character key sequences
+"/world -<name>" will do a /world without logging in.
+Disconnecting will move to the top world if there's worlds left.
+Added individual time arguments for /quote and /repeat
+
+1.4.13 beta (12/4/90)
+-----------
+Bug fixes
+Removed /sendtries
+/world_* substitutions expanded to work everywhere macros do
+Removed /fastquote
+/ptime now works in milliseconds and is a definite value
+
+1.4.12 beta (12/1/90)
+-----------
+Bug fixes 
+
+1.4.11 beta (11/30/90)
+-----------
+Bug fixes
+Added default arguments
+Expanded %n lastname substitution to macros from triggers.
+/tinytalk flag expanded to work with /nogag and /nohilite.
+Rewrote output drivers.
+Corrected helpfile.
+
+1.4.10 beta (11/26/90)
+-----------
+Bug fixes
+Rewrote helpfile
+Changes to docs file
+Expanded default world fields to include macro file
+Allowed worlds to leave out char and password even if there's no default.
+
+1.4.9 beta (11/24/90)
+----------
+SIGSEGV, SIGBUS, SIGQUIT handlers
+Added /world_* subs
+
+1.4.8 beta (11/24/90)
+----------
+Bug fixes
+
+1.4.7 beta (11/24/90)
+----------
+Bug fixes
+
+1.4.6 beta (11/23/90)
+----------
+Bug fixes
+
+1.4.5 beta (11/23/90)
+----------
+Bug fixes
+Added /qecho (echo /quote text before sending)
+
+1.4.4 beta (11/23/90)
+----------
+Bug fixes
+Added /quitdone flag quites upon disconnection from last MUD.
+Changed default location of helpfile to ~/tf.help
+
+1.4.3 beta (11/22/90)
+----------
+Bug fixes
+Added /purgeworld
+
+1.4.2 beta (11/22/90)
+----------
+Bug fixes
+
+1.4.1 beta (11/22/90)
+----------
+Bug fixes
+/tinytalk flag expanded
+Added /lp (display partial lines)
+Added /lpquote (wait for "*^H" before doing /quote and /repeat processes)
+Added /more flag (does paging).
+Expanded /keys to twelve keys (recall and socket keys being additional)
+Changed /keys to use things like "^b" or "E-^x" instead of "2" or "E-24"
+Removed /crypt.
+
+1.4.0 beta (11/18/90)
+----------
+Bug fixes
+Changed /world to work more intelligently with multimudding
+
+This is the last time a version was released with code changes without
+ updating the version number.
+
+1.4.0 beta (11/17/90)
+----------
+Renamed /clear to /clearfull (and made it somewhat obsolete).
+Added /cleardone (clear rather than scroll when you hit <return>).
+Changed input window handling to scroll upon <return>.
+Added input window arrow keys
+Added /keys (reconfigures editing keys)
+Removed /pf.
+Added macro file field to /addworld
+Changed ^P and ^N keys to [ESC]P and [ESC]N
+Added multi-mudding, with [ESC]B and [ESC]F
+Added /dc (disconnects from current world)
+Added /listsockets (lists current sockets)
+Allowed running Fugue without connecting
+Represented tabs as '@' to make tab handling work
+
+1.3.0 beta
+----------
+Added /shpause (wait for keypress before returning to Fugue after shell)
+Added /addworld, /noworld, /saveworld, /loadworld
+Allowed config file to begin with commands
+Changed /savedef to save only macros without triggers
+ (/savedef, /savetrig, /savehilite and /savegag thus have no overlaps)
+Added /clunused (removes the input window when there's no text waiting)
+Changed /quote to work without alarm()
+Added /ptime to determine max. microseconds to wait between quote lines
+ when /fastquote is on
+Added /qctries (max number of seconds to attempt to open temporary file
+ for a command quote).
+
+1.2.6 beta
+----------
+Bug fixes
+Trigger functions work on basis of hilites first, then gags, then nothing
+Expanded /stty to check window size
+Added /packet (waits until 512 chars of output are available before sending
+  off packets).
+Expanded /tinytalk to cause /stty, /log, /logme, /login and /quiet flags
+  to turn on when called with no arguments.
+
+1.2.5 beta
+----------
+Bug fixes
+Changed /edit to allow specifying macros by name ("#<num>") or trigger
+ ("$<trig>").
+Added -DHARDCODE and non-termcap compile modes
+
+1.2.4 beta
+----------
+Changed /echo to do local echo
+Added /kecho (echoes keyboard input)
+Added /techo (echoes trigger input)
+
+1.2.2 beta
+----------
+Added /tinytalk (some tinytalk compatibility)
+Added /no<flag> commands
+
+1.2.1 beta
+----------
+Bug fixes
+Added /visual (determines whether to use visual mode)
+Added /gpri and /hpri (set priority of subsequent hilites and gags)
+
+1.2.0 beta
+----------
+Changed code organization
+Added -f switch on /def for function
+Added /trig, /trigp, /trigpc, /trigc, /act from TF 1.1.2 and tinywar
+Changed /listdef command to use switches.
+Allowed unnamed macros
+Added /untrigt, /undeft, /purgedeft
+Added /hn command (removes blank line between output and divider by
+ holding newlines)
+
+1.1.5 beta
+----------
+Bug fixes
+Removed /nointr, /nolog, /nostty, etc.
+Added /sh back in
+Added /sub (determines whether to substitute newlines and crypts)
+Added /refill (refills screen upon redrawing)
+Added /edit (changes /def without redefining)
+
+----------
+
+The differences section only applies to things that need to be changed
+or are not implemented in TinyFugue.  Tf offers a lot more functionality
+in many areas than the clients below, of course.
+
+-------------
+Differences from TinyTalk (Tarrant's client)
+-------------
+Compatibility is almost complete.  All .tinytalk files should work
+with Fugue.  The /tinytalk flag (defaults to on) makes the necessary
+changes to convert between tinytalk command formats to tinyfugue
+command formats.
+
+-------------
+Differences from TinyWar (Grod's client)
+-------------
+Use /sub on to substitute %; and %\ for newlines in regular text
+%n works only in macros and triggers, and in /sub full mode
+/crypt and /random removed
+"%2*" argument sub should be replaced by "%-1"
+
