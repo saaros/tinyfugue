@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.h,v 35004.21 1998/06/22 20:36:31 hawkeye Exp $ */
+/* $Id: util.h,v 35004.25 1998/09/19 01:20:33 hawkeye Exp $ */
 
 #ifndef UTIL_H
 #define UTIL_H
@@ -59,6 +59,12 @@ extern char tf_ctype[];
 #define is_mult(c)	(tf_ctype[(unsigned char)c] & IS_MULT)
 #define is_additive(c)	(tf_ctype[(unsigned char)c] & IS_ADDITIVE)
 
+#ifdef HAVE_gettimeofday
+# define gettime(p)	(gettimeofday(p, NULL))
+#else
+# define gettime(p)	((p)->tv_usec = 0, time(&(p)->tv_sec))
+#endif
+
 #ifdef HAVE_strtol
 # define strtochr(sp)   ((char)(strtol(*(sp), (char **)sp, 0) % 0x100))
 # define strtoint(sp)   ((int)strtol(*(sp), (char **)sp, 10))
@@ -104,9 +110,11 @@ extern int    NDECL(ch_maildelay);
 extern void   NDECL(check_mail);
 extern long   FDECL(parsetime,(char **strp, int *istime));
 extern TIME_T FDECL(abstime,(long hms));
-extern char  *FDECL(tftime,(CONST char *fmt, TIME_T t));
+extern int    FDECL(tftime,(String *dest, CONST char *fmt, long sec,long usec));
 extern void   FDECL(internal_error,(CONST char *file, int line));
 extern void   FDECL(die,(CONST char *why, int err)) NORET;
-extern void   NDECL(free_maillist);
+#ifdef DMALLOC
+extern void   NDECL(free_util);
+#endif
 
 #endif /* UTIL_H */

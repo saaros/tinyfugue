@@ -19,3 +19,9 @@ to shortcomings of cygwin:
  * Nonblocking hostname resolution (%gethostbyname) is not supported.
  * The flash attribute (-af) does not work.
 
+
+Note that TF (and all cygwin applications) use "//X" notation instead of
+"X:" to indicate drives in paths, and slashes instead of backslashes
+to separate path components.  For example, a DOS path of "C:\foo\bar"
+should be written "//c/foo/bar" in cygwin.
+

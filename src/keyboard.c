@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: keyboard.c,v 35004.37 1998/06/30 06:00:14 hawkeye Exp $ */
+/* $Id: keyboard.c,v 35004.40 1998/07/23 22:55:22 hawkeye Exp $ */
 
 /**************************************************
  * Fugue keyboard handling.
@@ -349,22 +349,25 @@ int do_kbdel(place)
 
 #define is_inword(c) (is_alnum(c) || (wordpunct && strchr(wordpunct, (c))))
 
-int do_kbword(dir)
-    int dir;
+int do_kbword(start, dir)
+    int start, dir;
 {
     int stop = (dir < 0) ? -1 : keybuf->len;
-    int place = keyboard_pos - (dir < 0);
+    int place = start<0 ? 0 : start>keybuf->len ? keybuf->len : start;
+    place -= (dir < 0);
 
     while (place != stop && !is_inword(keybuf->s[place])) place += dir;
     while (place != stop && is_inword(keybuf->s[place])) place += dir;
     return place + (dir < 0);
 }
 
-int do_kbmatch()
+int do_kbmatch(start)
+    int start;
 {
     static CONST char *braces = "(){}[]";
     CONST char *type;
-    int dir, stop, depth = 0, place = keyboard_pos;
+    int dir, stop, depth = 0;
+    int place = start<0 ? 0 : start>keybuf->len ? keybuf->len : start;
 
     while (1) {
         if (place >= keybuf->len) return -1;
@@ -402,8 +405,8 @@ int handle_input_line()
     } else
         line = scratch;
 
-    if (kecho) tfprintf(tferr, "%s%S", kprefix, line);
-    record_input(line->s);
+    if (kecho) tfprintf(tferr, "%s%S", kprefix ? kprefix : "", line);
+    record_input(line->s, NULL);
     readsafe = 1;
     result = process_macro(line->s, NULL, sub, "\bUSER");
     readsafe = 0;

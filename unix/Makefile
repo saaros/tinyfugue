@@ -1,4 +1,4 @@
-# $Id: Makefile,v 35000.19 1998/06/30 06:12:30 hawkeye Exp $
+# $Id: Makefile,v 35000.21 1998/07/28 06:44:28 hawkeye Exp $
 ########################################################################
 #
 #  TinyFugue - programmable mud client
@@ -55,7 +55,7 @@ _log:
 	-@{ cat src/config.h; echo; } >> Build.log
 
 clean:
-	cd ./src; rm -f *.o Makefile core* exitmsg config.h typescript
+	cd ./src; rm -f *.o Makefile core* exitmsg config.h typescript*
 	cd ./unix; rm -f vars.mak *.log functest* libtest* test.c a.out
 
 distclean:  clean
@@ -106,6 +106,7 @@ dist: ./tf-lib/tf-help ../tf-$(TFVER).tar ../tf-$(TFVER)-help.tar
 	cd ..; zip -qlr tf-$(TFVER).zip tf-$(TFVER)
 	cd ..; chmod ugo+r tf-$(TFVER).tar.gz tf-$(TFVER).zip
 	cd ..; gzip tf-$(TFVER)-help.tar
+	@echo ""; echo "### Don't forget to assign a cvs tag."
 
 gzdist: ./tf-lib/tf-help ../tf-$(TFVER).tar
 	cd ..; gzip tf-$(TFVER).tar
@@ -134,8 +135,9 @@ local:
 	    TFDEV_SYMLINK='/usr/local/bin/tf' ./unixmake config
 
 devlocal:
-	CC=tfcc TFDEV_CCFLAGS='-g' TFDEV_TF='/usr/local/bin/tf-$(TFVER)' \
-	    TFDEV_LIBDIR='/usr/local/lib/tf-$(TFVER)-lib' TFDEV_STRIP=':' \
+	CC=tfcc TFDEV_CCFLAGS='-g -DLOCALITY' TFDEV_STRIP=':' \
+	    TFDEV_TF='/usr/local/bin/tf-$(TFVER)' \
+	    TFDEV_LIBDIR='/usr/local/lib/tf-$(TFVER)-lib' \
 	    TFDEV_SYMLINK='/usr/local/bin/tf' ./unixmake config
 
 devhome:

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: socket.c,v 35004.100 1998/06/30 06:00:16 hawkeye Exp $ */
+/* $Id: socket.c,v 35004.109 1998/10/06 05:40:06 hawkeye Exp $ */
 
 
 /***************************************************************
@@ -23,8 +23,7 @@
 #ifdef SYS_SELECT_H
 # include SYS_SELECT_H
 #endif
-#include <sys/time.h>
-#define TIME_H		/* prevent <time.h> in "tf.h" */
+/* #include <sys/time.h> */
 #include <fcntl.h>
 #include <sys/file.h>	/* for FNONBLOCK on SVR4, hpux, ... */
 #include <sys/socket.h>
@@ -92,13 +91,13 @@ struct sockaddr_in {
 # ifdef NONBLOCKING_GETHOST
    static void FDECL(waitforhostname,(int fd, CONST char *name));
    static int FDECL(nonblocking_gethost,(CONST char *name,
-       struct in_addr *sin_addr, long *pidp));
+       struct in_addr *sin_addr, long *pidp, CONST char **what));
 # endif
   static int FDECL(blocking_gethost,(CONST char *name,
        struct in_addr *sin_addr, int *errp));
 
 #else /* NO_NETDB */
-# define nonblocking_gethost(name, sin_addr, pidp) (-1)
+# define nonblocking_gethost(name, sin_addr, pidp, what) (-1)
 # define blocking_gethost(name, sin_addr, errp) (-1)
 #endif /* NO_NETDB */
 
@@ -213,13 +212,14 @@ typedef struct Sock {		/* an open connection to a server */
 static Sock *FDECL(find_sock,(CONST char *name));
 static void  FDECL(wload,(World *w));
 static int   FDECL(fg_sock,(Sock *sock, int quiet));
-static int   FDECL(get_host_address,(CONST char *name, struct in_addr *sin_addr, int *errp, long *pidp));
+static int   FDECL(get_host_address,(CONST char *name, struct in_addr *sin_addr, long *pidp, CONST char **what, int *errp));
 static int   FDECL(openconn,(Sock *new));
 static int   FDECL(establish,(Sock *new));
 static void  NDECL(fg_live_sock);
 static void  NDECL(nuke_dead_socks);
 static void  FDECL(nukesock,(Sock *sock));
 static void  FDECL(handle_prompt,(CONST char *str, int confirmed));
+static void  FDECL(unprompt,(Sock *sock, int update));
 static void  NDECL(handle_socket_line);
 static int   NDECL(handle_socket_input);
 static int   FDECL(transmit,(CONST char *s, unsigned int len));
@@ -371,8 +371,9 @@ void init_sock()
  */
 void main_loop()
 {
-    static TIME_T now, earliest;    /* static, so main_loop() can recurse */
-    Sock *sock = NULL;              /* loop index */
+    static struct timeval now;    /* static, for recursion */
+    static TIME_T earliest;       /* static, for recursion */
+    Sock *sock = NULL;            /* loop index */
     int count, received;
     Sock *stopsock;
     static int depth = 0;
@@ -389,8 +390,8 @@ void main_loop()
 
         /* run processes */
         /* at loop beginning in case of processes before main_loop() */ 
-        now = time(NULL);
-        if (proctime && proctime <= now) runall();
+        gettime(&now);
+        if (proctime && proctime <= now.tv_sec) runall();
 
         if (low_memory_warning) {
             low_memory_warning = 0;
@@ -400,18 +401,18 @@ void main_loop()
         if (quit_flag) break;
 
         /* figure out when next event is so select() can timeout then */
-        now = time(NULL);
+        gettime(&now);
         earliest = proctime;
         if (maildelay > 0) {
-            if (now >= mail_update) {
+            if (now.tv_sec >= mail_update) {
                 check_mail();
-                mail_update = now + maildelay;
+                mail_update = now.tv_sec + maildelay;
             }
             if (!earliest || (mail_update < earliest))
                 earliest = mail_update;
         }
         if (visual && clock_update >= 0) {
-            if (now >= clock_update)
+            if (now.tv_sec >= clock_update)
                 update_status_field(NULL, STAT_CLOCK);
             if (!earliest || (clock_update < earliest))
                 earliest = clock_update;
@@ -427,13 +428,19 @@ void main_loop()
             tv.tv_usec = 0;
         } else if (earliest) {
             tvp = &tv;
-            tv.tv_sec = earliest - now;
-            tv.tv_usec = 0;
+            tv.tv_sec = earliest - now.tv_sec;
+            tv.tv_usec = 0 - now.tv_usec;
+            if (tv.tv_usec < 0) {
+                tv.tv_usec += 1000000;
+                tv.tv_sec -= 1;
+            }
             if (tv.tv_sec <= 0) {
                 tv.tv_sec = 0;
-            } else if (proctime && proctime - now == 1) {
-                tv.tv_sec = 0;
-                tv.tv_usec = PROC_WAIT;
+#ifndef HAVE_gettimeofday
+            } else if (proctime) {
+                if ((--tv.tv_sec) == 0)
+                    tv.tv_usec = PROC_WAIT;
+#endif
             }
         } else tvp = NULL;
 
@@ -640,6 +647,7 @@ static int fg_sock(sock, quiet)
     int quiet;
 {
     int oldecho = sockecho;
+    int activity;
     static int depth = 0;
 
     if (depth) {
@@ -656,28 +664,29 @@ static int fg_sock(sock, quiet)
     fsock = sock;
     depth++;
 
-    /* The display sequence is optimized to minimize output codes. */
+    if ((activity = sock && sock->activity)) {
+        /* this must be done before calling any user code (hooks, %status_*) */
+        sock->activity = 0;
+        --active_count;
+    }
+
     update_status_field(NULL, STAT_WORLD);
 
     if (sock) {
         FD_SET(sock->fd, &readers);
-        if (sock->activity) {
-            --active_count;
+        if (activity)
             update_status_field(NULL, STAT_ACTIVE);
-        }
         do_hook(H_WORLD, (sock->flags & SOCKDEAD) ?
             "---- World %s (dead) ----" : "---- World %s ----",
            "%s", sock->world->name);
-        if (sock->activity) {
+        if (activity)
             flushout_queue(sock->queue, quiet);
-            sock->activity = 0;
-        }
         tog_lp();
-        update_prompt(sock->prompt);
+        update_prompt(sock->prompt, 1);
         if (sockmload) wload(sock->world);
     } else {
         do_hook(H_WORLD, "---- No world ----", "");
-        update_prompt(NULL);
+        update_prompt(NULL, 1);
     }
     depth--;
     return 1;
@@ -763,6 +772,7 @@ int opensock(world, autologin, quietlogin)
 {
     struct servent *service;
     int herr;
+    CONST char *what;
 
     if (world->sock) {
         if (!(world->sock->flags & SOCKDEAD)) {
@@ -826,7 +836,7 @@ int opensock(world, autologin, quietlogin)
 
     xsock->flags |= SOCKRESOLVING;
     xsock->fd = get_host_address(xsock->host, &xsock->addr.sin_addr,
-        &herr, &xsock->pid);
+        &xsock->pid, &what, &herr);
     if (xsock->fd == 0) {
         /* The name lookup succeeded */
         xsock->flags &= ~SOCKRESOLVING;
@@ -834,7 +844,9 @@ int opensock(world, autologin, quietlogin)
     } else if (xsock->fd < 0) {
         /* The name lookup failed */
         /* Note, some compilers can't handle (herr ? hsterror : literal) */
-        if (herr)
+        if (what)
+            CONFAIL(world->name, what, strerror(errno));
+        else if (herr)
             CONFAIL(world->name, xsock->host, hstrerror(herr));
         else
             CONFAIL(world->name, xsock->host, "name resolution failed");
@@ -932,7 +944,7 @@ static int openconn(sock)
     } else if (errno == EINPROGRESS) {
         /* The connection needs more time.  It will select() as writable when
          * it has connected, or readable when it has failed.  We select() it
-         * briefly here so "relatively fast" looks "immediate" to the user.
+         * briefly here so "fast" looks synchronous to the user.
          */
         fd_set writeable;
         struct timeval tv;
@@ -981,11 +993,12 @@ static int openconn(sock)
  * Returns -1 for failure, 0 for success, or a positive file descriptor
  * connected to a pending name lookup process or thread.
  */
-static int get_host_address(name, sin_addr, errp, pidp)
+static int get_host_address(name, sin_addr, pidp, what, errp)
     CONST char *name;
     struct in_addr *sin_addr;
-    int *errp;
     long *pidp;
+    CONST char **what;
+    int *errp;
 {
 #ifndef dgux
     /* Most versions of inet_addr() return a long. */
@@ -998,9 +1011,11 @@ static int get_host_address(name, sin_addr, errp, pidp)
     if (sin_addr->s_addr != INADDR_NONE) return 0;  /* success */
 
     /* Numeric format failed.  Try name format. */
+    *errp = 0;
+    *what = NULL;
     return
 #ifdef NONBLOCKING_GETHOST
-        (async_name) ? nonblocking_gethost(name, sin_addr, pidp) :
+        (async_name) ? nonblocking_gethost(name, sin_addr, pidp, what) :
 #endif
         blocking_gethost(name, sin_addr, errp);
 }
@@ -1057,17 +1072,21 @@ void os2waitforhostname(targs)
 }
 # endif /* PLATFORM_OS2 */
 
-static int nonblocking_gethost(name, sin_addr, pidp)
+static int nonblocking_gethost(name, sin_addr, pidp, what)
     CONST char *name;
     struct in_addr *sin_addr;
     long *pidp;
+    CONST char **what;
 {
     int fds[2];
+    int err;
 
+    *what = "pipe";
     if (pipe(fds) < 0) return -1;
 
 #ifdef PLATFORM_UNIX
     {
+        *what = "fork";
         *pidp = fork();
         if (*pidp > 0) {          /* parent */
             close(fds[1]);
@@ -1089,6 +1108,8 @@ static int nonblocking_gethost(name, sin_addr, pidp)
             tpara->fd = fds[1];
             tpara->hostname = STRDUP(name);
 
+            /* BUG: gethostbyname() isn't threadsafe! */
+            *what = "_beginthread";
             if (_beginthread(os2waitforhostname,NULL,0x8000,(void*)tpara) != -1)
                 return(fds[0]);
         }
@@ -1096,8 +1117,10 @@ static int nonblocking_gethost(name, sin_addr, pidp)
 #endif
 
     /* failed */
+    err = errno;
     close(fds[0]);
     close(fds[1]);
+    errno = err;
     return -1;
 }
 #endif /* NONBLOCKING_GETHOST */
@@ -1110,10 +1133,10 @@ static int establish(sock)
     Sock *sock;
 {
     xsock = sock;
-#ifdef EINPROGRESS
+#if TF_NONBLOCK
     if (xsock->flags & SOCKPENDING) {
         CONST char *errmsg = "nonblocking connect";
-        int err = 0, len = sizeof(err);
+        int err = 0, len = sizeof(err), flags;
 
         /* Old Method 1: If read(fd, buf, 0) fails, the connect() failed, and
          * errno will explain why.  Problem: on some systems, a read() of
@@ -1172,8 +1195,13 @@ static int establish(sock)
         /* connect() worked.  Clear the pending stuff, and get on with it. */
         xsock->flags &= ~SOCKPENDING;
         FD_CLR(xsock->fd, &writers);
+
+        /* Turn off nonblocking (this should help on buggy systems). */
+        /* note: 3rd arg to fcntl() is optional on Unix, but required by OS/2 */
+        if ((flags = fcntl(xsock->fd, F_GETFL, 0)) >= 0)
+            fcntl(xsock->fd, F_SETFL, flags & ~TF_NONBLOCK);
     }
-#endif /* EINPROGRESS */
+#endif /* TF_NONBLOCK */
 
     if (xsock->flags & SOCKPROXY) {
         FREE(xsock->host);
@@ -1475,10 +1503,11 @@ int send_line(src, len, eol_flag)
     if (!xsock || xsock->flags & (SOCKDEAD | SOCKPENDING)) return 0;
 
     if (xsock && xsock->prompt) {
+        /* Not the same as unprompt(): we keep attrs, and delete buffer. */
         Stringterm(xsock->buffer, 0);
         free_aline(xsock->prompt);
         xsock->prompt = NULL;
-        if (xsock == fsock) update_prompt(xsock->prompt);
+        if (xsock == fsock) update_prompt(xsock->prompt, 1);
     }
 
     buf = XMALLOC(2 * len + 3);
@@ -1510,7 +1539,8 @@ static void handle_socket_line()
     /* xsock->flags |= SOCKPROMPT; */
     incoming_text = new_alinen(xsock->buffer->s, 0, xsock->buffer->len);
     incoming_text->links = 1;
-    xsock->time[SOCK_RECV] = incoming_text->time = time(NULL);
+    gettime(&incoming_text->tv);
+    xsock->time[SOCK_RECV] = incoming_text->tv.tv_sec;
     Stringterm(xsock->buffer, 0);
 
     xsock->attrs = (emulation == EMUL_ANSI_ATTR) ?
@@ -1588,8 +1618,7 @@ int tog_lp()
         }
     } else {
         if (fsock->prompt && !(fsock->flags & SOCKPROMPT)) {
-            free_aline(fsock->prompt);
-            update_prompt(fsock->prompt = NULL);
+            unprompt(fsock, 1);
             set_refresh_pending(REF_PHYSICAL);
         }
     }
@@ -1609,8 +1638,7 @@ static void handle_prompt(str, confirmed)
 {
     if (lpquote) proctime = time(NULL);
     if (xsock->prompt) {
-        free_aline(xsock->prompt);
-        xsock->prompt = NULL;
+        unprompt(xsock, 0);
     }
     (xsock->prompt = new_aline(str, xsock->attrs))->links++;
     if (emulation == EMUL_ANSI_ATTR)
@@ -1621,10 +1649,22 @@ static void handle_prompt(str, confirmed)
      * compatibility, but I doubt many users will care.  Leaving
      * it in would not be right for /prompt.
      */
-    if (xsock == fsock) update_prompt(xsock->prompt);
+    if (xsock == fsock) update_prompt(xsock->prompt, 1);
     if (confirmed) xsock->flags |= SOCKPROMPT;
     else xsock->flags &= ~SOCKPROMPT;
     xsock->numquiet = 0;
+}
+
+/* undo the effects of a false prompt */
+static void unprompt(sock, update)
+    Sock *sock;
+    int update;
+{
+    if (!sock || !sock->prompt) return;
+    sock->attrs = sock->prompt->attrs;  /* restore original attrs */
+    free_aline(sock->prompt);
+    sock->prompt = NULL;
+    if (update) update_prompt(sock->prompt, 1);
 }
 
 static void f_telnet_recv(cmd, opt)
@@ -1655,9 +1695,7 @@ static int handle_socket_input()
          * the opposite, a real begining of a line would never appear in the
          * output window; that would be a worse mistake.)
          */
-        free_aline(xsock->prompt);
-        xsock->prompt = NULL;
-        if (xsock == fsock) update_prompt(xsock->prompt);
+        unprompt(xsock, xsock==fsock);
     }
 
     do {  /* while (n > 0 && !interrupted() && (received += count) < SPAM) */

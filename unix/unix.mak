@@ -1,4 +1,4 @@
-# $Id: unix.mak,v 35004.17 1998/06/24 23:15:23 hawkeye Exp $
+# $Id: unix.mak,v 35004.20 1998/08/07 04:57:29 hawkeye Exp $
 ########################################################################
 #  TinyFugue - programmable mud client
 #  Copyright (C) 1994 - 1998 Ken Keys
@@ -94,6 +94,10 @@ LIBRARY $(LIBDIR): ../tf-lib/tf-help ../tf-lib/tf-help.idx
 	cp ../CHANGES $(LIBDIR)
 	chmod $(MODE) $(LIBDIR)/CHANGES; chmod ugo-wx $(LIBDIR)/CHANGES
 	chmod $(MODE) $(LIBDIR)
+	-@cd $(LIBDIR); old=`ls replace.tf 2>/dev/null`; \
+	if [ -n "$$old" ]; then \
+	    echo "## WARNING: Obsolete files found in $(LIBDIR): $$old"; \
+	fi
 	@echo '## Creating links so old library names still work...'
 #	@# note: ln -sf isn't portable.
 	@cd $(LIBDIR); \

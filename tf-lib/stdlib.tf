@@ -6,7 +6,7 @@
 ;;;; General Public License.  See the file "COPYING" for details.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;; $Id: stdlib.tf,v 35000.36 1998/06/24 23:17:16 hawkeye Exp $
+;;; $Id: stdlib.tf,v 35000.42 1998/10/06 05:29:17 hawkeye Exp $
 
 ;;; TF macro library
 
@@ -95,18 +95,18 @@
 ;;; /send [-nW] [-T<type>] [-w<world>] text
 /def -i send = \
     /if (!getopts("nWT:w:", "")) /return 0%; /endif%; \
-    /let text=%{*}%; \
+    /let _text=%{*}%; \
     /if (opt_W) \
         /~send $(/listsockets -s)%; \
     /elseif (opt_T !~ "") \
         /~send $(/listsockets -s -T%{opt_T})%; \
     /else \
-        /test send(text, {opt_w}, !opt_n)%; \
+        /test send(_text, {opt_w}, !opt_n)%; \
     /endif
 
 /def -i ~send = \
     /while ({#}) \
-        /@test send(text, {1}, !opt_n)%; \
+        /@test send(_text, {1}, !opt_n)%; \
         /shift%; \
     /done
 
@@ -139,15 +139,15 @@
 ;; /world [-nlq] <host> <port>
 
 /def -i world = \
-    /let args=%*%; \
-    /if (args =~ "") \
-        /let args=$(/nth 1 $(/listworlds -s))%; \
-        /if (args =/ "default") \
-            /let args=$(/nth 2 $(/listworlds -s))%; \
+    /let _args=%*%; \
+    /if (_args =~ "") \
+        /let _args=$(/nth 1 $(/listworlds -s))%; \
+        /if (_args =/ "default") \
+            /let _args=$(/nth 2 $(/listworlds -s))%; \
         /endif%; \
     /endif%; \
-    /if /!@fg -s %args%; \
-    /then /@connect %args%; \
+    /if /!@fg -s %_args%; \
+    /then /@connect %_args%; \
     /endif
 
 
@@ -173,7 +173,7 @@
 /def -i not	= /@eval %*%; /@test !%?
 
 ;; expression evaluator.
-/def -i expr	= /@test echo(( %* ))
+/def -i expr	= /result %*
 
 ;; replace text in input buffer.
 /def -i grab	= /@test kblen() & dokey("dline")%; /test input({*})
@@ -205,7 +205,7 @@
     /endif
 
 ;; macro existance test.
-/def -i ismacro = /list -s -i %{*-@} %| /return %?
+/def -i ismacro = /test tfclose("o")%; /list -s -i %{*-@}
 
 
 ;; cut-and-paste tool
@@ -213,25 +213,25 @@
 /def -i paste = \
     /echo -ep %% Entering paste mode.  Type "@{B}/endpaste@{n}" to end.%; \
     /if (getopts("p", 0) < 0) /return 0%; /endif%; \
-    /let prefix=%{*-%{paste_prefix-:|}}%; \
-    /let line=%; \
-    /let text=%; \
-    /while ((tfread(line)) >= 0 & line !/ "/endpaste") \
-        /if (line =/ "/quit" | line =/ "/help*") \
+    /let _prefix=%{*-%{paste_prefix-:|}}%; \
+    /let _line=%; \
+    /let _text=%; \
+    /while ((tfread(_line)) >= 0 & _line !/ "/endpaste") \
+        /if (_line =/ "/quit" | _line =/ "/help*") \
             /echo -ep %% Type "@{B}/endpaste@{n}" to end /paste.%; \
         /endif%; \
         /if (!opt_p) \
-            /~paste %{prefix} %{line}%; \
-        /elseif (regmatch("^ *$", line)) \
-            /~paste %{prefix}%{text}%; \
-            /~paste %{prefix}%; \
-            /let text=%; \
+            /~paste %{_prefix} %{_line}%; \
+        /elseif (regmatch("^ *$", _line)) \
+            /~paste %{_prefix}%{_text}%; \
+            /~paste %{_prefix}%; \
+            /let _text=%; \
         /else \
-            /let text=%{text} $(/echo - %{line})%; \
+            /let _text=%{_text} $(/echo - %{_line})%; \
         /endif%; \
     /done%; \
     /if (opt_p) \
-        /~paste %{prefix} %{text}%; \
+        /~paste %{_prefix} %{_text}%; \
     /endif
 
 /def -i ~paste = \
@@ -244,7 +244,7 @@
 /def -i first	= /result {1}
 /def -i rest	= /result {-1}
 /def -i last	= /result {L}
-/def -i nth	= /shift %1%; /result {1}
+/def -i nth	= /result {1} > 0 ? shift({1}), {1} : ""
 
 /def -i cd	= /lcd %{*-%HOME}
 /def -i pwd	= /last $(/lcd)
@@ -313,11 +313,11 @@
     /def -mglob -T{tiny|tiny.*} -hWORLD -iFp%{maxpri} ~world_hook_tiny = \
         /set lp=0%; \
     /def -mglob -T{tiny|tiny.*} -hLOGIN -iFp%{maxpri} ~login_hook_tiny = \
-        /let char=$${world_character}%%;\
-        /if (strchr(char, ' ') >= 0) /let char="%%char"%%; /endif%%; \
-        /let pass=$${world_password}%%;\
-        /if (strchr(pass, ' ') >= 0) /let pass="%%pass"%%; /endif%%; \
-        /send connect %%char %%pass
+        /let _char=$${world_character}%%;\
+        /if (strchr(_char, ' ') >= 0) /let _char="%%_char"%%; /endif%%; \
+        /let _pass=$${world_password}%%;\
+        /if (strchr(_pass, ' ') >= 0) /let _pass="%%_pass"%%; /endif%%; \
+        /send connect %%_char %%_pass
 
 ;; Generic prompt-world hooks: lp=on.
 /eval \
@@ -343,22 +343,28 @@
         /send -- $${world_character}%%; \
         /send -- $${world_password}
 
+
 ;; Telnet hooks: login format, lp=on, and localecho=on (except at
 ;; password prompt).
 /eval \
-    /def -mglob -T{telnet|telnet.*} -hCONNECT -iFp%{maxpri} ~con_hook_telnet = \
-	/def -w -qhPROMPT -n1 -iFp%{maxpri} = /localecho on%;\
-    /def -mglob -T{telnet|telnet.*} -hWORLD -iFp%{maxpri} ~world_hook_telnet = \
-	/set lp=1%; \
-    /def -mglob -T{telnet|telnet.*} -hLOGIN -iFp%{maxpri} ~login_hook_telnet = \
-	/send -- $${world_character}%%; \
-	/send -- $${world_password}%; \
-    /def -mregexp -T'^telnet(\\\\..*)?$$' -h'PROMPT [Pp]assword:( *)$$' \
-    -iFp%{maxpri} ~telnet_passwd = \
-	/@test prompt(strcat({*}, {P1}))%%;\
-	/def -w -q -hSEND -iFn1p%{maxpri} ~echo_$${world_name} =\
-	    /localecho on%%;\
-	/localecho off
+    /def -mglob -T{telnet|telnet.*} -hCONNECT -iFp%{maxpri} ~con_hook_telnet =\
+        /def -w -qhPROMPT -n1 -iFp$[maxpri-1] = /localecho on%;\
+    /def -mglob -T{telnet|telnet.*} -hWORLD -iFp%{maxpri} ~world_hook_telnet =\
+        /set lp=1%; \
+    /def -mglob -T{telnet|telnet.*} -hLOGIN -iFp%{maxpri} ~login_hook_telnet =\
+        /def -n1 -ip%{maxpri} -mglob -w -h'PROMPT login:*' \
+        ~telnet_login_$${world_name} = \
+            /send -- $$${world_character}%%; \
+        /def -n1 -ip%{maxpri} -mglob -w -h'PROMPT password:*' \
+        ~telnet_pass_$${world_name} = \
+            /send -- $$${world_password}%; \
+    /def -mregexp -T'^telnet(\\\\..*)?$$' -h'PROMPT [Pp]assword: *$$' \
+    -iFp$[maxpri-1] ~telnet_passwd = \
+        /@test prompt(strcat({PL}, {P0}))%%;\
+        /def -w -q -hSEND -iFn1p%{maxpri} ~echo_$${world_name} =\
+            /localecho on%%;\
+        /localecho off
+
 
 ;; /telnet <host> [<port>]
 ;; Defines a telnet-world and connects to it.
@@ -452,6 +458,8 @@
 /def -i loaded = \
     /if /@test _loaded_libs !/ "*{%{1}}*"%; /then \
         /set _loaded_libs=%{_loaded_libs} %{1}%;\
+;       in case the file this tries to /load another file that uses /loaded
+        /let _required=0%; \
     /elseif (_required) \
         /exit%; \
     /endif
@@ -463,39 +471,39 @@
 ;; meta-character quoter
 ;; /escape <metachars> <string>
 /def -i escape = \
-    /let meta=%; /let dest=%; /let tail=%; /let i=%;\
-    /test meta:=strcat({1}, "\\\\")%;\
-    /test tail:={-1}%;\
-    /while ((i := strchr(tail, meta)) >= 0) \
-        /test dest:=strcat(dest, substr(tail,0,i), "\\\\", substr(tail,i,1)), \
-              tail:=substr(tail, i+1)%;\
+    /let _meta=%; /let _dest=%; /let _tail=%; /let _i=%;\
+    /test _meta:=strcat({1}, "\\\\")%;\
+    /test _tail:={-1}%;\
+    /while ((_i := strchr(_tail, _meta)) >= 0) \
+        /test _dest:=strcat(_dest, substr(_tail,0,_i), "\\\\", substr(_tail,_i,1)), \
+              _tail:=substr(_tail, _i+1)%;\
     /done%;\
-    /result strcat(dest, tail)
+    /result strcat(_dest, _tail)
 
 
 ;;;; Replace
 ;;; syntax:  /replace <old> <new> <string>
 
 /def -i replace = \
-    /let old=%;\
-    /let new=%;\
-    /let left=%;\
-    /let right=%;\
-    /test old:={1}%;\
-    /test new:={2}%;\
-    /test right:={-2}%;\
-    /while /let i=$[strstr(right, old)]%; /@test i >= 0%; /do \
-         /@test left := strcat(left, substr(right, 0, i), new)%;\
-         /@test right := substr(right, i + strlen(old))%;\
+    /let _old=%;\
+    /let _new=%;\
+    /let _left=%;\
+    /let _right=%;\
+    /test _old:={1}%;\
+    /test _new:={2}%;\
+    /test _right:={-2}%;\
+    /while /let _i=$[strstr(_right, _old)]%; /@test _i >= 0%; /do \
+         /@test _left := strcat(_left, substr(_right, 0, _i), _new)%;\
+         /@test _right := substr(_right, _i + strlen(_old))%;\
     /done%;\
-    /result strcat(left, right)
+    /result strcat(_left, _right)
 
 
 ;;; /loadhist [-lig] [-w<world>] file
 
 /def -i loadhist = \
-    /let file=%L%; \
-    /quote -S /recordline %-L '%%{file-${LOGFILE}}
+    /let _file=%L%; \
+    /quote -S /recordline %-L '%%{_file-${LOGFILE}}
 
 ;;; /keys simulation
 ;; For backward compatibilty only.
@@ -557,17 +565,17 @@
 
 /def -i cat = \
     /echo -e %% Entering cat mode.  Type "." to end.%; \
-    /let line=%; \
-    /let all=%; \
-    /while ((tfread(line) >= 0) & (line !~ ".")) \
-        /if (line =/ "/quit") \
+    /let _line=%; \
+    /let _all=%; \
+    /while ((tfread(_line) >= 0) & (_line !~ ".")) \
+        /if (_line =/ "/quit") \
             /echo -e %% Type "." to end /cat.%; \
         /endif%; \
-        /@test all := \
-            strcat(all, (({1} =~ "%%" & all !~ "") ? "%%;" : ""), line)%; \
+        /@test _all := \
+            strcat(_all, (({1} =~ "%%" & _all !~ "") ? "%%;" : ""), _line)%; \
     /done%; \
-    /recordline -i %all%; \
-    /@test eval(all)
+    /recordline -i %_all%; \
+    /@test eval(_all)
 
 /def -i time = /@test echo(ftime({*-%%{time_format}}, time())), time()
 

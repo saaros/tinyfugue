@@ -46,14 +46,14 @@
     /send %* - OUTPUTSUFFIX
 
 /def -i pcmd = \
-    /let opts=%; \
+    /let _opts=%; \
     /while ( {1} =/ "-[^- ]*" ) \
-        /let opts=%opts %1%; \
+        /let _opts=%_opts %1%; \
         /shift%; \
     /done%; \
-    /pfxon %{opts}%; \
-    /send %{opts} %*%; \
-    /pfxoff %{opts}%; \
+    /pfxon %{_opts}%; \
+    /send %{_opts} %*%; \
+    /pfxoff %{_opts}%; \
     /@test _pfx_counter := _pfx_counter + 1%; \
     /pfxrand
 

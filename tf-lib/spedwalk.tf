@@ -24,26 +24,26 @@
         /endif
 
 /def -i ~do_speedwalk = \
-    /let args=%*%;\
-    /let string=%;\
-    /let count=%;\
-    /let c=%;\
-    /let i=-1%;\
-    /while ( (c:=substr(args, ++i, 1)) !~ "" ) \
-        /if ( c =/ "[0-9]" ) \
-            /@test count:= strcat(count, c)%;\
-        /elseif ( regmatch("[nsewud]", c) ) \
-            /if ( string !~ "" ) /send - %{string}%; /endif%;\
-            /let string=%;\
-            /for j 1 %{count-1} /~do_speedwalk_aux %{c}%;\
-            /let count=%;\
+    /let _args=%*%;\
+    /let _string=%;\
+    /let _count=%;\
+    /let _c=%;\
+    /let _i=-1%;\
+    /while ( (_c:=substr(_args, ++_i, 1)) !~ "" ) \
+        /if ( _c =/ "[0-9]" ) \
+            /@test _count:= strcat(_count, _c)%;\
+        /elseif ( regmatch("[nsewud]", _c) ) \
+            /if ( _string !~ "" ) /send - %{_string}%; /endif%;\
+            /let _string=%;\
+            /for _j 1 %{_count-1} /~do_speedwalk_aux %{_c}%;\
+            /let _count=%;\
         /else \
-            /@test string:= strcat(string, count, c)%;\
-            /let count=%;\
+            /@test _string:= strcat(_string, _count, _c)%;\
+            /let _count=%;\
         /endif%;\
     /done%;\
-    /let string=%{string}%{count}%;\
-    /if ( string !~ "" ) /send - %{string}%; /endif
+    /let _string=%{_string}%{_count}%;\
+    /if ( _string !~ "" ) /send - %{_string}%; /endif
 
 /def -i ~do_speedwalk_aux = \
 ;   _map_hook may be defined if map.tf was loaded.

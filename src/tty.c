@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tty.c,v 35004.14 1998/06/23 23:49:08 hawkeye Exp $ */
+/* $Id: tty.c,v 35004.15 1998/07/27 21:03:19 hawkeye Exp $ */
 
 /*
  * TTY driver routines.
@@ -210,7 +210,10 @@ void cbreak_noecho_mode()
      */
     tty.c_cc[VMIN] = 0;
     tty.c_cc[VTIME] = 0;
-#endif
+# ifdef VDSUSP
+    tty.c_cc[VDSUSP] = 0;  /* disable this useless and confusing key */
+# endif
+#endif /* USE_TERMIOS */
 
 #ifdef USE_HPUX_TERMIO
     tty.c_lflag &= ~(ECHO | ECHOE | ICANON);

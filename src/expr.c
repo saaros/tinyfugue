@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expr.c,v 35004.29 1998/06/27 23:56:53 hawkeye Exp $ */
+/* $Id: expr.c,v 35004.36 1998/09/19 01:20:30 hawkeye Exp $ */
 
 
 /********************************************************************
@@ -135,19 +135,31 @@ int expr()
     return ok;
 }
 
-void evalexpr(dest, args)
-    Stringp dest;
-    CONST char *args;
+/* Returns the value of expression.  Caller must freeval() the value. */
+Value *expr_value(expression)
+    CONST char *expression;
 {
+    Value *result = NULL;
     CONST char *saved_ip = ip;
 
-    ip = args;
+    ip = expression;
     if (expr()) {
         if (*ip) parse_error("expression", "operator");
-        Stringcpy(dest, opdstr(1));
-        freeval(stack[--stacktop]);
+        result = stack[--stacktop];
     }
     ip = saved_ip;
+    return result;
+}
+
+Value *expr_value_safe(expression)
+    CONST char *expression;
+{
+    Value *result;
+    TFILE *old_tfin = tfin, *old_tfout = tfout;
+    result = expr_value(expression);
+    tfin = old_tfin;    /* in case expression closed tfin */
+    tfout = old_tfout;  /* in case expression closed tfout */
+    return result;
 }
 
 
@@ -302,12 +314,12 @@ static double valfloat(val)
 }
 #endif /* NO_FLOAT */
 
-/* return string value of item */
+/* return string value of item (only valid for lifetime of val!) */
 CONST char *valstr(val)
     Value *val;
 {
     CONST char *str;
-    static char buffer[16];
+    static char buffer[32];
 
     if (!val) return "";
     switch (val->type) {
@@ -316,7 +328,7 @@ CONST char *valstr(val)
         case TYPE_ID:   return (str=getnearestvar(val->u.sval,NULL)) ? str : "";
 #ifndef NO_FLOAT
         case TYPE_FLOAT:
-            sprintf(buffer, "%.10g", val->u.fval);
+            sprintf(buffer, "%.16g", val->u.fval);
             if (!strchr(buffer, '.'))
                 strcat(buffer, ".0");
             return buffer;
@@ -527,8 +539,8 @@ static Value *function_switch(symbol, n, parent)
             }
 
             str = opdstr(n-0);  /* name */
-            if (*str == '(') {
-                /* we can't allow user to assign names like "(unnamed1)" */
+            if (*str == '(' || !*str) {
+                /* we can't allow user assigned names like "(unnamed1)" or "" */
                 eprintf("illegal world name: %s", str);
                 return newint(0);
             }
@@ -589,14 +601,18 @@ static Value *function_switch(symbol, n, parent)
                 n<2 ? "" : opdstr(2), n<1 ? "q" : opdstr(1)));
 
         case FN_TFCLOSE:
-            tfile = find_tfile(opdstr(1));
-            if (!tfile) return newint(-1);
-            if (tfile == tfscreen || tfile == tfkeyboard) {
-                eprintf("Special file can not be closed.");
-                return newint(-1);
+            str = opdstr(1);
+            if (!str[1]) {
+                switch(lcase(str[0])) {
+                case 'i':  tfin = NULL;  return newint(0);
+                case 'o':  tfout = NULL; return newint(0);
+                case 'e':  eprintf("tferr can not be closed.");
+                           return newint(-1);
+                default:   break;
+                }
             }
-            tfclose(tfile);
-            return newint(1);
+            tfile = find_tfile(str);
+            return newint(tfile ? tfclose(tfile) : -1);
 
         case FN_TFWRITE:
             tfile = (n > 1) ? find_usable_tfile(opdstr(2), S_IWUSR) : tfout;
@@ -717,8 +733,9 @@ static Value *function_switch(symbol, n, parent)
             return newint(!no_tty);
 
         case FN_FTIME:
-            str = tftime(opdstr(2), opdint(1));
-            return str ? newstr(str, -1) : newstr("", 0);
+            Stringterm(scratch, 0);
+            tftime(scratch, opdstr(2), opdint(1), 0);
+            return newstr(scratch->s, scratch->len);
 
         case FN_TIME:
             return newint((int)time(NULL));
@@ -853,13 +870,13 @@ static Value *function_switch(symbol, n, parent)
             return (newint(do_kbdel(opdint(1))));
 
         case FN_KBMATCH:
-            return newint(do_kbmatch());
+            return newint(do_kbmatch(n>0 ? opdint(1) : keyboard_pos));
 
         case FN_KBWLEFT:
-            return newint(do_kbword(-1));
+            return newint(do_kbword(n>0 ? opdint(1) : keyboard_pos, -1));
 
         case FN_KBWRIGHT:
-            return newint(do_kbword(1));
+            return newint(do_kbword(n>0 ? opdint(1) : keyboard_pos, 1));
 
         case FN_KBLEN:
             return newint(keybuf->len);

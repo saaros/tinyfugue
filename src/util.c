@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.c,v 35004.51 1998/06/25 02:14:42 hawkeye Exp $ */
+/* $Id: util.c,v 35004.57 1998/09/19 01:20:33 hawkeye Exp $ */
 
 
 /*
@@ -44,6 +44,7 @@ static RegInfo *reginfo = &top_reginfo;
 typedef struct mail_info_s {	/* mail file information */
     char *name;			/* file name */
     int flag;			/* new mail? */
+    int error;			/* error */
     TIME_T mtime;		/* file modification time */
     long size;			/* file size */
     struct mail_info_s *next;
@@ -56,6 +57,7 @@ int mail_count = 0;
 char tf_ctype[0x100];
 
 static char *FDECL(cmatch,(CONST char *pat, int ch));
+static void  NDECL(free_maillist);
 
 #ifndef CASE_OK
 int lcase(x) char x; { return is_upper(x) ? tolower(x) : x; }
@@ -486,7 +488,7 @@ int init_pattern_mflag(pat, mflag)
         char *s = pat->str;
         while (*s == '(' || *s == '^') s++;
         if (strncmp(s, ".*", 2) == 0)
-            eprintf("Warning: leading \".*\" in a regexp is extremely inefficient.");
+            eprintf("Warning: leading \".*\" in a regexp is very inefficient, and never necessary.");
         if ((pat->re = regcomp((char*)pat->str))) return 1;
     } else if (mflag == MATCH_SIMPLE) {
         return 1;
@@ -509,9 +511,11 @@ int patmatch(pat, str)
     CONST Pattern *pat;
     CONST char *str;
 {
-    if (!pat->str || !*pat->str) return 1;
-    if (pat->mflag == MATCH_GLOB)   return !smatch(pat->str, str);
+    if (!pat->str) return 1;
+    /* Even a blank regexp must be exec'd, so Pn will work. */
     if (pat->mflag == MATCH_REGEXP) return regexec(pat->re, (char *)str);
+    if (!*pat->str) return 1;
+    if (pat->mflag == MATCH_GLOB)   return !smatch(pat->str, str);
     if (pat->mflag == MATCH_SIMPLE) return !strcmp(pat->str, str);
     eprintf("internal error: pat->mflag == %d", pat->mflag);
     return 0;
@@ -783,7 +787,7 @@ char nextopt(arg, num)
         int dash=1;
         CONST char *p;
         STATIC_BUFFER(helpbuf);
-        Stringzero(helpbuf);
+        Stringterm(helpbuf, 0);
         if (opt != '?') eprintf("invalid option: %c", opt);
         for (p = options; *p; p++) {
             switch (*p) {
@@ -899,6 +903,7 @@ int ch_mailfile()
             info->mtime = -2;
             info->size = -2;
             info->flag = 0;
+            info->error = 0;
         }
         info->next = newlist;
         newlist = info;
@@ -909,7 +914,7 @@ int ch_mailfile()
     return 1;
 }
 
-void free_maillist()
+static void free_maillist()
 {
     mail_info_t *info;
     while (maillist) {
@@ -939,6 +944,15 @@ void init_util2()
         eputs("% Warning:  Can't figure out name of mail file.");
     }
 }
+
+#ifdef DMALLOC
+void free_util()
+{
+    free_maillist();
+    if (reginfo->str) FREE(reginfo->str);
+    if (reginfo->re) free(reginfo->re);      /* malloc()ed in regcomp() */
+}
+#endif
 
 
 /* check_mail()
@@ -980,27 +994,28 @@ void check_mail()
     depth++;
 
     if (!maillist || maildelay <= 0) {
-        if (mail_count) { mail_count = 0; update_status_field(NULL, STAT_MAIL); }
+        if (mail_count) { mail_count = 0; update_status_field(NULL,STAT_MAIL); }
         depth--;
         return;
     }
 
     mail_count = 0;
     for (info = maillist; info; info = info->next) {
-        if (stat(expand_filename(info->name), &buf) < 0) {
+        if (stat(expand_filename(info->name), &buf) == 0) {
+            errno = (buf.st_mode & S_IFDIR) ? EISDIR : 0;
+        }
+        if (errno) {
             /* Error, or file does not exist. */
-            info->flag = 0;
-            if (errno != ENOENT && info->flag >= 0) {
+            if (errno == ENOENT) {
+                info->error = 0;
+            } else if (info->error != errno) {
                 eprintf("%s: %s", info->name, strerror(errno));
-                info->flag = -1; /* remember error */
+                info->error = errno;
             }
-            buf.st_mtime = -1;
-            buf.st_size = -1;
-        } else if (buf.st_mode & S_IFDIR) {
-            /* Directory. */
-            if (info->flag >= 0)
-                eprintf("%s: %s", info->name, strerror(EISDIR));
-            info->flag = -1; /* remember error */
+            info->mtime = -1;
+            info->size = -1;
+            info->flag = 0;
+            continue;
         } else if (buf.st_size == 0) {
             /* There is no mail (the file exists, but is empty). */
             info->flag = 0;
@@ -1026,11 +1041,12 @@ void check_mail()
             mail_count += info->flag;
         }
 
+        info->error = 0;
         info->mtime = buf.st_mtime;
         info->size = buf.st_size;
     }
 
-    if (!mail_count != !old_mail_count)
+    if (mail_count != old_mail_count)
         update_status_field(NULL, STAT_MAIL);
 
     depth--;
@@ -1093,26 +1109,42 @@ TIME_T abstime(hms)
     return result;
 }
 
-/* returns a pointer to a formatted time string */
-char *tftime(fmt, t)
+/* appends a formatted time string to dest, returns length of new part */
+int tftime(dest, fmt, sec, usec)
+    String *dest;
     CONST char *fmt;
-    TIME_T t;
+    long sec, usec;
 {
-    static smallstr buf;
+    int oldlen = dest->len;
 
     if (strcmp(fmt, "@") == 0) {
-        sprintf(buf, "%ld", (long)t);
-        return buf;
+        Sprintf(dest, SP_APPEND, "%ld", (long)sec);
     } else {
 #ifdef HAVE_strftime
+        CONST char *s;
+        char fmtbuf[3] = "%?";
+        struct tm *local = NULL;
         if (!*fmt) fmt = "%c";
-        return strftime(buf, sizeof(buf) - 1, fmt, localtime(&t)) ? buf : NULL;
+        for (s = fmt; *s; s++) {
+            if (*s != '%') {
+                Stringadd(dest, *s);
+            } else if (*++s == '@') {
+                Sprintf(dest, SP_APPEND, "%ld", sec);
+            } else if (*s == '.') {
+                Sprintf(dest, SP_APPEND, "%02ld", (usec + 5000) / 10000);
+            } else {
+                if (!local) local = localtime(&sec);
+                fmtbuf[1] = *s;
+                Stringterm(dest, dest->len + 32);
+                dest->len += strftime(dest->s + dest->len, 32, fmtbuf, local);
+            }
+        }
 #else
         char *str = ctime(&t);
-        str[strlen(str) - 1] = '\0';    /* remove ctime()'s '\n' */
-        return str;
+        Stringncat(dest, str, strlen(str) - 1);   /* remove ctime()'s '\n' */
 #endif
     }
+    return dest->len - oldlen;
 }
 
 void internal_error(file, line)
@@ -1129,7 +1161,7 @@ void die(why, err)
 {
     fix_screen();
     reset_tty();
-    if (err) perror(why);
+    if ((errno = err)) perror(why);
     else {
         fputs(why, stderr);
         fputc('\n', stderr);

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: process.c,v 35004.28 1998/06/24 05:36:16 hawkeye Exp $ */
+/* $Id: process.c,v 35004.29 1998/07/08 23:33:05 hawkeye Exp $ */
 
 /************************
  * Fugue processes.     *
@@ -357,7 +357,7 @@ static int do_quote(proc)
     if (!tfgetS(line, proc->input)) return 0;
     if (proc->type == P_QSHELL) readers_clear(fileno(proc->input->u.fp));
     Sprintf(proc->buffer, 0, "%s%S%s", proc->pre, line, proc->suf);
-    if (qecho) tfprintf(tferr, "%s%S", qprefix, proc->buffer);
+    if (qecho) tfprintf(tferr, "%s%S", qprefix ? qprefix : "", proc->buffer);
     switch (proc->disp) {
     case DISP_ECHO:
         oputs(proc->buffer->s);

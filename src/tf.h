@@ -5,17 +5,15 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tf.h,v 35004.18 1998/05/03 19:32:19 hawkeye Exp $ */
+/* $Id: tf.h,v 35004.22 1998/10/06 05:23:50 hawkeye Exp $ */
 
 #ifndef TF_H
 #define TF_H
 
 /* headers needed everywhere */
 
-#ifndef TIME_H
-# include <time.h>    /* for time_t */
-# define TIME_H
-#endif
+#include <time.h>	/* may conflict with <sys/time.h> on some systems? */
+#include <sys/time.h>	/* for struct timeval */
 #include "malloc.h"
 #include "globals.h"
 
@@ -41,10 +39,11 @@ typedef struct Aline {         /* shared line, with attributes */
     int links;
     attr_t attrs;
     short *partials;
-    TIME_T time;
+    struct timeval tv;
 } Aline;
 
-#define BLANK_ALINE { "", 0, 1, 0, NULL, 0 }
+#define BLANK_ALINE { "", 0, 1, 0, NULL, { 0, 0 } }
+#define LITERAL_ALINE(str) { (str), sizeof(str)-1, 1, 0, NULL, { 0, 0 } }
 
 #define F_FGCOLORMASK 00000017   /* 4 bits, interpreted as an integer */
 #define F_FGCOLOR     00000020   /* flag */

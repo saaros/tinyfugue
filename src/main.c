@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: main.c,v 35004.45 1998/06/25 02:14:13 hawkeye Exp $ */
+/* $Id: main.c,v 35004.51 1998/09/19 01:20:32 hawkeye Exp $ */
 
 
 /***********************************************
@@ -44,7 +44,7 @@ CONST char sysname[] = UNAME;
  * to the version number, and put a brief description of the modifications
  * in the mods[] string.
  */
-CONST char version[] = "TinyFugue version 4.0 alpha 10";
+CONST char version[] = "TinyFugue version 4.0 beta 3";
 CONST char mods[] = "";
 
 CONST char copyright[] =
@@ -66,9 +66,11 @@ int main(argc, argv)
     int argc;
     char *argv[];
 {
-    char *opt, *argv0 = argv[0], *configfile = NULL, *command = NULL;
+    char *opt, *argv0 = argv[0];
+    char *configfile = NULL, *command = NULL, *libdir = NULL;
     int worldflag = TRUE;
     int autologin = -1, quietlogin = -1, autovisual = TRUE;
+    Stringp scratch;
 
     while (--argc > 0 && (*++argv)[0] == '-') {
         if (!(*argv)[1]) { argc--; argv++; break; }
@@ -87,30 +89,31 @@ int main(argc, argv)
                 autovisual = FALSE;
                 break;
             case 'f':
-                if (configfile) FREE(configfile);
-                configfile = STRDUP(opt);
-                while (*opt) opt++;
-                break;
+                configfile = opt;
+                goto nextarg;
             case 'c':
-                if (command) FREE(command);
-                command = STRDUP(opt);
-                while (*opt) opt++;
-                break;
+                command = opt;
+                goto nextarg;
+            case 'L':
+                libdir = opt;
+                goto nextarg;
             default:
                 fprintf(stderr, "%s: illegal option -- %c\n", argv0, *--opt);
                 goto error;
             }
+        nextarg: /* empty statement */;
     }
     if (argc > 2) {
     error:
-        fprintf(stderr, "Usage: %s [-f[<file>]] [-c<cmd>] [-nlq] [<world>]\n", argv0);
-        fprintf(stderr, "       %s [-f[<file>]] [-c<cmd>] <host> <port>\n", argv0);
+        fprintf(stderr, "Usage: %s [-L<dir>] [-f[<file>]] [-c<cmd>] [-nlq] [<world>]\n", argv0);
+        fprintf(stderr, "       %s [-L<dir>] [-f[<file>]] [-c<cmd>] <host> <port>\n", argv0);
         fputs("Options:\n", stderr);
-        fputs("  -f        don't load personal config file\n", stderr);
+        fputs("  -L<dir>   use <dir> as library directory (%TFLIBDIR)\n", stderr);
+        fputs("  -f        don't load personal config file (.tfrc)\n", stderr);
         fputs("  -f<file>  load <file> instead of config file\n", stderr);
         fputs("  -c<cmd>   execute <cmd> after loading config file\n", stderr);
-        fputs("  -n        no connection\n", stderr);
-        fputs("  -l        no automatic login\n", stderr);
+        fputs("  -n        no automatic first connection\n", stderr);
+        fputs("  -l        no automatic login/password\n", stderr);
         fputs("  -q        quiet login\n", stderr);
         fputs("  -v        no automatic visual mode\n", stderr);
         fputs("Arguments:\n", stderr);
@@ -148,12 +151,24 @@ int main(argc, argv)
     init_keyboard();			/* keyboard.c */
     init_util2();			/* util.c     */
 
+    Stringinit(scratch);
+    if (libdir) {
+        set_var_by_name("TFLIBDIR", libdir, 0);
+    }
+    if (!ffindglobalvar("TFLIBRARY")) {
+        Sprintf(scratch, 0, "%s/stdlib.tf", TFLIBDIR);
+        set_var_by_name("TFLIBRARY", scratch->s, 0);
+    }
+    if (!ffindglobalvar("TFHELP")) {
+        Sprintf(scratch, 0, "%s/tf-help", TFLIBDIR);
+        set_var_by_name("TFHELP", scratch->s, 0);
+    }
+    Stringfree(scratch);
+
     read_configuration(configfile);
-    if (configfile) FREE(configfile);
 
     if (command) {
         process_macro(command, NULL, sub, "\bSTART");
-        FREE(command);
     }
 
     /* If %visual was not explicitly set, set it now. */
@@ -190,7 +205,7 @@ int main(argc, argv)
     free_expand();
     free_expr();
     free_help();
-    free_maillist();
+    free_util();
     free_reserve();
     debug_mstats("tf");
 #endif

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: command.c,v 35004.56 1998/06/30 06:00:14 hawkeye Exp $ */
+/* $Id: command.c,v 35004.57 1998/07/04 04:55:03 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -212,7 +212,8 @@ int handle_substitute_func(string, attrstr, inline_flag)
     if (attrs < 0) return 0;
 
     (aline = new_aline(string, incoming_text->attrs))->links++;
-    aline->time = incoming_text->time;
+    aline->tv.tv_sec = incoming_text->tv.tv_sec;
+    aline->tv.tv_usec = incoming_text->tv.tv_usec;
     add_attr(aline->attrs, attrs);
 
     if (inline_flag) {

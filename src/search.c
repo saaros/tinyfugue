@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: search.c,v 35004.8 1998/06/23 23:49:07 hawkeye Exp $ */
+/* $Id: search.c,v 35004.9 1998/07/22 00:59:45 hawkeye Exp $ */
 
 
 /**********************************************
@@ -133,14 +133,16 @@ ListEntry *sinsert(datum, list, cmp)
 /* Create new node for datum and insert into list.
  * If where is non-null, insert after it; else, insert at beginning
  */
-ListEntry *inlist(datum, list, where)
+ListEntry *inlist_fl(datum, list, where, file, line)
     GENERIC *datum;
     List *list;
     ListEntry *where;
+    CONST char *file;
+    int line;
 {
     ListEntry *node;
 
-    palloc(node, ListEntry, nodepool, next, __FILE__, __LINE__);
+    palloc(node, ListEntry, nodepool, next, file, line);
     node->datum = datum;
     if (where) {
         node->next = where->next;

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: signals.c,v 35004.23 1998/06/23 23:48:02 hawkeye Exp $ */
+/* $Id: signals.c,v 35004.26 1998/07/23 22:59:15 hawkeye Exp $ */
 
 /* Signal handling, core dumps, job control, and interactive shells */
 
@@ -238,6 +238,7 @@ int suspend()
         cbreak_noecho_mode();
         get_window_size();
         setup_screen(-1);
+        oputs("% Resuming TinyFugue.");
         check_mail();
         return 1;
     }
@@ -256,12 +257,12 @@ static RETSIG core_handler(sig)
         fix_screen();
         puts("SIGQUIT received.  Dump core and exit?  (y/n)\r");
         fflush(stdout);
-        if (igetchar() != 'y') {
+        if (no_tty || igetchar() != 'y') {
             setup_screen(0);
             oputs("% Resuming TinyFugue.");
             return;
         }
-        fputs("Abnormal termination - SIGQUIT\n", stderr);
+        fputs("Abnormal termination - SIGQUIT\r\n", stderr);
     }
     setsighandler(sig, SIG_DFL);
     if (sig != SIGQUIT) {
@@ -270,7 +271,7 @@ static RETSIG core_handler(sig)
         fprintf(stderr, "> Abnormal termination - signal %d\r\n\n", sig);
         fputs("If you can, get a stack trace and send it to the author.\r\n",
             stderr);
-        fputs("If not, please at least describe what you were doing at the",
+        fputs("If not, please at least describe what you were doing at the\r\n",
             stderr);
         fputs("time of this crash.\r\n", stderr);
 #ifdef PLATFORM_UNIX
@@ -298,9 +299,11 @@ static RETSIG core_handler(sig)
 #endif
     }
 
-    fputs("\nPress any key.\r\n", stderr);
-    fflush(stderr);
-    igetchar();
+    if (!no_tty) {
+        fputs("\nPress any key.\r\n", stderr);
+        fflush(stderr);
+        igetchar();
+    }
     reset_tty();
 
     raise(sig);
@@ -315,23 +318,24 @@ void crash(internal, fmt, file, line, n)
     panic_fix_screen();
     reset_tty();
     if (internal) coremsg();
-    fprintf(stderr, "> %s:  %s, line %d\n",
+    fprintf(stderr, "> %s:  %s, line %d\r\n",
         internal ? "Internal error" : "Aborting", file, line);
-    fprintf(stderr, "> TERM=%s, visual=%ld, emulation=%ld, lp=%ld, sub=%ld\n",
-        TERM, visual, emulation, lpflag, sub);
     fputs("> ", stderr);
     fprintf(stderr, fmt, n);
-    fputs("\n\n", stderr);
+    fputs("\r\n\n", stderr);
     raise(SIGQUIT);
 }
 
 static void coremsg()
 {
-    fputs("Please report the following message verbatim to hawkeye@tf.tcp.com.\n", stderr);
-    fputs("Also describe what you were doing in tf when this\n", stderr);
-    fputs("occured, and whether you can repeat it.\n\n", stderr);
-    fprintf(stderr, "> %s\n", version);
-    if (*sysname) fprintf(stderr, "> %s\n", sysname);
+    fputs("\r\n\nPlease report the following message verbatim to hawkeye@tf.tcp.com.\n", stderr);
+    fputs("Also describe what you were doing in tf when this\r\n", stderr);
+    fputs("occured, and whether you can repeat it.\r\n\n", stderr);
+    fprintf(stderr, "> %s\r\n", version);
+    if (*sysname) fprintf(stderr, "> %s\r\n", sysname);
+    fprintf(stderr,"> visual=%ld, emulation=%ld, lp=%ld, sub=%ld\r\n",
+        visual, emulation, lpflag, sub);
+    fprintf(stderr,"> TERM=%.32s\r\n", TERM ? TERM : "(NULL)");
 }
 
 static void terminate(sig)
@@ -340,7 +344,7 @@ static void terminate(sig)
     setsighandler(sig, SIG_DFL);
     fix_screen();
     reset_tty();
-    fprintf(stderr, "Terminating - signal %d\n", sig);
+    fprintf(stderr, "Terminating - signal %d\r\n", sig);
     raise(sig);
 }
 
@@ -399,7 +403,7 @@ int shell(cmd)
     cbreak_noecho_mode();
     if (result == -1) {
         eprintf("%s", strerror(errno));
-    } else if (shpause) {
+    } else if (shpause && !no_tty) {
         oputs("% Press any key to continue.");
         oflush();
         igetchar();

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: funclist.h,v 35000.27 1998/06/27 23:54:12 hawkeye Exp $ */
+/* $Id: funclist.h,v 35000.28 1998/07/23 22:55:22 hawkeye Exp $ */
 
 /*	  Symbol	Name		Min	Max	*/
 /*					Args	Args	*/
@@ -33,11 +33,11 @@ funccode( FN_KBDEL,	"kbdel",	1,	1),
 funccode( FN_KBGOTO,	"kbgoto",	1,	1),
 funccode( FN_KBHEAD,	"kbhead",	0,	0),
 funccode( FN_KBLEN,	"kblen",	0,	0),
-funccode( FN_KBMATCH,	"kbmatch",	0,	0),
+funccode( FN_KBMATCH,	"kbmatch",	0,	1),
 funccode( FN_KBPOINT,	"kbpoint",	0,	0),
 funccode( FN_KBTAIL,	"kbtail",	0,	0),
-funccode( FN_KBWLEFT,	"kbwordleft",	0,	0),
-funccode( FN_KBWRIGHT,	"kbwordright",	0,	0),
+funccode( FN_KBWLEFT,	"kbwordleft",	0,	1),
+funccode( FN_KBWRIGHT,	"kbwordright",	0,	1),
 funccode( FN_KEYCODE,	"keycode",	1,	1),
 funccode( FN_LINES,	"lines",	0,	0),
 funccode( FN_LOG,	"log",		1,	1),

@@ -13,10 +13,10 @@
 /def -ib^[^[[A = /kb_pop
 
 /def -i kb_push = \
-    /let line=$(/recall -i 1)%;\
-    /if ( line !~ "" ) \
+    /let _line=$(/recall -i 1)%;\
+    /if ( _line !~ "" ) \
         /set _kb_stack_top=$[_kb_stack_top + 1]%;\
-        /set _kb_stack_%{_kb_stack_top}=%{line}%;\
+        /set _kb_stack_%{_kb_stack_top}=%{_line}%;\
     /endif%;\
     /dokey dline
 

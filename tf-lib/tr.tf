@@ -12,17 +12,17 @@
 /loaded __TFLIB__/tr.tf
 
 /def -i tr = \
-    /let old=%;\
-    /let new=%;\
-    /let tail=%;\
-    /test old:={1}%;\
-    /test new:={2}%;\
-    /test tail:={-2}%;\
-    /let dest=%;\
-    /while /let i=$[strchr(tail, old)]%; /@test i >= 0%; /do \
-        /let j=$[strchr(old, substr(tail, i, 1))]%;\
-        /test dest:=strcat(dest, substr(tail,0,i), substr(new, j, 1))%;\
-        /test tail:=substr(tail,i+1)%;\
+    /let _old=%;\
+    /let _new=%;\
+    /let _tail=%;\
+    /test _old:={1}%;\
+    /test _new:={2}%;\
+    /test _tail:={-2}%;\
+    /let _dest=%;\
+    /while /let _i=$[strchr(_tail, _old)]%; /@test _i >= 0%; /do \
+        /let _j=$[strchr(_old, substr(_tail, _i, 1))]%;\
+        /test _dest:=strcat(_dest, substr(_tail,0,_i), substr(_new, _j, 1))%;\
+        /test _tail:=substr(_tail,_i+1)%;\
     /done%;\
-    /result strcat(dest, tail)
+    /result strcat(_dest, _tail)
 

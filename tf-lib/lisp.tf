@@ -14,33 +14,33 @@
 /def -i length = /result {#}
 
 /def -i reverse = \
-    /let result=%1%;\
+    /let _result=%1%;\
     /while (shift(), {#}) \
-        /let result=%1 %result%;\
+        /let _result=%1 %_result%;\
     /done%;\
-    /result result
+    /result _result
 
 /def -i mapcar = \
-    /let cmd=%1%; \
+    /let _cmd=%1%; \
     /while (shift(), {#}) \
-        /eval %cmd %%1%; \
+        /eval %_cmd %%1%; \
     /done
 
 /def -i maplist = \
-    /let cmd=%1%;\
+    /let _cmd=%1%;\
     /while (shift(), {#}) \
-        /eval %cmd %%*%;\
+        /eval %_cmd %%*%;\
     /done
 
 /def -i remove = \
-    /let word=%1%;\
-    /let result=%;\
+    /let _word=%1%;\
+    /let _result=%;\
     /while (shift(), {#}) \
-        /if (word !~ {1}) \
-            /let result=%{result} %{1}%;\
+        /if (_word !~ {1}) \
+            /let _result=%{_result} %{1}%;\
         /endif%;\
     /done%;\
-    /result result
+    /result _result
 
 
 ;; Remove all duplicate items from list.
@@ -48,6 +48,6 @@
 ;; long lists.
 
 /def -i unique = \
-    /let result=%1 $[{#}>1 ? $(/unique $(/remove %1 %-1)) : ""]%; \
-    /result result
+    /let _result=%1 $[{#}>1 ? $(/unique $(/remove %1 %-1)) : ""]%; \
+    /result _result
 

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.c,v 35004.72 1998/06/30 05:13:14 hawkeye Exp $ */
+/* $Id: output.c,v 35004.84 1998/09/19 00:59:51 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -32,7 +32,7 @@
 #include "tty.h"	/* init_tty(), get_window_wize() */
 #include "variable.h"
 #include "expand.h"	/* current_command */
-#include "expr.h"	/* evalexpr() */
+#include "parse.h"	/* expr_value_safe() */
 #include "keyboard.h"	/* keyboard_pos */
 
 #ifdef EMXANSI
@@ -69,10 +69,10 @@
 #   endif
 #  endif
 # endif
-#else
+#else /* !HARDCODE */
 # define origin 0      /* top left corner is (0,0) */
 # define TERMCODE(id, vt100, vt220, ansi)   static CONST char *(id) = NULL;
-#endif
+#endif /* HARDCODE */
 
 /*				vt100		vt220		ansi */
 /*				-----		-----		---- */
@@ -98,6 +98,8 @@ TERMCODE (insert_char,		NULL,		"\033[@",	"\033[@")
 #endif
 TERMCODE (insert_start,		NULL,		NULL,		"\033[4h")
 TERMCODE (insert_end,		NULL,		NULL,		"\033[4l")
+TERMCODE (keypad_on,		"\033[?1h",	NULL,		NULL)
+TERMCODE (keypad_off,		"\033[?1l",	NULL,		NULL)
 TERMCODE (bell,			"\007",		"\007",		"\007")
 TERMCODE (underline,		"\033[4m",	"\033[4m",	"\033[4m")
 TERMCODE (reverse,		"\033[7m",	"\033[7m",	"\033[7m")
@@ -109,18 +111,6 @@ TERMCODE (attr_off,		"\033[m",	"\033[m",	"\033[m")
 TERMCODE (underline_off,	NULL,		NULL,		NULL)
 TERMCODE (standout,		NULL,		NULL,		NULL)
 TERMCODE (standout_off,		NULL,		NULL,		NULL)
-
-#ifdef HARDCODE
-# define key_ku "\033[A"
-# define key_kd "\033[B"
-# define key_kr "\033[C"
-# define key_kl "\033[D"
-#else
-# define key_ku
-# define key_kd
-# define key_kr
-# define key_kl
-#endif
 
 /* end HARDCODE section */
 
@@ -140,7 +130,8 @@ typedef struct status_field {
 static void  NDECL(init_term);
 static int   FDECL(fbufputc,(int c));
 static void  NDECL(bufflush);
-static void  FDECL(tp,(CONST char *str));
+static void  FDECL(tbufputs,(CONST char *str));
+static void  FDECL(tdirectputs,(CONST char *str));
 static void  FDECL(xy,(int x, int y));
 static void  NDECL(clr);
 static void  NDECL(clear_line);
@@ -156,7 +147,7 @@ static void  FDECL(format_status_field,(StatusField *field, attr_t *attrp));
 static void  FDECL(attributes_off,(attr_t attrs));
 static void  FDECL(attributes_on,(attr_t attrs));
 static void  FDECL(color_on,(long color));
-static void  FDECL(hwrite,(Aline *line, int offset));
+static void  FDECL(hwrite,(Aline *line, int start, int end));
 static int   FDECL(set_attr_var,(int idx, attr_t *attrp));
 static void  FDECL(set_attr,(Aline *aline, char *dest, attr_t *starting,
              attr_t *current));
@@ -167,6 +158,8 @@ static void  NDECL(output_novisual);
 static void  NDECL(output_noscroll);
 static void  NDECL(output_scroll);
 #endif
+
+static void  FDECL((*tp),(CONST char *str));
 
 #ifdef TERMCAP
 #define tpgoto(seq,x,y)  tp(tgoto(seq, (x)-1+origin, (y)-1+origin))
@@ -231,59 +224,78 @@ static attr_t status_attr = 0;
 # define has_scroll_region (1)
 #endif
 
+
+#ifdef HARDCODE
+# if HARDCODE == TERM_vt100
+#  define KEYCODE(vt100, vt220, ansi)   (vt100)
+# else
+#  if HARDCODE == TERM_vt220
+#   define KEYCODE(vt100, vt220, ansi)   (vt220)
+#  else
+#   if HARDCODE == TERM_ansi
+#    define KEYCODE(vt100, vt220, ansi)   (ansi)
+#   endif
+#  endif
+# endif
+#else
+# define KEYCODE(vt100, vt220, ansi)   NULL
+#endif
+
 typedef struct Keycode {
     CONST char *name, *capname, *code;
 } Keycode;
 
 static Keycode keycodes[] = {  /* this list is sorted by tolower(name)! */
-/*  { "Back Tab",	"kB", NULL }, */
-    { "Backspace",	"kb", NULL },
-/*  { "Clear All Tabs",	"ka", NULL }, */
-    { "Clear EOL",	"kE", NULL },
-    { "Clear EOS",	"kS", NULL },
-    { "Clear Screen",	"kC", NULL },
-/*  { "Clear Tab",	"kt", NULL }, */
-    { "Delete",		"kD", NULL },
-    { "Delete Line",	"kL", NULL },
-    { "Down",		"kd", key_kd },
-/*  { "End Insert",	"kM", NULL }, */
-    { "F0",		"k0", NULL },
-    { "F1",		"k1", NULL },
-    { "F10",		"k;", NULL },
-    { "F11",		"F1", NULL },
-    { "F12",		"F2", NULL },
-    { "F13",		"F3", NULL },
-    { "F14",		"F4", NULL },
-    { "F15",		"F5", NULL },
-    { "F16",		"F6", NULL },
-    { "F17",		"F7", NULL },
-    { "F18",		"F8", NULL },
-    { "F19",		"F9", NULL },
-    { "F2",		"k2", NULL },
-    { "F3",		"k3", NULL },
-    { "F4",		"k4", NULL },
-    { "F5",		"k5", NULL },
-    { "F6",		"k6", NULL },
-    { "F7",		"k7", NULL },
-    { "F8",		"k8", NULL },
-    { "F9",		"k9", NULL },
-    { "Home",		"kh", NULL },
-    { "Home Down",	"kH", NULL },
-    { "Insert",		"kI", NULL },
-    { "Insert Line",	"kA", NULL },
-    { "KP1",		"K1", NULL },
-    { "KP2",		"K2", NULL },
-    { "KP3",		"K3", NULL },
-    { "KP4",		"K4", NULL },
-    { "KP5",		"K5", NULL },
-    { "Left",		"kl", key_kl },
-    { "PgDn",		"kN", NULL },
-    { "PgUp",		"kP", NULL },
-    { "Right",		"kr", key_kr },
-    { "Scroll Down",	"kF", NULL },
-    { "Scroll Up",	"kR", NULL },
-/*  { "Set Tab",	"kT", NULL }, */
-    { "Up",		"ku", key_ku }
+/*                                     vt100       vt220       ansi      */
+/*                                     -----       -----       ----      */
+/*  { "Back Tab",       "kB", KEYCODE( NULL,       NULL,       NULL ) }, */
+    { "Backspace",      "kb", KEYCODE( "\010",     "\010",     "\010" ) },
+/*  { "Clear All Tabs", "ka", KEYCODE( NULL,       NULL,       NULL ) }, */
+    { "Clear EOL",      "kE", KEYCODE( NULL,       NULL,       NULL ) },
+    { "Clear EOS",      "kS", KEYCODE( NULL,       NULL,       NULL ) },
+    { "Clear Screen",   "kC", KEYCODE( NULL,       NULL,       NULL ) },
+/*  { "Clear Tab",      "kt", KEYCODE( NULL,       NULL,       NULL ) }, */
+    { "Delete",         "kD", KEYCODE( NULL,       "\033[3~",  NULL ) },
+    { "Delete Line",    "kL", KEYCODE( NULL,       NULL,       NULL ) },
+    { "Down",           "kd", KEYCODE( "\033OB",   "\033[B",   "\033[B" ) },
+/*  { "End Insert",     "kM", KEYCODE( NULL,       NULL,       NULL ) }, */
+    { "F0",             "k0", KEYCODE( "\033Oy",   NULL,       NULL ) },
+    { "F1",             "k1", KEYCODE( "\033OP",   "\033OP",   "\033[M" ) },
+    { "F10",            "k;", KEYCODE( NULL,       NULL,       NULL ) },
+    { "F11",            "F1", KEYCODE( NULL,       NULL,       NULL ) },
+    { "F12",            "F2", KEYCODE( NULL,       NULL,       NULL ) },
+    { "F13",            "F3", KEYCODE( NULL,       NULL,       NULL ) },
+    { "F14",            "F4", KEYCODE( NULL,       NULL,       NULL ) },
+    { "F15",            "F5", KEYCODE( NULL,       NULL,       NULL ) },
+    { "F16",            "F6", KEYCODE( NULL,       NULL,       NULL ) },
+    { "F17",            "F7", KEYCODE( NULL,       NULL,       NULL ) },
+    { "F18",            "F8", KEYCODE( NULL,       NULL,       NULL ) },
+    { "F19",            "F9", KEYCODE( NULL,       NULL,       NULL ) },
+    { "F2",             "k2", KEYCODE( "\033OQ",   "\033OQ",   "\033[N" ) },
+    { "F3",             "k3", KEYCODE( "\033OR",   "\033OR",   "\033[O" ) },
+    { "F4",             "k4", KEYCODE( "\033OS",   "\033OS",   "\033[P" ) },
+    { "F5",             "k5", KEYCODE( "\033Ot",   "\033[17~", "\033[Q" ) },
+    { "F6",             "k6", KEYCODE( "\033Ou",   "\033[18~", "\033[R" ) },
+    { "F7",             "k7", KEYCODE( "\033Ov",   "\033[19~", "\033[S" ) },
+    { "F8",             "k8", KEYCODE( "\033Ol",   "\033[20~", "\033[T" ) },
+    { "F9",             "k9", KEYCODE( "\033Ow",   "\033[21~", "\033[U" ) },
+    { "Home",           "kh", KEYCODE( NULL,       "\033[H",   "\033[H" ) },
+    { "Home Down",      "kH", KEYCODE( NULL,       NULL,       NULL ) },
+    { "Insert",         "kI", KEYCODE( NULL,       "\033[2~",  "\033[L" ) },
+    { "Insert Line",    "kA", KEYCODE( NULL,       NULL,       NULL ) },
+    { "KP1",            "K1", KEYCODE( "\033Oq",   NULL,       NULL ) },
+    { "KP2",            "K2", KEYCODE( "\033Or",   NULL,       NULL ) },
+    { "KP3",            "K3", KEYCODE( "\033Os",   NULL,       NULL ) },
+    { "KP4",            "K4", KEYCODE( "\033Oq",   NULL,       NULL ) },
+    { "KP5",            "K5", KEYCODE( "\033Op",   NULL,       NULL ) },
+    { "Left",           "kl", KEYCODE( "\033On",   "\033[D",   "\033[D" ) },
+    { "PgDn",           "kN", KEYCODE( NULL,       "\033[6~",  NULL ) },
+    { "PgUp",           "kP", KEYCODE( NULL,       "\033[5~",  NULL ) },
+    { "Right",          "kr", KEYCODE( "\033OC",   "\033[C",   "\033[C" ) },
+    { "Scroll Down",    "kF", KEYCODE( NULL,       NULL,       NULL ) },
+    { "Scroll Up",      "kR", KEYCODE( NULL,       NULL,       NULL ) },
+/*  { "Set Tab",        "kT", KEYCODE( NULL,       NULL,       NULL ) }, */
+    { "Up",             "ku", KEYCODE( "\033OA",   "\033[A",   "\033[A" ) }
 };
 
 #define N_KEYCODES	(sizeof(keycodes)/sizeof(Keycode))
@@ -351,10 +363,9 @@ void dobell(n)
 
 int change_term()
 {
-    int old = visual;
-    if (old == 1) set_var_by_id(VAR_visual, 0, NULL);
+    fix_screen();
     init_term();
-    if (old == 1) set_var_by_id(VAR_visual, 1, NULL);
+    setup_screen(0);
     rebind_key_macros();
     return 1;
 }
@@ -364,6 +375,7 @@ void init_output()
 {
     CONST char *str;
 
+    tp = tbufputs;
     init_list(status_field_list);
     init_tty();
 
@@ -411,6 +423,7 @@ static void init_term()
     set_scroll_region = insert_line = delete_line = NULL;
     delete_char = insert_char = insert_start = insert_end = NULL;
     enter_ca_mode = exit_ca_mode = cursor_address = NULL;
+    keypad_on = keypad_off = NULL;
     standout = underline = reverse = flash = dim = bold = bell = NULL;
     standout_off = underline_off = attr_off = NULL;
 
@@ -435,6 +448,8 @@ static void init_term()
         insert_end           = tgetstr("ei", &area);
         insert_line          = tgetstr("al", &area);
         delete_line          = tgetstr("dl", &area);
+        keypad_on            = tgetstr("ks", &area);
+        keypad_off           = tgetstr("ke", &area);
 
         bell		= tgetstr("bl", &area);
         underline	= tgetstr("us", &area);
@@ -459,7 +474,7 @@ static void init_term()
         for (i = 0; i < N_KEYCODES; i++) {
             keycodes[i].code = tgetstr(keycodes[i].capname, &area);
 #if 0
-            fprintf(stderr, "(%2s) %-8s = %s\n",
+            fprintf(stderr, "(%2s) %-12s = %s\n",
                 keycodes[i].capname, keycodes[i].name,
                 keycodes[i].code ? ascii_to_print(keycodes[i].code) : "NULL");
 #endif
@@ -566,7 +581,26 @@ static void clear_line()
     }
 }
 
-static void tp(str)
+#ifdef TERMCAP
+static int fputchar(c)   /* in case broken lib has a macro but no function */
+    int c;
+{
+    return putchar(c);
+}
+#endif
+
+static void tdirectputs(str)
+    CONST char *str;
+{
+    if (str)
+#ifdef TERMCAP
+        tputs(str, 1, fputchar);
+#else
+        puts(str);
+#endif
+}
+
+static void tbufputs(str)
     CONST char *str;
 {
     if (str)
@@ -591,14 +625,22 @@ CONST char *get_keycode(name)
  * WINDOW HANDLING *
  *******************/
 
-void setup_screen(clearlines)
-    int clearlines;  /* # of lines to scroll input window (-1 == default) */
+void setup_screen(addlines)
+    int addlines;  /* # of lines to scroll (-1 == default) */
 {
     top_margin = 1;
     bottom_margin = lines;
-    if (clearlines < 0 || screen_mode != 1) clearlines = isize;
-    screen_mode = visual;
+    if (addlines < 0) addlines = isize;
     output_disabled++;
+
+    if (visual && (!can_have_visual)) {
+        eprintf("Visual mode is not supported on this terminal.");
+        set_var_by_id(VAR_visual, 0, NULL);
+    } else if (visual && (lines < 3 || columns < status_left + status_right)) {
+        eprintf("Screen is too small for visual mode.");
+        set_var_by_id(VAR_visual, 0, NULL);
+    }
+    screen_mode = visual;
 
     if (!visual) {
         if (paused) prompt = moreprompt;
@@ -612,10 +654,12 @@ void setup_screen(clearlines)
         if (enter_ca_mode) tp(enter_ca_mode);
     
         if (scroll && (has_scroll_region || (insert_line && delete_line))) {
-            xy(1, lines);
-            if (clearlines) crnl(clearlines);
+            if (addlines) {
+                xy(1, lines);
+                crnl(addlines);
+            }
         } else {
-            if (clearlines > 0) clr();
+            if (addlines) clr();
             if (scroll) set_var_by_id(VAR_scroll, 0, NULL);
         }
         update_status_line();
@@ -624,6 +668,8 @@ void setup_screen(clearlines)
         ipos();
 #endif
     }
+
+    if (keypad_on) tp(keypad_on);
 
     set_refresh_pending(REF_LOGICAL);
     output_disabled--;
@@ -804,6 +850,7 @@ static void format_status_field(field, attrp)
     STATIC_BUFFER(varname);
     STATIC_BUFFER(scratch);
     CONST char *expression, *old_command;
+    Value *val;
     int width;
 
     output_disabled++;
@@ -816,11 +863,13 @@ static void format_status_field(field, attrp)
         old_command = current_command;
         if (expression) {
             current_command = varname->s;
-            evalexpr(scratch, expression);
         } else if (field->var) {
             current_command = field->name;
-            evalexpr(scratch, field->name);
+            expression = field->name;
         }
+        val = expression ? expr_value_safe(expression) : NULL;
+        Stringcpy(scratch, valstr(val));
+        freeval(val);
         current_command = old_command;
     } else if (field->name) {   /* string literal */
         Stringcpy(scratch, field->name);
@@ -833,7 +882,7 @@ static void format_status_field(field, attrp)
     if (scratch->len > width)
         Stringterm(scratch, width);
 
-    if (field->rightjust && scratch->len < width) {
+    if (field->rightjust && scratch->len < width) {          /* left pad */
         if (*attrp != status_attr) {
             if (*attrp) attributes_off(*attrp);
             if (status_attr) attributes_on(status_attr);
@@ -843,15 +892,17 @@ static void format_status_field(field, attrp)
         cx += width - scratch->len;
     }
 
-    if ((field->attrs | status_attr) != *attrp) {
-        if (*attrp) attributes_off(*attrp);
-        if ((field->attrs | status_attr))
-            attributes_on(field->attrs | status_attr);
-        *attrp = field->attrs | status_attr;
+    if (scratch->len) {                                      /* value */
+        if ((field->attrs | status_attr) != *attrp) {
+            if (*attrp) attributes_off(*attrp);
+            if ((field->attrs | status_attr))
+                attributes_on(field->attrs | status_attr);
+            *attrp = field->attrs | status_attr;
+        }
+        bufputs(scratch->s);  cx += scratch->len;
     }
-    bufputs(scratch->s);  cx += scratch->len;
 
-    if (!field->rightjust && scratch->len < width) {
+    if (!field->rightjust && scratch->len < width) {         /* right pad */
         if (*attrp != status_attr) {
             if (*attrp) attributes_off(*attrp);
             if (status_attr) attributes_on(status_attr);
@@ -936,45 +987,65 @@ int update_status_line()
 /* used by %{visual}, %{isize}, SIGWINCH */
 int ch_visual()
 {
-    if (screen_mode < 0) {  /* e.g., called from init_variables() */
-        /* do nothing */
-    } else if (visual && (!can_have_visual)) {
-        eprintf("Visual mode is not supported on this terminal.");
-        set_var_by_id(VAR_visual, 0, NULL);
-    } else if (visual && (lines < 3 || columns < status_left + status_right)) {
-        eprintf("Screen is too small for visual mode.");
-        set_var_by_id(VAR_visual, 0, NULL);
-        /* return 0 would work if called from setvar(), but not SIGWINCH. */
-    } else {
-        int addlines = isize;
-        cx = cy = -1;                       /* in case of resize */
-        if (lines != bottom_margin) {       /* input window moved */
-            ystatus = lines - isize;
-            addlines = 0;
-        } else if (ystatus < (lines - isize)) {   /* input window got smaller */
-            addlines = 0;
-        } else if (ystatus > (lines - isize)) {   /* input window got larger */
+    static int old_isize = 0;
+    int addlines;
+
+    if (screen_mode < 0) {                /* e.g., called by init_variables() */
+        addlines = -1;
+    } else if (visual != screen_mode) {   /* %visual changed */
+        addlines = isize;
+    } else if (!visual) {                 /* other changes have no effect */
+        addlines = -1;
+#ifdef SCREEN
+    } else if (isize != old_isize) {      /* %isize changed */
+        if (ystatus > (lines - isize))        /* larger */
             addlines = ystatus - (lines - isize);
+        else                                  /* smaller */
+            addlines = 0;
+    } else {                              /* SIGWINCH */
+        /* Set ystatus to the top of the area fix_screen() must erase. */
+        if (strcmp(TERM, "xterm") != 0) {
+            /* not xterm: appearance is unknown, so start with a clear screen */
+            addlines = 0;
+            ystatus = 1;
+        } else if (ystatus + isize < lines) {
+            /* xterm grew: lines were added to top, so text moved down */
+            addlines = 0;
+            ystatus = lines - isize;
+        } else if (cy <= lines) {
+            /* xterm shrunk: 0 or more bottom lines were deleted */
+            addlines = (ystatus + isize) - lines;
+            ystatus = ystatus;
+        } else {
+            /* xterm shrunk: bottom lines deleted AND cursor&text moved up */
+            addlines = isize - (cy - ystatus);
+            ystatus = lines - (cy - ystatus);
         }
+        cx = cy = -1;
+#endif
+    }
+
+    if (addlines >= 0) {
         fix_screen();
-        setup_screen(addlines > 0 ? addlines : 0);
+        setup_screen(addlines);
         transmit_window_size();
     }
+    old_isize = isize;
     return 1;
 }
 
 void fix_screen()
 {
     oflush();
+    if (keypad_off) tp(keypad_off);
     if (screen_mode <= 0) {
         clear_line();
+#ifdef SCREEN
     } else {
+        setscroll(1, lines);
         clear_lines(ystatus, lines);
         outcount = lines - 1;
-#ifdef SCREEN
-        setscroll(1, lines);
         xy(1, ystatus);
-        clear_line();
         if (exit_ca_mode) tp(exit_ca_mode);
 #endif
     }
@@ -983,17 +1054,14 @@ void fix_screen()
     screen_mode = -1;
 }
 
-/* panic_fix_screen() replaces outbuf with a local buffer, so it's safe
- * to use even if outbuf was corrupted.
- */
+/* panic_fix_screen() avoids use of possibly corrupted structures. */
 void panic_fix_screen()
 {
-    smallstr buf;
-
+    tp = tdirectputs;
     tfscreen->u.queue->head = tfscreen->u.queue->tail = NULL;
-    outbuf->s = buf;
+    outbuf->s = "";
     outbuf->len = 0;
-    outbuf->size = sizeof(buf);
+    outbuf->size = 0;
     fix_screen();
 }
 
@@ -1003,13 +1071,14 @@ static void clear_lines(start, end)
     if (start > end) return;
     xy(1, start);
     if (end >= lines && clear_to_eos) {
-        tp(clear_to_eos);
+        tp(clear_to_eos);  /* cx,cy were set by xy() */
     } else {
         clear_line();
         while (start++ < end) {
-             bufputc('\n');  cy++;
+             bufputc('\n');
              clear_line();
         }
+        cy = end;
     }
 }
 
@@ -1047,7 +1116,7 @@ static void scroll_input(n)
     } else if (has_scroll_region) {
         setscroll(ystatus + 1, lines);
         xy(1, lines);
-        crnl(n);  /* cy += n; */
+        crnl(n);  /* DON'T: cy += n; */
         iendy = lines - n + 1;
     }
     xy(iendx = 1, iendy);
@@ -1126,7 +1195,7 @@ static void ioutall(kpos)
         kpos = -(-kpos % Wrap);
         ppos = prompt->len + kpos;
         if (ppos < 0) ppos = 0;
-        hwrite(prompt, ppos);
+        hwrite(prompt, ppos, prompt->len);
         iendx = -kpos + 1;
         kpos = 0;
     }
@@ -1466,14 +1535,15 @@ void logical_refresh()
     if (need_refresh <= REF_LOGICAL) need_refresh = 0;
 }
 
-void update_prompt(newprompt)
+void update_prompt(newprompt, display)
     Aline *newprompt;
+    int display;
 {
     Aline *oldprompt = prompt;
 
     if (oldprompt == moreprompt) return;
     prompt = newprompt;
-    if (oldprompt || prompt)
+    if ((oldprompt || prompt) && display)
         set_refresh_pending(REF_LOGICAL);
 }
 
@@ -1540,9 +1610,9 @@ static void color_on(color)
     }
 }
 
-static void hwrite(line, offset)
+static void hwrite(line, start, end)
     Aline *line;
-    int offset;
+    int start, end;
 {
     attr_t attrs = line->attrs & F_HWRITE;
     attr_t current = 0;
@@ -1560,12 +1630,12 @@ static void hwrite(line, offset)
         cx += wrapspace;
     }
 
-    cx += line->len - offset;
+    cx += end - start;
 
     if (!line->partials && hilite && attrs)
         attributes_on(current = attrs);
 
-    for (i = offset; i < line->len; ++i) {
+    for (i = start; i < end; ++i) {
         new = attrs;
         if (line->partials) {
             /* turn off previous color bits before setting new ones */
@@ -1801,15 +1871,16 @@ void oflush()
 static void output_novisual()
 {
     Aline *line;
-    int count = 0;
+    int count = 0, offset;
 
     while ((line = wrapline()) != NULL) {
-        if (count == 0 && (keybuf->len || ix > 1)) {
+        offset = 0;
+        if (count == 0) {
             clear_input_line();
             set_refresh_pending(REF_PHYSICAL);
         }
         count++;
-        hwrite(line, 0);
+        hwrite(line, offset, line->len);
         crnl(1);  cx = 1; cy++;
         bufflush();
     }
@@ -1826,7 +1897,7 @@ static void output_noscroll()
         clear_line();
         xy(ox, oy);
         set_refresh_pending(REF_PHYSICAL);
-        hwrite(line, 0);
+        hwrite(line, 0, line->len);
         oy = oy % (ystatus - 1) + 1;
         bufflush();
     }
@@ -1849,7 +1920,7 @@ static void output_scroll()
             xy(1, ystatus - 1);
             tp(insert_line);
         }
-        hwrite(line, 0);
+        hwrite(line, 0, line->len);
         set_refresh_pending(REF_PHYSICAL);
         bufflush();
     }
@@ -1896,16 +1967,18 @@ static void set_attr(aline, dest, starting, current)
     attr_t *starting, *current;
 {
     int i;
-    /* starting_attrs is set by the attrs parameter and/or
-     * codes at the beginning of the line.  If no visible mid-line
-     * changes occur, there is no need to allocate aline->partials
-     * (which would nearly triple the size of the aline).
+    /* starting_attrs is set by the attrs parameter and/or codes at the
+     * beginning of the line.  If no visible mid-line changes occur, there is
+     * no need to allocate aline->partials (which would nearly triple the size
+     * of the aline).  Note that a trailing attribute change is considered a
+     * mid-line change; this is sub-optimal, but unprompt() depends on it
+     * (it expects prompt->attrs to be the original starting attributes).
      */
     if (dest == aline->str) {
         /* start of visible line */
         *starting = *current;
     } else if (*starting != *current && !aline->partials) {
-        /* first mid-line attr change */
+        /* First mid-line attr change. */
         aline->partials = (short*)XMALLOC(sizeof(short)*aline->len);
         for (i = 0; i < dest - aline->str; ++i)
             aline->partials[i] = *starting;
@@ -1933,6 +2006,7 @@ attr_t handle_ansi_attr(aline, attrs)
     for (s = t = aline->str; *s; s++) {
         if (*s == ANSI_CSI || (s[0] == '\033' && s[1] == '[' && s++)) {
             new = attrs;
+            if (!*s) break;            /* in case code got truncated */
             do {
                 s++;
                 i = strtoint(&s);
@@ -1954,6 +2028,7 @@ attr_t handle_ansi_attr(aline, attrs)
                 }
             } while (s[0] == ';' && s[1]);
 
+            if (!*s) break;            /* in case code got truncated */
             if (*s == 'm') {           /* attribute command */
                 attrs = new;
             } /* ignore any other CSI command */

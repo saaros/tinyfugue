@@ -55,34 +55,34 @@
 /def -i kb_backward_kill_word  = /@test kbdel(kbwordleft())
 
 /def -i kb_capitalize_word = \
-    /let old_insert=$[+insert]%;\
+    /let _old_insert=$[+insert]%;\
     /set insert=0%;\
     /@test kbgoto(kbwordright()), kbgoto(kbwordleft()) %;\
     /let end=$[kbwordright()]%;\
     /@test input(toupper(substr(kbtail(), 0, 1))) %;\
     /@test input(tolower(substr(kbtail(), 0, end - kbpoint()))) %;\
-    /set insert=%{old_insert}
+    /set insert=%{_old_insert}
 
 /def -i kb_downcase_word = \
-    /let old_insert=$[+insert]%;\
+    /let _old_insert=$[+insert]%;\
     /set insert=0%;\
     /@test input(tolower(substr(kbtail(), 0, kbwordright() - kbpoint()))) %;\
-    /set insert=%{old_insert}
+    /set insert=%{_old_insert}
 
 /def -i kb_upcase_word = \
-    /let old_insert=$[+insert]%;\
+    /let _old_insert=$[+insert]%;\
     /set insert=0%;\
     /@test input(toupper(substr(kbtail(), 0, kbwordright() - kbpoint()))) %;\
-    /set insert=%{old_insert}
+    /set insert=%{_old_insert}
 
 /def -i kb_transpose_chars = \
     /if ( kbpoint() <= 0 ) /beep 1%; /return 0%; /endif%; \
-    /let old_insert=$[+insert]%;\
+    /let _old_insert=$[+insert]%;\
     /set insert=0%;\
     /if (kbpoint()==kblen()) /dokey_left%; /endif%;\
     /dokey_left%;\
     /@test input(strcat(substr(kbtail(),1,1), substr(kbtail(),0,1))) %;\
-    /set insert=%{old_insert}
+    /set insert=%{_old_insert}
 
 /def -i kb_last_argument = \
     /input $(/last $(/recall -i - -2))
@@ -91,8 +91,8 @@
     /eval /grab $(/recall -i 1)
 
 /def -i kb_goto_match = \
-    /let match=$[kbmatch()]%; \
-    /@test (match < 0) ? beep() : kbgoto(match)
+    /let _match=$[kbmatch()]%; \
+    /@test (_match < 0) ? beep() : kbgoto(_match)
 
 /def -i kb_collapse_space = \
     /while (substr(kbtail(), 0, 2) =~ "  ") \

@@ -31,7 +31,7 @@
 #undef  HAVE_getpwnam
 #undef  HAVE_getwd
 #define HAVE_h_errno
-#define HAVE_hstrerror
+#undef  HAVE_hstrerror
 #undef  HAVE_index
 #define HAVE_kill
 #define HAVE_memcpy

@@ -1,11 +1,67 @@
 Only the most recent version will have detailed changes described.
 Some fixes are followed by the version in which the problem first appeared.
 
+4.0 beta 3 (10/5/1998)
+----------
+Clarified documentation of function arguments (see "/help functions").
+Restored old behavior of "/recall -t" when %time_format == "@". (40a9)
+Fixed: nactive() returned old value in %status_int_world, %status_int_active,
+  and WORLD hook.
+Fixed /revert in map.tf.
+Fixed error in using %Pn subs after matching a blank regexp.
+Fixed /nth to return an empty string when n <= 0.
+Fixed handling of blank world name in addworld().
+Eliminated spurious message from /qmud.
+Workaround for nonblocking socket bugs in some operating systems (SunOS 5.x).
+Fixed handling of /set visual=on when visual mode isn't supported.
+Fixed /list'ing of macros with -p0.
+Fixed compile error involving localtime() in output.c on AIX. (40a11)
+
+4.0 beta 2 (8/6/1998)
+----------
+Fixed tfclose() of tfin/tfout; closing tfout prevents output in a macro body.
+Fixed compilation on systems (SunOS 4.1.4) without a putchar function. (40b1)
+Fixed compile error in expand.c under non-ansi compilers. (40a5)
+Fixed build problem in some versions of make. (40a11)
+
+4.0 beta 1 (7/27/1998)
+----------
+"telnet" worlds require "login:" and "password:" prompts.  See /help addworld.
+Optional arguments for kbwordleft(), kbwordright(), kbmatch().
+Optimized /recall by time on large world, local, or input history.
+Improved login handling on "telnet" worlds.
+Disabled useless and often confusing dsusp key (^Y).
+Fixed: "/recall <time>" ignored <time>. (40a9)
+Fixed /replace. (40a11)
+
+4.0 alpha 11 (7/22/1998)
+------------
+Added "%@" conversion to and removed length restriction from ftime().
+Added -i option to /fgrep and /egrep.
+Improved precision of process timing.
+/def -E interprets enumerated special variables as integers, not strings.
+Skips signal handling confirmation prompts when input is not a terminal.
+Disabled OS/2 hostname resolution error messages, which apparently do not
+  work on all versions of OS/2. (40a9)
+Added codes for named keys when using HARDCODE terminal codes.
+Numeric keypad keys now generate unique character sequences on more terminals
+  (this may break some existing keypad usage).
+Repeated errors in mail files do not repeat error messages.
+Fixed codes for named arrow keys on some terminals (vt100 in particular).
+Fixed "color bleeding", where mid-line server attributes were sometimes
+  applied to the beginning of a line if lp=on.
+Fixed handling of interrupted server attribute code with lp=on.
+Fixed bugs involving unset {k,m,q}prefix.
+Fixed autologin and localecho problems on some telnet worlds.
+Fixed overflow in floating point significant figures.
+Fixed potentially fatal error in failed nonblocking hostname resolution.
+Fixed /tee in textutil.tf.
+
 4.0 alpha 10 (6/29/1998)
 ------------
 world_info() arguments are optional.
 Fixed: unevaluated /if clobbered return value ("/return val%; /if..."). (40a9)
-Fixed options for some old unix compilers (like SunOS 4.1). (40a9)
+Fixed options for some compilers (like SunOS 4.1). (40a9)
 
 4.0 alpha 9 (6/24/1998)
 -----------

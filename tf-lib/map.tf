@@ -59,17 +59,17 @@
 /def -i unpath	= /set path=$(/all_but_last %path)
 
 /def -i revert = \
-	/let dir=$(/last %path)%;\
+	/let _dir=$(/last %path)%;\
 	/unpath%;\
 ;       These directions must be listed in complementary pairs.
 	/_revert_aux n s e w ne sw nw se u d%;
 
 /def -i _revert_aux = \
 	/if ( {#} == 0 ) \
-		/echo -e %% Don't know how to revert from "%dir".%;\
-		/set path=%path %dir%;\
-	/elseif ( dir =~ "%1" ) /send - %2%;\
-	/elseif ( dir =~ "%2" ) /send - %1%;\
+		/echo -e %% Don't know how to revert from "%_dir".%;\
+		/set path=%path %_dir%;\
+	/elseif ( _dir =~ {1} ) /send - %2%;\
+	/elseif ( _dir =~ {2} ) /send - %1%;\
 	/else   /_revert_aux %-2%;\
 	/endif
 

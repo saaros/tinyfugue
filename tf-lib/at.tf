@@ -7,6 +7,6 @@
 /loaded __TFLIB__/at.tf
 
 /def -i at = \
-    /let delay=$[{1} - $(/time %%H:%%M:%%S)]%;\
-    /repeat -$[(delay > 0) ? delay : (delay + 24:00)] 1 %-1
+    /let _delay=$[{1} - $(/time %%H:%%M:%%S)]%;\
+    /repeat -$[(_delay > 0) ? _delay : (_delay + 24:00)] 1 %-1
 

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expand.c,v 35004.114 1998/06/25 21:50:04 hawkeye Exp $ */
+/* $Id: expand.c,v 35004.118 1998/08/02 21:42:04 hawkeye Exp $ */
 
 
 /********************************************************************
@@ -100,26 +100,14 @@ struct Value *handle_eval_command(args)
 struct Value *handle_test_command(args)
     char *args;
 {
-    CONST char *saved_ip = ip;
-    struct Value *result = NULL;
+    struct Value *result;
 
-    ip = args;
-    if (expr()) {
-        stacktop--;
-        if (*ip) {
-            parse_error("expression", "operator");
-            freeval(stack[stacktop]);
-            result = NULL;
-        } else {
-            if (stack[stacktop]->type == TYPE_ID) {
-                result = newstr(valstr(stack[stacktop]), -1);
-                freeval(stack[stacktop]);
-            } else {
-                result = stack[stacktop];
-            }
-        }
+    result = expr_value(args);
+    if (result && result->type == TYPE_ID) {
+        Value *temp = result;
+        result = newstr(valstr(temp), -1);
+        freeval(temp);
     }
-    ip = saved_ip;
     return result;
 }
 
@@ -284,7 +272,7 @@ String *do_mprefix()
 
     Stringterm(buffer, 0);
     for (i = 0; i < recur_count + cmdsub_count; i++)
-        Stringcat(buffer, mprefix);
+        Stringcat(buffer, mprefix ? mprefix : "");
     Stringadd(buffer, ' ');
     if (current_command) {
         if (*current_command == '\b') {
@@ -311,8 +299,12 @@ static int list(dest, subs)
     int iterations = 0, failed = 0, result = 0;
     CONST char *blockstart = NULL, *exprstart, *stmtstart;
     static CONST char unexpect_msg[] = "unexpected /%s in %s block";
-    TFILE *orig_tfin = tfin, *orig_tfout = tfout;
+    TFILE *orig_tfin, *orig_tfout;    /* restored when list() is done */
+    TFILE *local_tfin, *local_tfout;  /* restored after pipes within list() */
     TFILE *inpipe = NULL, *outpipe = NULL;
+
+    local_tfin = orig_tfin = tfin;
+    local_tfout = orig_tfout = tfout;
 
 #define unexpected(innerblock, outerblock) \
     eprintf(unexpect_msg, keyword_table[innerblock - BREAK], \
@@ -543,11 +535,17 @@ static int list(dest, subs)
             }
         }
 
+        /* save changes to tfin and tfout iff they weren't pipes */
+        if (!outpipe) local_tfout = tfout;
+        if (!inpipe) local_tfin = tfin;
+
         if (inpipe) tfclose(inpipe);  /* previous stmnt piped into this one */
+
+        /* set up i/o for next command */
         inpipe = outpipe;
-        tfin = inpipe ? inpipe : orig_tfin;
+        tfin = inpipe ? inpipe : local_tfin;
         outpipe = NULL;
-        tfout = orig_tfout;
+        tfout = local_tfout;
 
         if (is_end_of_cmdsub(ip)) {
             break;
@@ -575,7 +573,8 @@ list_exit:
     return result;
 }
 
-CONST char **keyword(CONST char *id)
+CONST char **keyword(id)
+    CONST char *id;
 {
     return (CONST char **)binsearch((GENERIC*)id, (GENERIC*)keyword_table,
         sizeof(keyword_table)/sizeof(char*), sizeof(char*), cstrstructcmp);

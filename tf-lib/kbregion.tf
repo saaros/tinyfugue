@@ -17,9 +17,9 @@
 
 /def -i kb_exchange_point_and_mark = \
     /if ( _kb_mark > 0 ) \
-        /let point=$[kbpoint()]%;\
+        /let _point=$[kbpoint()]%;\
         /@test kbgoto(_kb_mark)%;\
-        /set _kb_mark=%point%;\
+        /set _kb_mark=%_point%;\
     /else \
         /echo -e %% Mark not set.%;\
     /endif%;\
@@ -40,9 +40,9 @@
 
 /def -i kb_cut_region = \
     /if ( _kb_mark > 0 ) \
-        /let mark=%{_kb_mark}%;\
+        /let _mark=%{_kb_mark}%;\
         /kb_copy_region%;\
-        /@test kbdel(mark)%;\
+        /@test kbdel(_mark)%;\
     /endif
 
 /def -i kb_paste_buffer = \

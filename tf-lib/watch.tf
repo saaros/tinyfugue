@@ -24,58 +24,58 @@
 ;/set watch_glob
 
 /def -i watch = \
-    /let who=$[tolower(%1)]%;\
-    /if (who =~ "") \
-	/echo \% You are watching for: %{watch_list}%;\
+    /let _who=$[tolower(%1)]%;\
+    /if (_who =~ "") \
+	/echo \% You are watching for: %{_watch_list}%;\
 	/break%;\
     /endif%;\
-    /if (who =/ watch_glob) \
+    /if (_who =/ _watch_glob) \
 	/echo \% You are already watching for that person!%;\
 	/break%;\
     /endif%;\
-    /if (watch_pid =~ "") \
+    /if (_watch_pid =~ "") \
 	/repeat -60 1 /_watch%;\
-	/set watch_pid=%?%;\
+	/set _watch_pid=%?%;\
     /endif%;\
-    /set watch_list=%{who}|%{watch_list}%;\
-    /set watch_list=$(/replace || | %{watch_list})%;\
-    /set watch_glob={%{watch_list}}
+    /set _watch_list=%{_who}|%{_watch_list}%;\
+    /set _watch_list=$(/replace || | %{_watch_list})%;\
+    /set _watch_glob={%{_watch_list}}
 
 /def -i unwatch =\
-    /let who=$[tolower(%1)]%;\
-    /if (who =~ "") \
+    /let _who=$[tolower(%1)]%;\
+    /if (_who =~ "") \
 	/echo \% Use /unwatch <name> or /unwatch -a for all.%;\
 	/break%;\
     /endif%;\
-    /if ((who !~ "-a") & (who !/ watch_glob)) \
+    /if ((_who !~ "-a") & (_who !/ _watch_glob)) \
 	/echo \% You already weren't watching for that person!%;\
 	/break%;\
     /endif%;\
-    /if (who =~ "-a") \
-	/set watch_list=|%;\
+    /if (_who =~ "-a") \
+	/set _watch_list=|%;\
     /else \
-	/set watch_list=$(/replace %{who}| | %{watch_list})%;\
-	/set watch_list=$(/replace || | %{watch_list})%;\
+	/set _watch_list=$(/replace %{_who}| | %{_watch_list})%;\
+	/set _watch_list=$(/replace || | %{_watch_list})%;\
     /endif%;\
-    /set watch_glob={%{watch_list}}%;\
-    /if ((watch_list =~ "|") & (watch_pid !~ "")) \
-	/kill %{watch_pid}%;\
-	/unset watch_pid%;\
+    /set _watch_glob={%{_watch_list}}%;\
+    /if ((_watch_list =~ "|") & (_watch_pid !~ "")) \
+	/kill %{_watch_pid}%;\
+	/unset _watch_pid%;\
     /endif
 
 /def -i _watch =\
-    /unset watch_pid%;\
+    /unset _watch_pid%;\
     /def -i -p100 -1 -aGg -msimple -t"%{outputprefix}" _watch_start =\
 	/def -i -p100 -aGg -mglob -t"*" _watch_ignore =%%;\
-	/def -i -p101 -aGg -mglob -t"%{watch_glob}*" _watch_match =\
+	/def -i -p101 -aGg -mglob -t"%{_watch_glob}*" _watch_match =\
 	    /echo # %%%1 has connected.%%%;\
 	    /unwatch %%%1%%;\
 	/def -i -p101 -1 -aGg -msimple -t"%{outputsuffix}" _watch_end =\
 	    /undef _watch_ignore%%%;\
 	    /undef _watch_match%%%;\
-	    /if (watch_list !~ "|") \
+	    /if (_watch_list !~ "|") \
 		/repeat -60 1 /_watch%%%;\
-		/set watch_pid=%%%?%%%;\
+		/set _watch_pid=%%%?%%%;\
 	    /endif%;\
     /pcmd WHO
 

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: macro.c,v 35004.68 1998/06/24 23:22:20 hawkeye Exp $ */
+/* $Id: macro.c,v 35004.71 1998/09/19 01:20:31 hawkeye Exp $ */
 
 
 /**********************************************
@@ -998,7 +998,7 @@ static int list_defs(file, spec, mflag)  /* list all specified macros */
             if (!file) Sprintf(buffer, 0, "%% %d: /def ", p->num);
             else Stringcpy(buffer, "/def ");
             if (p->invis) Stringcat(buffer, "-i ");
-            if ((p->trig.str || p->hook) && (p->pri || p->fallthru))
+            if (p->trig.str || p->hook)
                 Sprintf(buffer, SP_APPEND, "-%sp%d ",
                     p->fallthru ? "F" : "", p->pri);
             if (p->trig.str && p->prob != 100)
@@ -1256,7 +1256,7 @@ int find_and_run_matches(text, hook, alinep, world, globalflag)
         if (*macro->expr) {
             struct Value *result;
             int expr_condition;
-            result = handle_test_command(macro->expr);
+            result = expr_value_safe(macro->expr);
             expr_condition = valbool(result);
             freeval(result);
             if (!expr_condition) continue;

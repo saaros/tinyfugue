@@ -543,6 +543,7 @@ int main() {
     getcwd(NULL, 0);
     gethostbyname(NULL);
     getpwnam(NULL);
+    gettimeofday(NULL, NULL);
     getwd(NULL);
     i = h_errno;
     hstrerror(i);
@@ -603,10 +604,10 @@ else
 fi
 
 for sym in \
-    bcopy bsearch bzero connect fileno getcwd gethostbyname getpwnam getwd \
-    h_errno hstrerror index kill memcpy memset raise setlocale \
-    sigaction srand srandom strcasecmp strchr strcmpi strcspn strerror \
-    strftime stricmp strstr strtod strtol tzset waitpid
+    bcopy bsearch bzero connect fileno getcwd gethostbyname getpwnam \
+    gettimeofday getwd h_errno hstrerror index kill memcpy memset raise \
+    setlocale sigaction srand srandom strcasecmp strchr strcmpi strcspn \
+    strerror strftime stricmp strstr strtod strtol tzset waitpid
 do
     if egrep "(^|[^a-z_])_?_?${sym}([^a-z]|\$)" symtest.out >/dev/null; then
         echo "Did not find ${sym}, but that's ok."

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: search.h,v 35004.8 1998/01/02 09:41:45 hawkeye Exp $ */
+/* $Id: search.h,v 35004.9 1998/07/22 00:59:46 hawkeye Exp $ */
 
 #ifndef SEARCH_H
 #define SEARCH_H
@@ -67,9 +67,13 @@ typedef struct HashTable {
 #define dequeue(Q)        ((Aline *)((Q)->tail ? unlist((Q)->tail, (Q)) : NULL))
 #define enqueue(Q, aline) inlist((GENERIC *)(aline), (Q), NULL)
 
+#define inlist(datum, list, where) \
+                          inlist_fl((datum), (list), (where), __FILE__,__LINE__)
+
 extern void      FDECL(init_list,(List *list));
 extern GENERIC  *FDECL(unlist,(ListEntry *node, List *list));
-extern ListEntry*FDECL(inlist,(GENERIC *datum, List *list, ListEntry *where));
+extern ListEntry*FDECL(inlist_fl,(GENERIC *datum, List *list, ListEntry *where,
+                     CONST char *file, int line));
 extern ListEntry*FDECL(sinsert,(GENERIC *datum, List *list, Cmp *cmp));
 extern void      FDECL(hash_remove,(ListEntry *node, HashTable *table));
 extern ListEntry*FDECL(hash_insert,(GENERIC *datum, HashTable *table));

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: history.c,v 35004.50 1998/06/24 21:37:54 hawkeye Exp $ */
+/* $Id: history.c,v 35004.57 1998/09/19 01:20:31 hawkeye Exp $ */
 
 
 /****************************************************************
@@ -56,7 +56,7 @@ static void     FDECL(alloc_history,(History *hist, int maxsize));
 static int      FDECL(next_hist_opt,(char **argp, History **histp, long *nump));
 static void     FDECL(save_to_hist,(History *hist, Aline *aline));
 static void     FDECL(save_to_log,(History *hist, CONST char *str));
-static void     FDECL(hold_input,(CONST char *str));
+static void     FDECL(hold_input,(CONST char *str, struct timeval *tv));
 static void     FDECL(listlog,(World *world));
 static void     FDECL(stoplog,(World *world));
 static int      FDECL(do_watch,(char *args, int id, int *wlines, int *wmatch));
@@ -142,7 +142,7 @@ static void save_to_hist(hist, aline)
     History *hist;
     Aline *aline;
 {
-    if (aline->time < 0) aline->time = time(NULL);
+    if (aline->tv.tv_sec < 0) gettime(&aline->tv);
     if (!hist->alines)
         alloc_history(hist, hist->maxsize ? hist->maxsize : histsize);
     if (hist->size == hist->maxsize) {
@@ -193,17 +193,24 @@ void recordline(hist, aline)
     if (hist->logfile && !nolog) save_to_log(hist, aline->str);
 }
 
-static void hold_input(str)
+static void hold_input(str, tv)
     CONST char *str;
+    struct timeval *tv;
 {
     free_aline(input->alines[input->last]);
     input->alines[input->last] = new_aline(str, sockecho ? 0 : F_GAG);
     input->alines[input->last]->links++;
-    input->alines[input->last]->time = time(NULL);
+    if (tv) {
+        input->alines[input->last]->tv.tv_sec = tv->tv_sec;
+        input->alines[input->last]->tv.tv_usec = tv->tv_usec;
+    } else {
+        gettime(&input->alines[input->last]->tv);
+    }
 }
 
-void record_input(str)
+void record_input(str, tv)
     CONST char *str;
+    struct timeval *tv;
 {
     char *prev_line;
     int duplicate = 0;
@@ -217,7 +224,7 @@ void record_input(str)
     }
 
     if (!duplicate) {
-        hold_input(str);
+        hold_input(str, tv);
         save_to_hist(input, blankline);
         input->index = input->last;
     }
@@ -241,7 +248,7 @@ Aline *recall_input(dir, searchflag)
     int i;
     Aline *pat = NULL;
 
-    if (input->index == input->last) hold_input(keybuf->s);
+    if (input->index == input->last) hold_input(keybuf->s, NULL);
 
     if (dir < -1 || dir > 1) {
         i = (dir < 0) ? input->first : input->last;
@@ -293,7 +300,12 @@ int do_recall(args)
     Aline *aline;
     static List stack[1] = {{ NULL, NULL }};
     STATIC_BUFFER(buffer);
-    static Aline *startmsg = NULL, *endmsg = NULL;
+    static Aline startmsg = LITERAL_ALINE("---- Recall start ----");
+    static Aline endmsg = LITERAL_ALINE("---- Recall end ----");
+#ifdef LOCALITY
+    int locality;
+    Aline *nextaline = NULL;
+#endif
 
     init_pattern_str(&pat, NULL);
     startopt(args, "ligw:a:f:t:m:vq");
@@ -322,6 +334,9 @@ int do_recall(args)
         }
     }
     if (!hist) hist = world ? world->history : globalhist;
+#ifdef LOCALITY
+    if ((locality = (args && *args == '?'))) args++;
+#endif
     if ((numbers = (args && *args == '#'))) args++;
     while(is_space(*args)) args++;
 
@@ -351,7 +366,7 @@ int do_recall(args)
             eprintf("syntax error in recall range");
             goto do_recall_exit;
         } else if (*args != '-') {                             /* x   */
-            if (istime) t0 = t1 - n_or_t;
+            if (istime) t0 = time(NULL) - n_or_t;
             else n0 = hist->total - n_or_t;
         } else if (is_digit(*++args)) {                        /* x-y */
             if (istime) t0 = abstime(n_or_t);
@@ -378,22 +393,10 @@ int do_recall(args)
     if (empty(hist))
         goto do_recall_exit;            /* (after parsing, before searching) */
 
-    if (!startmsg) {
-        (startmsg = new_aline("---- Recall start ----", 0))->links = 1;
-        (endmsg = new_aline("---- Recall end ----", 0))->links = 1;
-    }
-
     if (!quiet && tfout == tfscreen) {
         norecord++;                     /* don't save this output in history */
-        oputa(startmsg);
+        oputa(&startmsg);
         oflush();			/* in case this takes a while */
-    }
-
-    if (recall_time_format && !*recall_time_format) {
-        char *temp = XMALLOC(strlen(time_format) + 3);
-        sprintf(temp, "[%s]", time_format);
-        FREE(recall_time_format);
-        recall_time_format = temp;
     }
 
     if (n0 < hist->total - hist->size) n0 = hist->total - hist->size;
@@ -403,7 +406,7 @@ int do_recall(args)
         n1 = nmod(n1, hist->maxsize);
         attrs = ~attrs;
 
-        if (hist == input) hold_input(keybuf->s);
+        if (hist == input) hold_input(keybuf->s, NULL);
         for (i = n1; want > 0; i = nmod(i - 1, hist->maxsize)) {
             if (interrupted()) {
                 eprintf("history scan interrupted at #%d",
@@ -412,7 +415,9 @@ int do_recall(args)
             }
             if (i == n0) want = 0;
             aline = hist->alines[i];
-            if (aline->time < t0 || (t1 >=0 && aline->time > t1)) continue;
+            /* globalhist isn't chronological, but we can optimize others. */
+            if (aline->tv.tv_sec < t0 && hist != globalhist) break;
+            if (t1 >=0 && aline->tv.tv_sec > t1) continue;
             if (gag && (aline->attrs & F_GAG & attrs)) continue;
             if (!patmatch(&pat, aline->str) == truth) continue;
             want--;
@@ -421,8 +426,16 @@ int do_recall(args)
                 Sprintf(buffer, SP_APPEND, "%d: ",
                     hist->total - nmod(hist->last - i, hist->maxsize));
             if (recall_time_format) {
-                Sprintf(buffer, SP_APPEND, "%s ",
-                    tftime(recall_time_format, aline->time));
+                if (!*recall_time_format) {
+                    Stringadd(buffer, '[');
+                    tftime(buffer, time_format,
+                        aline->tv.tv_sec, aline->tv.tv_usec);
+                    Stringadd(buffer, ']');
+                } else {
+                    tftime(buffer, recall_time_format,
+                        aline->tv.tv_sec, aline->tv.tv_usec);
+                }
+                Stringadd(buffer, ' ');
             }
 
             /* share aline if possible: copy only if different */
@@ -436,6 +449,20 @@ int do_recall(args)
                 memcpy(partials + buffer->len, aline->partials,
                     sizeof(short) * aline->len);
             }
+#ifdef LOCALITY
+            if (locality) {
+                char sign = '+';
+                long diff = (char*)nextaline - (char*)aline;
+                if (nextaline > aline) diff -= sizeof(Aline) + aline->len;
+                else diff += nextaline ? (sizeof(Aline) + nextaline->len) : 0;
+                if (diff < 0) { sign = '-', diff = -diff; }
+                Sprintf(buffer, 0, "%d (%08lx): %c%lx",
+                    hist->total - nmod(hist->last - i, hist->maxsize), aline,
+                    sign, diff);
+                nextaline = aline;
+                aline = new_aline(buffer->s, 0);
+            } else
+#endif
             if (buffer->len) {
                 Stringfncat(buffer, aline->str, aline->len);
                 aline = new_aline(buffer->s, aline->attrs & attrs);
@@ -453,7 +480,7 @@ int do_recall(args)
         oputa((Aline *)unlist(stack->head, stack));
 
     if (!quiet && tfout == tfscreen) {
-        oputa(endmsg);
+        oputa(&endmsg);
         norecord--;
     }
 
@@ -625,24 +652,23 @@ struct Value *handle_recordline_command(args)
 {
     History *history = globalhist;
     char opt;
-    long timestamp = -1;
+    struct timeval timestamp = { -1, 0 };
     Aline *aline;
 
     startopt(args, "lgiw:t#");
-    while ((opt = next_hist_opt(&args, &history, &timestamp))) {
+    while ((opt = next_hist_opt(&args, &history, &timestamp.tv_sec))) {
         if (opt != 't') return newint(0);
     }
 
     nolog++;
     if (history == input) {
-        record_input(args);
-        if (timestamp >= 0)
-            input->alines[nmod(input->last - 1, input->maxsize)]->time =
-                (TIME_T)timestamp;
+        record_input(args, timestamp.tv_sec >= 0 ? &timestamp : NULL);
     } else {
         aline = new_aline(args, 0);
-        if (timestamp >= 0)
-            aline->time = (TIME_T)timestamp;
+        if (timestamp.tv_sec >= 0) {
+            aline->tv.tv_sec = timestamp.tv_sec;
+            aline->tv.tv_usec = timestamp.tv_usec;
+        }
         recordline(history, aline);
     }
     nolog--;

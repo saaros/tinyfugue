@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: variable.c,v 35004.48 1998/06/20 23:55:58 hawkeye Exp $ */
+/* $Id: variable.c,v 35004.49 1998/07/07 03:51:50 hawkeye Exp $ */
 
 
 /**************************************
@@ -98,7 +98,6 @@ void init_variables()
     char **oldenv, **p, *value, buf[20], *str;
     CONST char *oldcommand;
     Var *var;
-    Stringp scratch;
 
     init_hashtable(var_table, HASH_SIZE, strstructcmp);
     init_list(localvar);
@@ -157,18 +156,6 @@ void init_variables()
         var->flags |= VAREXPORT;
     }
     current_command = oldcommand;
-
-    /* run-time default values */
-    Stringinit(scratch);
-    if (!findglobalvar("TFLIBRARY")) {
-        Sprintf(scratch, 0, "%s/stdlib.tf", TFLIBDIR);
-        set_var_by_name("TFLIBRARY", scratch->s, 0);
-    }
-    if (!findglobalvar("TFHELP")) {
-        Sprintf(scratch, 0, "%s/tf-help", TFLIBDIR);
-        set_var_by_name("TFHELP", scratch->s, 0);
-    }
-    Stringfree(scratch);
 }
 
 void newvarscope(level)
@@ -560,6 +547,7 @@ struct Value *handle_unset_command(name)
         return newint(0);
     }
     if (var->status) {
+        /* Note: there may be more than one status field using this variable */
         eprintf("%s is used in %%status_fields, so can not be unset.", var->name);
         return newint(0);
     }

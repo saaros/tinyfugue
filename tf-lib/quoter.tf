@@ -18,8 +18,8 @@
 /require lisp.tf
 /require pcmd.tf
 
-/def -i _qdef = /send - %prefix %-2
-/def -i qdef = /let prefix=%{-L-%{qdef_prefix-:|}}%; /quote -S /_qdef `/list -i %{L-@}
+/def -i _qdef = /send - %_prefix %-2
+/def -i qdef = /let _prefix=%{-L-%{qdef_prefix-:|}}%; /quote -S /_qdef `/list -i %{L-@}
 
 /def -i ~qmac_files = \
     /echo %{HOME}/.tfrc%; \
@@ -48,19 +48,16 @@
 /def -i qsh = %{qsh_prefix-:|}! %*%; /quote -S %{qsh_prefix-:|} !%*
 
 /def -i qmud = \
-    /let opts=%; \
+    /let _opts=%; \
     /while ( {1} =/ "-[^- ]*" ) \
-        /let opts=%opts %1%; \
+        /let _opts=%_opts %1%; \
         /shift%; \
     /done%; \
-    /let dest=${world_name}%; \
-    /def %{opts} -ip5000 -msimple -t"%{outputprefix}" -1 -aGg qmud_pre = \
-        /def %{opts} -i -hbackground -ag qmud_quiet%%; \
-        /send -w%{dest} %{qmud_prefix-:|} $${world_name}> %*%%; \
-        /def %{opts} -ip5001 -mglob -t"*" -aGg qmud_all = \
-            /send -w%{dest} %{qmud_prefix-:|} %%%*%%; \
-        /def %{opts} -ip5002 -msimple -t"%{outputsuffix}" -1 -aGg qmud_suf = \
-            /edit -i -n1 qmud_quiet%%%; \
-            /undef qmud_all%; \
-    /pcmd %{opts} %*
+    /let _dest=${world_name}%; \
+    /def %{_opts} -iqp5000 -msimple -t"%{outputprefix}" -1 -aGg qmud_pre = \
+        /send -w%{_dest} %{qmud_prefix-:|} $${world_name}> %*%%; \
+        /def %{_opts} -iqp5001 -mglob -t"*" -aGg qmud_all = \
+            /send -w%{_dest} %{qmud_prefix-:|} %%%*%%; \
+        /def %{_opts} -iqp5002 -msimple -t"%{outputsuffix}" -1 -aGg qmud_suf = \            /undef qmud_all%; \
+    /pcmd %{_opts} %*
 

@@ -13,67 +13,75 @@
 
 
 /def -i _grep = \
-    /let line=%; \
-    /let count=0%; \
-    /while (tfread(line) >= 0) \
-        /test (%{*}) & (++count, opt_c | tfwrite(line))%; \
+    /let _line=%; \
+    /let _count=0%; \
+    /while (tfread(_line) >= 0) \
+        /test (%{*}) & (++_count, opt_c | tfwrite(_line))%; \
     /done%; \
-    /test opt_c & echo(count)%; \
-    /return count
+    /test opt_c & echo(_count)%; \
+    /return _count
 
-; ... %| /fgrep [-cv] <string>
+; ... %| /fgrep [-cvi] <string>
 /def -i fgrep = \
-    /if (!getopts("cv", 0)) /return 0%; /endif%; \
-    /let pattern=%*%; \
-    /_grep (strstr(line, pattern) < 0) == opt_v
+    /if (!getopts("cvi", 0)) /return 0%; /endif%; \
+    /if (opt_i) \
+        /let _pattern=$[tolower({*})]%; \
+        /_grep (strstr(tolower(_line), _pattern) < 0) == opt_v%; \
+    /else \
+        /let _pattern=%*%; \
+        /_grep (strstr(_line, _pattern) < 0) == opt_v%; \
+    /endif
 
-; ... %| /grep [-cv] <glob>
+; ... %| /grep [-cvi] <glob>
 /def -i grep = \
-    /if (!getopts("cv", 0)) /return 0%; /endif%; \
-    /let pattern=%*%; \
-    /_grep (line !/ pattern) == opt_v
+    /if (!getopts("cvi", 0)) /return 0%; /endif%; \
+    /let _pattern=%*%; \
+    /_grep (_line !/ _pattern) == opt_v
 
-; ... %| /egrep [-cv] <regexp>
+; ... %| /egrep [-cvi] <regexp>
 /def -i egrep = \
-    /if (!getopts("cv", 0)) /return 0%; /endif%; \
-    /let pattern=%*%; \
-    /_grep !regmatch(pattern, line) == opt_v
+    /if (!getopts("cvi", 0)) /return 0%; /endif%; \
+    /if (opt_i) \
+        /let _pattern=$[tolower({*})]%; \
+        /_grep !regmatch(_pattern, tolower(_line)) == opt_v%; \
+    /else \
+        /let _pattern=%*%; \
+        /_grep !regmatch(_pattern, _line) == opt_v%; \
+    /endif
 
 
 ; /copyio <in_handle> <out_handle>
 ; copies lines from <in_handle> to <out_handle>.
 /def -i copyio = \
-    /let in=%{1-i}%; \
-    /let out=%{2-o}%; \
-    /let line=%; \
-    /while (tfread(in, line) >= 0) \
-        /test tfwrite(out, line)%; \
+    /let _in=%{1-i}%; \
+    /let _out=%{2-o}%; \
+    /let _line=%; \
+    /while (tfread(_in, _line) >= 0) \
+        /test tfwrite(_out, _line)%; \
     /done
 
 ; /readfile <file> %| ...
 /def -i readfile = \
-    /let handle=%; \
-    /test ((handle := tfopen({1}, "r")) >= 0) & \
-        (copyio(handle, "o"), tfclose(handle))
+    /let _handle=%; \
+    /test ((_handle := tfopen({1}, "r")) >= 0) & \ (copyio(_handle, "o"), tfclose(_handle))
 
 ; ... %| /writefile <file>
 /def -i writefile = \
-    /let handle=%; \
+    /let _handle=%; \
     /if (!getopts("a", 0)) /return 0%; /endif%; \
-    /test ((handle := tfopen({1}, opt_a ? "a" : "w")) >= 0) & \
-        (copyio("i", handle), tfclose(handle))
+    /test ((_handle := tfopen({1}, opt_a ? "a" : "w")) >= 0) & \
+        (copyio("i", _handle), tfclose(_handle))
 
 
 ; ... %| /head [-n<count>] [<handle>]
 ; outputs first <count> lines of <handle> or tfin.
 /def -i head = \
     /if (!getopts("n#", 10)) /return 0%; /endif%; \
-    /let handle=%{1-i}%; \
-    /let line=%; \
-    /while (tfread(handle, line) >= 0) \
-        /if (opt_n) \
-            /test --opt_n, echo(line)%; \
-        /endif%; \
+    /let _handle=%{1-i}%; \
+    /let _line=%; \
+    /while (tfread(_handle, _line) >= 0) \
+        /if (--opt_n < 0) /break%; /endif%; \
+        /test echo(_line)%; \
     /done
 
 
@@ -81,54 +89,54 @@
 ; counts lines, words, and/or characters of text from <handle> or tfin.
 /def -i wc = \
     /if (!getopts("lwc", 0)) /return 0%; /endif%; \
-    /let handle=%{1-i}%; \
-    /let lines=0%; \
-    /let words=0%; \
-    /let chars=0%; \
-    /let line=%; \
-    /let body=0%; \
+    /let _handle=%{1-i}%; \
+    /let _lines=0%; \
+    /let _words=0%; \
+    /let _chars=0%; \
+    /let _line=%; \
+    /let _body=0%; \
     /if (!opt_l & !opt_w & !opt_c) /test opt_l:= opt_w:= opt_c:= 1%; /endif%; \
-    /if (opt_l) /let body=%body, ++lines%; /endif%; \
-    /if (opt_w) /let body=%body, words:=words+$$(/length %%line)%; /endif%; \
-    /if (opt_c) /let body=%body, chars:=chars+strlen(line)%; /endif%; \
+    /if (opt_l) /let _body=%_body, ++_lines%; /endif%; \
+    /if (opt_w) /let _body=%_body, _words:=_words+$$(/length %%_line)%; /endif%; \
+    /if (opt_c) /let _body=%_body, _chars:=_chars+strlen(_line)%; /endif%; \
     /eval \
-        /while (tfread(handle, line) >= 0) \
-            /test %body%%; \
+        /while (tfread(_handle, _line) >= 0) \
+            /test %_body%%; \
         /done%; \
-    /echo $[opt_l ? lines : ""] $[opt_w ? words : ""] $[opt_c ? chars : ""]
+    /echo $[opt_l ? _lines : ""] $[opt_w ? _words : ""] $[opt_c ? _chars : ""]
 
 ; ... %| /tee <handle> %| ...
 ; copies tfin to <handle> AND tfout.
 /def -i tee = \
-    /let line=%; \
-    /while (tfread(in, line) >= 0) \
-        /test tfwrite({*}, line), tfwrite(line)%; \
+    /let _line=%; \
+    /while (tfread(_line) >= 0) \
+        /test tfwrite({*}, _line), tfwrite(_line)%; \
     /done
 
 ; ... %| /fmt 
 ; copies input to output, with adjacent non-blank lines joined
 /def -i fmt = \
-    /let line=%; \
-    /let text=%; \
-    /while (tfread(line) >= 0) \
-        /if (line =~ "" & text !~ "") \
-            /echo - %{text}%; \
+    /let _line=%; \
+    /let _text=%; \
+    /while (tfread(_line) >= 0) \
+        /if (_line =~ "" & _text !~ "") \
+            /echo - %{_text}%; \
             /echo%; \
-            /let text=%; \
+            /let _text=%; \
         /else \
-            /let text=%{text} %{line}%; \
+            /let _text=%{_text} %{_line}%; \
         /endif%; \
     /done%; \
-    /echo - %{text}
+    /echo - %{_text}
 
 ; ... %| /uniq
 ; copies input to output, with adjacent duplicate lines removed
 /def -i uniq = \
-    /let prev=%; \
-    /let line=%; \
-    /while (tfread(line) >= 0) \
-        /if (line !~ prev) \
-            /test echo(line), prev:=line%; \
+    /let _prev=%; \
+    /let _line=%; \
+    /while (tfread(_line) >= 0) \
+        /if (_line !~ _prev) \
+            /test echo(_line), _prev:=_line%; \
         /endif%; \
     /done
 

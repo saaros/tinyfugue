@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.c,v 35004.56 1998/06/24 05:15:04 hawkeye Exp $ */
+/* $Id: tfio.c,v 35004.59 1998/08/02 21:42:10 hawkeye Exp $ */
 
 
 /***********************************
@@ -21,8 +21,7 @@
 #ifdef SYS_SELECT_H
 # include SYS_SELECT_H
 #endif
-#include <sys/time.h>   /* for struct timeval, in select() */
-#define TIME_H          /* prevent <time.h> in "tf.h" */
+/* #include <sys/time.h> */   /* for struct timeval, in select() */
 #include <sys/stat.h>
 
 #ifndef HAVE_PWD_H
@@ -269,6 +268,7 @@ int tfclose(file)
 {
     int result;
 
+    if (!file) return -1;
     if (file->name) FREE(file->name);
     switch(file->type) {
     case TF_QUEUE:
@@ -352,7 +352,7 @@ void tfputs(str, file)
     CONST char *str;
     TFILE *file;
 {
-    if (file->type == TF_NULL) {
+    if (!file || file->type == TF_NULL) {
         /* do nothing */
     } else if (file->type == TF_QUEUE) {
         queueputa(new_aline(str, 0), file);
@@ -372,7 +372,7 @@ attr_t tfputansi(str, file, attrs)
 {
     Aline *aline;
 
-    if (file->type != TF_NULL) {
+    if (file && file->type != TF_NULL) {
         (aline = new_aline(str, 0))->links++;
         attrs = handle_ansi_attr(aline, attrs);
         if (attrs >= 0)
@@ -390,7 +390,7 @@ void tfputa(aline, file)
     TFILE *file;
 {
     aline->links++;
-    if (file->type == TF_NULL) {
+    if (!file || file->type == TF_NULL) {
         /* do nothing */
     } else if (file->type == TF_QUEUE) {
         queueputa(aline, file);
@@ -410,6 +410,8 @@ static void queueputa(aline, file)
         record_local(aline);
         record_global(aline);
         screenout(aline);
+    } else if (!file) {
+        /* do nothing */
     } else if (file->type == TF_QUEUE) {
         aline->links++;
         enqueue(file->u.queue, aline);
@@ -691,7 +693,10 @@ String *tfgetS(str, file)
     Stringp str;
     TFILE *file;
 {
-    if (file == tfkeyboard) {
+    if (!file) {
+        return NULL;
+
+    } else if (file == tfkeyboard) {
         /* This is a hack.  It's a useful feature, but doing it correctly
          * without blocking tf would require making the macro language
          * suspendable, which would have required a major redesign.  The
@@ -812,7 +817,8 @@ Aline *dnew_aline(str, attrs, len, file, line)
     aline->attrs = attrs;
     aline->partials = NULL;
     aline->links = 0;
-    aline->time = -1;  /* this will be set by caller, if caller needs it */
+    aline->tv.tv_sec = -1;  /* this will be set by caller, if caller needs it */
+    aline->tv.tv_usec = 0;
     return aline;
 }
 

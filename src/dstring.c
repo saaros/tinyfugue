@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: dstring.c,v 35004.7 1998/06/24 04:41:01 hawkeye Exp $ */
+/* $Id: dstring.c,v 35004.8 1998/07/03 00:48:21 hawkeye Exp $ */
 
 
 /*********************************************************************
@@ -118,10 +118,14 @@ String *dSterm(str, len, file, line)
     CONST char *file;
     int line;
 {
-    if (str->size && str->len < len) return str;
+    /* if (str->size && str->len < len) return str; */
+    unsigned int oldlen = str->len;
     str->len = len;
     lcheck(str, file, line);
-    str->s[len] = '\0';
+    if (len < oldlen)
+        str->s[len] = '\0';
+    else
+        str->len = oldlen;
     return str;
 }
 

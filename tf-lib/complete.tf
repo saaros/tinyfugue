@@ -72,41 +72,41 @@
 ;; through /unique.
 
 /def -i _complete_from_list = \
-    /let prefix=%1%;\
+    /let _prefix=%1%;\
     /shift%;\
-    /let len=$[strlen(prefix)]%;\
-    /let match=%;\
+    /let _len=$[strlen(_prefix)]%;\
+    /let _match=%;\
 ;
 ;   scan list for words which start with prefix.
     /while ({#}) \
-        /if (strncmp({1}, prefix, len) == 0) \
-            /let match=%{match} %{1}%;\
+        /if (strncmp({1}, _prefix, _len) == 0) \
+            /let _match=%{_match} %{1}%;\
         /endif%;\
         /shift%;\
     /done%;\
 ;
 ;   Remove duplicates (and strip leading space)
     /if (_need_unique) \
-        /let match=$(/unique %{match})%;\
+        /let _match=$(/unique %{_match})%;\
     /else \
-        /let match=$(/echo - %{match})%;\
+        /let _match=$(/echo - %{_match})%;\
     /endif%;\
 ;
-    /if (match =~ "") \
+    /if (_match =~ "") \
 ;       No match was found.
         /beep 1%;\
-    /elseif (match !/ "{*}") \
+    /elseif (_match !/ "{*}") \
 ;       Multiple matches were found.  Use longest common prefix.
         /beep 1%;\
-        /@test input(substr($$(/common_prefix %{len} %{match}), len))%;\
-        /echo - %{match}%;\
+        /@test input(substr($$(/common_prefix %{_len} %{_match}), _len))%;\
+        /echo - %{_match}%;\
     /else \
 ;       Exactly one match was found.
-        /@test match := strcat(match, _completion_suffix)%;\
-        /if (match =/ "*[A-Za-z0-9_]") \
-            /@test match := strcat(match, " ")%;\
+        /@test _match := strcat(_match, _completion_suffix)%;\
+        /if (_match =/ "*[A-Za-z0-9_]") \
+            /@test _match := strcat(_match, " ")%;\
         /endif%;\
-        /@test input(substr(match, len))%;\
+        /@test input(substr(_match, _len))%;\
     /endif%;\
 ;   Just to be safe
     /unset _completion_suffix%;\
@@ -117,8 +117,8 @@
     /_complete_from_list %1 %completion_list
 
 /def -i ~input_history_list = \
-    /let input=$(/recall -i #1)%;\
-    /recall -i 1-$[substr(input, 0, strchr(input, ":")) - 1]
+    /let _input=$(/recall -i #1)%;\
+    /recall -i 1-$[substr(_input, 0, strchr(_input, ":")) - 1]
 
 /def -i complete_input_history = \
     /let _need_unique=1%;\
@@ -137,34 +137,34 @@
 
 /def -i complete_hostname = \
     /let _need_unique=1%;\
-    /let pf=$[substr({1}, strrchr({1}, "@") + 1)]%;\
-    /quote -S /_complete_from_list %{pf} !\
+    /let _pf=$[substr({1}, strrchr({1}, "@") + 1)]%;\
+    /quote -S /_complete_from_list %{_pf} !\
        echo `cat /etc/hosts %HOME/etc/hosts 2>/dev/null | \
-          sed -n '/^[^#].*[ 	][ 	]*\\\\(%{pf}[^ 	]*\\\\).*/s//\\\\1/p'`
+          sed -n '/^[^#].*[ 	][ 	]*\\\\(%{_pf}[^ 	]*\\\\).*/s//\\\\1/p'`
 
 
 /def -i complete_variable = \
-    /let part=$[substr({1}, strrchr({1}, '%') + 1)]%;\
-    /if (strncmp(part, '{', 1) == 0) \
-        /let part=$[substr(part, 1)]%;\
+    /let _part=$[substr({1}, strrchr({1}, '%') + 1)]%;\
+    /if (strncmp(_part, '{', 1) == 0) \
+        /let _part=$[substr(_part, 1)]%;\
         /let _completion_suffix=}%;\
     /endif%;\
-    /_complete_from_list %part $(/listvar -s)
+    /_complete_from_list %_part $(/listvar -s)
 
 
 /def -i complete_macroname = \
-    /let word=%1%;\
-    /let i=$[strrchr({1}, '$')]%;\
-    /if (i >= 0) \
-        /if (substr(word, i+1, 1) =~ '{') \
-            /@test ++i%;\
+    /let _word=%1%;\
+    /let _i=$[strrchr({1}, '$')]%;\
+    /if (_i >= 0) \
+        /if (substr(_word, _i+1, 1) =~ '{') \
+            /@test ++_i%;\
             /let _completion_suffix=}%;\
         /endif%;\
-        /let word=$[substr(word, i+1)]%;\
-    /elseif (strncmp(word, '/', 1) == 0) \
-        /let word=$[substr(word, 1)]%;\
+        /let _word=$[substr(_word, _i+1)]%;\
+    /elseif (strncmp(_word, '/', 1) == 0) \
+        /let _word=$[substr(_word, 1)]%;\
     /endif%;\
-    /_complete_from_list %{word} $(/quote -S /last `/list -s -i - %{word}*)
+    /_complete_from_list %{_word} $(/quote -S /last `/list -s -i - %{_word}*)
 
 
 /def -i complete_worldname = \
@@ -175,46 +175,46 @@
 ;; Uses context to determine which completion macro to use.
 
 /def -i complete_context = \
-    /let head=$[kbhead()]%;\
-    /let word=%1%;\
-    /if (strchr(word, "@") >= 0) \
+    /let _head=$[kbhead()]%;\
+    /let _word=%1%;\
+    /if (strchr(_word, "@") >= 0) \
         /complete_hostname %1%;\
-    /elseif (strchr(word, "%%") >= 0) \
+    /elseif (strchr(_word, "%%") >= 0) \
         /complete_variable %1%;\
-    /elseif (strchr(word, "$$") >= 0) \
+    /elseif (strchr(_word, "$$") >= 0) \
         /complete_macroname %1%;\
-;   /elseif (head =/ "{/*}") \
+;   /elseif (_head =/ "{/*}") \
 ;       /complete_command %1%;\
-    /elseif (head =/ "{/*}") \
+    /elseif (_head =/ "{/*}") \
         /complete_macroname %1%;\
-    /elseif (regmatch("-w(.+)$$", head)) \
+    /elseif (regmatch("-w(.+)$$", _head)) \
         /complete_worldname %P1%;\
-    /elseif (head =/ "*{/[sl]et|/setenv|/unset|/edvar} {*}") \
+    /elseif (_head =/ "*{/[sl]et|/setenv|/unset|/edvar} {*}") \
         /complete_variable %1%;\
-    /elseif (head =/ "*{/load*|/save*|/lcd|/cd|/log} {*}") \
+    /elseif (_head =/ "*{/load*|/save*|/lcd|/cd|/log} {*}") \
         /complete_filename %1%;\
-    /elseif (head =/ "*{/def|/edit|/edmac|/reedit|/undef|/list} {*}") \
+    /elseif (_head =/ "*{/def|/edit|/edmac|/reedit|/undef|/list} {*}") \
         /complete_macroname %1%;\
-;   /elseif (head =/ "{wh*|page|tel*|kill} {*}") \
+;   /elseif (_head =/ "{wh*|page|tel*|kill} {*}") \
 ;       /complete_playername %1%;\
-    /elseif (regmatch(`/quote .*'("?)(.+)$$`, head)) \
-        /let completion_suffix=%P1%;\
+    /elseif (regmatch(`/quote .*'("?)(.+)$$`, _head)) \
+        /let _completion_suffix=%P1%;\
         /complete_filename %P2%;\
-;   /elseif (regmatch('/quote .*`("?)(.+)$$', head)) \
-;       /let completion_suffix=%P1%;\
+;   /elseif (regmatch('/quote .*`("?)(.+)$$', _head)) \
+;       /let _completion_suffix=%P1%;\
 ;       /complete_command %P2%;\
-    /elseif (regmatch('/quote .*`("?)(.+)$$', head)) \
-        /let completion_suffix=%P1%;\
+    /elseif (regmatch('/quote .*`("?)(.+)$$', _head)) \
+        /let _completion_suffix=%P1%;\
         /complete_macroname %P2%;\
-    /elseif (head =/ "*{/world|/connect|/fg|/edworld} {*}") \
+    /elseif (_head =/ "*{/world|/connect|/fg|/edworld} {*}") \
         /complete_worldname %1%;\
-    /elseif (head =/ "*{/telnet} {*}") \
+    /elseif (_head =/ "*{/telnet} {*}") \
         /complete_hostname %1%;\
-    /elseif (head =/ "*/quote *!*") \
+    /elseif (_head =/ "*/quote *!*") \
         /complete_filename %1%;\
-    /elseif (head =/ "*{/@test|/expr} *") \
+    /elseif (_head =/ "*{/@test|/expr} *") \
         /complete_variable %1%;\
-    /elseif (head =/ "*{*/*|.*|tiny.*}") \
+    /elseif (_head =/ "*{*/*|.*|tiny.*}") \
         /complete_filename %1%;\
     /else \
         /complete_dynamic %1%;\
@@ -226,16 +226,16 @@
 ;; first <min> chars are already known to be shared.
 
 /def -i common_prefix = \
-    /let min=%1%;\
+    /let _min=%1%;\
     /shift%;\
-    /let prefix=%1%;\
-    /let len=$[strlen(prefix)]%;\
-    /while /shift%; /@test {#} & len > min%; /do \
-        /let i=%min%;\
-        /while (i < len & strncmp(prefix, {1}, i+1) == 0) \
-            /@test ++i%;\
+    /let _prefix=%1%;\
+    /let _len=$[strlen(_prefix)]%;\
+    /while /shift%; /@test {#} & _len > _min%; /do \
+        /let _i=%_min%;\
+        /while (_i < _len & strncmp(_prefix, {1}, _i+1) == 0) \
+            /@test ++_i%;\
         /done%;\
-        /let len=%i%;\
+        /let _len=%_i%;\
     /done%;\
-    /echo - $[substr(prefix, 0, len)]
+    /echo - $[substr(_prefix, 0, _len)]
 

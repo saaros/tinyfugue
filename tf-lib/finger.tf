@@ -11,22 +11,22 @@
 
 /def -i finger = \
     /@test regmatch("^([^@]*)@?", {*})%; \
-    /let user=%{P1}%; \
-    /let host=%{PR-localhost}%; \
+    /let _user=%{P1}%; \
+    /let _host=%{PR-localhost}%; \
     /def -i _finger_exit = \
-        /purge -i -msimple -h"CONNECT|CONFAIL|DISCONNECT {finger@%{host}}*"%%;\
+        /purge -i -msimple -h"CONNECT|CONFAIL|DISCONNECT {finger@%{_host}}*"%%;\
         /def -1 -i -ag -msimple -h'WORLD ${world_name}' -p%{maxpri}%%; \
         /fg ${world_name}%%; \
-        /unworld finger@%{host}%%; \
+        /unworld finger@%{_host}%%; \
         /undef _finger_exit%; \
-    /addworld finger@%{host} %{host} 79%; \
-    /def -1 -i -ag -msimple -h'WORLD finger@%{host}' -p%{maxpri}%; \
-    /def -1 -i -ag -mglob -h'CONNECT {finger@%{host}}*' -p%{maxpri} = \
-        /fg finger@%{host}%%; \
-        /send -- %{user}%; \
-    /def -1 -i -ag -mglob -h'DISCONNECT {finger@%{host}}*' -p%{maxpri} = \
+    /addworld finger@%{_host} %{_host} 79%; \
+    /def -1 -i -ag -msimple -h'WORLD finger@%{_host}' -p%{maxpri}%; \
+    /def -1 -i -ag -mglob -h'CONNECT {finger@%{_host}}*' -p%{maxpri} = \
+        /fg finger@%{_host}%%; \
+        /send -- %{_user}%; \
+    /def -1 -i -ag -mglob -h'DISCONNECT {finger@%{_host}}*' -p%{maxpri} = \
         /_finger_exit%; \
-    /def -1 -i -mglob -h'CONFAIL {finger@%{host}}*' -p%{maxpri} = \
+    /def -1 -i -mglob -h'CONFAIL {finger@%{_host}}*' -p%{maxpri} = \
         /_finger_exit%; \
-    /connect finger@%{host}
+    /connect finger@%{_host}
 

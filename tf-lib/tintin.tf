@@ -20,7 +20,7 @@
 /def -i bell	= /beep %*
 /def -i boss	= /echo -e %0: Not implemented.
 /def -i char	= /echo -e %0: Not implemented.
-;/def echo	= /toggle mecho%; /: The name "/echo" conflicts with tf builtin.
+;/def echo	= /toggle mecho%; /: The name "echo" conflicts with standard tf.
 /def -i end	= /quit
 ;gag		builtin
 ;help		builtin

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: parse.h,v 35004.7 1998/06/24 05:36:16 hawkeye Exp $ */
+/* $Id: parse.h,v 35004.9 1998/08/02 21:42:09 hawkeye Exp $ */
 
 #ifndef PARSE_H
 #define PARSE_H
@@ -53,6 +53,8 @@ extern CONST char *FDECL(valstr,(Value *val));
 extern int         FDECL(valbool,(Value *val));
 extern int         FDECL(pushval,(Value *val));
 extern void        FDECL(freeval,(Value *val));
+extern Value      *FDECL(expr_value,(CONST char *expression));
+extern Value      *FDECL(expr_value_safe,(CONST char *expression));
 
 #define dollarsub(dest) \
     ((*ip == '[') ? exprsub(dest) : (*ip == '(') ? cmdsub(dest) : macsub(dest))
