@@ -4,7 +4,7 @@
 @copy
 
   TinyFugue - programmable mud client
-  Copyright (C) 1993  Ken Keys
+  Copyright (C) 1993, 1994 Ken Keys
 
   Regexp package is Copyright (c) 1986 by University of Toronto.
 
@@ -18,10 +18,11 @@
     Ken Keys
     1820 Cottonwood Ave.
     Carlsbad, CA 92009
+    USA
 
   For bug reports, questions, suggestions, etc., I can be reached by
-  email at hawkeye@glia.biostr.washington.edu.  Please read "/help
-  bugs" before sending a bug report.
+  email at hawkeye@ftp.tcp.com.  Please read "/help bugs" before sending
+  a bug report.
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -41,9 +42,8 @@
 #find
 #where
 #ftp
-  The latest version of TinyFugue can always be found in pub/tinyfugue
-  on glia.biostr.washington.edu (128.95.10.115).  Other ftp sites may
-  not have the latest version.
+  The latest version of TinyFugue can always be found in pub/mud/Clients
+  on ftp.tcp.com.  Other ftp sites may not have the latest version.
 
 @summary
 
@@ -111,21 +111,21 @@ then press TAB at a "--More--" prompt when you're ready to continue.
   copying    - copyright; no warranty	 intro	    - introduction to tf
   startup    - how to start tf		 tfrc	    - personal config file
   interface  - how input works		 visual	    - split-screen mode	
-  commands   - list of builtins		 macros     - user-defined commands
+ *commands   - list of builtins		 macros     - user-defined commands
   worlds     - defining worlds		 sockets    - world connections
- *patterns   - pattern matching		 history    - recall and logging
+  patterns   - pattern matching		 history    - recall and logging
   variables  - state and environment	*globals    - special tf variables
   attributes - special text display     *color      - terminal color codes
-  priority   - trigger/hook selection	 expansion  - macro body execution	
-  prompts    - using LP/Diku prompts	 protocol   - LP/Diku prompt protocol
- *problems   - bugs, cores, etc.	*expressions- math & string operations
+ *priority   - trigger/hook selection	 expansion  - macro body execution	
+ *prompts    - using LP/Diku prompts	 protocol   - LP/Diku prompt protocol
+  problems   - bugs, cores, etc.	 expressions- math & string operations
 
- +utilities  - useful extra command files
- *triggers   - automatic command execution based on incoming text
+ *utilities  - useful extra command files
+  triggers   - automatic command execution based on incoming text
  *hooks	     - automatic command execution based on tf events
   library    - macros and variables in stdlib.tf
   processes  - timed commands and command quoting
- *subs       - arithmetic, command, macro, and variable substitutions
+  subs       - arithmetic, command, macro, and variable substitutions
  *functions  - special expression operations
   hints	     - some hints and style tips for macro programming
 
@@ -136,20 +136,21 @@ then press TAB at a "--More--" prompt when you're ready to continue.
 Commands marked	with '+' are new in this version.  Commands marked with	'*'
 have changed since the last version.
 
- *ADDWORLD      FOR           LOAD          SAVEWORLD     UNBIND      
-  BAMF         *GAG           LOG           SEND          UNDEF       
-  BEEP          GRAB          NOGAG         SET           UNDEFN      
- *BIND          HELP          NOHILITE      SETENV        UNDEFT      
-  CAT          *HILITE        PS            SH            UNHOOK      
-  DC           *HOOK         *PURGE         SHIFT         UNSET       
- *DEF          *IF           *PURGEWORLD    SUB           UNTRIG      
- *DOKEY         INPUT         QUIT          SUSPEND       UNWORLD     
-  ECHO          KILL         *QUOTE         TELNET        VERSION     
-  EDIT          LCD          *RECALL        TEST          WATCHDOG    
-  ESCAPE        LET           RECORDLINE    TIME          WATCHNAME   
-  EVAL/NOT     *LIST          REPEAT        TOGGLE       *WHILE       
-  EXPORT        LISTSOCKETS   RESTRICT     *TRIG         *WORLD       
-  EXPR         *LISTWORLDS   *SAVE          TRIGGER                   
+  ADDWORLD     +FG            LOAD         *SAVE          TRIGGER     
+  BAMF          FOR           LOG           SAVEWORLD     UNBIND      
+  BEEP          GAG           NOGAG         SEND          UNDEF       
+  BIND          GRAB          NOHILITE      SET           UNDEFN      
+  CAT           HELP          PARTIAL       SETENV        UNDEFT      
+ +CONNECT       HILITE       +PROMPT        SH            UNHOOK      
+  DC            HOOK          PS            SHIFT         UNSET       
+ *DEF           IF            PURGE         SUB           UNTRIG      
+ *DOKEY         INPUT         PURGEWORLD   +SUBSTITUTE    UNWORLD     
+  ECHO         *KILL          QUIT          SUSPEND       VERSION     
+ *EDIT          LCD           QUOTE         TELNET        WATCHDOG    
+  ESCAPE        LET          *RECALL        TEST          WATCHNAME   
+  EVAL/NOT     *LIST          RECORDLINE    TIME          WHILE       
+  EXPORT        LISTSOCKETS   REPEAT        TOGGLE        WORLD       
+  EXPR          LISTWORLDS    RESTRICT      TRIG                      
 
   See also: intro, topics
 
@@ -347,6 +348,54 @@ have changed since the last version.
 
   See: general,	history, SUB
 
+@/connect
+
+  Format:
+
+  /CONNECT [-lq] [<world>]
+  /CONNECT <host> <port>
+  ___________
+
+  Attempts to open a socket connected to <world>.  <world> must be
+  defined by the /addworld command and not already connected.  If
+  <world> is omitted, the first defined world will be used.  "/connect
+  <host> <port>" will define a temporary world with the given address,
+  and try to connect to it.
+
+  Options:
+
+    -l	Do not log in automatically (i.e., don't call the LOGIN hook).
+    -q	Quiet login (overrides %{quiet} flag).
+
+  If the socket can not be opened quickly, TF will print "Connection to
+  <world> in progress", and continue to try to connect in the
+  background, leaving you free to do other things.  If the connection
+  eventually succeeds, you will be switched to that socket (but see
+  note below); if it fails, you will be notified.  There are a few
+  systems that do not support this nonblocking connect, but most do
+  support it.
+
+  If Fugue succeeds in connecting, the following will occur:  if
+  there	is already a foreground	socket,	it will	be put in the
+  background; the new socket is	brought	into the foreground; the
+  WORLD	hook is	called;	the macro file for the new world is
+  loaded (if one is defined, and the %{sockmload} flag is on); the
+  CONNECT hook is called; and the LOGIN	hook is	called (if the
+  %{login} flag	is on, and there is a character and password defined).
+
+  When a pending /connect succeeds, the foregrounding is done by a
+  CONNECT hook defined by the standard library.  If you don't want to
+  switch automatically, you can either delete the default hook (/unhook
+  CONNECT) or define your own (with a priority higher than 0).  If you
+  define your own but you still want the switch to occur, you must
+  either make it a fall-thru hook, or explicitly call "/fg %1" from
+  your hook.
+
+  /connect returns 0 on error or failure, 1 on success, or 2 if the
+  connection is pending.
+
+  See: worlds, sockets,	ADDWORLD, FG, login
+
 @/dc
 
   Format:
@@ -356,8 +405,7 @@ have changed since the last version.
 
   Disconnects from the named world, or the current world if no world is
   given, or all	worlds if "-all" is given.  If the flag	%{quitdone} is
-  on, and /dc would cause TF to	be unconnected to any socket, this will
-  also cause TF	to exit.
+  on, and /dc disconnects the last socket, TF will exit.
 
   See: sockets,	quitdone
 
@@ -552,9 +600,9 @@ have changed since the last version.
 #end
   END		^E		  Go to end of line
 #wleft
-  WLEFT		^B		  Go to beginning of left word
+  WLEFT		^B		  Go left, to beginning of word
 #wright
-  WRIGHT	^F		  Go to beginning of right word
+  WRIGHT	^F		  Go right, to end of word
 #deol
   DEOL		^K		  Delete from cursor to end of line
 #page
@@ -628,12 +676,15 @@ have changed since the last version.
   create a macro which changes the name	of a macro, if it does not
   have any options other than a	name and a body:
 
-	/def rename = /def %2 =	$%1%;/undef %1
+	/def rename = /def %2 =	$%1%; /undef %1
 
   How this works is discussed in the help section "expansion".
 
-  All unspecified arguments remain as they were	before,	with the exception
-  of -i, which will be cleared if it is	not specified.
+  The -i flag will be cleared from the macro if it is not explicitly
+  given with /edit.  It is not possible to clear the -F option.  The
+  -t, -w, and -T options also can not be cleared, but their arguments
+  can be changed.  Any options that are not specified with /edit will
+  remain unchanged (with the exception of -i).
 
 
   Example:
@@ -681,10 +732,10 @@ have changed since the last version.
   <command>.
 
   Example:
-  command: /echo Borg is %{borg}
-  output:  Borg	is %{borg}
-  command: /eval /echo Borg is %{borg}
-  output:  Borg	is 1
+  command: /echo Triggers are %{borg}.
+  output:  Triggers are %{borg}.
+  command: /eval /echo Triggers are %{borg}.
+  output:  Triggers are on.
 
   See:	expansion
 
@@ -719,6 +770,24 @@ have changed since the last version.
   output:   8
 
   See: expansion
+
+@/fg
+
+  Format:
+
+  /FG <world>
+  /FG -n
+  ___________
+
+  Bring the socket associated with <world> into the foreground.  The
+  <world> must already be connected with the /connect command.
+
+  The -n option brings no socket into the foreground; that is, it puts
+  all sockets in the background.
+
+  /fg returns 1 if successful, 0 if not.
+
+  See: CONNECT, worlds, sockets
 
 @/for
 
@@ -891,6 +960,7 @@ have changed since the last version.
 @/elseif
 @/else
 @/endif
+@/if
 
   Format:
 
@@ -952,13 +1022,13 @@ have changed since the last version.
 
   Format:
 
-  /ISMACRO <spec>
+  /ISMACRO <macro-options>
   ___________
 
-  If <spec> matches one or more existing macros, /ismacro returns the
-  number of the first matching macro; otherwise, /ismacro returns 0.
-  <spec> may include any of the options accepted by /list.  If -m
-  is not specified, %{matching} is used.
+  If <macro-options> matches one or more existing macros, /ismacro
+  returns the number of the last matching macro; otherwise, /ismacro
+  returns 0.  <macro-options> may include any of the options accepted
+  by /list.  If -m is not specified, %{matching} is used.
 
   See: LIST, macros
 
@@ -1062,10 +1132,14 @@ have changed since the last version.
 
   The -p, -c, -F, and -n options are strightforward comparisons.
 
+  The return value of /list is the number of the last macro listed,
+  or 0 if no macros were listed (because of error or none matched the
+  specified options).
+
   The standard library also defines the	macros /listbind, /listdef,
   /listgag, /listhilite, /listhook, and	/listtrig.
 
-  Example:  /list -m2 -n0 -t -aurfdh ^foo =
+  Example:  /list -mregexp -n0 -t -aurfdh ^foo =
   will list all	macros whose names begin with "foo"; have a trigger;
   are not multi-shots; have any of the underline, reverse, flash, dim,
   or hilite attributes; and have an empty body.
@@ -1234,15 +1308,36 @@ have changed since the last version.
 
   See: flags, triggers,	HILITE
 
+@/first
+@/last
+@/nth
+
+  Format:
+  /FIRST <text>
+  /LAST <text>
+  /NTH <n> <text>
+  ___________
+
+  Echoes the first, last, or <n>th word from text.  `/first <text>' is
+  equivalent to `/nth 1 <text>'.
+
+  These commands can be useful in command substitutions.  For example,
+  to make `ESC 1' input the first word of the most recent mud output, you
+  could do this:
+
+    /bind ^[1 = /input $(/first $(/recall 1))
+
+  See: parameters, command substitution
+
 @/partial
 
   Format:
 
-  /PARTIAL <re>
+  /PARTIAL <regexp>
   ___________
 
   Creates a macro which will hilite the part of a line containing text
-  matched by the regular expression <re>.  Remember that regular
+  matched by the regular expression <regexp>.  Remember that regular
   expressions are case sensitive.  The new macro is a fall-thru, so
   mutiple /partials (and other triggers) can match the same text.
 
@@ -1250,14 +1345,29 @@ have changed since the last version.
   variable.  The default is bold (hiliteattr=B).  Colors are also
   available.
 
-  Unfortunately, because of the way regexps work, any one partial
-  hilite will only be applied once per line.
+  Unlike version 3.2, a partial hilite will be applied to every match
+  on a line, not just the first match.
 
-  /partial <re>
+  /partial <regexp>
     is equivalent to
-  /def -Ph -F -mregexp -t<re>
+  /def -Ph -F -mregexp -t<regexp>
 
   See: attributes, patterns, HILITE, DEF
+
+@/prompt
+
+  Format:
+
+  /PROMPT <text>
+  ___________
+
+  Sets the prompt for the current socket to <text>, replacing any
+  existing prompt.  /prompt is most useful when called from a PROMPT
+  hook, like this:
+
+    /def -h"PROMPT *> " catch_prompt = /prompt %*
+
+  See: prompts, hooks (PROMPT)
 
 @/ps
 
@@ -1380,11 +1490,11 @@ have changed since the last version.
   This displays	the output of the system command "ps -gux" by echoing
   it locally, with no delays.
 
-  (3) /quote -0	:saw this: #-wTT 212-212
+  (3) /quote -0	:heard: #-wCave 2 *pages*
 
   This sends off this one line immediately:
 
-       :remembers this:	[The text of line #212 in world	TT's history]
+       :heard: [the last 2 lines from Cave that contain "pages"]
 
   (4) /quote :is using `/version
 
@@ -1398,7 +1508,7 @@ have changed since the last version.
 
   Format:
 
-  /RECALL [-w<world>] [-ligt] [-a<attrs>] [-m[012]] [#]<range> [<pattern>]
+  /RECALL [-w<world>] [-ligt] [-a<attrs>] [-m<style>] [#]<range> [<pattern>]
   ___________
 
   Recalls lines	from a history buffer.
@@ -1410,25 +1520,28 @@ have changed since the last version.
     -g		recall from global history (all	worlds,	and local)
     -i		recall from input history
     -t		display	timestamps on each line, using %{time_format}
-    -a<attr>	suppress specified attributes (e.g., -ag)
+    -a<attr>	suppress specified attributes (e.g., -ag shows gagged lines)
     -m<style>	matching style (simple, glob, or regexp).
     #		display	line numbers (must be last option, before <range>)
 
   <range> can have one of the formats below.  If <x> and <y> are plain
-  integers, they are interpreted as line numbers.  If they have the form
-  "hh:mm" or "hh:mm:ss", they are interpreted as time values (either
-  a period of time, or a clock time within the last 24 hours).
+  integers, they are interpreted as line numbers or counts.  If they
+  have the form "hh:mm" or "hh:mm:ss", they are interpreted as time
+  values (either a period of time, or a clock time within the last 24
+  hours).
 
-    <x>		Recall the last	<x> lines, or lines within the last
-		time period <x>.
+    /x		Recall the last <x> matching lines.
 
-    <x>-<y>	Recall lines starting with <x> and ending with <y>.
+    x		Recall the last	<x> lines, or lines within the
+		last time period <x>.
 
-    -<y>	If <y> is a line number, recall	the <y>th previous line;
+    x-y		Recall lines starting with <x> and ending with <y>.
+
+    -y		If <y> is a line number, recall	the <y>th previous line;
 		if <y> is a time, recall lines earlier than <y>.  Remember
 		to use "--" so "-<y>" isn't interpreted as an option.
 
-    <x>-	Recall lines after <x>.
+    x-		Recall lines after <x>.
 
   If <range> is	prefixed with "#", line	numbers	will be	displayed.
 
@@ -1438,7 +1551,7 @@ have changed since the last version.
 
   If lines are received while tf is suspended (by ^Z or /suspend) or
   in a subshell (by /sh), the timestamps on the lines will correspond
-  to the time tf resumed control.
+  to the time tf resumed control, not the time they actually arrived.
 
   See: history,	attributes, QUOTE, time_format
 
@@ -1537,8 +1650,8 @@ have changed since the last version.
 		    "/quote '",	and sockmload feature.	Implies	/restrict
 		    shell.
 
-    level 3: WORLD  Disallows all new user-defined connections.	 The
-		    TF builtins	/addworld and the "/world <host> <port>"
+    level 3: WORLD  Disallows all new user-defined connections.	 The TF
+		    builtins /addworld and the "/connect <host> <port>"
 		    semantics are disabled.  Implies /restrict file.
 
   /Restrict is most useful when placed in %{TFLIBDIR}/local.tf by an
@@ -1564,6 +1677,10 @@ have changed since the last version.
 
   If "-a" is specified, macros will be appended to <file>.  Otherwise,
   the macros will overwrite any existing contents of <file>.
+
+  The return value of /save is the number of the last macro listed,
+  or 0 if no macros were listed (because of error or none matched the
+  specified options).
 
   The standard macro library also defines the commands /savedef,
   /savebind, /savehilite, /savegag, /savetrig, and /savehook.  These
@@ -1602,7 +1719,7 @@ have changed since the last version.
   If "-n" is given, the	text will be transmitted without a terminating
   newline character.
 
-  The /send command does not execute the SEND hook.
+  The /send command never executes a SEND hook.
 
 @/set
 
@@ -1707,6 +1824,32 @@ have changed since the last version.
 
   See: general, expansion
 
+@/substitute
+
+  Format:
+
+  /SUBSTITUTE <text>
+  ___________
+
+  When called from a trigger (directly or indirectly), the triggering
+  text is replaced with <text>.  After a /substitute, it will appear
+  as if <text> came from the socket; the original text is lost.  In
+  particular, this means when /substitute is called from a fall-thru
+  trigger, triggers of lower priority will be compared against <text>
+  instead of the original text.
+
+  Example:
+
+  On a mud that uses MUFpage, you could set your #prepend string to
+  "##page>", and define a trigger like:
+
+  /def -ah -t"##page> *" hilite_mufpage = /substitute %-1
+
+  This will match no matter what page format the sender uses, and strip
+  off the "##page>" so you never see it.
+
+  See:  triggers
+
 @/suspend
 
   Format:
@@ -1726,6 +1869,20 @@ have changed since the last version.
 
   Connect to a line-based telnet host.  The telnet login port is used if
   <port> is omitted.
+
+  Note that TF operates strictly in line-by-line mode, but the telnet
+  server expects character-by-character mode.  So, simple shell operations
+  and anything else which is basically line-by-line should work without
+  much difficulty, but anything that tries to control the screen or expects
+  single keystroke input will _not_ work.  /telnet is mildly useful, but
+  not useful enough to alter the fundamental line-by-line nature of TF.
+  If you want a general telnet client, you know where to find it.
+
+  On most systems, you will notice that the shell echoes commands back
+  when you're connected with TF's /telnet.  This can usually be
+  elminated by typing "stty -echo".
+
+  See: ADDTELNET
 
 @/test
 
@@ -1758,9 +1915,10 @@ have changed since the last version.
 
   Side note: If I had used the naive solution:
      /def isalpha = /test "%*" =/ "[a-z]"
-  and then called isalpha with a quote (") as an argument, an expression
-  error would occur.  Using the local variable c prevents premature
-  expansion of the /test expression.
+  and then called isalpha with a quote (") as an argument, an
+  expression error would occur because "%*" would expand to """.  Using
+  the local variable c prevents premature expansion of the /test
+  expression.
 
   Expression evaluation	is described under "expressions".
 
@@ -1936,7 +2094,7 @@ have changed since the last version.
   Displays the TinyFugue version you're	running.
 
   The latest version of	TF should be available for anonymous ftp
-  from glia.biostr.washington.edu (128.95.10.115).
+  from ftp.tcp.com.
 
 @/watchdog
 
@@ -1984,6 +2142,7 @@ have changed since the last version.
 @/while
 @/do
 @/done
+@/while
 
   Format:
 
@@ -2027,47 +2186,20 @@ have changed since the last version.
 
   Format:
 
-  /WORLD [-lqn] [<worldname>]
+  /WORLD [-lqn] [<world>]
   /WORLD <host>	<port>
   ___________
 
-  Attempts to open a socket connected to the world <worldname>.
-  <worldname> must be one of the worlds	Fugue knows about through the
-  addworld command or through the config file.	If <worldname> is
-  omitted, the first defined world will	be used.  "/world <host> <port>"
-  will define a	temporary world	with the given address,	and try	to
-  connect to it.
+  If <world> is already connected, "/world <world>" is equivalent to
+  "/fg <world>", and brings <world> into the foreground.  If <world>
+  is not connected, "/world <world>" is equivalent to "/connect <world>",
+  and attempts to open a connection to that world.
 
-  Options:
+  The second form is equivalent to "/connect <host> <port>".
 
-    -l	Do not call the LOGIN hook (i.e., don't log in automatically).
-    -q	Quiet login (overrides %{quiet} flag).
-    -n	No world (puts all sockets in the background).
+  The -lqn options are the same as those for /fg and /connect.
 
-  If the socket can not be opened quickly, TF will print "Connection to
-  <world> in progress", and continue to try to connect in the
-  background, leaving you free to do other things.  If the connection
-  eventually succeeds, you will be switched to that socket (unless you
-  override this with a CONNECT hook); if it fails, you will be
-  notified.  There are a few systems that do not support this
-  nonblocking connect, but most do support it.
-
-  If Fugue succeeds in connecting, the following will occur:  if
-  there	is already a foreground	socket,	it will	be put in the
-  background; the new socket is	brought	into the foreground; the
-  WORLD	hook is	called;	the macro file for the new world is
-  loaded (if one is defined, and the %{sockmload} flag is on); the
-  CONNECT hook is called; and the LOGIN	hook is	called (if the
-  %{login} flag	is on, and there is a character and password defined).
-
-  When a pending /world succeeds, the switch is done by a CONNECT
-  hook defined by the standard library.  If you don't want to switch
-  automatically, you can either delete the default hook or define
-  your own (with a priority higher than 0).  If you define your own
-  but you still want the switch to occur, you must either make it
-  a fall-thru hook, or explicitly call "/world %1" from the hook.
-
-  See: worlds, sockets,	ADDWORLD, login
+  See: CONNECT, FG
 
 @bug
 @bugs
@@ -2097,21 +2229,23 @@ have changed since the last version.
     Ken Keys
     1820 Cottonwood Ave.
     Carlsbad, CA 92009
+    USA
 
 #
   If you have an old version of	TF, chances are	your bug has already been
   fixed.  The latest version of	TF should be available for anonymous ftp
-  from glia.biostr.washington.edu (128.95.10.115).
+  from ftp.tcp.com.
 
-  When reporting a problem or bug, please provide this information:
+  Send bug reports, questions, etc, to hawkeye@tcp.com.  When reporting
+  a problem or bug, please provide this information:
 
     The version of TF (type "/version" in tf).
     The operating system version (type "uname -a" in the shell).
-    If tf won't compile, send the Build.log file.
+    If tf won't compile or you have a core, send the Build.log file.
     If you have a bug or core, give me all error messages from tf.
     If you have a bug or core, tell me what you did or what happened
         before the problem, and if the problem is repeatable.
-    If you have a core, do _not_ send the core.
+    If you have a core, do NOT send the core.
 
   Usually, typing '^\' (control-backslash) will cause a core dump.
   This is not a bug.  You can disable this with /set ignore_sigquit=1,
@@ -2221,7 +2355,8 @@ have changed since the last version.
   Any input line that does not begin with '/' will be send directly to
   the foreground world, if there is one.  A line starting with more
   than one '/' will be send to the forground socket after having the
-  first '/' removed.
+  first '/' removed.  (Exception: lines may be caught with a SEND
+  hook before being sent; see "hooks").
 
   Any input line beginning with	a single '/' is a TF command.  If the
   word immediately following the '/' is the name of a macro, that
@@ -2339,6 +2474,11 @@ have changed since the last version.
     *
     R
 
+#Pn
+    Pn		     The value of the <n>th parenthesized subexpression
+		     matched in the last successful regexp comparison.
+		     See %Pn for more details.
+
 #
   The following	special	global variables can be	examined and set.
   Their	names, default values and their	special	meanings are:
@@ -2423,6 +2563,10 @@ have changed since the last version.
     cleardone	off  (flag) In visual mode, enables clearing of	input
 		     window when return	is pressed.
 
+#clock
+    clock	on   (flag) Display current time on status bar in
+		     visual mode.
+
 #gag
     gag		on   (flag) Enable gag attribute in triggers.  (See: GAG,
 		     NOGAG)
@@ -2473,7 +2617,7 @@ have changed since the last version.
 
 #lp
     lp		off  (flag) Displays partial lines as prompts, after a short
-		     timeout.  Useful for LP and Diku MUDs.
+		     timeout.  Useful for LP and Diku MUDs.  (See: prompts)
 
 #lpquote
     lpquote	off  (flag) If on, waits for LP	prompt for /quote and
@@ -2568,20 +2712,19 @@ have changed since the last version.
     snarf	off  (flag) Don't send empty lines to the server.
 
 #sockmload
-    sockmload	off  (flag) Load macro files on	socket moves ("/dokey
-		     socketf" "/dokey socketb",	or "/world" to an
-		     open socket).  Normally, a	world's	macro file
-		     is	loaded only when TF first connects to it.
-		     Note that "sockmload" is made obsolete by the
-		     WORLD hook.
+    sockmload	off  (flag) Load macro files when foregrounding a world
+		     ("/dokey socketf", "/dokey socketb", or "/fg").
+		     Normally, a world's macro file is loaded only when
+		     TF first connects to it.  (Note: the WORLD hook is
+		     more useful than sockmload).
 
-#clock
-    clock	on   (flag) Display current time on status bar in
-		     visual mode.
+#telopt
+    telopt	off  (flag) Display telnet option negotiations (for
+		     debugging purposes).
 
 #sub
     sub		off  "off"  (0): input is not expanded.
-		     "on"   (1): input "%;"s are expanded to newlines.
+		     "on"   (1): input "%;" is expanded to newlines.
 		     "full" (2): input undergoes full macro expansion.
 
 #time_format
@@ -2700,7 +2843,7 @@ have changed since the last version.
 
   Associated commands:
 
-  /world	open a socket connection to a world
+  /connect	open a socket connection to a world
   /dc		close (disconnect) a socket
   /login	enable automatic login
   /listsockets	display	a list of open sockets
@@ -2766,6 +2909,8 @@ have changed since the last version.
   global variable %{matching}.
 
 #comparison
+#simple
+#simple matching
   "simple"
 
   The pattern is compared directly to the string.  There are no
@@ -3075,6 +3220,8 @@ have changed since the last version.
     ----------	---------	   -------------------------
 #ACTIVITY
     ACTIVITY	world		   '% Activity in world	<world>'
+				   (called only the first time activity
+				   occurs on a given socket.)
 #BACKGROUND
     BACKGROUND	world		   '% Trigger in world <world>'
 #BAMF
@@ -3087,6 +3234,8 @@ have changed since the last version.
     CONNECT	world		   '% Connection to <world> established.'
 #DISCONNECT
     DISCONNECT	world		   '% Connection to <world> closed.'
+				   (Called if you "QUIT" or the socket closes,
+				    but not if you use /dc.)
 #KILL
     KILL	pid		   (process ends)
 #LOAD
@@ -3105,6 +3254,10 @@ have changed since the last version.
     PENDING	world		   '% Connection to <world> in progress.'
 #PROCESS
     PROCESS	pid		   (process starts)
+#PROMPT
+    PROMPT	text		   (<text> is an unterminated line; if lp==1
+				   and no more text is received, <text> will
+				   be assumed to be a prompt.)
 #REDEF
     REDEF	object_type, name  '% Redefined	<object_type> <name>'
 #RESIZE
@@ -3112,7 +3265,8 @@ have changed since the last version.
 #RESUME
     RESUME			   '% Resuming TinyFugue'
 #SEND
-    SEND	keyboard text	   (keyboard text sent to foreground socket)
+    SEND	text	   	   (text sent to foreground socket)
+				   (see note below (/help hooks))
 #SHADOW
     SHADOW	var_name	   '% Variable <var_name> overshadows global'
 #SHELL
@@ -3126,11 +3280,13 @@ Notes:
     The -w and -T options to /def can be used to restrict hooks
     to certain worlds or world types.
 
-    The	ACTIVITY hook is called	only the first time activity occurs on
-    a given socket.
-
-    The	DISCONNECT hook	will be	called if you use the MUD's "QUIT"
-    command.  You can use /dc to avoid this.
+    The SEND hook is called whenever text would be sent to the current
+    socket.  If a SEND hook matches the text that would be sent, the
+    text is not sent, and the hook is executed instead (previous
+    versions of TF required a gag to prevent sending of the original
+    text; this is no longer true).  SEND hooks are never called from
+    the /send command or from another SEND hook (to avoid an infinite
+    loop).
 
     When connecting to a new socket, these hooks will be called,
     in this order:  WORLD, LOAD (if %{sockmload} is on and there is
@@ -3144,17 +3300,18 @@ Notes:
 
   Examples:
 
-    1) /hook activity|disconnect {TT|SM} = /world %1
+    1) /hook ACTIVITY|DISCONNECT {TT|SM} = /world %1
 
-       will cause TF to	automatically switch to	TT or SM if activity
-       occurs or you get disconnected from either one.
+	will cause TF to automatically switch to TT or SM if either
+	becomes active or disconnected.
 
-    2) /def -ag	-hSEND = /send :%*
+    2) /def -t'tiny.mush' -hSEND mush_escape = /send $(/escape \%[ %*)
 
-       will effectively	add a ':' to the beginning of every line sent
-       to the socket from the keyboard,	by suppressing the transmission
-       of the original text and	using /send to transmit	a ':' followed
-       by the text.
+	will catch any line sent to a world of type 'tiny.mush',
+	escape all occurances of '%', '[' and '\' within that line,
+	and send the new line instead of the original.  This is
+	useful for avoiding unwanted interpretation of '%', '[', and
+        '\' on TinyMUSH servers.
 
   See also:  macros, triggers, patterns, priority
 
@@ -3167,21 +3324,13 @@ Notes:
   When more than one macro is matched by a trigger or hooked event, the
   following rules are used to select which of the macros will be run:
 
-  First, the priorities	are compared.  If any of the highest priority
-  macros are fall-thrus, they are added	to the set of Selected macros.
-  If any of the	highest	priority macros	are not	fall-thrus, they are
-  added	to the set of Random macros, and the search stops.
+  Macros are compared in order of decreasing priority.  Fall-thrus of a
+  given priority are compared before non-fall-thrus of the same priority.
 
-  If all of the	high priority macros were fall-thrus, the search
-  continues as described above,	for successively lower priorities.  The
-  search stops when a priority level is	found which contains at	least
-  one macro that is not	a fall-thru, or	all matching macros have been
-  exhausted.
-
-  Finally, all macros in the Selected set (i.e., high priority
-  fall-thrus) are executed.  If	there are any macros in	the Random set
-  (i.e., lower priority, non-fall-thrus), one of them is selected at
-  random and executed.
+  Each matching fall-thru macro is executed immediately when it is
+  found.  When the first matching non-fall-thru macro is found, all the
+  non-fall-thrus of equal priority are collected, and the search ends.
+  One of the non-fall-thrus is chosen at random and executed.
 
   See:	triggers, hooks
 
@@ -3208,8 +3357,9 @@ Notes:
   (however, if logging is enabled, the line will be logged).
 
   Color ("C<name>") allows you to specify black, red, green, yellow,
-  blue, magenta, or cyan.  "C" must be the last option in the attribute
-  string, and is followed by the <name> of the color.
+  blue, magenta, cyan, white, or 8 thru 15.  "C" must be the last
+  option in the attribute string, and is followed by the <name> of the
+  color.
 
   The hilite ('h') attribute is	special.  If specified,	the attributes
   listed in the	%{hiliteattr} variable will be combined	with the other
@@ -3218,26 +3368,28 @@ Notes:
       /echo -ahu foobar
   will display the word	"foobar" with reverse and underline attributes.
 
-  All attributes except	'n' may	be combined usefully; 'n' overrides all
-  others.  (Even gags can be combined with other attributes:  combining
-  'g' and 'B', for example, will gag the text initially, but will
-  display it as	bold if	is is recalled with /recall -ag.)
+  All attributes except 'n' may be combined usefully.  (Even gags can
+  be combined with other attributes:  combining 'g' and 'B', for
+  example, will gag the text initially, but will display it as bold if
+  is is recalled with /recall -ag.)
 
   Attributes not supported by your terminal type will be ignored.
 
 @color
 @colors
 
-  The color attribute ("C<name>") allows you to specify one of black,
-  red, green, yellow, blue, magenta, cyan, or white.  The standard tf
-  library defines a set of color codes suitible for extended ANSI
-  terminals.
+  The color attribute ("C<name>") allows you to specify any one of:
+  black, red, green, yellow, blue, magenta, cyan, white, or 8 thru 15.
+  The first eight are defined in stdlib.tf to work on extended ANSI
+  terminals.  The others (8-15) are defined in stdlib.tf to work with
+  the corresponding xterm colors.  They can all be redefined as
+  described below.
 
   You can use a	defined	color in any attribute string.	For example,
   to make /hilite'd text appear	blue, you can /set hiliteattr=Cblue.
 
-  Lighter versions of ANSI colors can be produced by combining bold
-  with a color; for example, light red is BCred.
+  Lighter versions of ANSI colors can be often produced by combining
+  bold with a color; for example, light red is BCred.
 
   Note: color will not work if you are running tf under iscreen,
   since iscreen does not understand the color codes.
@@ -3354,6 +3506,8 @@ Notes:
 
 #$(
 #$()
+#command subs
+#command substitution
   Command substitution.
   $(commands)
 
@@ -3408,8 +3562,12 @@ Notes:
       be silently ignored.  If there is no subexpression corresponding
       to <n>, the substitution will be ignored.  When parentheses
       are nested, <n> refers to the order of the opening parentheses.
+
       If the last regexp used was a trigger or hook, the %Pn subs will
-      be useable only within the body of the macro that was called.
+      be useable only within the body of the macro that was called.  The
+      %Pn subs will always refer to the first regexp match on the line,
+      even if a partial hilite (/def -P) causes the regexp to be applied
+      more than once.
 
 #%
 #%{
@@ -3579,8 +3737,8 @@ Notes:
     3 + X * 2		      13   3 + (5 * 2) = 13.
     "foo" =~ "bar"	       0   "foo" is not identical to "bar".
     name =/ 'hawk*'	       1   "Hawkeye" matches the pattern "hawk*".
-    visual & !(X < 0)	       1   %visual is nonzero, AND %X is NOT negative.
-    X =~ "+5"		       0   %X is interpreted as string "5".
+    visual & !(X < 0)	       1   visual is nonzero, AND %X is NOT negative.
+    X =~ "+5"		       0   X is interpreted as string "5".
     X == "+5"		       1   string "+5" is converted to integer 5.
 
 
@@ -3607,17 +3765,26 @@ Notes:
 			than i if i would put the cursor outside the buffer).
 #kbhead
   kbhead()	    (str) Return the current input up to the cursor.
+#kblen
+  kblen()	    (int) Length of current input line.
 #kbpoint
   kbpoint()	    (int) Return the current position of the cursor in input.
 #kbtail
   kbtail()	    (str) Return the current input after the cursor.
+#kbwordleft
+  kbwordleft()	    (int) Position of beginning of word.
+#kbwordright
+  kbwordright()	    (int) Position just past end of word.
+#mod
+  mod(i, j)	    (int) Remainder of i divided by j.
 #rand
   rand()	    (int) Random number in the range [0, system maximum].
   rand(j)	    (int) Random number in the range [0, j-1].
   rand(i,j)	    (int) Random number in the range [i, j].
 #regmatch
-  regmatch(s,t)	    (str) Compares string t to regexp s.  Subexpressions
-			can later be extracted using %Pn substitutions.
+  regmatch(s, t)    (str) Compares string t to regexp s.  Subexpressions
+			can later be extracted using the Pn variables or
+			%Pn substitutions.
 #strcat
   strcat(...)	    (str) Join strings (takes any number of string arguments).
 #strchr
@@ -3626,7 +3793,7 @@ Notes:
 #strcmp
   strcmp(s, t)	    (int) Returns a number less than, equal to, or greater
 			than 0 if s is lexicograpically less than, equal
-			to, or greater than n, respectively.
+			to, or greater than t, respectively.
 #strlen
   strlen(s)	    (int) Length of string.
 #strrchr
@@ -3772,9 +3939,10 @@ Notes:
 @utilities
 
   The library directory %{TFLIBDIR} contains many useful utility files
-  ending in ".tf".  To use any one of them, simply /load the file.  For
-  example, to enable ESC-TAB completion automatically, just "/load
-  completion.tf" from your .tfrc file.  Some of the more useful files:
+  ending in ".tf".  To use any one of them, simply /load or /require
+  the file.  For example, to enable ESC-TAB completion automatically,
+  just "/require completion.tf" from your .tfrc file.  Some of the more
+  useful files:
 
     alias.tf		/alias, etc: create commands without '/'.
     at.tf		/at:  execute commands at a specified time.
@@ -3802,6 +3970,7 @@ Notes:
 @stdlib.tf
 @lib
 @library
+@standard library
 
   When TF is started, macros are loaded from the standard macro library
   (stdlib.tf).  These macros are marked with the invisible option ("-i")
@@ -3915,11 +4084,26 @@ Backward compatible macros:
   to separate these prompts from normal text and display them
   correctly.
 
-  The recommended way to enable automatic prompt handling is to define
-  your worlds with one of the /addlp, /adddiku, or /addtelnet
-  commands.  The %{lp} flag will be turned on automatically when you
-  switch to such a world, and turned off for the other predefined world
-  types.  See: ADDWORLD.
+  The recommended way to use the %{lp} flag is to define your worlds
+  with one of the /addlp, /adddiku, or /addtelnet commands.  The %{lp}
+  flag will be turned on automatically when you switch to such a world,
+  and turned off for the other predefined world types.  See: ADDWORLD.
+
+  TF also provides a PROMPT hook, which allows you to tell it what
+  to look for in a prompt.  When an unterminated line is received,
+  the PROMPT hook is caled immediately.  If there is no match,
+  TF will use the timeout method described below (if %{lp} is on).
+  But if there is a matching PROMPT hook, TF will forget about the
+  line and let the hook deal with it.  By combining the PROMPT hook
+  with the /prompt command, you can recognize most prompts immediately
+  without having to use the %{lp} timing mechanism.  The typical way
+  of doing this is:
+
+    /def -h"PROMPT *> " catch_prompt = /prompt %*
+
+  So, whenever TF receives an unterminated line that matches "*> ",
+  catch_prompt will see it, and use /prompt to copy it to the current
+  prompt.
 
   If you're interested,	this is	how the	%{lp} flag works:  when	an
   unterminated block of	text arrives which is not followed by more
@@ -4040,8 +4224,14 @@ See also: prompts
 @timer
 @timing
 
-  See:  processes, REPEAT, QUOTE, utilities (/at, /tick), clock
+  See:  processes, REPEAT, QUOTE, utilities (/at, /tick), clock, TIME.
+
+@status
+@status bar
+@status line
+
+  See:  mail, insert, clock, log, sockets
 
 @rcs
-  $Id: tf.help,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $
+  $Id: tf.help,v 33000.2 1994/04/07 01:02:02 hawkeye Exp $
 @

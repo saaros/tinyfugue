@@ -1,4 +1,4 @@
-.\" $Id: tf.1.nroffman,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $
+.\" $Id: tf.1.nroffman,v 32101.1 1994/04/07 01:02:22 hawkeye Exp $
 .TH TF 1 LOCAL
 .SH NAME
 tf \- TinyFugue, a MUD client
@@ -28,7 +28,7 @@ Because I am continually adding new features and changing the code,
 Versions labled "alpha" are generally not as well tested as "beta" versions,
 so they have the potential for more bugs.
 For this reason, I leave some older versions at the ftp site where I distribute
-\fITF\fR (glia.biostr.washington.edu), which do not have all the current
+\fITF\fR (ftp.tcp.com), which do not have all the current
 features but may have fewer bugs than the most recent release.
 
 .SH "CHANGES FROM VERSION 3.1 TO 3.2"
@@ -240,9 +240,15 @@ seriously) as having too many features and being too damn big.
 The New York Times, the Christian Science Monitor and the Washington
 Post all refused to comment.
 
-.SH AUTHOR
+.SH COPYRIGHT
+
+Copyright (C) 1993, 1994 Ken Keys
+.sp
+\fITinyFugue\fR (aka "\fItf\fR") is protected under the terms of the GNU
+General Public License.  See the file "COPYING" for details.
+.sp
 \fITF\fR is currently supported by Ken Keys, who may be contacted by e-mail at
-kkeys@ucsd.edu or hawkeye@glia.biostr.washington.edu.
+kkeys@ucsd.edu or hawkeye@tcp.com.
 
 .SH BACKWARD INCOMPATIBILTIES
 .PP

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tf.h,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: tf.h,v 33000.3 1994/04/19 23:47:28 hawkeye Exp $ */
 
 #ifndef TF_H
 #define TF_H
@@ -39,7 +39,6 @@ extern int errno;           /* not all systems do this in <errno.h> */
 #define RESTRICT_FILE   2
 #define RESTRICT_WORLD  3
 
-typedef int  NDECL((EditFunc));
 typedef int  FDECL((Handler),(char *args));
 #define HANDLER(name) int FDECL(name,(char *args))
 typedef void NDECL((Toggler));
@@ -62,25 +61,54 @@ typedef struct Pattern {
 
 #define Queue List
 
-#define F_COLOR      000007
-#define F_UNDERLINE  000010
-#define F_REVERSE    000020
-#define F_FLASH      000040
-#define F_DIM        000100
-#define F_BOLD       000200
-#define F_HILITE     000400
-#define F_BELL       001000
+#define F_COLORMASK  0000017   /* low 4 bits are interpreted as an integer */
+#define F_COLOR      0000020   /* flag */
+#define F_UNDERLINE  0000040
+#define F_REVERSE    0000100
+#define F_FLASH      0000200
+#define F_DIM        0000400
+#define F_BOLD       0001000
+#define F_HILITE     0002000
+#define F_BELL       0004000
 
-#define F_GAG        002000
-#define F_NOHISTORY  004000
+#define F_GAG        0010000
+#define F_NOHISTORY  0020000
 #define F_SUPERGAG   (F_GAG | F_NOHISTORY)
-#define F_NORM       010000
+#define F_NORM       0040000
 
-#define F_NEWLINE    020000
-#define F_INDENT     040000
+#define F_INDENT     0100000
 
-#define F_HWRITE     001777
-#define F_ATTR       017777
+#define F_SIMPLE     (F_UNDERLINE | F_REVERSE | F_FLASH | F_DIM | F_BOLD)
+#define F_HWRITE     (F_SIMPLE | F_HILITE | F_COLOR | F_COLORMASK | F_BELL)
+#define F_ATTR       (F_HWRITE | F_SUPERGAG | F_NORM)
+
+
+/* Macros for defining and manipulating bit vectors of arbitrary length.
+ * We use an array of long because select() does, and these macros will be
+ * used with select() on systems without the FD_* macros.
+ */
+
+#ifndef NBBY
+# define NBBY 8                                   /* bits per byte */
+#endif
+#ifndef LONGBITS
+# define LONGBITS  (sizeof(long) * NBBY)          /* bits per long */
+#endif
+
+#define VEC_TYPEDEF(type, size) \
+    typedef struct { long bits[(((size) + LONGBITS - 1) / LONGBITS)]; } (type)
+
+#define VEC_SET(n,p)   ((p)->bits[(n)/LONGBITS] |= (1 << ((n) % LONGBITS)))
+#define VEC_CLR(n,p)   ((p)->bits[(n)/LONGBITS] &= ~(1 << ((n) % LONGBITS)))
+#define VEC_ISSET(n,p) ((p)->bits[(n)/LONGBITS] & (1 << ((n) % LONGBITS)))
+#ifndef HAVE_BCOPY   /* assume memcpy implies memset and bcopy implies bzero. */
+# define VEC_ZERO(p)   memset((char *)(p)->bits, '\0', sizeof(*(p)))
+#else
+# define VEC_ZERO(p)   bzero((char *)(p)->bits, sizeof(*(p)))
+#endif
+
+
+/* headers needed everywhere */
 
 #include "malloc.h"
 #include "tfio.h"

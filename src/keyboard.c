@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: keyboard.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: keyboard.c,v 33000.3 1994/04/03 00:51:32 hawkeye Exp $ */
 
 /**************************************************
  * Fugue keyboard handling.
@@ -20,10 +20,12 @@
 #include "util.h"
 #include "keyboard.h"
 #include "macro.h"		/* Macro, new_macro(), add_macro()... */
-#include "output.h"		/* iputs(), idel(), redraw()... */
+#include "output.h"		/* iput(), idel(), redraw()... */
 #include "history.h"		/* history_sub() */
 #include "socket.h"		/* movesock() */
 #include "expand.h"		/* process_macro() */
+#include "search.h"
+#include "commands.h"
 
 typedef struct KeyNode {
     int children;
@@ -41,27 +43,8 @@ static Macro   *FDECL(trie_insert,(KeyNode **root, Macro *macro, char *key));
 static KeyNode *FDECL(untrie_key,(KeyNode **root, char *s));
 
 /* The /dokey functions. (some are declared in output.h) */
-static int NDECL(dokey_newline);
-static int NDECL(dokey_recallb);
-static int NDECL(dokey_recallf);
-static int NDECL(dokey_searchb);
-static int NDECL(dokey_searchf);
-static int NDECL(dokey_socketb);
-static int NDECL(dokey_socketf);
-static int NDECL(dokey_bspc);
-static int NDECL(dokey_bword);
-static int NDECL(dokey_dline);
-static int NDECL(dokey_dch);
-static int NDECL(dokey_up);
-static int NDECL(dokey_down);
-static int NDECL(dokey_left);
-static int NDECL(dokey_right);
-static int NDECL(dokey_home);
-static int NDECL(dokey_end);
-static int NDECL(dokey_wleft);
-static int NDECL(dokey_wright);
-static int NDECL(dokey_deol);
-static int NDECL(dokey_lnext);
+
+int NDECL(dokey_dline);
 
 STATIC_BUFFER(scratch);                 /* buffer for manipulating text */
 STATIC_BUFFER(cat_keybuf);              /* Total buffer for /cat */
@@ -71,69 +54,57 @@ static KeyNode *keytrie = NULL;         /* root of keybinding trie */
 Stringp keybuf;                         /* input buffer */
 unsigned int keyboard_pos = 0;          /* current position in buffer */
 
-typedef struct NamedEditFunc {          /* Editing function */
-    char *name;
-    EditFunc *func;
-} NamedEditFunc;
-
-static NamedEditFunc efunc[] = {
-    { "RECALLB",  dokey_recallb  },
-    { "RECALLF",  dokey_recallf  },
-    { "SEARCHB",  dokey_searchb  },
-    { "SEARCHF",  dokey_searchf  },
-    { "SOCKETB",  dokey_socketb  },
-    { "SOCKETF",  dokey_socketf  },
-    { "BSPC"   ,  dokey_bspc     },
-    { "BWORD"  ,  dokey_bword    },
-    { "DLINE"  ,  dokey_dline    },
-    { "DCH"    ,  dokey_dch      },
-    { "REFRESH",  dokey_refresh  },
-    { "REDRAW" ,  redraw         },
-    { "UP"     ,  dokey_up       },
-    { "DOWN"   ,  dokey_down     },
-    { "RIGHT"  ,  dokey_right    },
-    { "LEFT"   ,  dokey_left     },
-    { "HOME"   ,  dokey_home     },
-    { "END"    ,  dokey_end      },
-    { "WLEFT"  ,  dokey_wleft    },
-    { "WRIGHT" ,  dokey_wright   },
-    { "DEOL"   ,  dokey_deol     },
-    { "PAGE"   ,  dokey_page     },
-    { "HPAGE"  ,  dokey_hpage    },
-    { "LINE"   ,  dokey_line     },
-    { "FLUSH"  ,  dokey_flush    },
-    { "LNEXT"  ,  dokey_lnext    },
-    { "NEWLINE",  dokey_newline  }
+/*
+ * Some dokey operations are implemented internally with names like
+ * DOKEY_FOO; others are implemented as macros in stdlib.tf with names
+ * like /dokey_foo.  handle_dokey_command() looks first for an internal
+ * function in efunc_table[], then for a macro, so all operations can be done
+ * with "/dokey foo".  Conversely, internally-implemented operations should
+ * have macros in stdlib.tf of the form "/def dokey_foo = /dokey foo",
+ * so all operations can be performed with "/dokey_foo".
+ */
+static char *efunc_table[] = {
+    "DLINE"  ,
+    "FLUSH"  ,
+    "HPAGE"  ,
+    "LINE"   ,
+    "LNEXT"  ,
+    "NEWLINE",
+    "PAGE"   ,
+    "RECALLB",
+    "RECALLF",
+    "REDRAW" ,
+    "REFRESH",
+    "SEARCHB",
+    "SEARCHF",
+    "SOCKETB",
+    "SOCKETF"
 };
 
-#define NFUNCS (sizeof(efunc) / sizeof(struct NamedEditFunc))
+enum {
+    DOKEY_DLINE  ,
+    DOKEY_FLUSH  ,
+    DOKEY_HPAGE  ,
+    DOKEY_LINE   ,
+    DOKEY_LNEXT  ,
+    DOKEY_NEWLINE,
+    DOKEY_PAGE   ,
+    DOKEY_RECALLB,
+    DOKEY_RECALLF,
+    DOKEY_REDRAW ,
+    DOKEY_REFRESH,
+    DOKEY_SEARCHB,
+    DOKEY_SEARCHF,
+    DOKEY_SOCKETB,
+    DOKEY_SOCKETF
+};
 
 void init_keyboard()
 {
     Stringinit(keybuf);
 }
 
-EditFunc *find_efunc(name)
-    char *name;
-{
-    int i;
-
-    for (i = 0; i < NFUNCS; i++)
-        if (cstrcmp(name, efunc[i].name) == 0) break;
-    return (i < NFUNCS) ? efunc[i].func : NULL;
-}
-
-/* Bind <cmd> to <key> */
-void set_ekey(key, cmd)
-    char *key, *cmd;
-{
-    Macro *macro;
-
-    macro = new_macro("", NULL, key, 0, NULL, cmd, 0, 0, 0, TRUE);
-    if (install_bind(macro)) add_macro(macro);
-}
-
-/* Find the macro assosiated with <key> sequence.  Pretty damn fast. */
+/* Find the macro assosiated with <key> sequence. */
 Macro *find_key(key)
     char *key;
 {
@@ -215,13 +186,6 @@ void unbind_key(macro)
     untrie_key(&keytrie, macro->bind);
 }
 
-void do_grab(aline)
-    Aline *aline;
-{
-    dokey_dline();
-    handle_input_string(aline->str, aline->len);
-}
-
 void handle_keyboard_input()
 {
     char *s, buf[64];
@@ -232,16 +196,16 @@ void handle_keyboard_input()
     static int place = 0;
 
     /* read a block of text */
-    if ((count = read(0, buf, 64)) < 0) {
+    if ((count = read(0, buf, sizeof(buf))) < 0) {
         if (errno == EINTR) return;
-        else die("%% Couldn't read keyboard.\n");
+        perror("handle_keyboard_input: read");
+        die("% Couldn't read keyboard.");
     }
     if (!count) return;
 
     for (i = 0; i < count; i++) {
-        /* make sure input is palatable */
-        buf[i] &= 0x7f;
-        if (buf[i] != '\0') Stringadd(current_input, buf[i]);
+        /* strip high bits and nul bytes */
+        if ((buf[i] &= 0x7F)) Stringadd(current_input, buf[i]);
     }
 
     s = current_input->s;
@@ -287,7 +251,6 @@ void handle_input_string(input, len)
     unsigned int len;
 {
     int i, j;
-    char save;
 
     if (len == 0) return;
     for (i = j = 0; i < len; i++) {
@@ -296,10 +259,8 @@ void handle_input_string(input, len)
         else if (isprint(input[i]))
             input[j++] = input[i];
     }
-    save = input[len = j];
-    input[len] = '\0';
-    if (echoflag || always_echo) iputs(input);
-    input[len] = save;
+    len = j;
+    if (echoflag || always_echo) iput(input, len);
 
     if (keyboard_pos == keybuf->len) {                    /* add to end */
         Stringncat(keybuf, input, len);
@@ -309,7 +270,7 @@ void handle_input_string(input, len)
         Stringncat(keybuf, input, len);
         SStringcat(keybuf, scratch);
     } else if (keyboard_pos + len < keybuf->len) {        /* overwrite */
-        for (i = 0, j = keyboard_pos; i < len; keybuf->s[j++] = input[i++]);
+        strncpy(keybuf->s + keyboard_pos, input, len);
     } else {                                              /* write past end */
         Stringterm(keybuf, keyboard_pos);
         Stringncat(keybuf, input, len);
@@ -322,46 +283,58 @@ void handle_input_string(input, len)
  *  Builtin key functions.
  */
 
-static int dokey_newline()
+int handle_dokey_command(args)
+    char *args;
 {
-    reset_outcount();
-    inewline();
-    /* If we actually process the input now, weird things will happen with
-     * current_command and mecho.  So we just set a flag and wait until the
-     * end of handle_command(), when things are cleaner.
-     */
-    input_is_complete = TRUE;
-    return 1; /* return value isn't really used */
+    char **ptr;
+    STATIC_BUFFER(buffer);
+    Macro *macro;
+
+    ptr = (char **)binsearch((GENERIC*)&args, (GENERIC*)efunc_table,
+        sizeof(efunc_table)/sizeof(char*), sizeof(char*), gencstrcmp);
+
+    if (!ptr) {
+        Stringcat(Stringcpy(buffer, "dokey_"), args);
+        if ((macro = find_macro(buffer->s))) return do_macro(macro, NULL);
+        else tfprintf(tferr, "%% No editing function %s", args); 
+        return 0;
+    }
+
+    switch (ptr - efunc_table) {
+
+    case DOKEY_DLINE:      return dokey_dline();
+    case DOKEY_FLUSH:      return dokey_flush();
+    case DOKEY_HPAGE:      return dokey_hpage();
+    case DOKEY_LINE:       return dokey_line();
+    case DOKEY_LNEXT:      return literal_next = TRUE;
+
+    case DOKEY_NEWLINE:
+        reset_outcount();
+        inewline();
+        /* If we actually process the input now, weird things will happen with
+         * current_command and mecho.  So we just set a flag and wait until the
+         * end of handle_command(), when things are cleaner.
+         */
+        return input_is_complete = TRUE;  /* return value isn't really used */
+
+    case DOKEY_PAGE:       return dokey_page();
+    case DOKEY_RECALLB:    return recall_input(-1, FALSE);
+    case DOKEY_RECALLF:    return recall_input(1, FALSE);
+    case DOKEY_REDRAW:     return redraw();
+    case DOKEY_REFRESH:    return logical_refresh();
+    case DOKEY_SEARCHB:    return recall_input(-1, TRUE);
+    case DOKEY_SEARCHF:    return recall_input(1, TRUE);
+    case DOKEY_SOCKETB:    return movesock(-1);
+    case DOKEY_SOCKETF:    return movesock(1);
+    default:               return 0; /* impossible */
+    }
 }
 
-static int dokey_recallb()
+int dokey_dline()
 {
-    return recall_input(-1, FALSE);
-}
-
-static int dokey_recallf()
-{
-    return recall_input(1, FALSE);
-}
-
-static int dokey_searchb()
-{
-    return recall_input(-1, TRUE);
-}
-
-static int dokey_searchf()
-{
-    return recall_input(1, TRUE);
-}
-
-static int dokey_socketb()
-{
-    return movesock(-1);
-}
-
-static int dokey_socketf()
-{
-    return movesock(1);
+    Stringterm(keybuf, keyboard_pos = 0);
+    logical_refresh();
+    return keyboard_pos;
 }
 
 int do_kbdel(place)
@@ -371,7 +344,7 @@ int do_kbdel(place)
         Stringcpy(scratch, keybuf->s + keyboard_pos);
         SStringcat(Stringterm(keybuf, place), scratch);
         idel(place);
-    } else if (keyboard_pos < place && place < keybuf->len) {
+    } else if (keyboard_pos < place && place <= keybuf->len) {
         Stringcpy(scratch, keybuf->s + place);
         SStringcat(Stringterm(keybuf, keyboard_pos), scratch);
         idel(place);
@@ -379,96 +352,26 @@ int do_kbdel(place)
     return keyboard_pos;
 }
 
-static int dokey_bspc()
-{
-    return do_kbdel(keyboard_pos - 1);
-}
+#define isinword(c) (isalnum(c) || (wordpunct && strchr(wordpunct, (c))))
 
-static int dokey_dch()
-{
-    return do_kbdel(keyboard_pos + 1);
-}
-
-static int dokey_bword()
+int do_kbwordleft()
 {
     int place;
 
     place = keyboard_pos - 1;
-    while (place >= 0 && isspace(keybuf->s[place])) place--;
-    while (place >= 0 && !isspace(keybuf->s[place])) place--;
-    return do_kbdel(place + 1);
+    while (place >= 0 && !isinword(keybuf->s[place])) place--;
+    while (place >= 0 && isinword(keybuf->s[place])) place--;
+    return place + 1;
 }
 
-static int dokey_dline()
-{
-    Stringterm(keybuf, keyboard_pos = 0);
-    logical_refresh();
-    return keyboard_pos;
-}
-
-static int dokey_up()
-{
-    return newpos(keyboard_pos - getwrap());
-}
-
-static int dokey_down()
-{
-    return newpos(keyboard_pos + getwrap());
-}
-
-static int dokey_left()
-{
-    return newpos(keyboard_pos - 1);
-}
-
-static int dokey_right()
-{
-    return newpos(keyboard_pos + 1);
-}
-
-static int dokey_home()
-{
-    return newpos(0);
-}
-
-static int dokey_end()
-{
-    return newpos(keybuf->len);
-}
-
-static int dokey_wleft()
-{
-    int place;
-
-    place = keyboard_pos - 1;
-    while(isspace(keybuf->s[place])) place--;
-    while(!isspace(keybuf->s[place])) if (--place < 0) break;
-    place++;
-    return newpos(place);
-}
-
-static int dokey_wright()
+int do_kbwordright()
 {
     int place;
 
     place = keyboard_pos;
-    while (!isspace(keybuf->s[place]))
-        if (++place > keybuf->len) break;
-    while (isspace(keybuf->s[place])) place++;
-    return newpos(place);
-}
-
-static int dokey_deol()
-{
-    int place = keybuf->len;
-    Stringterm(keybuf, keyboard_pos);
-    idel(place);
-    return keyboard_pos;
-}
-
-static int dokey_lnext()
-{
-    return literal_next = TRUE;
+    while (place < keybuf->len && !isinword(keybuf->s[place])) place++;
+    while (place < keybuf->len && isinword(keybuf->s[place])) place++;
+    return place;
 }
 
 int handle_input_line()
@@ -492,20 +395,13 @@ int handle_input_line()
     }
 
     if (kecho) tfprintf(tferr, "%s%S", kprefix, scratch);
-    else if (scratch->len == 0 && visual) oputs("");
 
-    if (*scratch->s == '^') {
+    if (*scratch->s == '^')
         return history_sub(scratch->s + 1);
-    }
 
     record_input(scratch->s);
 
-    if (scratch->len)
-        return process_macro(scratch->s, NULL, sub);
-    else if (!snarf)
-        return send_line("\n", 1);
-    else
-        return 0;
+    return process_macro(scratch->s, NULL, sub);
 }
 
 #ifdef DMALLOC

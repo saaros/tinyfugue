@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: macro.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: macro.c,v 33000.12 1994/04/17 04:16:13 hawkeye Exp $ */
 
 
 /**********************************************
@@ -31,31 +31,38 @@
 #include "commands.h"
 
 int invis_flag = 0;
+int send_hook_level = 0;
 
+static Macro  *FDECL(macro_spec,(char *args));
 static int     FDECL(macro_match,(Macro *spec, Macro *macro, Pattern *aux_pat));
-static Pattern *FDECL(make_aux_patterns,(Macro *spec));
+static int     FDECL(check_macro_patterns,(Macro *spec));
+static int     FDECL(check_and_add_macro,(Macro *spec));
+static Pattern*FDECL(make_aux_patterns,(Macro *spec));
 static Macro  *FDECL(match_exact,(int hook, char *str, int flags));
-static Macro  *FDECL(find_match,(int hook, char *text));
 static int     FDECL(list_defs,(TFILE *file, Macro *spec, int abbrev));
 static int     FDECL(parse_hook,(char **args));
-static int     FDECL(run_matches,(Macro *matches, char *text, int hook));
+static int     FDECL(run_match,(Macro *macro, char *text, int hook,
+                     Aline *aline));
 static char   *FDECL(world_subs,(char *src));
 static String *FDECL(hook_name,(int hook));
 static String *FDECL(attr2str,(int attrs));
+static int     FDECL(rpricmp,(CONST Macro *m1, CONST Macro *m2));
 static void    FDECL(nuke_macro,(Macro *macro));
+static void    NDECL(unkill_macro);
+static int     FDECL(install_bind,(struct Macro *spec));
 
 extern char *enum_match[];
 extern char *enum_color[];
 
 #define HASH_SIZE 197
 
-static List maclist[1];                /* complete macro list */
-static List triglist[1];               /* head of trigger macro list */
-static List hooklist[1];               /* head of hook macro list */
+static List maclist[1];                /* list of all (live) macros */
+static List triglist[1];               /* list of macros by trigger */
+static List hooklist[1];               /* list of macros by hook */
+static Macro *dead_macros;             /* head of list of dead macros */
 static HashTable macro_table[1];       /* macros hashed by name */
-static World NoWorld, AnyWorld;        /* explicit "no" and "don't care" */
-static int mnum = 1;                   /* macro ID number */
-static Macro *dead_macros = NULL;      /* head of dead macro list */
+static World NoWorld, AnyWorld;        /* explicit "no" and "any" */
+static int mnum = 0;                   /* macro ID number */
 
 /* It is IMPORTANT that these be in the same order as enum Hooks */
 static char *hook_table[] = {
@@ -76,6 +83,7 @@ static char *hook_table[] = {
   "MORE",
   "PENDING",
   "PROCESS",
+  "PROMPT",
   "REDEF",
   "RESIZE",
   "RESUME",
@@ -88,12 +96,11 @@ static char *hook_table[] = {
 #define NONNULL(str) ((str) ? (str) : "")
 
 /* These macros allow easy sharing of trigger and hook code. The address and
- * dereference is necessary to allow the expression to be used portably as
- * an lvalue.
+ * dereference in PATTERN allows it to be used portably as an lvalue.
  */
-#define MAC(Node)       ((Macro *)(Node->data))
-#define PATTERN(Node)   (*(hook ? &MAC(Node)->hargs : &MAC(Node)->trig))
-#define FLAG(mac)       ( (hook ? MAC(node)->hook   : (int)MAC(node)->attr))
+#define MAC(Node)       ((Macro *)(Node->datum))
+#define PATTERN(Node)   (    *(hook ? &MAC(Node)->hargs : &MAC(Node)->trig))
+#define FLAG(mac)       ((int)(hook ?  MAC(node)->hook  :  MAC(node)->attr))
     /* FLAG() can't be lvalue */
 
 
@@ -112,11 +119,11 @@ void init_macros()
 short parse_attrs(argp)      /* convert attr string to bitfields */
     char **argp;
 {
-    short attrs = 0, color;
+    short attrs, color;
 
     for (attrs = 0; **argp; ++*argp) {
         switch(**argp) {
-        case 'n':  break;
+        case 'n':  attrs |= F_NORM;      break;
         case 'G':  attrs |= F_NOHISTORY; break;
         case 'g':  attrs |= F_GAG;       break;
         case 'u':  attrs |= F_UNDERLINE; break;
@@ -129,22 +136,22 @@ short parse_attrs(argp)      /* convert attr string to bitfields */
         case 'C':
             if ((color = enum2int(++*argp, enum_color, "color")) < 0)
                 return -1;
-            return attrs | color;
+            return attrs | F_COLOR | color;
         default:
             tfprintf(tferr, "%S: invalid display attribute '%c'",
                 error_prefix(), **argp);
             return -1;
         }
     }
-    return attrs;
+    return (attrs & F_NORM) ? F_NORM : attrs;
 }
 
 /* Convert hook string to bit vector; return -1 on error. */
 static int parse_hook(argp)
     char **argp;
 {
-    char *in, state;
-    int hook, result = 0;
+    char *in, state, **hook;
+    int result = 0;
 
     if (!**argp) return ALL_HOOKS;
     for (state = '|'; state == '|'; *argp = in) {
@@ -154,14 +161,14 @@ static int parse_hook(argp)
         if (strcmp(*argp, "*") == 0) result = ALL_HOOKS;
         if (strcmp(*argp, "0") == 0) result = 0;
         else {
-            hook = binsearch(*argp, (GENERIC *)hook_table, NUM_HOOKS,
-                sizeof(char*), cstrcmp);
-            if (hook < 0) {
+            hook = (char **)binsearch((GENERIC*)argp, (GENERIC *)hook_table,
+                NUM_HOOKS, sizeof(char*), gencstrcmp);
+            if (!hook) {
                 tfprintf(tferr, "%S: invalid hook event \"%s\"",
                     error_prefix(), *argp);
                 return -1;
             }
-            result |= (1 << hook);
+            result |= (1 << (hook - hook_table));
         }
     }
     if (!state) --*argp;
@@ -176,7 +183,7 @@ static int parse_hook(argp)
  * values for numeric fields are -1 or 0, depending on the field; for
  * strings, NULL.
  */
-Macro *macro_spec(args)
+static Macro *macro_spec(args)
     char *args;
 {
     Macro *spec;
@@ -185,10 +192,10 @@ Macro *macro_spec(args)
 
     spec = (Macro *)MALLOC(sizeof(struct Macro));
     spec->name = spec->body = spec->bind = NULL;
+    spec->numnode = spec->trignode = spec->hooknode = spec->hashnode = NULL;
     init_pattern(&spec->trig, NULL, 0);
     init_pattern(&spec->hargs, NULL, 0);
     init_pattern(&spec->wtype, NULL, 0);
-    spec->numnode = spec->trignode = spec->hooknode = spec->bucketnode = NULL;
     spec->world = NULL;
     spec->pri = spec->prob = spec->shots = spec->hook = spec->fallthru = -1;
     spec->mflag = -1;
@@ -203,9 +210,6 @@ Macro *macro_spec(args)
         switch (opt) {
         case 'm':
             if ((num = enum2int(ptr, enum_match, "-m")) < 0) {
-                error = TRUE;
-            } else if (spec->mflag >= 0 && spec->mflag != num) {
-                cmderror("-m is only allowed once, before pattern options.");
                 error = TRUE;
             } else {
                 spec->mflag = num;
@@ -233,13 +237,11 @@ Macro *macro_spec(args)
             break;
         case 't':
             free_pattern(&spec->trig);
-            if (spec->mflag < 0) spec->mflag = matching;
-            if (!init_pattern(&spec->trig, ptr, spec->mflag)) error = TRUE;
+            init_pattern(&spec->trig, ptr, 0);  /* can't fail */
             break;
         case 'T':
             free_pattern(&spec->wtype);
-            if (spec->mflag < 0) spec->mflag = matching;
-            if (!init_pattern(&spec->wtype, ptr, spec->mflag)) error = TRUE;
+            init_pattern(&spec->wtype, ptr, 0);  /* can't fail */
             break;
         case 'w':
             if (!*ptr || strcmp(ptr, "+") == 0) spec->world = &AnyWorld;
@@ -251,12 +253,9 @@ Macro *macro_spec(args)
             break;
         case 'h':
             free_pattern(&spec->hargs);
-            if (spec->mflag < 0) spec->mflag = matching;
             if ((spec->hook = parse_hook(&ptr)) < 0) error = TRUE;
-            else {
-                ptr = stripstr(ptr);
-                if (!init_pattern(&spec->hargs, *ptr ? ptr : NULL, spec->mflag))
-                    error = TRUE;
+            else if (*ptr) {
+                init_pattern(&spec->hargs, ptr, 0);  /* can't fail */
             }
             break;
         case 'a': case 'f':
@@ -268,11 +267,7 @@ Macro *macro_spec(args)
                 tfprintf(tferr, "%S: -P number must be between 0 and %d.",
                     error_prefix(), NSUBEXP - 1);
                 error = TRUE;
-            } else if (spec->mflag >= 0 && spec->mflag != 2) {
-                cmderror("-P requires -mregexp.");
-                error = TRUE;
             } else {
-                spec->mflag = 2;
                 while (isdigit(*ptr)) ++ptr;
                 if ((spec->subattr |= parse_attrs(&ptr)) < 0) error = TRUE;
             }
@@ -300,14 +295,33 @@ Macro *macro_spec(args)
     if (!*ptr) return spec;
     spec->name = ptr;
     if ((ptr = strchr(ptr, '='))) {
-        *ptr = '\0';
-        spec->body = ptr + 1;
-        stripstr(spec->body);
-        spec->body = (*spec->body) ? STRDUP(spec->body) : NULL;
+        *ptr++ = '\0';
+        ptr = stripstr(ptr);
+        spec->body = (*ptr) ? STRDUP(ptr) : NULL;
     }
-    stripstr(spec->name);
+    spec->name = stripstr(spec->name);
     spec->name = *spec->name ? STRDUP(spec->name) : NULL;
     return spec;
+}
+
+static int check_macro_patterns(spec)
+    Macro *spec;
+{
+    int result = 1;
+
+    if (spec->attr & F_NORM) spec->attr = 0;
+    if (spec->subattr & F_NORM) spec->subattr = 0;
+    if (spec->mflag < 0) {
+        spec->mflag = (spec->subattr) ? 2 : matching;
+    } else if (spec->subattr && spec->mflag != 2) {
+        cmderror("-P requires -mregexp");
+        return 0;
+    }
+
+    if (!init_pattern(&spec->trig,  spec->trig.str,  spec->mflag)) result = 0;
+    if (!init_pattern(&spec->hargs, spec->hargs.str, spec->mflag)) result = 0;
+    if (!init_pattern(&spec->wtype, spec->wtype.str, spec->mflag)) result = 0;
+    return result;
 }
 
 
@@ -325,16 +339,15 @@ static Pattern *make_aux_patterns(spec)
     Macro *spec;
 {
     static Pattern aux[3] = { {NULL, NULL}, {NULL, NULL}, {NULL, NULL} };
-    Pattern *result = aux;
 
     free_pattern(&aux[0]);
     free_pattern(&aux[1]);
     free_pattern(&aux[2]);
     if (spec->mflag < 0) spec->mflag = matching;
-    if      (!init_pattern(&aux[0], spec->name, spec->mflag)) result = NULL;
-    else if (!init_pattern(&aux[1], spec->body, spec->mflag)) result = NULL;
-    else if (!init_pattern(&aux[2], spec->bind, spec->mflag)) result = NULL;
-    return result;
+    if      (!init_pattern(&aux[0], spec->name, spec->mflag)) return NULL;
+    else if (!init_pattern(&aux[1], spec->body, spec->mflag)) return NULL;
+    else if (!init_pattern(&aux[2], spec->bind, spec->mflag)) return NULL;
+    return aux;
 }
 
 /* macro_match
@@ -356,9 +369,11 @@ static int macro_match(spec, macro, aux)
     if (spec->subexp >= 0 && macro->subexp < 0) return 1;
     if (spec->subattr && (spec->subattr & macro->subattr) == 0) return 1;
     if (spec->world) {
-        if (spec->world == &NoWorld && macro->world) return 1;
-        else if (spec->world == &AnyWorld && !macro->world) return 1;
-        else if (spec->world != macro->world) return 1;
+        if (spec->world == &NoWorld) {
+            if (macro->world) return 1;
+        } else if (spec->world == &AnyWorld) {
+            if (!macro->world) return 1;
+        } else if (spec->world != macro->world) return 1;
     }
     if (spec->bind) {
         if (!*spec->bind) {
@@ -422,55 +437,6 @@ static Macro *match_exact(hook, str, flags)   /* find single exact match */
     return node ? MAC(node) : NULL;
 }
 
-/* find one or more matches for a hook or trig */
-static Macro *find_match(hook, text)
-    char *text;
-    int hook;
-{
-    Macro *first = NULL, *last = NULL;
-    Macro **first_non_fall_thru_p = &first;
-    int num = 0;                            /* count of non-fall-thrus */
-    int lowerlimit = -1;                    /* lowest priority that can match */
-    ListEntry *node;
-
-    /* Macros are sorted by decreasing priority, so we can stop looking
-     * after we find a non-fall-thru match and check other macros of
-     * equal priority.
-     */
-    node = hook ? hooklist->head : triglist->head;
-    for ( ; node && MAC(node)->pri >= lowerlimit; node = node->next) {
-        if (hook && !(MAC(node)->hook & hook)) continue;
-        if (MAC(node)->world && MAC(node)->world != xworld()) continue;
-        if (MAC(node)->wtype.str) {
-            if (!xworld()) continue;
-            if (!patmatch(&MAC(node)->wtype, xworld()->type, MAC(node)->mflag, FALSE))
-                continue;
-        }
-        if ((hook && !MAC(node)->hargs.str) ||
-          patmatch(&PATTERN(node), text, MAC(node)->mflag, FALSE)) {
-            if (!MAC(node)->fallthru) {
-                lowerlimit = MAC(node)->pri;
-                num++;
-            }
-            if (!first) first = last = MAC(node);
-            if (!num) first_non_fall_thru_p = &last->tnext;
-            last->tnext = MAC(node);
-            last = last->tnext;
-        }
-    }
-    if (!first) return NULL;
-    last->tnext = NULL;
-    if (num > 1) {
-        /* select exactly one of the non fall-thrus. */
-        num = (int)(RANDOM() % num);
-        while (num--)
-            *first_non_fall_thru_p = (*first_non_fall_thru_p)->tnext;
-        (*first_non_fall_thru_p)->tnext = NULL;
-    }
-    return first;
-}
-
-
 /**************************
  * Routines to add macros *
  **************************/
@@ -484,15 +450,15 @@ Macro *new_macro(name, trig, bind, hook, hargs, body, pri, prob, attr, invis)
     int error = 0;
 
     new = (Macro *) MALLOC(sizeof(struct Macro));
-    new->numnode = new->trignode = new->hooknode = new->bucketnode = NULL;
+    new->numnode = new->trignode = new->hooknode = new->hashnode = NULL;
     new->name = STRDUP(name);
     new->body = STRDUP(body);
     new->bind = STRDUP(bind);
     new->hook = hook;
     new->mflag = matching;
-    if (!init_pattern(&new->trig, trig, new->mflag)) error = 1;
-    if (!init_pattern(&new->hargs, hargs, new->mflag)) error = 1;
-    init_pattern(&new->wtype, NULL, matching);
+    if (!init_pattern(&new->trig, trig, new->mflag)) error++;
+    if (!init_pattern(&new->hargs, hargs, new->mflag)) error++;
+    init_pattern(&new->wtype, NULL, 0);
     new->world = NULL;
     new->pri = pri;
     new->prob = prob;
@@ -511,17 +477,20 @@ Macro *new_macro(name, trig, bind, hook, hargs, body, pri, prob, attr, invis)
 }
 
 /* add_macro
- * Installs a permanent Macro in appropriate structures.  Macro is
- * assumed to be error- and conflict-free.
+ * Install a permanent Macro in appropriate structures.
+ * Only the keybinding is checked for conflicts; everything else is assumed
+ * assumed to be error- and conflict-free.  If the install_bind fails, the
+ * macro will be nuked.
  */
 int add_macro(macro)
     Macro *macro;
 {
     if (!macro) return 0;
-    macro->num = mnum++;
+    if (*macro->bind && !install_bind(macro)) return 0;
+    macro->num = ++mnum;
     macro->numnode = inlist((GENERIC *)macro, maclist, NULL);
     if (*macro->name)
-        macro->bucketnode = hash_insert((GENERIC *)macro, macro_table);
+        macro->hashnode = hash_insert((GENERIC *)macro, macro_table);
     if (macro->trig.str)
         macro->trignode = sinsert((GENERIC *)macro, triglist, (Cmp *)rpricmp);
     if (macro->hook)
@@ -531,14 +500,14 @@ int add_macro(macro)
 }
 
 /* compares m1 and m2 based on reverse priority and fallthru */
-int rpricmp(m1, m2)
+static int rpricmp(m1, m2)
     CONST Macro *m1, *m2;
 {
     if (m2->pri != m1->pri) return m2->pri - m1->pri;
     else return m2->fallthru - m1->fallthru;
 }
 
-int install_bind(spec)          /* install Macro's binding in key structures */
+static int install_bind(spec)   /* install Macro's binding in key structures */
     Macro *spec;
 {
     Macro *macro;
@@ -560,14 +529,10 @@ int install_bind(spec)          /* install Macro's binding in key structures */
     return 0;
 }
 
-/* handle_def_command
- * Does error and conflict checking on a macro spec, sets "don't care"
- * fields to default values, and calls add_macro() to install it.
- */
 int handle_def_command(args)
     char *args;
 {
-    Macro *spec, *macro = NULL;
+    Macro *spec;
 
     if (!*args || !(spec = macro_spec(args))) return 0;
     if (spec->name && *spec->name == '@') {
@@ -581,7 +546,22 @@ int handle_def_command(args)
         "%s", spec->name);
     }
 
-    if (spec->world == &AnyWorld) spec->world = NULL;
+    return check_and_add_macro(spec);
+}
+
+/* Error checking, set "don't care" fields to default values, and add_macro().
+ * If error checking fails, spec will be nuked.
+ */
+static int check_and_add_macro(spec)
+    Macro *spec;
+{
+    Macro *macro = NULL;
+
+    if (!check_macro_patterns(spec)) {
+        nuke_macro(spec);
+        return 0;
+    }
+    if (spec->world == &AnyWorld) spec->world = xworld();
     if (spec->pri < 0) spec->pri = 1;
     if (spec->prob < 0) spec->prob = 100;
     if (spec->shots < 0) spec->shots = 0;
@@ -590,17 +570,16 @@ int handle_def_command(args)
     if (spec->fallthru < 0) spec->fallthru = 0;
     if (spec->mflag < 0) spec->mflag = matching;
     if (spec->attr & F_NORM || !spec->attr) spec->attr = F_NORM;
-    if (!spec->bind) spec->bind = STRDUP("");
-    if (!spec->name) spec->name = STRDUP("");
-    if (!spec->body) spec->body = STRDUP("");
+    if (!spec->bind) spec->bind = STRNDUP("", 0);
+    if (!spec->name) spec->name = STRNDUP("", 0);
+    if (!spec->body) spec->body = STRNDUP("", 0);
 
     if (*spec->name && (macro = find_macro(spec->name)) && !redef) {
         tfprintf(tferr, "%% Macro %s already exists", spec->name);
         nuke_macro(spec);
         return 0;
     }
-    if (*spec->bind && !install_bind(spec)) return 0;
-    add_macro(spec);
+    if (!add_macro(spec)) return 0;
     if (macro) {
         do_hook(H_REDEF, "%% Redefined %s %s", "%s %s", "macro", spec->name);
         kill_macro(macro);
@@ -619,7 +598,14 @@ int add_hook(args, body)                  /* define a new Macro with hook */
     return add_macro(new_macro("", NULL, "", hook, args, body, 0,100,F_NORM,0));
 }
 
-int handle_edit_command(args)                      /* edit an existing Macro */
+/* /edit: Edit an existing macro.
+ * Actually editing the macro in place is quite hairy, so instead we
+ * remove the old one, create a replacement and add it.  If the replacement
+ * fails, we re-add the original.  BUG(?): In either case, the macro gets
+ * renumbered.  We can't just re-use the old number, because the macro
+ * would be out of order in maclist.
+ */
+int handle_edit_command(args)
     char *args;
 {
     Macro *spec, *macro;
@@ -654,50 +640,39 @@ int handle_edit_command(args)                      /* edit an existing Macro */
         return 0;
     }
 
-    if (spec->body && *spec->body) {
-        FREE(macro->body);
-        macro->body = STRDUP(spec->body);
+    kill_macro(macro);
+
+    FREE(spec->name);
+    spec->name = STRDUP(macro->name);
+
+    if (!spec->body) spec->body = STRDUP(macro->body);
+    if (!spec->bind) spec->bind = STRDUP(macro->bind);
+    if (!spec->wtype.str && macro->wtype.str)
+        spec->wtype.str = STRDUP(macro->wtype.str);
+    if (!spec->trig.str && macro->trig.str)
+        spec->trig.str = STRDUP(macro->trig.str);
+    if (spec->hook < 0) {
+        spec->hook = macro->hook;
+        if (macro->hargs.str) spec->hargs.str = STRDUP(macro->hargs.str);
     }
-    if (spec->wtype.str) {
-        free_pattern(&macro->wtype);
-        macro->wtype.str = spec->wtype.str; spec->wtype.str = NULL;
-        macro->wtype.re  = spec->wtype.re;  spec->wtype.re  = NULL;
+    if (!spec->world) spec->world = macro->world;
+    else if (spec->world == &AnyWorld) spec->world = xworld();
+    if (spec->pri < 0) spec->pri = macro->pri;
+    if (spec->prob < 0) spec->prob = macro->prob;
+    if (spec->shots < 0) spec->shots = macro->shots;
+    if (spec->fallthru < 0) spec->fallthru = macro->fallthru;
+    if (spec->mflag < 0) spec->mflag = macro->mflag;
+    if (spec->attr == 0) spec->attr = macro->attr;
+    if (spec->subexp < 0) {
+        spec->subexp = macro->subexp;
+        spec->subattr = macro->subattr;
     }
-    if (spec->trig.str) {
-        free_pattern(&macro->trig);
-        macro->trig.str = spec->trig.str; spec->trig.str = NULL;
-        macro->trig.re  = spec->trig.re;  spec->trig.re  = NULL;
-        if (spec->pri >= 0) {                    /* re-link if pri changed */
-            unlist(macro->trignode, triglist);
-            macro->trignode = sinsert((GENERIC*)macro, triglist, (Cmp*)rpricmp);
-        }
-    }
-    if (spec->hook > 0) {
-        macro->hook = spec->hook;
-        free_pattern(&macro->hargs);
-        macro->hargs.str = spec->hargs.str; spec->hargs.str = NULL;
-        macro->hargs.re  = spec->hargs.re;  spec->hargs.re  = NULL;
-        if (spec->pri >= 0) {                    /* re-link if pri changed */
-            unlist(macro->hooknode, hooklist);
-            macro->hooknode = sinsert((GENERIC*)macro, hooklist, (Cmp*)rpricmp);
-        }
-    }
-    if (spec->world && spec->world != &AnyWorld) macro->world = spec->world;
-    if (spec->pri >= 0) macro->pri = spec->pri;
-    if (spec->prob >= 0) macro->prob = spec->prob;
-    if (spec->shots >= 0) macro->shots = spec->shots;
-    if (spec->fallthru >= 0) macro->fallthru = spec->fallthru;
-    if (spec->attr & F_NORM) macro->attr = F_NORM;
-    else if (spec->attr & F_GAG) macro->attr = spec->attr & F_SUPERGAG;
-    else if (spec->attr) macro->attr = spec->attr;
-    if (spec->subexp >= 0) {
-        macro->subexp = spec->subexp;
-        if (spec->subattr & F_NORM) macro->subattr = F_NORM;
-        else if (spec->subattr) macro->subattr = spec->subattr;
-    }
-    macro->invis = (spec->invis) ? 1 : 0;
-    nuke_macro(spec);
-    return 1;
+
+    if (check_and_add_macro(spec)) return spec->num;
+
+    /* Edit failed.  Restore original macro. */
+    unkill_macro();
+    return 0;
 }
 
 
@@ -713,10 +688,18 @@ void kill_macro(macro)            /* remove all references to macro */
     macro->tnext = dead_macros;
     dead_macros = macro;
     unlist(macro->numnode, maclist);
-    if (*macro->name) hash_remove(macro->bucketnode, macro_table);
+    if (*macro->name) hash_remove(macro->hashnode, macro_table);
     if (macro->trig.str) unlist(macro->trignode, triglist);
     if (macro->hook) unlist(macro->hooknode, hooklist);
     if (*macro->bind) unbind_key(macro);
+}
+
+static void unkill_macro()        /* undo the last kill_macro() */
+{
+    Macro *macro = dead_macros;
+    macro->dead = FALSE;
+    dead_macros = macro->tnext;
+    add_macro(macro);
 }
 
 void nuke_dead_macros()
@@ -750,7 +733,7 @@ int remove_macro(str, flags, byhook)        /* delete a macro */
     int flags;
     int byhook;
 {
-    Macro *macro = NULL;
+    Macro *macro;
     char *args;
 
     if (byhook) {
@@ -776,29 +759,31 @@ int handle_purge_command(args)                /* delete all specified macros */
     Macro *spec;
     ListEntry *node, *next;
     Pattern *aux_pat;
+    int result = 1;
 
-    if (!(spec = macro_spec(args))) return 0;
-    if (!(aux_pat = make_aux_patterns(spec))) return 0;
-    for (node = maclist->head; node; node = next) {
-        next = node->next;
-        if (macro_match(spec, MAC(node), aux_pat) == 0) kill_macro(MAC(node));
+    if (!(spec = macro_spec(args))) result = 0;
+    if (result && !(check_macro_patterns(spec))) result = 0;
+    if (result && !(aux_pat = make_aux_patterns(spec))) result = 0;
+    if (result) {
+        for (node = maclist->head; node; node = next) {
+            next = node->next;
+            if (macro_match(spec, MAC(node), aux_pat) == 0)
+                kill_macro(MAC(node));
+        }
     }
     regrelease();
-    nuke_macro(spec);
-    return 1;
+    if (spec) nuke_macro(spec);
+    return result;
 }
 
 int handle_undefn_command(args)                 /* delete macro by number */
     char *args;
 {
-    char *ptr;
     int num, result = 1;
     ListEntry *node;
 
-    for (ptr = args; ptr; ptr = strchr(ptr, ' ')) {
-        while (isspace(*ptr)) ptr++;
-        num = atoi(ptr);
-        if (num > 0 && num < mnum) {
+    while (*args) {
+        if ((num = numarg(&args)) >= 0) {
             for (node = maclist->head; node; node = node->next) {
                 /* We know the macros are in decending numeric order. */
                 if (MAC(node)->num <= num) break;
@@ -808,9 +793,6 @@ int handle_undefn_command(args)                 /* delete macro by number */
                 tfprintf(tferr, "%% No macro with number %d", num);
                 result = 0;
             }
-        } else {
-            tfprintf(tferr, "%% Invalid number %d", num);
-            result = 0;
         }
     }
     return result;
@@ -839,7 +821,8 @@ static String *hook_name(hook)        /* convert hook bitfield to string */
     STATIC_BUFFER(buf);
 
     Stringterm(buf, 0);
-    for (n = 0; n < NUM_HOOKS; n++) {
+    for (n = 0; n < (int)NUM_HOOKS; n++) {
+                 /* ^^^^^ Some brain dead compilers need that cast */
         if (!((1 << n) & hook)) continue;
         if (buf->len) Stringadd(buf, '|');
         Stringcat(buf, hook_table[n]);
@@ -862,7 +845,7 @@ static String *attr2str(attrs)
     if (attrs & F_BELL)      Stringadd(buffer, 'b');
     if (attrs & F_HILITE)    Stringadd(buffer, 'h');
     if (attrs & F_COLOR)     Stringadd(buffer, 'C');
-    if (attrs & F_COLOR)     Stringcat(buffer, enum_color[attrs & F_COLOR]);
+    if (attrs & F_COLOR)     Stringcat(buffer, enum_color[attrs & F_COLORMASK]);
     return buffer;
 }
 
@@ -875,11 +858,15 @@ static int list_defs(file, spec, abbrev)    /* list all specified macros */
     ListEntry *node;
     Pattern *aux_pat;
     STATIC_BUFFER(buffer);
+    int result = 0;
 
     if (!(aux_pat = make_aux_patterns(spec))) return 0;
+
+    /* maclist is in reverse numeric order, so we start from tail */
     for (node = maclist->tail; node; node = node->prev) {
         p = MAC(node);
         if (macro_match(spec, p, aux_pat) != 0) continue;
+        result = p->num;
 
         if (abbrev) {
             Sprintf(buffer, 0, "%% %d: ", p->num);
@@ -895,7 +882,7 @@ static int list_defs(file, spec, abbrev)    /* list all specified macros */
                 if (p->attr & F_HILITE)    Stringcat(buffer, "(hilite) ");
                 if (p->attr & F_COLOR)
                     Sprintf(buffer, SP_APPEND, "(%s) ",
-                        enum_color[p->attr & F_COLOR]);
+                        enum_color[p->attr & F_COLORMASK]);
             } else if (p->trig.str) Stringcat(buffer, "(trig) ");
             if (p->trig.str)
                 Sprintf(buffer, SP_APPEND, "'%q' ", '\'', p->trig.str);
@@ -919,11 +906,12 @@ static int list_defs(file, spec, abbrev)    /* list all specified macros */
             } else if (p->attr & ~F_NORM) {
                 Sprintf(buffer, SP_APPEND, "-a%S ", attr2str(p->attr));
             }
-            if (p->subexp >= 0)
+            if (p->subattr & ~F_NORM)
                 Sprintf(buffer, SP_APPEND, "-P%d%S ", (int)p->subexp,
                     attr2str(p->subattr & F_HWRITE));
             if (p->trig.str || p->hargs.str || p->wtype.str)
-                Sprintf(buffer, SP_APPEND, "-m%s ", enum_match[p->mflag]);
+                if (file || p->mflag != matching)
+                    Sprintf(buffer, SP_APPEND, "-m%s ", enum_match[p->mflag]);
             if (p->wtype.str)
                 Sprintf(buffer, SP_APPEND, "-T'%q' ", '\'', p->wtype.str);
             if (p->world)
@@ -950,7 +938,7 @@ static int list_defs(file, spec, abbrev)    /* list all specified macros */
         else oputs(buffer->s);
     }
     regrelease();
-    return 1;
+    return result;
 }
 
 int save_macros(args)              /* write specified macros to file */
@@ -958,8 +946,8 @@ int save_macros(args)              /* write specified macros to file */
 {
     char *p;
     Macro *spec;
-    TFILE *file;
-    int result;
+    TFILE *file = NULL;
+    int result = 1;
     char *mode = "w";
 
     if (strncmp(args, "-a", 2) == 0 && (args[2] == '\0' || isspace(args[2]))) {
@@ -968,15 +956,20 @@ int save_macros(args)              /* write specified macros to file */
     }
     for (p = args; *p && !isspace(*p); p++);
     if (*p) *p++ = '\0';
-    if (!(spec = macro_spec(p))) return 0;
-    if (!(file = tfopen(tfname(args, NULL), mode))) {
+    if (!(spec = macro_spec(p))) result = 0;
+    if (result && !(check_macro_patterns(spec))) result = 0;
+    if (result && !(file = tfopen(expand_filename(args), mode))) {
         operror(args);
-        return 0;
+        result = 0;
     }
-    oprintf("%% %sing macros to %s", *mode=='w' ? "Writ" : "Append", file->name);
-    result = list_defs(file, spec, FALSE);
-    tfclose(file);
-    nuke_macro(spec);
+
+    if (result) {
+        oprintf("%% %sing macros to %s", *mode=='w' ? "Writ" : "Append",
+            file->name);
+        result = list_defs(file, spec, FALSE);
+    }
+    if (file) tfclose(file);
+    if (spec) nuke_macro(spec);
     return result;
 }
 
@@ -985,15 +978,16 @@ int handle_list_command(args)             /* list specified macros on screen */
 {
     Macro *spec;
     int abbrev = FALSE;
-    int result;
+    int result = 1;
 
     if (strncmp(args, "-s", 2) == 0 && (args[2] == '\0' || isspace(args[2]))) {
         args += 2;
         abbrev = TRUE;
     }
-    if (!(spec = macro_spec(args))) return 0;
-    result = list_defs(NULL, spec, abbrev);
-    nuke_macro(spec);
+    if (!(spec = macro_spec(args))) result = 0;
+    if (result && !check_macro_patterns(spec)) result = 0;
+    if (result) result = list_defs(NULL, spec, abbrev);
+    if (spec) nuke_macro(spec);
     return result;
 }
 
@@ -1060,6 +1054,10 @@ char *macro_body(name)                            /* get body of macro */
  * Routines to check triggers and hooks *
  ****************************************/
 
+/* do_hook
+ * Call macros that match <idx> and optionally the filled-in <argfmt>, and
+ * prints the message in <fmt>.  Returns the number of matches that were run.
+ */
 #ifdef HAVE_STDARG
 short do_hook(int idx, char *fmt, char *argfmt, ...)     /* do a hook event */
 #else
@@ -1073,30 +1071,26 @@ va_dcl
     char *fmt, *argfmt;
 #endif
     va_list ap;
-    Macro *macro, *matches;
-    short attr = 0;
+    int ran = 0;
+    Aline *aline = NULL;
     Stringp buf, args;    /* do_hook is re-entrant; can't use static buffers */
 
-    Stringinit(buf);
-    Stringinit(args);
-
+    if (hookflag) {
+        Stringinit(args);
 #ifdef HAVE_STDARG
-    va_start(ap, argfmt);
+        va_start(ap, argfmt);
 #else
-    va_start(ap);
-    idx = va_arg(ap, int);
-    fmt = va_arg(ap, char *);
-    argfmt = va_arg(ap, char *);
+        va_start(ap);
+        idx = va_arg(ap, int);
+        fmt = va_arg(ap, char *);
+        argfmt = va_arg(ap, char *);
 #endif
-    vSprintf(args, 0, argfmt, ap);
-    va_end(ap);
-
-    matches = find_match((1<<idx), args->s);
-    for (macro = matches; macro; macro = macro->tnext) {
-        attr |= macro->attr;
+        vSprintf(args, 0, argfmt, ap);
+        va_end(ap);
     }
 
     if (fmt) {
+        Stringinit(buf);
 #ifdef HAVE_STDARG
         va_start(ap, argfmt);
 #else
@@ -1107,74 +1101,136 @@ va_dcl
 #endif
         vSprintf(buf, 0, fmt, ap);
         va_end(ap);
-        oputa(new_aline(buf->s, attr | F_NEWLINE));
+        aline = new_aline(buf->s, 0);
     }
 
-    if (matches && hookflag) run_matches(matches, args->s, TRUE);
-    Stringfree(buf);
-    Stringfree(args);
-    return attr;
+    if (hookflag) {
+        if (idx == H_SEND) send_hook_level++;
+        ran = find_and_run_matches(args->s, (1<<idx), aline);
+        if (idx == H_SEND) send_hook_level--;
+        Stringfree(args);
+    }
+
+    if (fmt) {
+        oputa(aline);
+        Stringfree(buf);
+    }
+    return ran;
 }
 
-/* check_trigger
- * Creates an aline for text, and compares text against triggers, storing
- * found attributes in the aline.
+/* Find and run one or more matches for a hook or trig.
+ * <text> is text to be matched.  If <hook> is 0, this looks for a trigger;
+ * if <hook> is nonzero, it is a hook bit flag.  If <aline> is non-NULL,
+ * attributes of matching macros will be applied to <aline>.
  */
-Aline *check_trigger(text, need)
+int find_and_run_matches(text, hook, aline)
     char *text;
-    int need;   /* does caller need the aline result? */
-{
-    Macro *macro, *matches;
+    int hook;
     Aline *aline;
+{
+    Macro *first = NULL;
+    int num = 0;                            /* # of non-fall-thrus */
+    int ran = 0;                            /* # of executed macros */
+    int lowerlimit = -1;                    /* lowest priority that can match */
+    ListEntry *node, *next;
 
-    aline = need ? new_aline(text, F_NEWLINE) : NULL;
-    if (!(borg || hilite || gag)) return aline;
-    matches = find_match(0, text);
-    if (aline) {
-        for (macro = matches; macro; macro = macro->tnext) {
-            aline->attrs |= macro->attr;
-            if (macro->subattr) {
-                int i;
-                regexp *re = macro->trig.re;
-                short n = macro->subexp;
-                if (!aline->partials) {
-                    aline->partials = (short*)MALLOC(sizeof(short)*aline->len);
-                    for (i = 0; i < aline->len; ++i) aline->partials[i] = 0;
-                }
-                for (i = re->startp[n] - text; i < re->endp[n] - text; ++i)
-                    aline->partials[i] |= macro->subattr;
+    /* Macros are sorted by decreasing priority, with fall-thrus first.
+     * So, we search the list, running each matching fall-thru as we find it;
+     * when we find a matching non-fall-thru, we collect any other non-fall-
+     * thru matches of the same priority, and select one to run.
+     */
+    node = hook ? hooklist->head : triglist->head;
+    for ( ; node && MAC(node)->pri >= lowerlimit; node = next) {
+        next = node->next;
+        if (hook && !(MAC(node)->hook & hook)) continue;
+        if (MAC(node)->world && MAC(node)->world != xworld()) continue;
+        if (MAC(node)->wtype.str) {
+            if (!xworld()) continue;
+            if (!patmatch(&MAC(node)->wtype, xworld()->type, MAC(node)->mflag, FALSE))
+                continue;
+        }
+        if ((hook && !MAC(node)->hargs.str) ||
+          patmatch(&PATTERN(node), text, MAC(node)->mflag, FALSE)) {
+            if (MAC(node)->fallthru) {
+                /* fall-thru matches can be run right away */
+                ran += run_match(MAC(node), text, hook, aline);
+                if (aline && !hook)
+                    text = aline->str;    /* in case of /substitute */
+            } else {
+                /* collect list of non-fall-thru matches */
+                lowerlimit = MAC(node)->pri;
+                num++;
+                MAC(node)->tnext = first;
+                first = MAC(node);
             }
         }
     }
-    if (matches && borg && run_matches(matches, text, FALSE))
-        background_hook(text);
-    return aline;
+
+    /* run exactly one of the non fall-thrus. */
+    if (num > 0) {
+        int i, r;
+        for (i = r = RRAND(0, num-1); i; i--) {
+            if (!first->tnext) {   /* debug */
+                tfprintf(tferr, "internal error: find_and_run_matches(): NULL at i=%d, num=%d, r=%d", i, num, r);
+                break;
+            }
+            first = first->tnext;
+        }
+        /* use regexp of the selected macro, not the last matched macro */
+        reghold(hook ? first->hargs.re : first->trig.re, text, FALSE);
+        ran += run_match(first, text, hook, aline);
+    }
+
+    regrelease();  /* we can't let reginfo point to possibly dying data */
+    return ran;
 }
 
-/* run macros that have been selected by a trigger or hook */
-static int run_matches(matches, text, hook)
-    Macro *matches;
-    char *text;
-    int hook;
+/* run a macro that has been selected by a trigger or hook */
+static int run_match(macro, text, hook, aline)
+    Macro *macro;   /* macro to run */
+    char *text;     /* argument text */
+    int hook;       /* hook vector */
+    Aline *aline;   /* aline to which attributes are applied */
 {
-    Macro *macro, *next;
-    int result = 0;
+    int ran = 0;
 
-    for (macro = matches; macro; macro = next) {
-        next = macro->tnext;
-        if (macro->prob < 100 && RANDOM() % 100 >= macro->prob) continue;
-        if (macro->shots && !--macro->shots) kill_macro(macro);
-        reghold(hook ? macro->hargs.re : macro->trig.re, text, FALSE);
-        if (*macro->body) result += do_macro(macro, text);
+    /* Apply attributes (full and partial) to aline. */
+    if (aline) {
+        regexp *re = macro->trig.re;
+        aline->attrs |= macro->attr;
+        if (macro->subattr && aline->len && re->startp[0] < re->endp[0]) {
+            int i;
+            short n = macro->subexp;
+            if (!aline->partials) {
+                aline->partials = (short*)MALLOC(sizeof(short)*aline->len);
+                for (i = 0; i < aline->len; ++i) aline->partials[i] = 0;
+            }
+            do {
+                for (i = re->startp[n] - text; i < re->endp[n] - text; ++i)
+                    aline->partials[i] |= macro->subattr;
+            } while (*re->endp[0] &&
+                patmatch(&macro->trig, re->endp[0], macro->mflag, FALSE));
+        }
     }
-    regrelease();
-    return result;
+
+    /* Execute the macro. */
+    if ((hook && hookflag) || (!hook && borg)) {
+        if (macro->prob == 100 || RRAND(0, 99) < macro->prob) {
+            if (macro->shots && !--macro->shots) kill_macro(macro);
+            if (*macro->body) {
+                do_macro(macro, text);
+                ran++;
+            }
+        }
+    }
+
+    return ran;
 }
 
 #ifdef DMALLOC
 void free_macros()
 {
-    while (maclist->head) nuke_macro((Macro *)maclist->head->data);
+    while (maclist->head) nuke_macro((Macro *)maclist->head->datum);
     free_hash(macro_table);
 }
 #endif

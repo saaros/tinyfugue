@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: dstring.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: dstring.c,v 33000.3 1994/04/19 23:35:00 hawkeye Exp $ */
 
 
 /*********************************************************************
@@ -25,7 +25,7 @@
 
 #define ALLOCSIZE 32L
 
-#define lcheck(str) do { if ((int)(str)->len > (int)(str)->maxlen) resize(str); } while(0)
+#define lcheck(str) do { if ((str)->len >= (str)->size) resize(str); } while(0)
 
 static void  FDECL(resize,(Stringp str));
 
@@ -38,7 +38,7 @@ String *dStringinit(str, file, line)
     str->s = (char *) dmalloc(ALLOCSIZE * sizeof(char), file, line);
     str->s[0] = '\0';
     str->len = 0;
-    str->maxlen = ALLOCSIZE - 1;
+    str->size = ALLOCSIZE;
     return str;
 }
 #else
@@ -48,7 +48,7 @@ String *Stringinit(str)
     str->s = (char *) MALLOC(ALLOCSIZE * sizeof(char));
     str->s[0] = '\0';
     str->len = 0;
-    str->maxlen = ALLOCSIZE - 1;
+    str->size = ALLOCSIZE;
     return str;
 }
 #endif
@@ -58,19 +58,16 @@ void Stringfree(str)
 {
     FREE(str->s);
     str->s = NULL;
-    str->maxlen = str->len = 0;
+    str->size = str->len = 0;
 }
 
 static void resize(str)
     Stringp str;
 {
-    int size;
-
-    size = (str->len + 1) / ALLOCSIZE + 1;
-    str->maxlen = size * ALLOCSIZE - 1;
+    str->size = (str->len / ALLOCSIZE + 1) * ALLOCSIZE;
     str->s = (str->s)
-        ? (char*) REALLOC(str->s, ((str->maxlen + 1) * sizeof(char)))
-        : (char*) MALLOC((str->maxlen + 1) * sizeof(char));
+        ? (char*) REALLOC(str->s, str->size * sizeof(char))
+        : (char*) MALLOC(str->size * sizeof(char));
 }
 
 String *Stringadd(str, c)
@@ -123,22 +120,23 @@ String *SStringcpy(dest, src)
 {
     dest->len = src->len;
     lcheck(dest);
-    strcpy(dest->s, src->s);
+    strcpy(dest->s, src->s ? src->s : "");
     return dest;
 }
 
+#if 0  /* not used */
 String *Stringncpy(dest, src, len)
     Stringp dest;
     char *src;
     unsigned int len;
 {
-    dest->len = strlen(src);
-    if (len < dest->len) dest->len = len;
+    dest->len = len;
     lcheck(dest);
     strncpy(dest->s, src, dest->len);
     dest->s[dest->len] = '\0';
     return dest;
 }
+#endif
 
 String *Stringcat(dest, src)
     Stringp dest;
@@ -159,7 +157,7 @@ String *SStringcat(dest, src)
 
     dest->len += src->len;
     lcheck(dest);
-    strcpy(dest->s + len, src->s);
+    strcpy(dest->s + len, src->s ? src->s : "");
     return dest;
 }
 
@@ -175,17 +173,5 @@ String *Stringncat(dest, src, len)
     strncpy(dest->s + oldlen, src, len);
     dest->s[dest->len] = '\0';
     return dest;
-}
-
-/* make sure buffer ends in <n> newlines */
-String *newline_package(buffer, n)
-    Stringp buffer;
-    unsigned int n;
-{
-    while (buffer->len > 0 && buffer->s[buffer->len - 1] == '\n')
-        buffer->len--;
-    buffer->s[buffer->len] = '\0';
-    Stringnadd(buffer, '\n', n);
-    return buffer;
 }
 

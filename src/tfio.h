@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.h,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: tfio.h,v 33000.1 1994/03/14 16:53:28 hawkeye Exp $ */
 
 #ifndef TFIO_H
 #define TFIO_H
@@ -27,6 +27,7 @@
 /* Sprintf flags */
 #define SP_APPEND   1
 
+/* TF's analogue of stdio's FILE */
 typedef struct TFILE {
     int type;
     char *name;
@@ -34,7 +35,7 @@ typedef struct TFILE {
         struct Queue *queue;
         FILE *fp;
     } u;
-} TFILE;                       /* TF's analogue of stdio's FILE */
+} TFILE;
 
 extern TFILE *tfout;           /* ... stdout */
 extern TFILE *tferr;           /* ... stderr */
@@ -48,7 +49,7 @@ extern TFILE *tferr;           /* ... stderr */
 
 extern String *NDECL(error_prefix);
 extern char   *FDECL(tfname,(char *name, char *macname));
-extern String *FDECL(expand_filename,(Stringp str));
+extern char   *FDECL(expand_filename,(char *str));
 extern TFILE  *FDECL(tfopen,(char *name, char *mode));
 extern int     FDECL(tfjump,(TFILE *file, long offset));
 extern int     FDECL(tfclose,(TFILE *file));
@@ -61,4 +62,6 @@ extern void    VDECL(tfprintf,(TFILE *file, char *fmt, ...));
 extern char    NDECL(igetchar);
 extern String *FDECL(tfgetS,(Stringp str, TFILE *file));
 
+extern void    FDECL(flushout_queue,(struct Queue *queue));
+ 
 #endif /* TFIO_H */

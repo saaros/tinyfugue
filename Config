@@ -20,8 +20,11 @@
 
 ### File Locations.
 # Default locations for files are /usr/local/{bin,lib} if writable,
-#   or $HOME/{bin,lib} if they exist, or $HOME.  To change any file
-#   location, uncomment and edit the appropriate line below.
+#   or $HOME/{bin,lib} if they exist, or $HOME.  So you probably don't
+#   need to edit this.  To change any file location, uncomment and edit
+#   the appropriate line below.
+# Do NOT under any circumstances attempt to install files in the build
+#   tree (i.e., the directory unpacked from the archive).
 # If SYMLINK is defined, it will be used as the name of a symbolic link
 #   to the executable file.
 # For public installation, I recommend uncommenting the names below.
@@ -41,8 +44,8 @@
 # uses nroff format; set MANTYPE=cat if your man uses pre-formatted
 # vt100 "catman" pages.  Default is "cat".
 
-# MANTYPE='nroff'
-# MANPAGE='/usr/local/man/man1/tf.1'
+# MANTYPE="nroff"
+# MANPAGE="/usr/local/man/man1/tf.1"
 
 
 ### Flags.
@@ -84,10 +87,11 @@ FLAGS=''
 
 
 ### Mail Directory.
-# Normally, this autoconfig script can find the mail directory by itself.
-# You only need to set this if you keep mail in an unusual place.
-# If your system keeps incoming mail in the recipient's home, see
-# the instructions in README.
+# If the MAIL environment variable is not set at runtime, TF will assume
+# mail is kept in a central spool directory.  Normally, the autoconfig script
+# can find the mail directory by itself; you only need to set MAILDIR below
+# if your system keeps mail in an unusual place.  If it keeps incoming mail
+# in the recipient's home, see the example in tf.lib/local.tf.sample.
 
 # MAILDIR='/weird/mail/directory'
 
@@ -103,8 +107,8 @@ FLAGS=''
 
 
 ### Stripping.
-# If you do not specify STRIP here, autoconfig will use "strip" on the
-# tf binary.  Set STRIP='' to disable stripping.
+# Autoconfig will use "strip" on the tf binary unless you tell it otherwise.
+# Set STRIP='' to disable stripping.
 
 # STRIP=''
 

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: port.h,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: port.h,v 33000.5 1994/04/16 05:11:49 hawkeye Exp $ */
 
 #ifndef PORT_H
 #define PORT_H
@@ -65,10 +65,53 @@
 extern void free();
 #endif
 
-#ifndef RANDOM             /* True only if Build couldn't find it in libc.a. */
-# define RANDOM rand       /* This is guaranteed to exist under ANSI. */
-# define SRANDOM srand
+#ifdef USE_STRING_H
+# include <string.h>
+#else
+# ifdef USE_STRINGS_H
+#  include <strings.h>
+# endif
 #endif
+
+#ifndef HAVE_STRCHR
+# ifdef HAVE_INDEX
+#  define strchr(s, c) index((s), (c))
+# endif
+#endif
+
+#ifndef HAVE_MEMCPY
+# ifdef HAVE_BCOPY
+#  define memcpy(dst, src, len) bcopy((src), (dst), (len))
+# endif
+#endif
+
+/* ANSI allows struct assignment, but K&R1 didn't. */
+#define structcpy(dst, src) \
+    memcpy((GENERIC*)&(dst), (GENERIC*)&(src), sizeof(src))
+
+/*
+ * RRAND(lo,hi) returns a random integer in the range [lo,hi].
+ * RAND() returns a random integer in the range [0,TF_RAND_MAX].
+ * SRAND() seeds the generator.
+ * If random() exists, use it, because it is better than rand().
+ * If not, we'll have to use rand(); if RAND_MAX isn't defined,
+ * we'll have to use the modulus method instead of the division method.
+ */
+
+#ifdef HAVE_RANDOM
+# define RAND          random
+# define SRAND         srandom
+# define RRAND(lo,hi)  (RAND() % ((hi)-(lo)+1) + (lo))
+#else
+# define RAND         rand
+# define SRAND        srand
+# ifdef RAND_MAX
+#  define RRAND(lo,hi)  ((RAND() / (RAND_MAX / ((hi)-(lo)+1) + 1)) + (lo))
+# else
+#  define RRAND(lo,hi)  (RAND() % ((hi)-(lo)+1) + (lo))
+# endif
+#endif
+
 
 /* These shouldn't change anything, they just prevent warnings. */
 #ifdef MISSING_DECLS

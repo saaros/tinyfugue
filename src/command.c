@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: command.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: command.c,v 33000.6 1994/03/23 01:48:53 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -36,24 +36,20 @@
 char  *current_command = NULL;
 TFILE *current_file = NULL;
 int    current_lineno = 0;
-int    log_on = 0;
 int    concat = 0;
 int wnmatch = 4, wnlines = 5, wdmatch = 2, wdlines = 5;
 
 extern int restrict;
 
-STATIC_BUFFER(pattern);
-STATIC_BUFFER(body);
+static char *pattern, *body;
 
-static int  FDECL(do_watch,(char *args, char *name, int *wlines, int *wmatch, int *flag));
+static int  FDECL(do_watch,(char *args, char *name, int *wlines, int *wmatch, int flag));
 static void FDECL(split_args,(char *args));
-static int  FDECL(read_file_commands,(TFILE *file, int tinytalk));
-static int  FDECL(do_set,(char *args, int exportflag, int localflag));
 
 static HANDLER (handle_beep_command);
 static HANDLER (handle_bind_command);
 static HANDLER (handle_cat_command);
-static HANDLER (handle_dokey_command);
+static HANDLER (handle_connect_command);
 static HANDLER (handle_echo_command);
 static HANDLER (handle_eval_command);
 static HANDLER (handle_gag_command);
@@ -73,7 +69,7 @@ static HANDLER (handle_save_command);
 static HANDLER (handle_set_command);
 static HANDLER (handle_setenv_command);
 static HANDLER (handle_sh_command);
-static HANDLER (handle_shift_command);
+static HANDLER (handle_substitute_command);
 static HANDLER (handle_suspend_command);
 static HANDLER (handle_time_command);
 static HANDLER (handle_trigger_command);
@@ -86,7 +82,6 @@ static HANDLER (handle_untrig_command);
 static HANDLER (handle_version_command);
 static HANDLER (handle_watchdog_command);
 static HANDLER (handle_watchname_command);
-static HANDLER (handle_world_command);
 
 typedef struct Command {
     char *name;
@@ -101,6 +96,7 @@ static Command cmd_table[] =
   { "BEEP"        , handle_beep_command        },
   { "BIND"        , handle_bind_command        },
   { "CAT"         , handle_cat_command         },
+  { "CONNECT"     , handle_connect_command     },
   { "DC"          , handle_dc_command          },
   { "DEF"         , handle_def_command         },
   { "DOKEY"       , handle_dokey_command       },
@@ -108,6 +104,7 @@ static Command cmd_table[] =
   { "EDIT"        , handle_edit_command        },
   { "EVAL"        , handle_eval_command        },
   { "EXPORT"      , handle_export_command      },
+  { "FG"          , handle_fg_command          },
   { "GAG"         , handle_gag_command         },
   { "HELP"        , handle_help_command        },
   { "HILITE"      , handle_hilite_command      },
@@ -123,6 +120,7 @@ static Command cmd_table[] =
   { "LOG"         , handle_log_command         },
   { "NOGAG"       , handle_nogag_command       },
   { "NOHILITE"    , handle_nohilite_command    },
+  { "PROMPT"      , handle_prompt_command      },
   { "PS"          , handle_ps_command          },
   { "PURGE"       , handle_purge_command       },
   { "PURGEWORLD"  , handle_purgeworld_command  },
@@ -139,6 +137,7 @@ static Command cmd_table[] =
   { "SETENV"      , handle_setenv_command      },
   { "SH"          , handle_sh_command          },
   { "SHIFT"       , handle_shift_command       },
+  { "SUBSTITUTE"  , handle_substitute_command  },
   { "SUSPEND"     , handle_suspend_command     },
   { "TEST"        , handle_test_command        },  
   { "TIME"        , handle_time_command        },  
@@ -155,7 +154,6 @@ static Command cmd_table[] =
   { "VERSION"     , handle_version_command     },
   { "WATCHDOG"    , handle_watchdog_command    },
   { "WATCHNAME"   , handle_watchname_command   },
-  { "WORLD"       , handle_world_command       },
 };
 
 #define NUM_CMDS (sizeof(cmd_table) / sizeof(Command))
@@ -180,13 +178,11 @@ int handle_command(cmd_line)
     while (*cmd_line == '/') cmd_line++;
     if (!*cmd_line || isspace(*cmd_line)) return 0;
     old_command = current_command;
-    while (isspace(*cmd_line)) cmd_line++;
-    current_command = cmd_line;
-    for (args = current_command; *args && !isspace(*args); args++);
+    args = current_command = cmd_line;
+    while (*args && !isspace(*args)) args++;
     if (*args) *args++ = '\0';
-    while (isspace(*args)) args++;
-    stripstr(current_command);
-    stripstr(args);
+    /* current_command = stripstr(current_command); */ /* already stripped */
+    args = stripstr(args);
     if (*current_command == '@') {
         if ((handler = find_command(current_command + 1))) {
             result = (*handler)(args);
@@ -209,21 +205,39 @@ int handle_command(cmd_line)
     return result;
 }
 
-Handler *find_command(cmd)
-    char *cmd;
+Handler *find_command(name)
+    char *name;
 {
-    int i;
+    Command *cmd;
 
-    i = binsearch(cmd, (GENERIC*)cmd_table, NUM_CMDS, sizeof(Command), cstrcmp);
-    return (i < 0) ? (Handler *)NULL : cmd_table[i].func;
+    cmd = (Command *)binsearch((GENERIC*)&name, (GENERIC*)cmd_table,
+        NUM_CMDS, sizeof(Command), gencstrcmp);
+    return cmd ? cmd->func : NULL;
 }
 
 static int handle_trigger_command(args)
     char *args;
 {
-    if (background) background++;  /* Nesting count. Prevents BACKGROUND hook */
-    if (borg) check_trigger(args, 0);
-    if (background) background--;     /* BUG if %{background} was altered */
+    if (borg) find_and_run_matches(args, 0, NULL);
+    return 1;
+}
+
+static int handle_substitute_command(args)
+    char *args;
+{
+    char *old;
+    extern Aline *incoming_text;
+
+    if (!incoming_text) {
+        cmderror("not called from trigger");
+        return 0;
+    }
+    old = incoming_text->str;
+    incoming_text->len = strlen(args);
+    incoming_text->str = STRNDUP(args, incoming_text->len);
+    FREE(old);
+    if (incoming_text->partials) FREE(incoming_text->partials);
+    incoming_text->partials = NULL;
     return 1;
 }
 
@@ -247,93 +261,30 @@ static int handle_listworlds_command(args)
     return list_worlds(full, *args ? args : NULL, NULL);
 }
 
-static int handle_world_command(args)
+static int handle_connect_command(args)
     char *args;
 {
-    World *where = NULL;
-    int autologin = login;
-    int quietlogin = quiet;
-    char c, *port;
+    char *port = NULL;
+    int autologin = login, quietlogin = quiet, opt;
 
-    startopt(args, "lqn");
-    while ((c = nextopt(&args, NULL))) {
-        switch (c) {
+    startopt(args, "lq");
+    while ((opt = nextopt(&args, NULL))) {
+        switch (opt) {
             case 'l':  autologin = FALSE; break;
             case 'q':  quietlogin = TRUE; break;
-            case 'n':  no_sock(); return 1;
             default:   return 0;
         }
     }
-
-    if (!*args) {
-        if ((where = get_world_header()) == NULL)
-            tfputs("% No default world is set.", tferr);
-    } else if ((port = strchr(args, ' ')) == NULL) {
-        if ((where = find_world(args)) == NULL)
-            do_hook(H_CONFAIL, "%% Connection to %s failed: %s", "%s %s",
-                args, "world unknown");
-    } else {
-        for (*port++ = '\0'; isspace(*port); port++);
-        if (strchr(port, ' ')) {
-            tfputs("% Too many arguments.", tferr);
-        } else {
-            if (restrict >= RESTRICT_WORLD)
-                tfputs("% \"/world <host> <port>\" restricted", tferr);
-            else {
-                where = new_world(NULL, "", "", args, port, "", "");
-                where->flags |= WORLD_TEMP;
-            }
-        }
+    if ((port = strchr(args, ' '))) {
+        *port = '\0';
+        while (isspace(*++port));
     }
-
-    if (!where) return 0;
-    opensock(where, autologin, quietlogin);
-    return 1;
+    return openworld(args, port, autologin, quietlogin);
 }
 
 /*************
  * Variables *
  *************/
-
-static int do_set(args, exportflag, localflag)
-    char *args;
-    int exportflag, localflag;
-{
-    char *value = "";
-    int i;
-
-    if (!*args) {
-        if (!localflag) listvar(exportflag);
-        return !localflag;
-    } else if ((value = strchr(args, '='))) {
-        *value++ = '\0';
-        if (!*args) {
-            tfputs("% missing variable name", tferr);
-            return 0;
-        }
-    } else if ((value = strchr(args, ' '))) {
-        for (*value++ = '\0'; *value && isspace(*value); value++);
-    } else {
-        if (localflag) return 0;
-        if ((value = getvar(args))) {
-            oprintf("%% %s=%s", args, value);
-            return 1;
-        } else {
-            oprintf("%% %s not defined at global level", args);
-            return 0;
-        }
-    }
-
-    for (i = 0; args[i]; i++) {
-        if (!(isalpha(args[i]) || args[i]=='_' || (i>0 && isdigit(args[i])))) {
-            oputs("% illegal variable name.");
-            return 0;
-        }
-    }
-
-    if (localflag) return setlocalvar(args, value) ? 1 : 0;
-    else return setvar(args, value, exportflag) ? 1 : 0;
-}
 
 static int handle_set_command(args)
     char *args;
@@ -360,7 +311,7 @@ static int handle_let_command(args)
 static int handle_eval_command(args)
     char *args;
 {
-    return process_macro(args, "", SUB_MACRO);
+    return process_macro(args, NULL, SUB_MACRO);
 }
 
 static int handle_quit_command(args)
@@ -402,12 +353,6 @@ static int handle_suspend_command(args)
     return suspend();
 }
 
-static int handle_shift_command(args)
-    char *args;
-{
-    return do_shift((*args) ? (atoi(args)) : 1);
-}
-    
 static int handle_version_command(args)
     char *args;
 {
@@ -428,11 +373,10 @@ static int handle_lcd_command(args)
     char *args;
 {
     char buffer[PATH_MAX + 1];
-    STATIC_BUFFER(dirname);
 
-    expand_filename(Stringcpy(dirname, args));
-    if (dirname->len && chdir(dirname->s) < 0) {
-        operror(dirname->s);
+    args = expand_filename(args);
+    if (*args && chdir(args) < 0) {
+        operror(args);
         return 0;
     }
 
@@ -465,7 +409,7 @@ static int handle_echo_command(args)
             else if ((world = find_world(args)) == NULL) {
                 tfprintf(tferr, "%% World %s not found.", args);
                 return 0;
-            } else if (!world->socket) {
+            } else if (!world->sock) {
                 tfprintf(tferr, "%% Not connected to %s.", args);
                 return 0;
             }
@@ -475,9 +419,9 @@ static int handle_echo_command(args)
         }
     }
     if (!wflag)
-        oputa(new_aline(args, attrs | F_NEWLINE));
+        oputa(new_aline(args, attrs));
     else if (world)
-        world_output(world->socket, new_aline(args, attrs | F_NEWLINE));
+        world_output(world->sock, new_aline(args, attrs));
     else {
         tfputs("% No current world.", tferr);
         return 0;
@@ -525,22 +469,31 @@ static int handle_restrict_command(args)
  * Generic handlers *
  ********************/   
 
-static int read_file_commands(file, tinytalk)
-    TFILE *file;
-    int tinytalk;    /* Accept tinytalk-style world defs at top of file? */
+int do_file_load(args, tinytalk)
+    char *args;
+    int tinytalk;
 {
     Stringp line, cmd;
-    char *p;
     int done = 0, error = 0;
+    TFILE *old_file = current_file;
+    int old_lineno = current_lineno;
+
+    if ((current_file = tfopen(expand_filename(args), "r")) == NULL) {
+        if (!tinytalk)
+            do_hook(H_LOADFAIL, "%% %s: %s", "%s %s", args, STRERROR(errno));
+        current_file = old_file;
+        return 0;
+    }
+    do_hook(H_LOAD, "%% Loading commands from %s.", "%s", current_file->name);
 
     Stringinit(line);
     Stringinit(cmd);
-    current_file = file;
     current_lineno = 0;
     while (!done) {
-        done = !tfgetS(line, file);
+        done = !tfgetS(line, current_file);
         current_lineno++;
         if (line->len) {
+            char *p;
             if (line->s[0] == ';') continue;         /* skip comment lines */
             for (p = line->s; isspace(*p); p++);     /* strip leading space */
             Stringcat(cmd, p);
@@ -566,28 +519,13 @@ static int read_file_commands(file, tinytalk)
         }
         Stringterm(cmd, 0);
     }
+
     Stringfree(line);
     Stringfree(cmd);
-    current_file = NULL;
+    tfclose(current_file);
+    current_file = old_file;
+    current_lineno = old_lineno;
     return !error;
-}
-
-int do_file_load(args, tinytalk)
-    char *args;
-    int tinytalk;
-{
-    register TFILE *cmdfile;
-    int result;
-
-    if ((cmdfile = tfopen(tfname(args, NULL), "r")) == NULL) {
-        if (!tinytalk)
-            do_hook(H_LOADFAIL, "%% %s: %s", "%s %s", args, STRERROR(errno));
-        return 0;
-    }
-    do_hook(H_LOAD, "%% Loading commands from %s.", "%s", cmdfile->name);
-    result = read_file_commands(cmdfile, tinytalk);
-    tfclose(cmdfile);
-    return result;
 }
 
 
@@ -619,13 +557,13 @@ static int handle_cat_command(args)
 
 static int do_watch(args, name, wlines, wmatch, flag)
     char *args, *name;
-    int *wlines, *wmatch, *flag;
+    int *wlines, *wmatch, flag;
 {
-    int lines = 0, match = 0;
+    int lines, match;
     char *ptr;
 
     if (!*args) {
-        oprintf("%% %s %sabled.", name, *flag ? "en" : "dis");
+        oprintf("%% %s %sabled.", name, flag ? "en" : "dis");
         return 1;
     } else if (OFF) {
         setvar(name, "0", FALSE);
@@ -647,13 +585,13 @@ static int do_watch(args, name, wlines, wmatch, flag)
 static int handle_watchdog_command(args)
     char *args;
 {
-    return do_watch(args, "watchdog", &wdlines, &wdmatch, &watchdog);
+    return do_watch(args, "watchdog", &wdlines, &wdmatch, watchdog);
 }
 
 static int handle_watchname_command(args)
     char *args;
 {
-    return do_watch(args, "watchname", &wnlines, &wnmatch, &watchname);
+    return do_watch(args, "watchname", &wnlines, &wnmatch, watchname);
 }
 
 
@@ -708,17 +646,14 @@ static void split_args(args)
 {
     char *place;
 
-    place = strchr(args, '=');
-    if (place == NULL) {
-        Stringcpy(pattern, args);
-        Stringterm(body, 0);
+    if ((place = strchr(args, '='))) {
+        *place++ = '\0';
+        pattern = stripstr(args);
+        body = stripstr(place);
     } else {
-        Stringncpy(pattern, args, place - args);
-        while (isspace(*++place));
-        Stringcpy(body, place);
+        pattern = stripstr(args);
+        body = "";
     }
-    stripString(pattern);
-    stripString(body);
 }
 
 /***********
@@ -730,11 +665,11 @@ static int handle_hilite_command(args)
 {
     if (!*args) {
         setvar("hilite", "1", FALSE);
-        oputs("% Hilites are enabled.");
+        oputs("% Hilites enabled.");
         return 0;
     } else {
         split_args(args);
-        return add_macro(new_macro("", pattern->s, "", 0, NULL, body->s,
+        return add_macro(new_macro("", pattern, "", 0, NULL, body,
             hpri, 100, F_HILITE, 0));
     }
 }
@@ -744,7 +679,7 @@ static int handle_nohilite_command(args)
 {
     if (!*args) {
         setvar("hilite", "0", FALSE);
-        oputs("% Hilites are disabled.");
+        oputs("% Hilites disabled.");
         return 1;
     } else {
         return remove_macro(args, F_HILITE, 0);
@@ -761,11 +696,11 @@ static int handle_gag_command(args)
 {
     if (!*args) {
         setvar("gag", "1", FALSE);
-        oputs("% Gags are enabled.");
+        oputs("% Gags enabled.");
         return 0;
     } else {
         split_args(args);
-        return add_macro(new_macro("", pattern->s, "", 0, NULL, body->s,
+        return add_macro(new_macro("", pattern, "", 0, NULL, body,
             gpri, 100, F_GAG, 0));
     }
 }
@@ -775,7 +710,7 @@ static int handle_nogag_command(args)
 {
     if (!*args) {
         setvar("gag", "0", FALSE);
-        oputs("% Gags are disabled.");
+        oputs("% Gags disabled.");
         return 1;
     } else {
         return remove_macro(args, F_GAG, 0);
@@ -795,7 +730,7 @@ static int handle_trigpc_command(args)
     if ((pri = numarg(&args)) < 0) return 0;
     if ((prob = numarg(&args)) < 0) return 0;
     split_args(args);
-    return add_macro(new_macro("", pattern->s, "", 0, NULL, body->s, pri,
+    return add_macro(new_macro("", pattern, "", 0, NULL, body, pri,
         prob, F_NORM, 0));
 }
 
@@ -818,7 +753,7 @@ static int handle_hook_command(args)
     else if (ON) setvar("hook", "1", FALSE);
     else {
         split_args(args);
-        return add_hook(pattern->s, body->s);
+        return add_hook(pattern, body);
     }
     return 1;
 }
@@ -853,19 +788,8 @@ static int handle_bind_command(args)
 
     if (!*args) return 0;
     split_args(args);
-    spec = new_macro("", NULL, print_to_ascii(pattern->s), 0, NULL, body->s,
+    spec = new_macro("", NULL, print_to_ascii(pattern), 0, NULL, body,
         0, 0, 0, 0);
-    if (!install_bind(spec)) return 0;
     return add_macro(spec);
-}
-
-static int handle_dokey_command(args)
-    char *args;
-{
-    EditFunc *func;
-
-    if ((func = find_efunc(args))) return (*func)();
-    else tfprintf(tferr, "%% No editing function %s", args); 
-    return 0;
 }
 

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: process.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: process.c,v 33000.2 1994/03/14 16:57:06 hawkeye Exp $ */
 
 /*************************************************
  * Fugue processes.                              *
@@ -32,15 +32,15 @@
 #include "macro.h"
 #include "commands.h"
 
-#define P_REPEAT     001
-#define P_QFILE      002
-#define P_QCOMMAND   004
-#define P_QRECALL    010
-#define P_QLOCAL     020
+#define P_REPEAT     '\0'
+#define P_QFILE      '\''
+#define P_QCOMMAND   '!'
+#define P_QRECALL    '#'
+#define P_QLOCAL     '`'
 
 typedef struct Proc {
     int pid;
-    int type;
+    char type;
     int count;
     int FDECL((*func),(struct Proc *proc));
     int ptime;
@@ -61,7 +61,7 @@ static void FDECL(freeproc,(Proc *proc));
 static int  FDECL(runproc,(Proc *proc));
 static int  FDECL(do_repeat,(Proc *proc));
 static int  FDECL(do_quote,(Proc *proc));
-static void FDECL(ecpy,(Stringp dest, char *src));
+static void FDECL(strip_escapes,(char *src));
 static int  FDECL(procopt,(char **argp, int *ptime, struct World **world));
 
 TIME_T proctime = 0;              /* when next process should be run */
@@ -74,7 +74,6 @@ int handle_ps_command(args)
     char *args;
 {
     Proc *p;
-    char c;
     char buf[11];
 
     oprintf("  PID TYPE    WORLD      PTIME COUNT COMMAND");
@@ -85,12 +84,8 @@ int handle_ps_command(args)
             oprintf("%5d /repeat %s -%-4d %5d %s", p->pid, buf,
             (p->ptime < 0) ? process_time : p->ptime, p->count, p->cmd);
         } else {
-            if (p->type == P_QFILE) c = '\'';
-            else if (p->type == P_QCOMMAND) c = '!';
-            else if (p->type == P_QRECALL) c = '#';
-            else /* (p->type == P_QLOCAL) */ c = '`';
-            oprintf("%5d /quote  %s -%-4d       %s%c\"%s\"%s", p->pid,
-                buf, (p->ptime < 0) ? process_time : p->ptime, p->pre, c,
+            oprintf("%5d /quote  %s -%-4d       %s%c\"%s\"%s", p->pid, buf,
+                (p->ptime < 0) ? process_time : p->ptime, p->pre, p->type,
                 p->cmd, p->suf);
         }
     }
@@ -180,17 +175,23 @@ int handle_kill_command(args)
     char *args;
 {
     Proc *proc;
-    int pid;
+    int pid, error = 0;
 
-    pid = atoi(args);
-    for (proc = proclist; proc && (proc->pid != pid); proc = proc->next);
-    if (!proc) {
-        tfputs("% no such process", tferr);
-        return 0;
+    while (*args) {
+        if ((pid = numarg(&args)) < 0) {
+            return 0;
+        } else {
+            for (proc = proclist; proc && (proc->pid != pid); proc=proc->next);
+            if (!proc) {
+                tfputs("% no such process", tferr);
+                error++;
+            } else {
+                removeproc(proc);
+                freeproc(proc);
+            }
+        }
     }
-    removeproc(proc);
-    freeproc(proc);
-    return 1;
+    return !error;
 }
 
 void runall(now)
@@ -229,7 +230,7 @@ static int runproc(p)
     int notdone;
     extern struct Sock *fsock, *xsock;
 
-    if (p->world) xsock = p->world->socket;
+    if (p->world) xsock = p->world->sock;
     notdone = (*p->func)(p);
     xsock = fsock;
     if (notdone) {
@@ -248,7 +249,7 @@ static int do_repeat(proc)
     Proc *proc;
 {
     if (proc->count--) {
-        process_macro(proc->cmd, "", SUB_MACRO);
+        process_macro(proc->cmd, NULL, SUB_MACRO);
     }
     return proc->count;
 }
@@ -271,18 +272,16 @@ static int do_quote(proc)
 
 }
 
-static void ecpy(dest, src)
-    Stringp dest;
+static void strip_escapes(src)
     char *src;
 {
-    char *start;
+    char *dest;
 
-    Stringterm(dest, 0);
-    while (*src) {
-        if (*src == '\\' && *(src + 1)) src++;
-        for (start = src++; *src && *src != '\\'; src++);
-        Stringncat(dest, start, src - start);
+    if (!*src) return;
+    for (dest = src; *src; *dest++ = *src++) {
+        if (*src == '\\') src++;
     }
+    *dest = '\0';
 }
 
 static int procopt(argp, ptime, world)
@@ -315,10 +314,7 @@ static int procopt(argp, ptime, world)
 int handle_quote_command(args)
     char *args;
 {
-    char *p, *command, *suffix;
-    STATIC_BUFFER(pre);
-    STATIC_BUFFER(suf);
-    STATIC_BUFFER(cmd);
+    char *pre, *cmd, *suf;
     STATIC_BUFFER(newcmd);
     extern TFILE *tfout, *tferr;
     TFILE *input, *oldout, *olderr;
@@ -327,43 +323,40 @@ int handle_quote_command(args)
 
     if (!*args || !procopt(&args, &ptime, &world)) return 0;
 
-    p = args;
-    while (*p && *p != '\'' && *p != '!' && *p != '#' && *p != '`') {
-        if (*p == '\\' && *(p + 1)) p += 2;
-        else p++;
+    pre = args;
+    while (*args != '\'' && *args != '!' && *args != '#' && *args != '`') {
+        if (*args == '\\') args++;
+        if (!*args) {
+            tfputs("% Bad /quote syntax", tferr);
+            return 0;
+        }
+        args++;
     }
-    if (*p == '\'') type = P_QFILE;
-    else if (*p == '!') type = P_QCOMMAND;
-    else if (*p == '#') type = P_QRECALL;
-    else if (*p == '`') type = P_QLOCAL;
-    else {
-        tfputs("% Bad /quote syntax", tferr);
-        return 0;
-    }
-    *p = '\0';
-    if (*++p == '"') {
-        command = ++p;
-        if ((p = estrchr(p, '"', '\\')) == NULL) suffix = "";
+    type = *args;
+    *args = '\0';
+    if (*++args == '"') {
+        cmd = ++args;
+        if ((args = estrchr(args, '"', '\\')) == NULL) suf = "";
         else {
-            *p = '\0';
-            suffix = p + 1;
+            *args = '\0';
+            suf = args + 1;
         }
     } else {
-        command = p;
-        suffix = "";
+        cmd = args;
+        suf = "";
     }
-    ecpy(pre, args);
-    ecpy(suf, suffix);
-    ecpy(cmd, command);
+    strip_escapes(pre);
+    strip_escapes(suf);
+    strip_escapes(cmd);
     switch (type) {
     case P_QFILE:
         if (restrict >= RESTRICT_FILE) {
             tfputs("% \"/quote '\" restricted", tferr);
             return 0;
         }
-        expand_filename(cmd);
-        if ((input = tfopen(cmd->s, "r")) == NULL) {
-            operror(cmd->s);
+        cmd = expand_filename(cmd);
+        if ((input = tfopen(cmd, "r")) == NULL) {
+            operror(cmd);
             return 0;
         }
         break;
@@ -373,15 +366,15 @@ int handle_quote_command(args)
             return 0;
         }
         /* null input, and capture stderr */
-        Sprintf(newcmd, 0, "( %S ) </dev/null 2>&1", cmd);
+        Sprintf(newcmd, 0, "( %s ) </dev/null 2>&1", cmd);
         if ((input = tfopen(newcmd->s, "p")) == NULL) {
-            operror(cmd->s);
+            operror(cmd);
             return 0;
         }
         break;
     case P_QRECALL:
         input = tfopen(NULL, "q");
-        if (!recall_history(cmd->s, input)) {
+        if (!recall_history(cmd, input)) {
             tfclose(input);
             return 0;
         }
@@ -392,14 +385,14 @@ int handle_quote_command(args)
         olderr = tferr;
         tfout = input;
         /* tferr = input; */
-        process_macro(cmd->s, "", SUB_MACRO);
+        process_macro(cmd, NULL, SUB_MACRO);
         tferr = olderr;
         tfout = oldout;
         break;
     default:    /* impossible */
         return 0;
     }
-    pid = newproc(type, do_quote, -1, pre->s, suf->s, input, world, cmd->s, ptime);
+    pid = newproc(type, do_quote, -1, pre, suf, input, world, cmd, ptime);
     if (lpquote) runall(time(NULL));
     return pid;
 }
@@ -411,7 +404,7 @@ int handle_repeat_command(args)
     struct World *world;
 
     if (!*args || !procopt(&args, &ptime, &world)) return 0;
-    if ((count = numarg(&args)) < 0) return 0;
+    if ((count = numarg(&args)) <= 0) return 0;
     pid = newproc(P_REPEAT, do_repeat, count, "", "", NULL, world, args, ptime);
     if (lpquote) runall(time(NULL));
     return pid;

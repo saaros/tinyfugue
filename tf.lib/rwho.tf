@@ -17,6 +17,8 @@
 /addworld rwho riemann.math.okstate.edu 6889
 
 /def -i rwho = \
-    /def -i -1 -F -msimple -h'connect rwho' ~connect_rwho = \
-        /send -wrwho -- %*%;\
-    /world rwho
+    /def -iF1 -msimple -h'connect rwho' ~connect_rwho = \
+        /send -wrwho - %*%%; \
+        /def -iF1 -msimple -h'disconnect rwho' ~disconnect_rwho = \
+            /fg -s ${world_name}%; \
+    /connect rwho

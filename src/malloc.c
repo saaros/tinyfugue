@@ -1,19 +1,18 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: malloc.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: malloc.c,v 33000.2 1994/04/16 03:19:53 hawkeye Exp $ */
+
+#ifndef DMALLOC
 
 #include "config.h"
 #include "port.h"
 #include "signals.h"
-
-#ifndef DMALLOC
-GENERIC  *FDECL(dmalloc,(long unsigned size));
-GENERIC  *FDECL(drealloc,(GENERIC *ptr, long unsigned size));
+#include "malloc.h"
 
 GENERIC *dmalloc(size)
     long unsigned size;
@@ -21,7 +20,7 @@ GENERIC *dmalloc(size)
     GENERIC *ret;
 
     if ((long)size <= 0) core("internal error: dmalloc: size <= 0");
-    if ((ret = (GENERIC*)malloc(size)) == NULL) core("% malloc failed");
+    if (!(ret = (GENERIC*)malloc(size))) core("% malloc failed");
     return ret;
 }
 
@@ -32,7 +31,8 @@ GENERIC *drealloc(ptr, size)
     GENERIC *ret;
 
     if ((long)size <= 0) core("internal error: drealloc: size <= 0");
-    if ((ret = (GENERIC*)realloc(ptr, size)) == NULL) core("% realloc failed");
+    if (!(ret = (GENERIC*)realloc(ptr, size))) core("% realloc failed");
     return ret;
 }
+
 #endif

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: variable.h,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: variable.h,v 33000.1 1994/03/23 00:14:40 hawkeye Exp $ */
 
 #ifndef VARIABLE_H
 #define VARIABLE_H
@@ -18,22 +18,20 @@ typedef struct Var {
     char *name;
     char *value;
     int flags;
-    char **enumvec;                /* list of valid string values */
-    int ival;                      /* integer value */
-    Toggler *func;                 /* called when ival changes */
-    struct ListEntry *node;        /* backpointer to node in List */
+    char **enumvec;		/* list of valid string values */
+    int ival;			/* integer value */
+    Toggler *func;		/* called when ival changes */
+    struct ListEntry *node;	/* backpointer to node in list */
 } Var;
 
 extern void  NDECL(init_variables);
-extern void  NDECL(init_values);
 extern int   FDECL(enum2int,(char *str, char **vec, char *msg));
 extern char *FDECL(getnearestvar,(char *name, int *np));
 extern char *FDECL(getvar,(char *name));
 extern char *FDECL(setnearestvar,(char *name, char *value));
-extern char *FDECL(setlocalvar,(char *name, char *value));
 extern char *FDECL(setvar,(char *name, char *value, int exportflag));
 extern void  FDECL(setivar,(char *name, int value, int exportflag));
-extern void  FDECL(listvar,(int exportflag));
+extern int   FDECL(do_set,(char *args, int exportflag, int localflag));
 extern void  NDECL(newvarscope);
 extern void  NDECL(nukevarscope);
 
@@ -90,10 +88,12 @@ enum Vars {
     VAR_SNARF       ,
     VAR_SOCKMLOAD   ,
     VAR_SUB         ,
+    VAR_TELOPT      ,
     VAR_TIME_FORMAT ,
     VAR_VISUAL      ,
     VAR_WATCHDOG    ,
     VAR_WATCHNAME   ,
+    VAR_WORDPUNCT   ,
     VAR_WRAPFLAG    ,      /* user name is "wrap" */
     VAR_WRAPLOG     ,
     VAR_WRAPSIZE    ,
@@ -102,67 +102,70 @@ enum Vars {
 };
 
 /* Convenient variable access.
- * These macros are READ ONLY.  Use setvar() to change a value.
+ * These macros are READONLY.  Use setvar() to change a value.
+ * The cast enforces the readonly-ness in ANSI C (gcc needs -pedantic).
  */
-#define MAIL		(special_var[ VAR_MAIL		].value)
-#define TERM		(special_var[ VAR_TERM		].value)
-#define TFHELP		(special_var[ VAR_TFHELP	].value)
-#define TFLIBDIR	(special_var[ VAR_TFLIBDIR	].value)
-#define always_echo	(special_var[ VAR_ALWAYS_ECHO	].ival)
-#define background	(special_var[ VAR_BACKGROUND	].ival)
-#define backslash	(special_var[ VAR_BACKSLASH	].ival)
-#define bamf		(special_var[ VAR_BAMF		].ival)
-#define beep		(special_var[ VAR_BEEP		].ival)
-#define bg_output	(special_var[ VAR_BG_OUTPUT	].ival)
-#define borg		(special_var[ VAR_BORG		].ival)
-#define catch_ctrls	(special_var[ VAR_CATCH_CTRLS	].ival)
-#define cleardone	(special_var[ VAR_CLEARDONE	].ival)
-#define clearfull	(special_var[ VAR_CLEARFULL	].ival)
-#define clock_flag	(special_var[ VAR_CLOCK		].ival)
-#define gag		(special_var[ VAR_GAG		].ival)
-#define gpri		(special_var[ VAR_GPRI		].ival)
-#define hilite		(special_var[ VAR_HILITE	].ival)
-#define hiliteattr	(special_var[ VAR_HILITEATTR	].ival)
-#define hookflag	(special_var[ VAR_HOOKFLAG	].ival)
-#define hpri		(special_var[ VAR_HPRI		].ival)
-#define ignore_sigquit	(special_var[ VAR_IGNORE_SIGQUIT].ival)
-#define insert		(special_var[ VAR_INSERT	].ival)
-#define isize		(special_var[ VAR_ISIZE		].ival)
-#define kecho		(special_var[ VAR_KECHO		].ival)
-#define kprefix		(special_var[ VAR_KPREFIX	].value)
-#define login		(special_var[ VAR_LOGIN		].ival)
-#define lpflag		(special_var[ VAR_LPFLAG	].ival)
-#define lpquote		(special_var[ VAR_LPQUOTE	].ival)
-#define maildelay	(special_var[ VAR_MAILDELAY	].ival)
-#define matching	(special_var[ VAR_MATCHING	].ival)
-#define max_recur	(special_var[ VAR_MAX_RECUR	].ival)
-#define mecho		(special_var[ VAR_MECHO		].ival)
-#define more		(special_var[ VAR_MORE		].ival)
-#define mprefix		(special_var[ VAR_MPREFIX	].value)
-#define oldslash	(special_var[ VAR_OLDSLASH	].ival)
-#define prompt_sec	(special_var[ VAR_PROMPT_SEC	].ival)
-#define prompt_usec	(special_var[ VAR_PROMPT_USEC	].ival)
-#define process_time	(special_var[ VAR_PROCESS_TIME	].ival)
-#define qecho		(special_var[ VAR_QECHO		].ival)
-#define qprefix		(special_var[ VAR_QPREFIX	].value)
-#define quiet		(special_var[ VAR_QUIET		].ival)
-#define quitdone	(special_var[ VAR_QUITDONE	].ival)
-#define quoted_args	(special_var[ VAR_QUOTED_ARGS	].ival)
-#define redef		(special_var[ VAR_REDEF		].ival)
-#define refreshtime	(special_var[ VAR_REFRESHTIME	].ival)
-#define scroll		(special_var[ VAR_SCROLL	].ival)
-#define shpause		(special_var[ VAR_SHPAUSE	].ival)
-#define snarf		(special_var[ VAR_SNARF		].ival)
-#define sockmload	(special_var[ VAR_SOCKMLOAD	].ival)
-#define sub		(special_var[ VAR_SUB		].ival)
-#define time_format	(special_var[ VAR_TIME_FORMAT	].value)
-#define visual		(special_var[ VAR_VISUAL	].ival)
-#define watchdog	(special_var[ VAR_WATCHDOG	].ival)
-#define watchname	(special_var[ VAR_WATCHNAME	].ival)
-#define wrapflag	(special_var[ VAR_WRAPFLAG	].ival)
-#define wraplog		(special_var[ VAR_WRAPLOG	].ival)
-#define wrapsize	(special_var[ VAR_WRAPSIZE	].ival)
-#define wrapspace	(special_var[ VAR_WRAPSPACE	].ival)
+#define MAIL		((char*)special_var[ VAR_MAIL		].value)
+#define TERM		((char*)special_var[ VAR_TERM		].value)
+#define TFHELP		((char*)special_var[ VAR_TFHELP		].value)
+#define TFLIBDIR	((char*)special_var[ VAR_TFLIBDIR	].value)
+#define always_echo	((int)	special_var[ VAR_ALWAYS_ECHO	].ival)
+#define background	((int)	special_var[ VAR_BACKGROUND	].ival)
+#define backslash	((int)	special_var[ VAR_BACKSLASH	].ival)
+#define bamf		((int)	special_var[ VAR_BAMF		].ival)
+#define beep		((int)	special_var[ VAR_BEEP		].ival)
+#define bg_output	((int)	special_var[ VAR_BG_OUTPUT	].ival)
+#define borg		((int)	special_var[ VAR_BORG		].ival)
+#define catch_ctrls	((int)	special_var[ VAR_CATCH_CTRLS	].ival)
+#define cleardone	((int)	special_var[ VAR_CLEARDONE	].ival)
+#define clearfull	((int)	special_var[ VAR_CLEARFULL	].ival)
+#define clock_flag	((int)	special_var[ VAR_CLOCK		].ival)
+#define gag		((int)	special_var[ VAR_GAG		].ival)
+#define gpri		((int)	special_var[ VAR_GPRI		].ival)
+#define hilite		((int)	special_var[ VAR_HILITE		].ival)
+#define hiliteattr	((int)	special_var[ VAR_HILITEATTR	].ival)
+#define hookflag	((int)	special_var[ VAR_HOOKFLAG	].ival)
+#define hpri		((int)	special_var[ VAR_HPRI		].ival)
+#define ignore_sigquit	((int)	special_var[ VAR_IGNORE_SIGQUIT	].ival)
+#define insert		((int)	special_var[ VAR_INSERT		].ival)
+#define isize		((int)	special_var[ VAR_ISIZE		].ival)
+#define kecho		((int)	special_var[ VAR_KECHO		].ival)
+#define kprefix		((char*)special_var[ VAR_KPREFIX	].value)
+#define login		((int)	special_var[ VAR_LOGIN		].ival)
+#define lpflag		((int)	special_var[ VAR_LPFLAG		].ival)
+#define lpquote		((int)	special_var[ VAR_LPQUOTE	].ival)
+#define maildelay	((int)	special_var[ VAR_MAILDELAY	].ival)
+#define matching	((int)	special_var[ VAR_MATCHING	].ival)
+#define max_recur	((int)	special_var[ VAR_MAX_RECUR	].ival)
+#define mecho		((int)	special_var[ VAR_MECHO		].ival)
+#define more		((int)	special_var[ VAR_MORE		].ival)
+#define mprefix		((char*)special_var[ VAR_MPREFIX	].value)
+#define oldslash	((int)	special_var[ VAR_OLDSLASH	].ival)
+#define prompt_sec	((int)	special_var[ VAR_PROMPT_SEC	].ival)
+#define prompt_usec	((int)	special_var[ VAR_PROMPT_USEC	].ival)
+#define process_time	((int)	special_var[ VAR_PROCESS_TIME	].ival)
+#define qecho		((int)	special_var[ VAR_QECHO		].ival)
+#define qprefix		((char*)special_var[ VAR_QPREFIX	].value)
+#define quiet		((int)	special_var[ VAR_QUIET		].ival)
+#define quitdone	((int)	special_var[ VAR_QUITDONE	].ival)
+#define quoted_args	((int)	special_var[ VAR_QUOTED_ARGS	].ival)
+#define redef		((int)	special_var[ VAR_REDEF		].ival)
+#define refreshtime	((int)	special_var[ VAR_REFRESHTIME	].ival)
+#define scroll		((int)	special_var[ VAR_SCROLL		].ival)
+#define shpause		((int)	special_var[ VAR_SHPAUSE	].ival)
+#define snarf		((int)	special_var[ VAR_SNARF		].ival)
+#define sockmload	((int)	special_var[ VAR_SOCKMLOAD	].ival)
+#define sub		((int)	special_var[ VAR_SUB		].ival)
+#define telopt		((int)  special_var[ VAR_TELOPT		].ival)
+#define time_format	((char*)special_var[ VAR_TIME_FORMAT	].value)
+#define visual		((int)	special_var[ VAR_VISUAL		].ival)
+#define watchdog	((int)	special_var[ VAR_WATCHDOG	].ival)
+#define watchname	((int)	special_var[ VAR_WATCHNAME	].ival)
+#define wordpunct	((char*)special_var[ VAR_WORDPUNCT	].value)
+#define wrapflag	((int)	special_var[ VAR_WRAPFLAG	].ival)
+#define wraplog		((int)	special_var[ VAR_WRAPLOG	].ival)
+#define wrapsize	((int)	special_var[ VAR_WRAPSIZE	].ival)
+#define wrapspace	((int)	special_var[ VAR_WRAPSPACE	].ival)
 
 extern Var special_var[];
 

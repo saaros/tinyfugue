@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: help.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: help.c,v 33000.1 1994/03/14 20:53:44 hawkeye Exp $ */
 
 /*
  * Fugue help handling
@@ -43,7 +43,7 @@ int handle_help_command(args)
     Stringterm(buf2, 0);
     if (!*args) args = "summary";
 
-    if (!(name = tfname(TFHELP, NULL))) return 0;
+    name = expand_filename(TFHELP);
     if ((helpfile = tfopen(name, "r")) == NULL) {
         operror(name);
         return 0;

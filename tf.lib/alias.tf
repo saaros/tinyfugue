@@ -11,7 +11,7 @@
 
 /def -i alias = \
     /if /test %# < 2%; /then \
-        /list alias_%{1-*}%; \
+        /list -i alias_%{1-*}%; \
     /else \
         /def -i -ag -mglob -h"send {%1}*" alias_%1 = %-1%; \
     /endif

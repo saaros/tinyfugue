@@ -3,13 +3,197 @@ sometimes changed code was released without updating version numbers.
 I don't do this any more.
 Only the most recent version will have detailed changes described.
 
+3.3 beta 4
+----------
+Minor fix in idea of current world after /fg in fall-thru triggers/hooks.
+Minor fix for recall messages while logging.
+Fix for empty /cat text.
+Internal changes.
+
+3.3 beta 3
+----------
+In completion.tf, added /complete_input_history (ESC i).
+In lisp.tf, added /unique.
+Fixed error checking in rand().
+Fixed bug in failed keybinding redef (caused core on Linux) (33a?).
+Fixed potentially fatal bug in oneshots.
+
+3.3 beta 2 (3/9/94)
+----------
+Fixed "OOPS" problem with simulated scrolling on deficient terminals (33a?).
+Fixed error on old systems without FD_SET() and friends, e.g. AIX (33a?).
+Fixed a few other minor problems with porting to strange systems.
+
+3.3 beta 1 (3/3/94)
+----------
+Changes since 3.2 beta 4:
+Partial hilites enhanced to work on multiple matches on the same line.
+Regexp subexpressions can now be accessed as Pn variables as well as %Pn subs.
+"/recall /n pattern" recalls the last <n> lines that match <pattern>,
+  instead of searching for <pattern> in the last <n> lines.
+Added /substitute, to modify triggering text in place.
+Added mod() function.
+Improved "randomness" of random numbers (rand(), %R, multiple triggers).
+Nicer interaction with external writes to terminal in visual mode.
+Added /connect and /fg.
+Made word editing functions more like those in emacs, bash, tcsh.
+Added %{wordpunct} to fine-tune word editing functions.
+Added /prompt command and PROMPT hook, for configurable prompt detection.
+Added support for up to 16 colors.
+Added functions kblen(), kbwordleft() and kbwordright().
+Added /dokey dword.
+The SEND hook can be activated by any text command, not just command line.
+The SEND hook always prevents sending of the original text (previous versions
+  of TF required a gag to do so).  Use "/send %*" in the hook body if you
+  really want it to be sent.
+/def -w is equivalent to /def -w${world_name}.
+/kill can take mutiple arguments.
+Several improvements in display of major editing operations (visual and
+  nonvisual).
+/dokey redraw (^L) now does something useful in non-visual mode.
+Increased speed of macro execution by about 15%.
+Improved visual input scroll for terminals without scroll regions.
+Added %{telopt} variable for debugging telnet option processing.
+Improved appearace of external messages (e.g. "write") in nonvisual mode.
+Portability fix for compilers that can't do structure assignment.
+Installation avoids bug in bash (sh on Linux).
+Fixed some minor problems with empty commands.
+Fixed bug in handling expression errors.
+Fixed potentially fatal porting bug in init_variables().
+Fixed portability to systems without structure assignment.
+Fixed fatal bug in handling nonstandard environment strings missing "=" (3.0).
+Fixed obscure bug in expression assignment to an unset special variable (3.1).
+Fixed obscure bug in /export (3.0).
+Fixed obscure bug in file opening.
+Fixed /edit -m, -P, and -an.
+Fixed bug in /log -w of unconnected world.
+Fixed bug in prompt redisplay after a local command in visual mode.
+Fixed use of color in hiliteattr.
+Fixed /listhilite, /savehilite, and /purgehilite.
+Fixed bug in deleting in noecho mode.
+Fixed bug in deleting past beginning of visual window.
+Fixed bug in worldqueue.tf when used with other switching commands.
+Fixed bug in /tickoff in tick.tf.
+Fixed obscure bug in groups of fall-thru macros simultaneously matched by
+  multiple triggers/hooks/deletions.
+Fixed installation problem in finding libraries on some systems.
+Should now work on any Cray that has a standard bsearch().
+Removed %{quoted_args} (previously undocumented, inconsistent, and useless).
+
+3.3 alpha 12 (not released)
+------------
+Fixed output delay (affects output of /repeat, /quote, and mail check) (33a?).
+
+3.3 alpha 11 (not released)
+------------
+Fixed bug in patterns (affects /listworlds) (33a?).
+
+3.3 alpha 10
+------------
+Fixed bug in arguments to multiply-matched hooks (33a6).
+Fixed bug in /dopath in map.tf (33a1).
+Fixed bug in handling expression errors.
+
+3.3 alpha 9
+-----------
+Fixed bug in parsing command after /endif or /done (33a8).
+
+3.3 alpha 8
+-----------
+^W uses old space-delimited behavior again.  (Use /kb_backward_kill_word
+  in kbfunc.tf to get punctuation-delimited behavior).  (33a1)
+Regexp subexpressions can now be accessed as Pn variables as well as %Pn subs.
+Fixed some minor problems with empty commands.
+Portability fix for systems without random() (33a7).
+
+3.3 alpha 7
+-----------
+Fixed /ismacro (which caused some problems with default keybindings) (33a1).
+Portability fix in signals.c (affects Ultrix) (33a1).
+Fixed obscure bug in useless empty regexps used as partial hilites (33a2).
+
+3.3 alpha 6
+-----------
+"/recall /n pattern" recalls the last <n> lines that match <pattern>,
+  instead of searching for <pattern> in the last <n> lines.
+Added /substitute, to modify triggering text in place.
+Added mod() function.
+Improved "randomness" of random numbers (rand(), %R, multiple triggers).
+Nicer interaction with external writes to terminal in visual mode.
+Fixed bug in using text commands in SEND hook (33a1).
+Fixed bug in /connect immediately after disconnect or connect failure (33a1).
+Portability fix for compilers that can't do structure assignment.
+
+3.3 alpha 5
+-----------
+Fixed bug causing lost output when switching to an active world after --More--.
+Fixed potentially fatal porting bug in init_variables().
+Fixed portability to systems without structure assignment.
+
+3.3 alpha 4
+-----------
+Fixed fatal bug in handling nonstandard environment strings missing "=" (3.0).
+Fixed bug with quiet and login flags (3.3 a1).
+Fixed portabilty bug in macro.c (3.3 a1).
+Fixed obscure bug in expression assignment to an unset special variable (3.1).
+Fixed obscure bug in /export (3.0).
+Fixed obscure bug in file opening.
+Fixed spurious bug in SEND hook and sending text (3.3 a1).
+
+3.3 alpha 3
+-----------
+Fixed bug in adjacent partial hilites (33a2).
+Fixed bug in `h' attribute (33a1).
+Installation avoids bug in bash (sh on Linux).
+
+3.3 alpha 2
+-----------
+Partial hilites enhanced to work on multiple matches on the same line.
+
+3.3 alpha 1
+-----------
+Added /connect and /fg.
+Made word editing functions more like those in emacs and bash.
+Added %{wordpunct} to fine-tune word editing functions.
+Added /prompt command and PROMPT hook, for configurable prompt detection.
+Added support for up to 16 colors.
+Added functions kblen(), kbwordleft() and kbwordright().
+Added /dokey dword.
+The SEND hook can be activated by any text command, not just command line.
+The SEND hook always prevents sending of the original text (previous versions
+  of TF required a gag to do so).  Use "/send %*" in the hook body if you
+  really want it to be sent.
+/def -w is equivalent to /def -w${world_name}.
+/kill can take mutiple arguments.
+Several improvements in display of major editing operations (visual and
+  nonvisual).
+/dokey redraw (^L) now does something useful in non-visual mode.
+Increased speed of macro execution by about 15%.
+Improved visual input scroll for terminals without scroll regions.
+Added %{telopt} variable for debugging telnet option processing.
+Improved appearace of external messages (e.g. "write") in nonvisual mode.
+Fixed /edit -m, -P, and -an.
+Fixed bug in /log -w of unconnected world.
+Fixed bug in prompt redisplay after a local command in visual mode.
+Fixed use of color in hiliteattr.
+Fixed /listhilite, /savehilite, and /purgehilite.
+Fixed bug in deleting in noecho mode.
+Fixed bug in deleting past beginning of visual window.
+Fixed bug in worldqueue.tf when used with other switching commands.
+Fixed bug in /tickoff in tick.tf.
+Fixed obscure bug in groups of fall-thru macros simultaneously matched by
+  multiple triggers/hooks/deletions.
+Fixed installation problem in finding libraries on some systems.
+Should now work on any Cray that has a standard bsearch().
+Removed %{quoted_args} (previously undocumented, inconsistent, and useless).
+
 3.2 beta 4
 ----------
-Fixed bug causing %P subs to not work after a regexp trigger.
+Fixed a bug that prevented %P subs from working after a regexp trigger.
 
 3.2 beta 3
 ----------
-Fixed bug in /hook that was defining macros with -aCred -t"".
+Fixed bug in /hook causing macros to be defined with -t"" -aCred.
 
 3.2 beta 2
 ----------
@@ -17,7 +201,6 @@ Fixed fatal bug in /hook.
 
 3.2 beta 1 (12/19/93)
 ---------------------
-Changes from 3.1 to 3.2:
 Added REGULAR EXPRESSIONS, and ability to extract arbitrary pieces of
   of matched text using %Pn.  See: patterns, matching, regmatch, %Pn.
 "Partial hilites" - hilite part of a line.  (see /partial, /def -P).
@@ -47,13 +230,7 @@ Internal redesign of screen handling, cursor and write() optimization.
 Other internal changes.
 Fixed \] bug in [...] patterns.
 Improved installation portability.
-
-Changes from 3.2 alpha 13 to 3.2 beta 1:
-Added worldname completion to completion.tf.
-
-Changes from 3.2 alpha 12 to 3.2 alpha 13:
 Increased speed of macro execution by about 15%.
-Fixed minor bug in /bamf old (3.2).
 
 
 3.1 beta 5

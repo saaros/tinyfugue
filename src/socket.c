@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: socket.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: socket.c,v 33000.7 1994/04/19 00:03:00 hawkeye Exp $ */
 
 
 /***************************************************************
@@ -20,7 +20,7 @@
 
 #include "config.h"
 #include <sys/types.h>
-#include <sys/stat.h>
+/* #include <sys/stat.h> */
 #include <sys/time.h>
 #define SYS_TIME_H         /* prevent <time.h> in "port.h" */
 #include <ctype.h>
@@ -50,9 +50,9 @@
 #endif
 
 #include "port.h"
-#include "fd_set.h"
 #include "dstring.h"
 #include "tf.h"
+#include "fd_set.h"
 #include "util.h"
 #include "history.h"
 #include "world.h"
@@ -63,7 +63,6 @@
 #include "keyboard.h"
 #include "command.h"
 #include "commands.h"
-#include "special.h"
 #include "signals.h"
 #include "search.h"
 
@@ -104,19 +103,22 @@ static Sock *FDECL(find_sock,(char *name));
 static void  FDECL(announce_world,(Sock *s));
 static void  FDECL(fg_sock,(Sock *sock));
 static void  NDECL(bg_sock);
-static void  NDECL(any_sock);
 static int   FDECL(get_host_address,(char *name, struct in_addr *addr));
 static int   FDECL(establish,(Sock *new));
 static void  NDECL(nuke_dead_socks);
 static void  FDECL(nukesock,(Sock *sock));
 static void  FDECL(login_hook,(Sock *sock));
-static void  FDECL(handle_socket_prompt,(int confirmed));
+static void  FDECL(handle_prompt,(char *str, int confirmed));
 static void  NDECL(handle_socket_line);
 static void  NDECL(handle_socket_input);
 static int   FDECL(transmit,(char *s, unsigned int len));
-static void  NDECL(flush_output_queue);
+static void  FDECL(telnet_send,(int cmd, int opt));
+static void  FDECL(telnet_recv,(int cmd, int opt));
+static void  FDECL(special_hook,(Aline *aline));
+static int   FDECL(keep_quiet,(char *what));
+static int   FDECL(handle_portal,(char *what));
 
-#define killsock(s)  do { (s)->flags |= SOCKDEAD; dead_socks++; } while (0)
+#define killsock(s)  (((s)->flags |= SOCKDEAD), dead_socks++)
 
 #ifndef CONN_WAIT
 #define CONN_WAIT 500000
@@ -127,36 +129,53 @@ static void  NDECL(flush_output_queue);
 #endif
 
 extern int restrict;
-extern int echoflag;                    /* echo input? */
-extern int need_refresh;                /* Does input need refresh? */
+extern int echoflag;		/* echo input? */
+extern int need_refresh;	/* Does input need refresh? */
 #ifndef NO_PROCESS
-extern TIME_T proctime;                 /* when next process should run */
+extern TIME_T proctime;		/* when next process should run */
 #else
 # define proctime 0
 #endif
 
 static fd_set readers;		/* input file descriptors */
 static fd_set active;		/* active file descriptors */
-static fd_set writers;			/* pending connections */
+static fd_set writers;		/* pending connections */
 static fd_set connected;	/* completed connections */
 static int nfds;		/* max # of readers/writers */
 static Sock *hsock = NULL;	/* head of socket list */
 static Sock *tsock = NULL;	/* tail of socket list */
 static int dead_socks = 0;	/* Number of unnuked dead sockets */
+static char *telnet_label[256];
 
-#define TELNET_ECHO	'\001'	/* echo option */
-#define TELNET_SGA	'\003'	/* suppress GOAHEAD option */
-#define TELNET_EOR_OPT	'\031'	/* EOR option */
+#define TN_ECHO		0001	/* echo option */
+#define TN_SGA		0003	/* suppress GOAHEAD option */
+#define TN_STATUS	0005  /* not used */
+#define TN_TIMING_MARK	0006	/* not used */
+#define TN_TTYPE	0030	/* not used */
+#define TN_EOR_OPT	0031	/* EOR option */
+#define TN_NAWS		0037	/* not used */
+#define TN_TSPEED	0040	/* not used */
+#define TN_LINEMODE	0042	/* not used */
 
-#define TELNET_EOR	'\357'	/* End-Of-Record */
-#define TELNET_GA	'\371'	/* Go Ahead */
-#define TELNET_WILL	'\373'	/* I offer to ~, or ack for DO */
-#define TELNET_WONT	'\374'	/* I will stop ~ing, or nack for DO */
-#define TELNET_DO	'\375'	/* Please do ~?, or ack for WILL */
-#define TELNET_DONT	'\376'	/* Stop ~ing!, or nack for WILL */
-#define TELNET_IAC	'\377'	/* telnet Is A Command character */
+#define TN_EOR		0357	/* End-Of-Record */
+#define TN_SE		0360	/* not used */
+#define TN_NOP		0361	/* not used */
+#define TN_DATA_MARK	0362	/* not used */
+#define TN_BRK		0363	/* not used */
+#define TN_IP		0364	/* not used */
+#define TN_AO		0365	/* not used */
+#define TN_AYT		0366	/* not used */
+#define TN_EC		0367	/* not used */
+#define TN_EL		0370	/* not used */
+#define TN_GA		0371	/* Go Ahead */
+#define TN_SB		0372	/* not used */
+#define TN_WILL		0373	/* I offer to ~, or ack for DO */
+#define TN_WONT		0374	/* I will stop ~ing, or nack for DO */
+#define TN_DO		0375	/* Please do ~?, or ack for WILL */
+#define TN_DONT		0376	/* Stop ~ing!, or nack for WILL */
+#define TN_IAC		0377	/* telnet Is A Command character */
 
-#define ANSI_CSI	'\233'	/* ANSI terminal Command Sequence Intro */
+#define ANSI_CSI	0233	/* ANSI terminal Command Sequence Intro */
 
 int quit_flag = FALSE;          /* Are we all done? */
 Sock *fsock = NULL;		/* foreground socket */
@@ -164,6 +183,7 @@ Sock *xsock = NULL;		/* current (transmission) socket */
 int active_count = 0;		/* # of (non-current) active sockets */
 TIME_T mail_update = 0;		/* next mail check (0==immediately) */
 TIME_T clock_update = 0;	/* next clock update (0==immediately) */
+Aline *incoming_text = NULL;
 
 #define CONFAIL(where, what, why) \
         do_hook(H_CONFAIL, "%% Connection to %s failed: %s: %s", "%s %s: %s", \
@@ -172,12 +192,43 @@ TIME_T clock_update = 0;	/* next clock update (0==immediately) */
 /* initialize socket.c data */
 void init_sock()
 {
+    int i;
+
     FD_ZERO(&readers);
     FD_ZERO(&active);
     FD_ZERO(&writers);
     FD_ZERO(&connected);
     FD_SET(0, &readers);
     nfds = 1;
+
+    for (i = 0; i < 256; i++) telnet_label[i] = NULL;
+
+    telnet_label[TN_ECHO]		= "ECHO";
+    telnet_label[TN_SGA]		= "SGA";
+    telnet_label[TN_STATUS]		= "STATUS";
+    telnet_label[TN_TIMING_MARK]	= "TIMING_MARK";
+    telnet_label[TN_TTYPE]		= "TTYPE";
+    telnet_label[TN_EOR_OPT]		= "EOR_OPT";
+    telnet_label[TN_NAWS]		= "NAWS";
+    telnet_label[TN_TSPEED]		= "TSPEED";
+    telnet_label[TN_LINEMODE]		= "LINEMODE";
+    telnet_label[TN_EOR]		= "EOR";
+    telnet_label[TN_SE]			= "SE";
+    telnet_label[TN_NOP]		= "NOP";
+    telnet_label[TN_DATA_MARK]		= "DATA_MARK";
+    telnet_label[TN_BRK]		= "BRK";
+    telnet_label[TN_IP]			= "IP";
+    telnet_label[TN_AO]			= "AO";
+    telnet_label[TN_AYT]		= "AYT";
+    telnet_label[TN_EC]			= "EC";
+    telnet_label[TN_EL]			= "EL";
+    telnet_label[TN_GA]			= "GA";
+    telnet_label[TN_SB]			= "SB";
+    telnet_label[TN_WILL]		= "WILL";
+    telnet_label[TN_WONT]		= "WONT";
+    telnet_label[TN_DO]			= "DO";
+    telnet_label[TN_DONT]		= "DONT";
+    telnet_label[TN_IAC]		= "IAC";
 }
 
 /* main_loop
@@ -193,6 +244,14 @@ void main_loop()
     TIME_T now, earliest;
 
     while (!quit_flag) {
+
+        /* deal with pending signals */
+        process_signals();
+
+        /* garbage collection */
+        if (dead_socks) nuke_dead_socks();
+        nuke_dead_macros();
+
         now = time(NULL);
         /* note:  can't use now>=proctime as a criterion for runall:  we won't
          * catch command procs which are past due but just became readable.  */
@@ -216,6 +275,9 @@ void main_loop()
                 earliest = clock_update;
         }
 
+        /* flush pending tfscreen output */
+        oflush();
+
         if (earliest) {
             tvp = &tv;
             tv.tv_sec = earliest - now;
@@ -238,11 +300,11 @@ void main_loop()
 
         /* Find descriptors that need to be read.
          * Note: if the same descriptor appears in more than one fd_set, some
-         * versions of select() count it once, but some can count it multiple
-         * times.  We don't do that, so it's not a problem.
+         * versions of select() count it only once, but some count it once
+         * for each appearance in a set.
          */
-        active = readers;
-        connected = writers;
+        structcpy(active, readers);
+        structcpy(connected, writers);
         count = select(nfds, &active, &connected, NULL, tvp);
 
         if (count < 0) {
@@ -253,16 +315,12 @@ void main_loop()
             }
         } else if (count == 0) {
             /* select() must have exited due to timeout. */
-            if (need_refresh == REF_LOGICAL) logical_refresh();
-            else if (need_refresh==REF_PHYSICAL || visual) physical_refresh();
+            do_refresh();
         } else {
             /* check for user input */
             if (FD_ISSET(0, &active)) {
                 count--;
-                if (need_refresh == REF_LOGICAL)
-                    logical_refresh();
-                else if (need_refresh==REF_PHYSICAL || visual)
-                    physical_refresh();
+                do_refresh();
                 handle_keyboard_input();
             }
             for (xsock = hsock; count && xsock; xsock = xsock->next) {
@@ -277,14 +335,7 @@ void main_loop()
             }
             xsock = fsock;
         }
-
-        /* deal with signals caught during last loop */
-        process_signals();
-
-        /* garbage collection */
-        if (dead_socks) nuke_dead_socks();
-        nuke_dead_macros();
-    } 
+    }
     disconnect_all();
     cleanup();
 
@@ -373,7 +424,7 @@ static void wload(w)
 
     if (restrict >= RESTRICT_FILE) return;
     if (*w->mfile) do_file_load(w->mfile, FALSE);
-    else if ((d = get_default_world()) != NULL && *d->mfile)
+    else if ((d = get_default_world()) && *d->mfile)
         do_file_load(d->mfile, FALSE);
 }
 
@@ -389,25 +440,15 @@ static void announce_world(s)
     else do_hook(H_WORLD, "---- World %s ----", "%s", s->world->name);
 }
 
-/* display any unseen lines in the output queue for xsock */
-static void flush_output_queue()
-{
-    extern TFILE *tfscreen;
-    ListEntry *node;
-
-    for (node = xsock->queue->head; node; node = node->next)
-        record_global((Aline *)node->data);
-    queuequeue(xsock->queue, tfscreen->u.queue);
-    oflush();
-}
-
 
 /* bring a socket into the foreground */
 static void fg_sock(sock)
     Sock *sock;
 {
+    Sock *oldsock = xsock;
+
+    xsock = fsock = sock;
     if (sock) {
-        xsock = fsock = sock;
         FD_SET(sock->fd, &readers);
         if (sock->flags & SOCKACTIVE) {
             --active_count;
@@ -415,35 +456,262 @@ static void fg_sock(sock)
         }
         sock->flags &= ~SOCKACTIVE;
         announce_world(sock);
-        flush_output_queue();
+        flushout_queue(sock->queue);
         echoflag = (sock->flags & SOCKECHO);
         tog_lp();
-        refresh_prompt(sock->prompt);
-        if (sock->flags & SOCKDEAD) {
-            nukesock(sock);
-            fsock = xsock = NULL;
-            any_sock();
-        }
+        update_prompt(sock->prompt);
+        if (sockmload) wload(sock->world);
     } else {
         announce_world(NULL);
-        refresh_prompt(NULL);
+        update_prompt(NULL);
     }
-}
-
-/* put all sockets in the background */
-static void bg_sock()
-{
-    echoflag = TRUE;
-    fsock = xsock = NULL;
+    xsock = oldsock;
 }
 
 /* put fg socket in the background */
+static void bg_sock()
+{
+    echoflag = TRUE;
+    fsock = NULL;
+}
+
+/* put all sockets in the background */
 void no_sock()
 {
     if (fsock) {
         bg_sock();
         announce_world(NULL);
     }
+}
+
+int handle_fg_command(args)
+    char *args;
+{
+    int opt, nosock = FALSE, silent = FALSE;
+    World *world;
+
+    startopt(args, "nlqs");
+    while ((opt = nextopt(&args, NULL))) {
+        switch (opt) {
+        case 'n':
+            nosock = TRUE;
+            break;
+        case 's':
+            silent = TRUE;
+            break;
+        case 'l':
+        case 'q':
+            break;  /* accepted and ignored, for use with /connect in /world */
+        default:
+            return 0;
+        }
+    }
+
+    if (nosock) {
+        no_sock();
+        return 1;
+    }
+
+    if (!(world = find_world(*args ? args : NULL))) {
+        if (!silent) tfprintf(tferr, "%S: no world %s", error_prefix(), args);
+        return 0;
+    } else if (!world->sock || world->sock->flags & SOCKPENDING) {
+        if (!silent)
+            tfprintf(tferr, "%S: not connected to %s", error_prefix(),
+                world->name);
+        return 0;
+    }
+
+    if (world->sock == fsock) return 1;
+
+    bg_sock();
+    fg_sock(world->sock);
+    return 1;
+}
+
+/* openworld
+ * If (name && port), they are used as hostname and port number.
+ * If (!port), name is used as the name of a world.  A NULL or empty name
+ * corresponds to the default world.  Additionally, if name is NULL,
+ * the CONFAIL hook will not be called if openworld() fails.
+ */
+int openworld(name, port, autologin, quietlogin)
+    char *name, *port;
+    int autologin, quietlogin;
+{
+    World *world = NULL;
+
+    if (!port) {
+        world = find_world(name);
+        if (!world && name)
+            do_hook(H_CONFAIL, "%% Connection to %s failed: %s", "%s %s",
+                *name ? name : "default world", "no such world");
+    } else {
+        if (restrict >= RESTRICT_WORLD)
+            tfputs("% \"/connect <host> <port>\" restricted", tferr);
+        else {
+            world = new_world(NULL, "", "", name, port, "", "");
+            world->flags |= WORLD_TEMP;
+        }
+    }
+
+    return world ? opensock(world, autologin, quietlogin) : 0;
+}
+
+int opensock(world, autologin, quietlogin)
+    World *world;
+    int autologin, quietlogin;
+{
+    int flags;
+    Sock *sock;
+    struct timeval tv;
+    fd_set writeable;
+    struct sockaddr_in addr;
+    struct servent *service;
+    int size = sizeof(struct sockaddr_in);
+    static int can_nonblock = TRUE;
+
+    if (world->sock && !(world->sock->flags & SOCKDEAD)) {
+        tfprintf(tferr, "%S: socket to %s already exists", error_prefix(),
+            world->name);
+        return 0;
+    }
+
+    /* create and initialize new Sock */
+    world->sock = sock = (Sock *) MALLOC(sizeof(struct Sock));
+    sock->world = world;
+    sock->prev = tsock;
+    if (tsock == NULL) {
+        tsock = hsock = sock;
+    } else {
+        tsock = tsock->next = sock;
+    }
+    sock->fd = -1;
+    sock->state = '\0';
+    sock->flags = SOCKECHO | SOCKEDIT | SOCKTRAP | (autologin ? SOCKLOGIN : 0);
+    if (quietlogin && autologin && *sock->world->character)
+        sock->numquiet = MAXQUIET;
+    else
+        sock->numquiet = 0;
+    Stringinit(sock->buffer);
+    Stringinit(sock->prompt);
+    init_queue(sock->queue = (Queue *)MALLOC(sizeof(Queue)));
+    sock->next = NULL;
+
+    addr.sin_family = AF_INET;
+
+    if (isdigit(*world->port)) {
+        addr.sin_port = htons(atoi(world->port));
+#ifndef NO_NETDB
+    } else if ((service = getservbyname(world->port, "tcp"))) {
+        addr.sin_port = service->s_port;
+#endif
+    } else {
+        CONFAIL(world->name, world->port, "no such service");
+        nukesock(sock);
+        return 0;
+    }
+
+    if (!get_host_address(world->address, &addr.sin_addr)) {
+        CONFAIL(world->name, world->address, "can't find host");
+        nukesock(sock);
+        return 0;
+    }
+
+    /* Jump back here if we start a nonblocking connect and then discover
+     * that the platform has a broken read() or select().
+     */
+    retry:
+
+    if ((sock->fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        CONFAIL(world->name, "socket", STRERROR(errno));
+        nukesock(sock);
+        return 0;
+    }
+    if (sock->fd >= nfds) nfds = sock->fd + 1;
+
+#ifdef TF_NONBLOCK
+    if (can_nonblock) {
+        if ((flags = fcntl(sock->fd, F_GETFL)) < 0) {
+            operror("Can't make socket nonblocking: F_GETFL fcntl");
+            can_nonblock = FALSE;
+        } else if ((fcntl(sock->fd, F_SETFL, flags | TF_NONBLOCK)) < 0) {
+            operror("Can't make socket nonblocking: F_SETFL fcntl");
+            can_nonblock = FALSE;
+        }
+    }
+#endif
+
+    if (connect(sock->fd, (struct sockaddr*)&addr, size) == 0) {
+        /* The connection completed successfully. */
+        return establish(sock);
+
+#ifdef EINPROGRESS
+    } else if (errno == EINPROGRESS) {
+        /* The connection needs more time.  It will select() as writable
+         * when it has connected, or readable when it has failed.  We
+         * select on it for a fraction of a second here so "immediate"
+         * and "relatively fast" look the same to the user.
+         */
+        sock->flags |= SOCKPENDING;
+        FD_ZERO(&writeable);
+        FD_SET(sock->fd, &writeable);
+        tv.tv_sec = 0;
+        tv.tv_usec = CONN_WAIT;
+        if (select(sock->fd + 1, NULL, &writeable, NULL, &tv) > 0) {
+#if 0
+            /* Is this really necessary??  (It is if select is broken and lies
+             * about the descriptor being ready.  All /connects on such a system
+             * will fail with "Socket is not connected" unless we do this).
+             */
+            char buf[1];
+            if (read(sock->fd, buf, 0) < 0) {
+                if (errno == ENOTCONN) {
+                    /* select() is broken, so we try a blocking connect. */
+                    close(sock->fd);
+                    can_nonblock = FALSE;
+                    goto retry; /* try again */
+                } else {
+                    CONFAIL(world->name, "connect/read", STRERROR(errno));
+                    nukesock(sock);
+                    return 0;
+                }
+            } else
+#endif
+            {
+                /* The connection completed. */
+                return establish(sock);
+            }
+        } else {
+            /* select() must have returned 0, or -1 and errno==EINTR.  In
+             * either case, the connection still needs more time.  So we
+             * add the fd to the set being watched by the select() in
+             * main_loop(), and don't waste any more time waiting here.
+             */
+            FD_SET(sock->fd, &writers);
+            FD_SET(sock->fd, &readers);
+            do_hook(H_PENDING, "%% Connection to %s in progress.", "%s",
+                sock->world->name);
+            return 2;
+        }
+#endif
+
+    } else if (errno == EAGAIN) {
+        /* A bug in SVR4.2 causes nonblocking connect() to (sometimes?)
+         * incorrectly fail with EAGAIN.  The only thing we can do about
+         * it is to try a blocking connect().
+         */
+        close(sock->fd);
+        can_nonblock = FALSE;
+        goto retry; /* try again */
+
+    } else {
+        /* The connection failed.  Give up. */
+        CONFAIL(world->name, "connect", STRERROR(errno));
+        nukesock(sock);
+        return 0;
+    }
+
 }
 
 /* Convert name or ip number string to an in_addr */
@@ -459,154 +727,11 @@ static int get_host_address(name, addr)
 #ifndef NO_NETDB
     /* Numeric format failed.  Try name format. */
     if ((host = gethostbyname(name))) {
-        memcpy(addr, host->h_addr, sizeof(struct in_addr));
+        memcpy((GENERIC *)addr, (GENERIC *)host->h_addr, sizeof(addr));
         return 1;
     }
 #endif
     return 0;
-}
-
-/* try to open a new connection */
-int opensock(w, autologin, quietlogin)
-    World *w;
-    int autologin, quietlogin;
-{
-    int flags;
-    Sock *sock;
-    struct timeval tv;
-    fd_set pending;
-    struct sockaddr_in addr;
-    struct servent *service;
-    int size = sizeof(struct sockaddr_in);
-
-    /* Does a socket to this world already exist? */
-    for (sock = hsock; sock != NULL; sock = sock->next) {
-        if (sock->world == w &&
-          (!(sock->flags & SOCKDEAD) || sock->flags & SOCKACTIVE)) {
-            if (sock == fsock) return 1;
-            if (sock->flags & SOCKPENDING) {
-                oputs("% Connection already in progress.");
-                return 0;  /* ??? */
-            }
-            bg_sock();
-            fg_sock(sock);
-            if (sock == fsock && sockmload) wload(sock->world);
-            return 1;
-        }
-    }
-
-    /* create and initialize new Sock */
-    sock = (Sock *) MALLOC(sizeof(struct Sock));
-    sock->prev = tsock;
-    if (tsock == NULL) {
-        tsock = hsock = sock;
-    } else {
-        tsock = tsock->next = sock;
-    }
-    sock->fd = -1;
-    sock->state = '\0';
-    sock->flags = SOCKECHO | SOCKEDIT | SOCKTRAP | (autologin ? SOCKLOGIN : 0);
-    sock->world = w;
-    sock->world->socket = sock;
-    if (quietlogin && autologin && *sock->world->character)
-        sock->numquiet = MAXQUIET;
-    else
-        sock->numquiet = 0;
-    Stringinit(sock->buffer);
-    Stringinit(sock->prompt);
-    sock->queue = (Queue *)MALLOC(sizeof(Queue));
-    init_queue(sock->queue);
-    sock->next = NULL;
-
-    addr.sin_family = AF_INET;
-
-    if (isdigit(*w->port)) {
-        addr.sin_port = htons(atoi(w->port));
-#ifndef NO_NETDB
-    } else if ((service = getservbyname(w->port, "tcp"))) {
-        addr.sin_port = service->s_port;
-#endif
-    } else {
-        CONFAIL(w->name, w->port, "no such service");
-        nukesock(sock);
-        return 0;
-    }
-
-    if (!get_host_address(w->address, &addr.sin_addr)) {
-        CONFAIL(w->name, w->address, "can't find host");
-        nukesock(sock);
-        return 0;
-    }
-
-    if ((sock->fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        CONFAIL(w->name, "socket", STRERROR(errno));
-        nukesock(sock);
-        return 0;
-    }
-    if (sock->fd >= nfds) nfds = sock->fd + 1;
-
-#ifdef TF_NONBLOCK
-    if ((flags = fcntl(sock->fd, F_GETFL)) < 0)
-        operror("Can't make socket nonblocking: F_GETFL fcntl");
-    else if ((fcntl(sock->fd, F_SETFL, flags | TF_NONBLOCK)) < 0)
-        operror("Can't make socket nonblocking: F_SETFL fcntl");
-#endif
-
-    if (connect(sock->fd, (struct sockaddr*)&addr, size) == 0) {
-        /* The connection completed successfully. */
-        return establish(sock);
-
-#ifdef EINPROGRESS
-    } else if (errno == EINPROGRESS) {
-        /* The connection needs more time.  It will select() as writable when
-         * it has completed.  We select on it for a fraction of a second here
-         * so "immediate" and "relatively fast" look the same to the user.
-         */
-        sock->flags |= SOCKPENDING;
-        FD_ZERO(&pending);
-        FD_SET(sock->fd, &pending);
-        tv.tv_sec = 0;
-        tv.tv_usec = CONN_WAIT;
-        if (select(sock->fd + 1, NULL, &pending, NULL, &tv) > 0) {
-            /* The connection completed successfully. */
-            return establish(sock);
-        } else {
-            /* select() must have returned 0, or -1 and errno==EINTR.  In
-             * either case, the connection still needs more time.  So we add
-             * the fd to the set being watched by the select() in main_loop(),
-             * and don't waste any more time waiting here.
-             */
-            FD_SET(sock->fd, &writers);
-            do_hook(H_PENDING, "%% Connection to %s in progress.", "%s",
-                sock->world->name);
-            return 1;  /* Maybe this should be something else. */
-        }
-#endif
-
-    } else if (errno == EAGAIN) {
-        /* A bug in SVR4.2 causes nonblocking connect() to (sometimes?)
-         * incorrectly fail with EAGAIN.  The only thing we can do about
-         * it is to try a blocking connect().
-         */
-        close (sock->fd);
-        if ((sock->fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-            CONFAIL(w->name, "socket", STRERROR(errno));
-            nukesock(sock);
-            return 0;
-        }
-        if (connect(sock->fd, (struct sockaddr*)&addr, size) < 0) {
-            CONFAIL(w->name, "connect", STRERROR(errno));
-            nukesock(sock);
-            return 0;
-        }
-        return establish(sock);
-
-    } else {
-        /* The connection failed.  Give up. */
-        CONFAIL(w->name, "connect", STRERROR(errno));
-        nukesock(sock);
-        return 0;
-    }
 }
 
 /* Establish a sock for which connect() has completed. */
@@ -614,34 +739,52 @@ static int establish(sock)
     Sock *sock;
 {
     int was_pending = FALSE;
-    int err = 0;
-    struct sockaddr addr;
-    int len;
+    Sock *oldsock;
 
 #ifdef EINPROGRESS
     if (sock->flags & SOCKPENDING) {
+# if 0
+        /* This method _should_ work, and indeed does on many systems.
+         * But on some broken socket implementations (notably SunOS 5.x)
+         * read() of 0 bytes on the socket _always_ fails with EAGAIN.
+         */
+        char buf[1];
+
+        if (read(sock->fd, buf, 0) < 0) {
+            killsock(sock);
+            CONFAIL(sock->world->name, "connect/read", STRERROR(errno));
+            return 0;
+        }
+# else
         /* If socket isn't connected, getpeername() will fail with ENOTCONN
          * (we don't care about the addr, just the errno).  If that happens,
-         * we use getsockopt() to find out why the connect() failed.
+         * we use getsockopt() to find out why the connect() failed.  Some
+         * broken socket implementations give the wrong errno, but there's
+         * nothing we can do about that.
          */
+        int len, err = 0;
+        struct sockaddr addr;
+        char *errmsg;
+
         len = sizeof(addr);
         if (getpeername(sock->fd, &addr, &len) < 0) {
-            char *errmsg;
             len = sizeof(err);
             if (errno != ENOTCONN) {
                 errmsg = "getpeername";
                 err = errno;
-#ifdef SO_ERROR
+#  ifdef SO_ERROR
             /* SO_ERROR isn't defined on hpux?  Screw 'em. */
-            } else if (getsockopt(sock->fd,SOL_SOCKET,SO_ERROR,&err,&len) < 0) {
+            } else if (getsockopt(sock->fd, SOL_SOCKET, SO_ERROR,
+              (GENERIC*)&err, &len) < 0) {
                 errmsg = "getsockopt";
                 err = errno;
-#endif
-            } else errmsg = "connect";
+#  endif /* SO_ERROR */
+            } else errmsg = "connect/getsockopt";
             killsock(sock);
             CONFAIL(sock->world->name, errmsg, STRERROR(err));
             return 0;
         }
+# endif /* 0 */
 
         /* connect() worked.  Clear the pending stuff, and get on with it. */
         sock->flags &= ~SOCKPENDING;
@@ -655,19 +798,13 @@ static int establish(sock)
     sock->world->history->index = sock->world->history->pos;
 #endif
 
+    oldsock = xsock;
     xsock = sock;
-    wload(sock->world);
-    if (was_pending) {
-        FD_SET(sock->fd, &readers);
-        do_hook(H_CONNECT, "%% Connection to %s established.", "%s",
-            sock->world->name);
-    } else {
-        bg_sock();
-        fg_sock(sock);
-        do_hook(H_CONNECT, NULL, "%s", sock->world->name);
-    }
-    login_hook(sock);
-    xsock = fsock;
+    wload(xsock->world);
+    do_hook(H_CONNECT, "%% Connection to %s established.", "%s",
+        xsock->world->name);
+    login_hook(xsock);
+    xsock = oldsock;
     return 1;
 }
 
@@ -686,10 +823,9 @@ int movesock(dir)
     } while ((sock->flags & SOCKPENDING) && sock != stop);
     if (sock != fsock) {
         if (fsock && (sock->flags & SOCKECHO) != (fsock->flags & SOCKECHO))
-            need_refresh = REF_LOGICAL;
+            set_refresh_pending(REF_LOGICAL);
         bg_sock();
         fg_sock(sock);
-        if (sockmload) wload(fsock->world);
         return 1;
     }
     return 0;
@@ -702,7 +838,10 @@ int movesock(dir)
 static void nukesock(sock)
     Sock *sock;
 {
-    sock->world->socket = NULL;
+    if (sock->world->sock == sock) {
+        /* false if /connect follows close in same interation of main loop */
+        sock->world->sock = NULL;
+    }
     if (sock->world->flags & WORLD_TEMP) {
         nuke_world(sock->world);
         sock->world = NULL;
@@ -731,38 +870,29 @@ static void nukesock(sock)
 static void nuke_dead_socks()
 {
     Sock *sock, *next;
-    int reconnect = FALSE;
 
-    if (fsock && (fsock->flags & SOCKDEAD)) {
+    while (fsock && (fsock->flags & SOCKDEAD)) {
+        /* bg the dead fg sock and find another sock to put in fg */
         bg_sock();
-        reconnect = TRUE;
+        if ((sock = find_sock(NULL))) {
+            fg_sock(sock);
+        } else {
+            announce_world(NULL);
+            update_prompt(NULL);
+        }
     }
     for (sock = hsock; sock; sock = next) {
         next = sock->next;
         if (sock->flags & SOCKDEAD) {
-            if (sock->flags & SOCKACTIVE) FD_CLR(sock->fd, &readers);
-            else {
+            if (sock->flags & SOCKACTIVE) {
+                FD_CLR(sock->fd, &readers);
+            } else {
                 nukesock(sock);
                 dead_socks--;
             }
         }
     }
     if (quitdone && !hsock) quit_flag = 1;
-    else if (reconnect) any_sock();
-}
-
-/* find any socket that can be brought into foreground, and do it */
-static void any_sock()
-{
-    Sock *sock;
-
-    if ((sock = find_sock(NULL))) {
-        fg_sock(sock);
-        if (sockmload && fsock) wload(fsock->world);
-    } else {
-        announce_world(NULL);
-        refresh_prompt(NULL);
-    }
 }
 
 /* close all sockets */
@@ -770,11 +900,11 @@ void disconnect_all()
 {
     Sock *sock, *next;
 
+    bg_sock();
     for (sock = hsock; sock; sock = next) {
         next = sock->next;
         nukesock(sock);
     }
-    bg_sock();
     hsock = tsock = NULL;
     if (quitdone) quit_flag = 1;
 }
@@ -786,13 +916,12 @@ int handle_dc_command(args)
     Sock *s;
 
     if (!*args) {
-        if (fsock) killsock(fsock);
-        else return 0;
+        if (!fsock) return 0;
+        killsock(fsock);
     } else if (cstrcmp(args, "-all") == 0) {
-        if (hsock) {
-            disconnect_all();
-            announce_world(NULL);
-        } else return 0;
+        if (!hsock) return 0;
+        disconnect_all();
+        announce_world(NULL);
     } else {
         for (s = hsock; s; s = s->next) {
             if (cstrcmp(s->world->name, args) == 0 && !(s->flags & SOCKDEAD))
@@ -823,6 +952,7 @@ int handle_listsockets_command(args)
 
     for (sock = hsock; sock != NULL; sock = sock->next) {
         if (sock == xsock) state = "current";
+        else if (sock == fsock) state = "foregnd";
         else if (sock->flags & SOCKPENDING) state = "pending";
         else if (sock->flags & SOCKDEAD)    state = "dead";
         else if (sock->flags & SOCKACTIVE)  state = "active";
@@ -838,7 +968,7 @@ int handle_listsockets_command(args)
 void background_hook(line)
     char *line;
 {
-    if (xsock != fsock && background <= 1)
+    if (xsock != fsock)
         do_hook(H_BACKGROUND, "%% Trigger in world %s", "%s %s",
             xsock->world->name, line);
 }
@@ -908,8 +1038,8 @@ static int transmit(str, numtowrite)
             else {
                 killsock(xsock);
                 do_hook(H_DISCONNECT,
-                    "%% Connection to %s closed by foreign host: %s",
-                    "%s %s", xsock->world->name, STRERROR(errno));
+                    "%% Connection to %s closed: %s", "%s %s",
+                    xsock->world->name, STRERROR(errno));
                 return 0;
             }
         }
@@ -930,7 +1060,7 @@ int send_line(str, numtowrite)
 {
     if (xsock && xsock->prompt->len) {
         Stringterm(xsock->prompt, 0);
-        if (xsock == fsock) refresh_prompt(xsock->prompt);
+        if (xsock == fsock) update_prompt(xsock->prompt);
     }
     return transmit(str, numtowrite);
 }
@@ -952,17 +1082,20 @@ static void login_hook(sock)
 static void handle_socket_line()
 {
     xsock->flags |= SOCKPROMPT;
-    world_output(xsock, special_hook(xsock->buffer->s));
+    (incoming_text = new_aline(xsock->buffer->s, 0))->links = 1;
+    special_hook(incoming_text);
+    world_output(xsock, incoming_text);
     Stringterm(xsock->buffer, 0);
+    free_aline(incoming_text);
+    incoming_text = NULL;
 }
 
-/* log, record, and display string as if it came from world w */
+/* log, record, and display aline as if it came from sock */
 void world_output(sock, aline)
     Sock *sock;
     Aline *aline;
 {
     aline->links++;
-    aline->attrs |= F_NEWLINE;
     record_hist(sock->world->history, aline);
     if (!(gag && (aline->attrs & F_GAG))) {
         if (sock == fsock) {
@@ -987,7 +1120,7 @@ void world_output(sock, aline)
 /* get the prompt for the fg sock */
 String *fgprompt()
 {
-    return fsock ? fsock->prompt : NULL;
+    return (fsock) ? fsock->prompt : NULL;
 }
 
 void tog_lp()
@@ -997,154 +1130,208 @@ void tog_lp()
         if (fsock->buffer->len) {
             SStringcat(fsock->prompt, fsock->buffer);
             Stringterm(fsock->buffer, 0);
-            need_refresh = REF_PHYSICAL;
+            set_refresh_pending(REF_PHYSICAL);
         }
     } else {
         if (fsock->prompt->len && !(fsock->flags & SOCKPROMPT)) {
             SStringcpy(fsock->buffer, fsock->prompt);
             Stringterm(fsock->prompt, 0);
-            need_refresh = REF_PHYSICAL;
+            set_refresh_pending(REF_PHYSICAL);
         }
     }
 }
 
-static void handle_socket_prompt(confirmed)
+int handle_prompt_command(args)
+    char *args;
+{
+    if (xsock) handle_prompt(args, TRUE);
+    return !!xsock;
+}
+
+static void handle_prompt(str, confirmed)
+    char *str;
     int confirmed;
 {
     if (lpquote) runall(time(NULL));
-    /* Be careful with termination if you ever implement /prompt */
     if (xsock->flags & SOCKPROMPT) Stringterm(xsock->prompt, 0);
-    SStringcat(xsock->prompt, xsock->buffer);
+    Stringcat(xsock->prompt, str);
     Stringterm(xsock->buffer, 0);
-    check_trigger(xsock->prompt->s, 0);
-    if (xsock == fsock) refresh_prompt(xsock->prompt);
-
+    /* Old versions did trigger checking here.  Removing it breaks
+     * compatibility, but I doubt many users will care.  Leaving
+     * it in would not be right for /prompt.
+     */
+    if (xsock == fsock) update_prompt(xsock->prompt);
     if (confirmed) xsock->flags |= SOCKPROMPT;
     else xsock->flags &= ~SOCKPROMPT;
+}
+
+static void telnet_send(cmd, opt)
+    int cmd, opt;
+{
+    char buf[4];
+    sprintf(buf, "%c%c%c", (char)TN_IAC, (char)cmd, (char)opt);
+    transmit(buf, 3);
+    if (telopt) {
+        if (telnet_label[opt])
+            oprintf("sent IAC %s %s", telnet_label[cmd], telnet_label[opt]);
+        else oprintf("sent IAC %s %d", telnet_label[cmd], opt);
+    }
+}
+
+static void telnet_recv(cmd, opt)
+    int cmd, opt;
+{
+    if (telopt) {
+        if (telnet_label[opt])
+            oprintf("rcvd IAC %s %s", telnet_label[cmd], telnet_label[opt]);
+        else oprintf("rcvd IAC %s %d", telnet_label[cmd], opt);
+    }
 }
 
 /* handle input from current socket */
 static void handle_socket_input()
 {
-    char *place;
+    unsigned char *place, buffer[1024];
     fd_set readfds;
-    int count = 1;
-    char buffer[1024];
+    int count;
     struct timeval tv;
-    char cmd[4];
 
     if (xsock->prompt->len && !(xsock->flags & SOCKPROMPT)) {
         /* We assumed last text was a prompt, but now we have more text.
          * We must now assume that the previous unterminated text was
          * really the beginning of a longer line.  (If we're wrong, the
-         * previous prompt appears as output.  But if we made the
-         * opposite assumption, a real beginning of a line would never
-         * appear in the output window; that would be a worse mistake.)
+         * previous prompt appears as output.  But if we did the opposite,
+         * a real beginning of a line would never appear in the output
+         * window; that would be a worse mistake.)
          */
         SStringcpy(xsock->buffer, xsock->prompt);
         Stringterm(xsock->prompt, 0);
-        if (xsock == fsock) refresh_prompt(xsock->prompt);
+        if (xsock == fsock) update_prompt(xsock->prompt);
     }
 
-    while (count > 0) {
+    do {  /* while (count > 0 && !interrupted()) */
         do count = recv(xsock->fd, buffer, sizeof(buffer), 0);
             while (count < 0 && errno == EINTR);
         if (count <= 0) {
-            if (count < 0) operror("recv failed");
             if (xsock->buffer->len) handle_socket_line();
             killsock(xsock);
-            do_hook(H_DISCONNECT, "%% Connection to %s closed.",
-                "%s", xsock->world->name);
+            do_hook(H_DISCONNECT, (count < 0) ?
+                "%% Connection to %s closed: %s: %s" :
+                "%% Connection to %s closed by foreign host.",
+                (count < 0) ? "%s %s %s" : "%s",
+                xsock->world->name, "recv", STRERROR(errno));
             return;
         }
 
         place = buffer;
         while (place - buffer < count) {
-            if (xsock->state == TELNET_IAC) {
-                switch (xsock->state = *place++) {
-                case TELNET_IAC:
+            if (xsock->state == TN_IAC) {
+                switch (*place) {
+                case TN_IAC:
                     /* Literal IAC.  Ignore it. */
                     xsock->state = '\0';
                     break;
-                case TELNET_GA: case TELNET_EOR:
+                case TN_GA: case TN_EOR:
                     /* This is definitely a prompt. */
-                    handle_socket_prompt(TRUE);
+                    if (telopt)
+                        oprintf("rcvd IAC %s", telnet_label[xsock->state]);
+                    if (do_hook(H_PROMPT, NULL, "%S", xsock->buffer)) {
+                        Stringterm(xsock->buffer, 0);
+                    } else {
+                        handle_prompt(xsock->buffer->s, TRUE);
+                    }
                     break;
-                case TELNET_DO: case TELNET_DONT:
-                case TELNET_WILL: case TELNET_WONT:
+                case TN_SB:   /* currently impossible */
+                case TN_WILL: case TN_WONT:
+                case TN_DO:   case TN_DONT:
                     break;
                 default:
                     /* shouldn't happen; ignore it. */
+                    if (telopt) {
+                        if (telnet_label[xsock->state])
+                            oprintf("rcvd IAC %s",
+                                telnet_label[xsock->state]);
+                        else oprintf("rcvd IAC %d", xsock->state);
+                    }
                     break;
                 }
-            } else if (xsock->state == TELNET_WILL) {
-                if (*place == TELNET_ECHO) {
+                xsock->state = *place++;
+
+            } else if (xsock->state == TN_WILL) {
+                telnet_recv(TN_WILL, *place);
+                if (*place == TN_ECHO) {
                     if (xsock->flags & SOCKECHO) {
                         /* stop local echo, and acknowledge */
                         echoflag = FALSE;
                         xsock->flags &= ~SOCKECHO;
-                        sprintf(cmd, "%c%c%c", TELNET_IAC, TELNET_DO, *place);
-                        transmit(cmd, 3);
+                        telnet_send(TN_DO, TN_ECHO);
                     } else {
                         /* we already said DO ECHO, so ignore WILL ECHO */
                     }
-                } else if (*place == TELNET_EOR_OPT) {
+                } else if (*place == TN_EOR_OPT) {
                     if (!(xsock->flags & SOCKEOR)) {
                         xsock->flags |= SOCKEOR;
-                        sprintf(cmd, "%c%c%c", TELNET_IAC, TELNET_DO, *place);
-                        transmit(cmd, 3);
+                        telnet_send(TN_DO, TN_EOR_OPT);
                     } else {
                         /* we already said DO EOR_OPT, so ignore WILL EOR_OPT */
                     }
                 } else {
                     /* don't accept other WILL offers */
-                    sprintf(cmd, "%c%c%c", TELNET_IAC, TELNET_DONT, *place);
-                    transmit(cmd, 3);
+                    telnet_send(TN_DONT, *place);
                 }
                 xsock->state = '\0';
                 place++;
-            } else if (xsock->state == TELNET_WONT) {
-                if (*place == TELNET_ECHO) {
+            } else if (xsock->state == TN_WONT) {
+                telnet_recv(TN_WONT, *place);
+                if (*place == TN_ECHO) {
                     if (xsock->flags & SOCKECHO) {
                         /* we're already echoing, so ignore WONT ECHO */
                     } else {
                         /* resume local echo, and acknowledge */
                         echoflag = TRUE;
                         xsock->flags |= SOCKECHO;
-                        sprintf(cmd, "%c%c%c", TELNET_IAC, TELNET_DONT, *place);
-                        transmit(cmd, 3);
+                        telnet_send(TN_DONT, TN_ECHO);
                     }
-                } else if (*place == TELNET_EOR_OPT) {
+                } else if (*place == TN_EOR_OPT) {
                     if (!(xsock->flags & SOCKEOR)) {
                         /* we're in DONT EOR_OPT state, ignore WONT EOR_OPT */
                     } else {
                         /* acknowledge */
                         xsock->flags &= ~SOCKEOR;
-                        sprintf(cmd, "%c%c%c", TELNET_IAC, TELNET_DONT, *place);
-                        transmit(cmd, 3);
+                        telnet_send(TN_DONT, TN_EOR);
                     }
                 } else {
                     /* we're already in the WONT state, so ignore WONT */
                 }
                 xsock->state = '\0';
                 place++;
-            } else if (xsock->state == TELNET_DO) {
-                /* refuse all DO requests */
-                sprintf(cmd, "%c%c%c", TELNET_IAC, TELNET_WONT, *place);
-                transmit(cmd, 3);
+            } else if (xsock->state == TN_DO) {
+                telnet_recv(TN_DO, *place);
+                {
+                    /* refuse all DO requests */
+                    telnet_send(TN_WONT, *place);
+                }
                 xsock->state = '\0';
                 place++;
-            } else if (xsock->state == TELNET_DONT) {
+            } else if (xsock->state == TN_DONT) {
                 /* ignore all DONT requests (we're already in the DONT state) */
+                telnet_recv(TN_DONT, *place);
                 xsock->state = '\0';
                 place++;
-            } else if (*place == TELNET_IAC) {
+#if 0
+            } else if (xsock->state == TN_SB) {
+                telnet_recv(TN_SB, *place);
+                xsock->state = *place++;
+                /* now in FOOBAR-option state */
+            } else if (xsock->state == TN_FOOBAR) {
+                /* start subnegotiation for FOOBAR option */
+                xsock->state = *place++;
+#endif
+            } else if (*place == TN_IAC) {
                 xsock->state = *place++;
                 if (!(xsock->flags & SOCKTELNET)) {
                     xsock->flags |= SOCKTELNET;
-                    /* sprintf(cmd, "%c%c%c", TELNET_IAC, TELNET_WILL,
-                        TELNET_LINEMODE); */
-                    /* transmit(cmd, 3); */
+                    /* telnet_send(TN_WILL, TN_LINEMODE); */
                 }
             } else if (*place == '\n') {
                 /* Complete line received.  Process it. */
@@ -1155,7 +1342,11 @@ static void handle_socket_input()
                 xsock->state = *place++;
             } else if (*place == '\b' && xsock->state == '*') {
                 /* "*\b" is an LP editor prompt. */
-                handle_socket_prompt(TRUE);
+                if (do_hook(H_PROMPT, NULL, "%S", xsock->buffer)) {
+                    Stringterm(xsock->buffer, 0);
+                } else {
+                    handle_prompt(xsock->buffer->s, TRUE);
+                }
                 xsock->state = *place++;
             } else if (*place == '\b' && catch_ctrls > 0) {
                 if (xsock->buffer->len && catch_ctrls > 1)
@@ -1181,33 +1372,98 @@ static void handle_socket_input()
                 xsock->state = *place++;
             } else {
                 /* normal character */
-                Stringadd(xsock->buffer, *place);
+                Stringadd(xsock->buffer, (char)*place);
                 xsock->state = *place++;
             }
         }
 
+        /* See if anything arrived while we were parsing */
+
         FD_ZERO(&readfds);
         FD_SET(xsock->fd, &readfds);
-        if (lpflag && xsock->buffer->len && xsock == fsock) {
+        tv.tv_sec = tv.tv_usec = 0;
+
+        if (xsock->buffer->len && do_hook(H_PROMPT,NULL,"%S",xsock->buffer)) {
+            /* The hook took care of the unterminated line. */
+            Stringterm(xsock->buffer, 0);
+        } else if (lpflag && xsock->buffer->len && xsock == fsock) {
+            /* Wait a little to see if the line gets completed. */
             tv.tv_sec = prompt_sec;
             tv.tv_usec = prompt_usec;
-        } else tv.tv_sec = tv.tv_usec = 0;
+        }
 
-        /* See if anything arrived while we were parsing */
-        while ((count = select(xsock->fd + 1, &readfds, NULL, NULL, &tv)) < 0) {
+        if ((count = select(xsock->fd + 1, &readfds, NULL, NULL, &tv)) < 0) {
             if (errno != EINTR) {
-                operror("TF/receive/select");
-                die("% Failed select");
+                operror("select");
+                die("% Failed select in handle_socket_input");
             }
         }
 
-    }
+    } while (count > 0 && !interrupted());
 
     /* If lpflag is on and we got a partial line from the fg world,
      * assume the line is a prompt.
      */
     if (lpflag && xsock == fsock && xsock->buffer->len) {
-        handle_socket_prompt(FALSE);
+        handle_prompt(xsock->buffer->s, FALSE);
     }
 }
 
+
+static int keep_quiet(what)
+    char *what;
+{
+    if (!xsock->numquiet) return FALSE;
+    if (!cstrncmp(what, "Use the WHO command", 19) ||
+      !cstrncmp(what, "### end of messages ###", 23)) {
+        xsock->numquiet = 0;
+    } else (xsock->numquiet)--;
+    return TRUE;
+}
+
+static void special_hook(aline)
+    Aline *aline;
+{
+    if (borg || hilite || gag)
+        if (find_and_run_matches(aline->str, 0, aline))
+            background_hook(aline->str);
+
+    if (keep_quiet(aline->str))    aline->attrs |= F_GAG;
+    if (is_suppressed(aline->str)) aline->attrs |= F_GAG;
+    if (handle_portal(aline->str)) aline->attrs |= F_GAG;
+}
+
+static int handle_portal(what)
+    char *what;
+{
+    smallstr name, address, port;
+    STATIC_BUFFER(buffer);
+    World *world;
+
+    if (!bamf) return(0);
+    if (sscanf(what,
+        "#### Please reconnect to %64[^ @]@%64s (%*64[^ )]) port %64s ####",
+        name, address, port) != 3)
+            return 0;
+    if (restrict >= RESTRICT_WORLD) {
+        tfputs("% bamfing is restricted.", tferr);
+        return 0;
+    }
+
+    if (bamf == 1) {
+        Sprintf(buffer, 0, "@%s", name);
+        world = fworld();
+        world = new_world(buffer->s, world->character, world->pass,
+            address, port, world->mfile, "");
+        world->flags |= WORLD_TEMP;
+    } else if (!(world = find_world(name))) {
+        world = new_world(name, "", "", address, port, "", "");
+        world->flags |= WORLD_TEMP;
+    }
+
+    do_hook(H_BAMF, "%% Bamfing to %s", "%s", name);
+    if (bamf != 2) handle_dc_command("");
+    if (!opensock(world, TRUE, FALSE))
+        tfputs("% Connection through portal failed.", tferr);
+    return 1;
+}

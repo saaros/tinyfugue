@@ -12,8 +12,9 @@
 ;;
 ;; Completion keys:
 ;;
-;; ESC TAB	from context, or %{completion_list}.
-;; ESC ;	always uses %{completion_list}.
+;; ESC TAB	complete from context, input history, or %{completion_list}.
+;; ESC ;	complete from %{completion_list}.
+;; ESC i	complete from input history.
 ;; ESC /	filename completion.
 ;; ESC @	hostname completion.
 ;; ESC %	variable name completion.
@@ -39,6 +40,7 @@
 
 /def -ib'^[^I'	= /complete
 /def -ib'^[;'	= /complete user_defined
+/def -ib'^[i'	= /complete input_history
 /def -ib'^[/'	= /complete filename
 /def -ib'^[@'	= /complete hostname
 /def -ib'^[%'	= /complete variable
@@ -79,8 +81,8 @@
         /endif%;\
         /shift%;\
     /done%;\
-;   strip leading space
-    /let match=$(/echo -- %{match})%;\
+;   strip duplicates
+    /let match=$(/unique %{match})%;\
     /if /test match =~ ""%; /then \
 ;       No match was found.
         /beep 1%;\
@@ -104,6 +106,20 @@
 /def -i complete_user_defined = \
     /_complete_from_list %1 %completion_list
 
+
+/def -i ~input_history_list = \
+    /let list=$(/recall -i 99999)%;\
+    /def -i ~trunc = /echo - %%-L$(/length $(/recall -i 1))%;\
+    /echo - $(/~trunc %{list})%;\
+    /undef ~trunc
+
+/def -i complete_input_history = \
+    /_complete_from_list %1 $(/~input_history_list)
+
+/def -i complete_dynamic = \
+    /_complete_from_list %1 %completion_list $(/~input_history_list)
+
+
 /def -i complete_filename = \
     /quote -0 /_complete_from_list %1 !\
         echo `for f in \\\\`/bin/ls -d %1* 2>/dev/null\\\\`; do \
@@ -114,8 +130,7 @@
     /let target=$[substr(%1, strrchr(%1, "@") + 1, 999999)]%;\
     /quote -0 /_complete_from_list %{target} !\
         result=`cat /etc/hosts %{HOME}/etc/hosts 2>/dev/null | \
-            awk '($$NF > 0 && $$1 != "#") {print $$2;}' | \
-            egrep '^%{target}' | uniq`;\
+            awk '($$NF > 0 && $$1 != "#") {print $$2;}' | egrep '^%{target}'`;\
         echo $$result
 
 
@@ -135,6 +150,7 @@
         /set _complete_variable_list=%{_complete_variable_list} %{word}%;\
     /else \
         /_complete_from_list %1 %{_complete_variable_list}%;\
+        /unset _complete_variable_list%;\
     /endif
 
 
@@ -146,11 +162,13 @@
     /let args=%-1%;\
     /if /test args =~ "<done>"%; /then \
         /_complete_from_list %1 %{_complete_worldname_list}%;\
+        /unset _complete_worldname_list%;\
     /elseif /test "%{3}" !/ "-T*"%; /then \
         /set _complete_worldname_list=%{_complete_worldname_list} %{3}%;\
     /else \
         /set _complete_worldname_list=%{_complete_worldname_list} %{4}%;\
     /endif
+
 
 ;; /complete_context <word>
 ;; Uses context to determine which completion macro to use.
@@ -165,7 +183,7 @@
 ;       /complete_macroname %1%;\
 ;   /elseif /test head =/ "{/*}"%; /then \
 ;       /complete_command %1%;\
-    /elseif /test head =/ "{/[sl]et|/setenv} *"%; /then \
+    /elseif /test head =/ "{/[sl]et|/setenv|/unset|/expr} *"%; /then \
         /complete_variable %1%;\
     /elseif /test head =/ "{/load*|/save*} *"%; /then \
         /complete_filename %1%;\
@@ -175,12 +193,12 @@
         /complete_filename %P1%;\
     /elseif /test head =/ "*{*/*|.*}"%; /then \
         /complete_filename %1%;\
-    /elseif /test head =/ "{/world} *"%; /then \
+    /elseif /test head =/ "{/world|/connect|/fg} *"%; /then \
         /complete_worldname %1%;\
     /elseif /test head =/ "{/telnet|/addworld}*"%; /then \
         /complete_hostname %1%;\
     /else \
-        /complete_user_defined %1%;\
+        /complete_dynamic %1%;\
     /endif
 
 

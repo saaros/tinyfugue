@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: commands.h,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: commands.h,v 33000.0 1994/03/05 09:34:14 hawkeye Exp $ */
 
 #ifndef COMMANDS_H
 #define COMMANDS_H
@@ -13,15 +13,19 @@
 extern HANDLER (handle_addworld_command);
 extern HANDLER (handle_dc_command);
 extern HANDLER (handle_def_command);
+extern HANDLER (handle_dokey_command);
 extern HANDLER (handle_edit_command);
 extern HANDLER (handle_export_command);
+extern HANDLER (handle_fg_command);
 extern HANDLER (handle_help_command);
 extern HANDLER (handle_list_command);
 extern HANDLER (handle_listsockets_command);
+extern HANDLER (handle_prompt_command);
 extern HANDLER (handle_purge_command);
 extern HANDLER (handle_purgeworld_command);
 extern HANDLER (handle_saveworld_command);
 extern HANDLER (handle_send_command);
+extern HANDLER (handle_shift_command);
 extern HANDLER (handle_test_command);
 extern HANDLER (handle_undefn_command);
 extern HANDLER (handle_unset_command);

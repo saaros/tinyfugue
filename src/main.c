@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: main.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: main.c,v 33000.3 1994/04/16 05:10:40 hawkeye Exp $ */
 
 
 /***********************************************
@@ -31,10 +31,9 @@
 #include "signals.h"
 #include "tty.h"
 #include "command.h"
-#include "expand.h"
 #include "keyboard.h"
 
-char version[] = "TinyFugue version 3.2 beta 4, Copyright (C) 1993 Ken Keys";
+char version[] = "TinyFugue version 3.3 beta 4, Copyright (C) 1993, 1994 Ken Keys";
 
 int restrict = 0;
 
@@ -80,18 +79,18 @@ int main(argc, argv)
         die(usage);
     }
 
-    SRANDOM(getpid());		/* seed random generator */
-    init_sock();		/* socket.c   */
+    SRAND(getpid());		/* seed random generator */
     init_util();		/* util.c     */
-    init_signals();		/* signal.c   */
+    init_signals();		/* signals.c  */
     init_variables();		/* variable.c */
+    init_sock();		/* socket.c   */
     init_macros();		/* macro.c    */
     init_histories();		/* history.c  */
+    init_tty();			/* tty.c      */
     init_output();		/* output.c   */
     init_keyboard();		/* keyboard.c */
-    init_tty();			/* tty.c      */
-    init_values();		/* variable.c */
     init_mail();		/* util.c     */
+    tog_sigquit();              /* signals.c  */
 
     oputs(version);
     oputs("Regexp package is Copyright (c) 1986 by University of Toronto.");
@@ -100,21 +99,14 @@ int main(argc, argv)
     read_configuration(configfile);
 
     if (worldflag) {
-        World *world = NULL;
-        if (argc == 0)
-            world = get_world_header();
-        else if (argc == 1) {
-            if ((world = find_world(argv[0])) == NULL)
-                tfprintf(tferr, "%% The world %s is unknown.",argv[0]);
-        } else if (restrict >= RESTRICT_WORLD) {
-            tfputs("% Connecting to undefined worlds is restricted.", tferr);
-        } else {
-            world = new_world(NULL, "", "", argv[0], argv[1], "", "");
-            world->flags |= WORLD_TEMP;
-        }
         if (autologin < 0) autologin = login;
         if (quietlogin < 0) quietlogin = quiet;
-        if (world) opensock(world, autologin, quietlogin);
+        if (argc == 0)
+            openworld(NULL, NULL, autologin, quietlogin);
+        else if (argc == 1)
+            openworld(argv[0], NULL, autologin, quietlogin);
+        else /* if (argc == 2) */
+            openworld(argv[0], argv[1], autologin, quietlogin);
     }
 
     main_loop();

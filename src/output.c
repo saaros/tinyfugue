@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: output.c,v 33000.5 1994/04/10 00:59:46 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -28,8 +28,7 @@
 #include "search.h"
 #include "signals.h"
 #include "history.h"	/* record_*()... */
-#include "keyboard.h"	/* set_ekey() */
-#include "tty.h"	/* get_window_size() */
+#include "tty.h"	/* get_window_size(), crnl() */
 
 
 /* Terminal codes and capabilities.
@@ -94,7 +93,6 @@ static void  NDECL(clear_input_window);
 static void  FDECL(erase_tail,(int endx, int endy, int len));
 static void  FDECL(setscroll,(int y1, int y2));
 static void  FDECL(scroll_input,(int n));
-static void  FDECL(ioutput,(int c));
 static void  FDECL(ioutputs,(char *str, int len));
 static void  FDECL(ioutall,(int kpos));
 static void  FDECL(attributes_off,(int attrs));
@@ -108,9 +106,6 @@ static void  NDECL(output_novisual);
 #ifdef SCREEN
 static void  NDECL(output_noscroll);
 static void  NDECL(output_scroll);
-#else
-# define output_noscroll()      /* not supported without TERMCAP or HARDCODE */
-# define output_scroll()        /* not supported without TERMCAP or HARDCODE */
 #endif
 
 #ifdef TERMCAP
@@ -121,9 +116,6 @@ static void  NDECL(output_scroll);
 
 #define ipos()		xy(ix, iy)
 
-#define Wrap (wrapsize ? wrapsize : columns)
-#define keyboard_end (keybuf->len)
-
 /* Buffered output */
 
 #define bufputs(s)	Stringcat(outbuf, s)
@@ -131,7 +123,18 @@ static void  NDECL(output_scroll);
 #define bufputc(c)	Stringadd(outbuf, c)
 #define bufputnc(c, n)	Stringnadd(outbuf, c, n)
 
+/* see tty.c for explanation */
+#ifdef USE_SGTTY
+# define crnl() bufputs("\r\n")
+#else
+# define crnl() bufputc('\n')
+#endif
+
 /* Others */
+
+#define Wrap (wrapsize ? wrapsize : columns)
+#define keyboard_end (keybuf->len)
+#define more_attrs (F_BOLD | F_REVERSE)
 
 extern int keyboard_pos;            /* position of logical cursor in keybuf */
 extern Stringp keybuf;              /* input buffer */
@@ -145,15 +148,14 @@ static int istarty, iendy, iendx;   /* start/end of current input line */
 STATIC_BUFFER(moreprompt);          /* pager prompt */
 static String *prompt;              /* current prompt */
 static int outcount;                /* lines remaining until more prompt */
-static int paused = FALSE;          /* output paused? */
+static int paused = 0;              /* 0=not paused; 1=no prompt; 2=prompted */
 static short have_attr = 0;         /* available attributes */
-static short more_attrs;            /* attributes for more prompt */
 static Aline *currentline = NULL;   /* current logical line for printing */
 static char *nextphys = NULL;       /* beginning of next wrapped line */
+static int can_have_visual = FALSE;
 
 int lines   = 0;
 int columns = 0;
-int can_have_visual = FALSE;
 int need_refresh = 0;               /* does input need refresh? */
 int echoflag = TRUE;                /* echo input? */
 int screen_setup = FALSE;           /* is *screen* in visual mode? */
@@ -208,9 +210,7 @@ void change_term()
     if (old) setvar("visual", "1", FALSE);
 }
 
-/* Initialize basic output data.
- * Termcap data will be initialized when init_values() inits %{TERM}.
- */
+/* Initialize basic output data. */
 void init_output()
 {
     char *str;
@@ -220,17 +220,19 @@ void init_output()
     prompt = fgprompt();
     carriage_return = "\r";
 
-    /* window size: try environment, ioctl TIOCGWINSIZ, termcap, defaults. */
+    /* window size: try environment, ioctl TIOCGWINSZ, termcap, defaults. */
     if ((str = getvar("LINES"))) lines = atoi(str);
     if ((str = getvar("COLUMNS"))) columns = atoi(str);
     if (lines <= 0 || columns <= 0) get_window_size();
 
-    /* init_term() will be called when %{TERM} is init'ed by init_values(). */
+    init_term();
+    ch_hilite();
+    tog_visual();
 }
 
 static void init_term()
 {
-    int error = 0;
+    char *errmsg = NULL;
 #ifdef TERMCAP
     char *standout, *str;
     char termcap_entry[1024];
@@ -246,9 +248,11 @@ static void init_term()
     standout_off = underline_off = attr_off = NULL;
 
     if (!TERM || !*TERM) {
-        error = 1;
+        errmsg = "%% Warning: TERM undefined.";
+        /* Can't print this message until all screen info is initialized. */
     } else if (tgetent(termcap_entry, TERM) <= 0) {
-        error = 2;
+        errmsg = "%% Warning: \"%s\" terminal unsupported.";
+        /* Can't print this message until all screen info is initialized. */
     } else {
         if (columns <= 0) columns = tgetnum("co");
         if (lines   <= 0) lines   = tgetnum("li");
@@ -282,10 +286,10 @@ static void init_term()
         }
         if (!bold && standout_off) bold = standout;
 
-        if ((str = tgetstr("ku", &area))) set_ekey(str, "/DOKEY UP");
-        if ((str = tgetstr("kd", &area))) set_ekey(str, "/DOKEY DOWN");
-        if ((str = tgetstr("kr", &area))) set_ekey(str, "/DOKEY RIGHT");
-        if ((str = tgetstr("kl", &area))) set_ekey(str, "/DOKEY LEFT");
+        if ((str = tgetstr("ku", &area))) add_ibind(str, "/DOKEY UP");
+        if ((str = tgetstr("kd", &area))) add_ibind(str, "/DOKEY DOWN");
+        if ((str = tgetstr("kr", &area))) add_ibind(str, "/DOKEY RIGHT");
+        if ((str = tgetstr("kl", &area))) add_ibind(str, "/DOKEY LEFT");
 
         /* Many old xterm termcaps mistakenly omit "cs". */
         if (!change_scroll_region && strcmp(TERM, "xterm") == 0)
@@ -306,15 +310,14 @@ static void init_term()
     if (flash)     have_attr |= F_FLASH;
     if (dim)       have_attr |= F_DIM;
     if (bold)      have_attr |= F_BOLD;
-    if (error == 1)
-        oputs("% Warning: TERM undefined");
-    else if (error == 2)
-        tfprintf(tferr, "%% Warning: \"%s\" terminal unsupported.", TERM);
+
+    if (errmsg) tfprintf(tferr, errmsg, TERM);
 }
 
 static void setscroll(y1,y2)
     int y1, y2;
 {
+    if (!change_scroll_region) return;  /* shouldn't happen */
     tpgoto(change_scroll_region, (y2), (y1));
     cx = cy = -1;   /* cursor position is undefined after termcap "cs" */
 }
@@ -327,7 +330,7 @@ static void xy(x,y)
         tpgoto(cursor_address, (x), (y));
     } else if (x==1 && y==cy) {                            /* optimization */
         bufputc('\r');
-    } else if (x==1 && y>=cy && y<cy+5 && y<ystatus ) {    /* optimization */
+    } else if (x == 1 && y >= cy && y < cy + 5) {          /* optimization */
         /* note: '\n' is not safe outside scroll region */
         bufputc('\r');
         bufputnc('\n', y - cy);
@@ -376,26 +379,29 @@ static void tp(str)
 
 void setup_screen()
 {
+    if (visual && (columns < 50 || lines < 5)) {
+        tfputs("% Terminal too small for visual mode.", tferr);
+        setvar("visual", "0", FALSE);
+    }
     if (!visual) {
         if (paused) prompt = moreprompt;
         return;
     }
 #ifdef SCREEN
     prompt = fgprompt();
-    if (isize <= 0) isize = 3;
-    if (isize > lines - 3) isize = lines - 3;
+    if (isize <= 0) setivar("isize", 3, FALSE);
+    if (isize > lines - 3) setivar("isize", lines - 3, FALSE);
     ystatus = lines - isize;
     outcount = ystatus - 1;
     if (enter_ca_mode) tp(enter_ca_mode);
 
-    if (scroll) {
-        if (change_scroll_region) setscroll(1, lines);
+    if (scroll && (change_scroll_region || (insert_line && delete_line))) {
         xy(1, lines);
         bufputnc('\n', isize);  /* At bottom.  Don't increment cy. */
-        if (change_scroll_region) setscroll(1, ystatus - 1);
     } else {
         clr();
         oy = 1;
+        if (scroll) setivar("scroll", 0, FALSE);
     }
     status_bar(STAT_ALL);
     ix = iendx = oy = ox = 1;
@@ -408,18 +414,20 @@ void setup_screen()
 
 int redraw()
 {
-    if (screen_setup && visual) {
+    if (visual) {
         clr();
         setup_screen();
-        logical_refresh();
-        return 1;
-    } else return 0;
+    } else {
+        bufputnc('\n', lines);
+    }
+    logical_refresh();
+    return 1;
 }
 
 void status_bar(seg)
     int seg;
 {
-    extern int log_on;
+    extern int log_count;
     extern int mail_flag;           /* should mail flag on status bar be lit? */
     extern int active_count;        /* number of active sockets */
 
@@ -452,7 +460,7 @@ void status_bar(seg)
     }
     if (seg & STAT_LOGGING) {
         xy(columns - 26, ystatus);
-        bufputs(log_on ? "(Log)_" : "______");  cx += 6;
+        bufputs(log_count ? "(Log)_" : "______");  cx += 6;
     }
     if (seg & STAT_MAIL) {
         xy(columns - 20, ystatus);
@@ -476,7 +484,7 @@ void status_bar(seg)
     }
     /* ipos(); */
     bufflush();
-    need_refresh = REF_PHYSICAL;
+    set_refresh_pending(REF_PHYSICAL);
 }
 
 void tog_insert()
@@ -484,7 +492,7 @@ void tog_insert()
     status_bar(STAT_INSERT);
 }
 
-void change_isize()
+void ch_isize()
 {
     if (visual) {
         fix_screen();
@@ -499,6 +507,7 @@ void tog_visual()
         setvar("visual", "0", FALSE);
         tfputs("% Visual mode not supported.", tferr);
     } else {
+        oflush();
         if (!visual) fix_screen();
         setup_screen();
     }
@@ -516,6 +525,7 @@ void fix_screen()
     screen_setup = 0;
 #endif
     bufflush();
+    cx = cy = -1;
 }
 
 static void clear_lines(start, end)
@@ -563,11 +573,18 @@ void clear_input_line()
 static void scroll_input(n)
     int n;
 {
-    setscroll(ystatus + 1, lines);
-    xy(1, lines);
-    bufputnc('\n', n);  /* cy += n; */
-    setscroll(1, ystatus - 1);
-    xy(iendx = 1, iendy = lines - n + 1);
+    if (delete_line) {
+        xy(1, ystatus + 1);
+        for (iendy = lines + 1; iendy > lines - n + 1; iendy--)
+            tp(delete_line);
+    } else if (change_scroll_region) {
+        setscroll(ystatus + 1, lines);
+        xy(1, lines);
+        bufputnc('\n', n);  /* cy += n; */
+        setscroll(1, lines);
+        iendy = lines - n + 1;
+    }
+    xy(iendx = 1, iendy);
 }
 
 
@@ -576,13 +593,6 @@ static void scroll_input(n)
  *                        INPUT WINDOW HANDLING                        *
  *                                                                     *
  ***********************************************************************/
-
-static void ioutput(c)
-    int c;
-{
-    char ch = (char)c;
-    ioutputs(&ch, 1);
-}
 
 /* ioutputs
  * Print string within bounds of input window.
@@ -632,19 +642,21 @@ static void ioutall(kpos)
     ioutputs(keybuf->s + kpos, keybuf->len - kpos);
 }
 
-void iputs(s)
+void iput(s, len)
     char *s;
+    int len;
 {
     int i, j, end;
 
     if (!s[0]) return;
     if (!visual) {
-        for (i = j = 0; s[j]; j++) {
+        int wrapped = 0;
+        for (i = j = 0; j < len; j++) {
             if (++iendx > Wrap) iendx = Wrap;
             if (++ix > Wrap) {
+                wrapped++;
                 bufputns(s + i, j - i + 1);
-                bufputc('\r');  cx = 1;
-                bufputc('\n');  cy++;
+                crnl();  cx = 1; cy++;
                 iendx = ix = 1;
                 i = j + 1;
             }
@@ -654,7 +666,7 @@ void iputs(s)
             cx += j - i;
         }
 
-        if (insert || ix == 1) {
+        if (insert || wrapped) {
             iendx = ix;
             ioutputs(keybuf->s + keyboard_pos, keyboard_end - keyboard_pos);
             bufputnc('\010', iendx - ix);  cx -= (iendx - ix);
@@ -665,21 +677,22 @@ void iputs(s)
 
     /* visual */
     ipos();
-    for (j = 0; s[j]; j++) {
-        iendx = ix;
-        iendy = iy;
+    iendx = ix;
+    iendy = iy;
+    for (j = 0; j < len; j++) {
         if (ix == Wrap && iy == lines) {
-            if (change_scroll_region && isize > 1 && !clearfull) {
-                bufputc(s[j]);  cx++;
+            bufputc(s[j]);  cx++;
+            if (scroll && !clearfull) {
                 scroll_input(1);
                 ix = 1;
                 ipos();
-                if (--istarty < ystatus + 1) istarty = ystatus + 1;
+                if (istarty > ystatus + 1) istarty--;
             } else {
-                bufputc(s[j]);  cx++;
                 clear_input_window();
             }
-        } else ioutput(s[j]);
+        } else {
+            ioutputs(s + j, 1);
+        }
         ix = iendx;
         iy = iendy;
     }
@@ -702,9 +715,8 @@ void inewline()
 {
     ix = iendx = 1;
     if (!visual) {
-        bufputc('\r');  cx = 1;
-        bufputc('\n');  cy++;
-        if (prompt && prompt->len > 0) need_refresh = REF_PHYSICAL;
+        crnl();  cx = 1; cy++;
+        if (prompt && prompt->len > 0) set_refresh_pending(REF_PHYSICAL);
 
     } else {
         if (cleardone) {
@@ -712,7 +724,7 @@ void inewline()
         } else {
             iy = iendy + 1;
             if (iy > lines) {
-                if (change_scroll_region && isize > 1 && !clearfull) {
+                if (scroll && isize > 1 && !clearfull) {
                     scroll_input(1);
                     iy--;
                 } else {
@@ -721,51 +733,44 @@ void inewline()
             }
         }
         istarty = iendy = iy;
-        need_refresh = REF_PHYSICAL;
+        set_refresh_pending((prompt && prompt->len) ?
+            REF_LOGICAL : REF_PHYSICAL);
     }
+
     bufflush();
 }
 
 void idel(place)
     int place;
 {
-    int kpos, len;
+    int len;
     int oiex = iendx, oiey = iendy;
-    int old_pos = keyboard_pos;
 
+    if ((len = place - keyboard_pos) < 0) keyboard_pos = place;
     if (!echoflag && !always_echo) return;
-    if ((len = place - old_pos) < 0) ix += len;
+    if (len < 0) ix += len;
+    
     if (!visual) {
         if (ix < 1 || need_refresh) {
-            keyboard_pos = place;
             iendx = ix = Wrap;     /* ??? */
             physical_refresh();
             return;
         }
+        if (len < 0) { bufputnc('\010', -len);  cx += len; }
+
     } else {
         /* visual */
-        ipos();
-        while (ix < 1) {
-            ix += Wrap;
-            iy--;
+        if (ix < 1) {
+            iy -= ((-ix) / Wrap) + 1;
+            ix = Wrap - ((-ix) % Wrap);
         }
         if (iy <= ystatus) {
-            kpos = place - (Wrap * isize) + (Wrap - ix) + 1;
-            clear_input_window();
-            ioutall(kpos);
-            ix = iendx;
-            iy = iendy;
-            ioutputs(keybuf->s + place, keyboard_end - place);
-            ipos();
-            bufflush();
+            logical_refresh();
             return;
         }
+        ipos();
     }
-    if (len < 0) {    /* must move cursor */
-        if (visual) ipos();
-        else { bufputnc('\010', -len);  cx += len; }
-        keyboard_pos = place;
-    }
+
     iendx = ix;
     iendy = iy;
     ioutputs(keybuf->s + keyboard_pos, keyboard_end - keyboard_pos);
@@ -776,47 +781,45 @@ void idel(place)
 int newpos(place)
     int place;
 {
-    int diff, new, kpos;
+    int diff, new;
 
     if (place < 0) place = 0;
     if (place > keyboard_end) place = keyboard_end;
+    diff = place - keyboard_pos;
+    keyboard_pos = place;
 
-    if (!(diff = place - keyboard_pos)) {
+    if (!diff) {
         /* no change */
     } else if (!visual) {
         ix += diff;
-        if (ix < 1 || ix > Wrap) {
-            keyboard_pos = place;
+        if (ix < 1) {
+            physical_refresh();
+        } else if (ix > Wrap) {
+            crnl();  cx = 1;  /* old text scrolls up, for continutity */
             physical_refresh();
         } else {
-            if (diff < 0) bufputnc('\010', keyboard_pos - place);
-            else while (keyboard_pos < place) bufputc(keybuf->s[keyboard_pos++]);
             cx += diff;
-            keyboard_pos = place;
+            if (diff < 0)
+                bufputnc('\010', -diff);
+            else for ( ; diff; diff--)
+                bufputc(keybuf->s[place - diff]);
         }
 
     /* visual */
     } else {
-        int nix, niy;
         new = (iy - 1) * Wrap + (ix - 1) + diff;
-        niy = new / Wrap + 1;
-        nix = new % Wrap + 1;
-        while (niy > lines) {
-            kpos = keyboard_pos + (lines - iy + 1) * Wrap - ix + 1;
-            scroll_input(1);
-            ioutputs(keybuf->s + kpos, keyboard_end - kpos);
-            keyboard_pos += (lines - ystatus) * Wrap;
-            niy--;
+        iy = new / Wrap + 1;
+        ix = new % Wrap + 1;
+        if ((iy > lines) && scroll) {
+            scroll_input(iy - lines);
+            ioutall(place - (ix - 1) - (iy - lines - 1) * Wrap);
+            iy = lines;
+            ipos();
+        } else if ((iy < ystatus + 1) || (iy > lines)) {
+            logical_refresh();
+        } else {
+            ipos();
         }
-        if (niy < ystatus + 1) {
-            kpos = keyboard_pos - (iy - niy) * Wrap - ix + 1;
-            clear_input_window();
-            ioutall(kpos);
-            niy = ystatus + 1;
-        }
-        ix = nix;  iy = niy;
-        ipos();
-        keyboard_pos = place;
     }
     bufflush();
     return keyboard_pos;
@@ -825,7 +828,7 @@ int newpos(place)
 /* Erase tail of logical line, and restore cursor position to ix,iy.
  * oiex,oiey is the original iendx,iendy.
  * len is the length of the tail to be erased.
- * preconditions: ix,iy are updated; real cursor is at beginning of tail.
+ * preconditions: ix,iy are up-to-date; real cursor is at beginning of tail.
  */
 static void erase_tail(oiex, oiey, len)
     int oiex, oiey, len;
@@ -834,7 +837,7 @@ static void erase_tail(oiex, oiey, len)
         tp(clear_to_eos);
         ipos();
     } else {
-        if (len > oiex - cx + 1) len = oiex - cx + 1;
+        if (len > oiex - cx) len = oiex - cx;
         if (clear_to_eol && len > 2) {
             tp(clear_to_eol);
         } else {
@@ -847,67 +850,71 @@ static void erase_tail(oiex, oiey, len)
     }
 }
 
-int dokey_refresh()
+void do_refresh()
 {
-    int oix = ix, oiy = iy, kpos;
-
-    if (!visual) {
-        logical_refresh();
-    } else {
-        kpos = keyboard_pos - (iy - istarty) * Wrap - (ix - 1);
-        clear_input_line();
-        ioutall(kpos);
-        ix = oix;
-        iy = oiy;
-        ipos();
-    }
-    bufflush();
-    return 1;
+    if (need_refresh == REF_LOGICAL) logical_refresh();
+    else if (need_refresh == REF_PHYSICAL) physical_refresh();
 }
 
 void physical_refresh()
 {
-    int curcol, kpos;
-
     if (visual) {
         ipos();
     } else {
-        curcol = ((prompt ? prompt->len : 0) + keyboard_pos) % Wrap;
-        kpos = keyboard_pos - curcol;
         clear_input_line();
-        ioutall(kpos);
-        ix = curcol + 1;
+        ix = ((prompt ? prompt->len : 0) + keyboard_pos) % Wrap + 1;
+        ioutall(keyboard_pos - (ix - 1));
         bufputnc('\010', iendx - ix);  cx -= (iendx - ix);
     }
     bufflush();
-    if (need_refresh == REF_PHYSICAL) need_refresh = 0;
+    if (need_refresh <= REF_PHYSICAL) need_refresh = 0;
 }
 
-void logical_refresh()
+int logical_refresh()
 {
-    int okpos;
+    int kpos, nix, niy;
+
+    kpos = prompt ? -prompt->len : 0;
+    nix = (keyboard_pos - kpos) % Wrap + 1;
 
     if (visual) {
-        clear_input_line();
-        okpos = keyboard_pos;
-        keyboard_pos = keyboard_end;
-        if (prompt) iputs(prompt->s);
-        if (echoflag || always_echo) iputs(keybuf->s);
-        newpos(okpos);
+        niy = istarty + (keyboard_pos - kpos) / Wrap;
+        if (niy <= lines) {
+            clear_input_line();
+        } else {
+            clear_input_window();
+            kpos += (niy - lines) * Wrap;
+            niy = lines;
+        }
+        ioutall(kpos);
+        ix = nix;
+        iy = niy;
+        ipos();
     } else {
-        physical_refresh();
+        clear_input_line();
+        ioutall(kpos);
+        for (kpos += Wrap; kpos <= keyboard_pos; kpos += Wrap) {
+            crnl();  cx = 1;
+            iendx = 1;
+            ioutall(kpos);
+        }
+        ix = nix;
+        bufputnc('\010', iendx - nix);  cx -= (iendx - nix);
     }
-    need_refresh = 0;
+    bufflush();
+    if (need_refresh <= REF_LOGICAL) need_refresh = 0;
+    return keyboard_pos;
 }
 
-void refresh_prompt(newprompt)
+void update_prompt(newprompt)
     String *newprompt;
 {
-    /* To do: don't print the new prompt if it compares equal to the old. */
-    if (prompt != moreprompt) {
-        prompt = newprompt;
+    String *oldprompt = prompt;
+
+    if (oldprompt == moreprompt) return;
+    prompt = (newprompt && newprompt->len) ? newprompt : NULL;
+    if (oldprompt || prompt)
         logical_refresh();
-    }
 }
 
 
@@ -926,7 +933,8 @@ static void attributes_off(attrs)
 {
     char *colorcode;
 
-    if (attrs & ~F_COLOR) {
+    if (attrs & F_HILITE) attrs |= hiliteattr;
+    if (attrs & F_SIMPLE) {
         if (attr_off) tp(attr_off);
         else {
             if (underline_off) tp(underline_off);
@@ -952,9 +960,15 @@ static void attributes_on(attrs)
         char *colorcode;
         extern char *enum_color[];
         STATIC_BUFFER(buf);
-        Sprintf(buf, 0, "start_color_%s", enum_color[attrs & F_COLOR]);
-        if ((colorcode = getvar(buf->s)))
+        Sprintf(buf, 0, "start_color_%s", enum_color[attrs & F_COLORMASK]);
+        if ((colorcode = getvar(buf->s))) {
             bufputs(print_to_ascii(colorcode));
+        } else {
+            Sprintf(buf, 0, "start_color_%d", attrs & F_COLORMASK);
+            if ((colorcode = getvar(buf->s))) {
+                bufputs(print_to_ascii(colorcode));
+            }
+        }
     }
 }
 
@@ -1004,15 +1018,9 @@ static int check_more()
     if (!more || ox != 1) return TRUE;
     if (outcount-- > 0) return TRUE;
 
-    paused = TRUE;
-    if ((more_attrs = do_hook(H_MORE, NULL, "")) == 0)
-        more_attrs = F_BOLD | F_REVERSE;
-    if (visual) {
-        status_bar(STAT_MORE);
-    } else {
-        prompt = moreprompt;
-        logical_refresh();
-    }
+    /* status bar will be updated in oflush() to avoid scroll region problems */
+    paused = 1;
+    do_hook(H_MORE, NULL, "");
     return FALSE;
 }
 
@@ -1020,7 +1028,7 @@ static int clear_more(new)
     int new;
 {
     if (!paused) return 0;
-    paused = FALSE;
+    paused = 0;
     outcount = new;
     if (visual) {
         status_bar(STAT_MORE);
@@ -1029,8 +1037,7 @@ static int clear_more(new)
         prompt = fgprompt();
         clear_input_line();
     }
-    need_refresh = REF_PHYSICAL;
-    oflush();
+    set_refresh_pending(REF_PHYSICAL);
     return 1;
 }
 
@@ -1078,7 +1085,7 @@ static void discard_screen_queue()
         nextphys = NULL;
     }
     clear_more(outcount);
-    screenout(new_aline("--- Output discarded ---", F_NEWLINE));
+    screenout(new_aline("--- Output discarded ---", 0));
 }
 
 /* wrapline
@@ -1174,14 +1181,24 @@ void screenout(aline)
         aline->links++;
         enqueue(tfscreen->u.queue, aline);
     }
-    if (!paused && !interrupted()) oflush();
 }
 
 void oflush()
 {
     if (!screen_setup) output_novisual();
+#ifdef SCREEN
     else if (scroll) output_scroll();
     else output_noscroll();
+#endif
+    if (paused == 1) {
+        paused = 2;
+        if (visual) {
+            status_bar(STAT_MORE);
+        } else {
+            prompt = moreprompt;
+            logical_refresh();
+        }
+    }
 }
 
 static void output_novisual()
@@ -1192,15 +1209,12 @@ static void output_novisual()
     while ((line = wrapline()) != NULL) {
         if (first && ix != 1) {
             clear_input_line();
-            need_refresh = REF_PHYSICAL;
+            set_refresh_pending(REF_PHYSICAL);
         }
         first = 0;
         hwrite(line->str, line->len, line->attrs, line->partials);
-        if (line->attrs & F_NEWLINE) {
-            bufputc('\r');  cx = 1;
-            bufputc('\n');  cy++;
-            ox = 1;
-        } else ox += line->len;
+        crnl();  cx = 1; cy++;
+        ox = 1;
         bufflush();
     }
 }
@@ -1211,18 +1225,13 @@ static void output_noscroll()
     Aline *line;
 
     while ((line = wrapline()) != NULL) {
-        if (ox == 1) {
-            xy(1, (oy + 1) % (ystatus - 1) + 1);
-            clear_line();
-        }
+        xy(1, (oy + 1) % (ystatus - 1) + 1);
+        clear_line();
         xy(ox, oy);
-        need_refresh = REF_PHYSICAL;
+        set_refresh_pending(REF_PHYSICAL);
         hwrite(line->str, line->len, line->attrs, line->partials);
-        if (line->attrs & F_NEWLINE) {
-            ox = 1;
-            oy = oy % (ystatus - 1) + 1;
-        }
-        else ox += line->len;
+        ox = 1;
+        oy = oy % (ystatus - 1) + 1;
         bufflush();
     }
 }
@@ -1230,12 +1239,20 @@ static void output_noscroll()
 static void output_scroll()
 {
     Aline *line;
+    int count = 0;
 
     while ((line = wrapline()) != NULL) {
         if (change_scroll_region) {
-            if (cy != ystatus - 1) xy(columns, ystatus - 1);
-            bufputc('\n');  /* At bottom.  Don't increment cy. */
-            bufputc('\r');  cx = 1;
+            /* Some emulators lose attributes in column 1 if we do \r\n.
+             * Others doublespace scrollback if we do \n\r.  They're both
+             * broken, and we can't workaround both bugs.  So, we do what
+             * makes the most sense: \r\n.
+             */
+            if (!count) {
+                setscroll(1, ystatus - 1);
+                xy(1, ystatus - 1);
+            } /* else cursor is already in position */
+            crnl();  cx = 1;
         } else {
             xy(1, 1);
             tp(delete_line);
@@ -1243,11 +1260,12 @@ static void output_scroll()
             tp(insert_line);
         }
         hwrite(line->str, line->len, line->attrs, line->partials);
-        if (line->attrs & F_NEWLINE) ox = 1;
-        else ox += line->len;
-        need_refresh = REF_PHYSICAL;
+        ox = 1;
+        set_refresh_pending(REF_PHYSICAL);
         bufflush();
+        count++;
     }
+    if (count && change_scroll_region) setscroll(1, lines);
 }
 #endif
 
@@ -1255,12 +1273,7 @@ static void output_scroll()
  * Interfaces with rest of program *
  ***********************************/
 
-int getwrap()
-{
-    return (Wrap);
-}
-
-void ch_clock()
+void tog_clock()
 {
 #ifdef HAVE_STRFTIME
     status_bar(STAT_CLOCK);
@@ -1277,8 +1290,8 @@ void ch_hilite()
     char *str;
 
     if (!(str = getvar("hiliteattr"))) return;
-    if ((hiliteattr = parse_attrs(&str)) < 0) {
-        hiliteattr = 0;
+    if ((special_var[VAR_HILITEATTR].ival = parse_attrs(&str)) < 0) {
+        special_var[VAR_HILITEATTR].ival = 0;
     }
 }
 

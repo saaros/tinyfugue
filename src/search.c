@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: search.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: search.c,v 33000.0 1994/03/05 09:34:14 hawkeye Exp $ */
 
 
 /**********************************************
@@ -20,13 +20,11 @@
 
 static unsigned int FDECL(hash_string,(char *str));
 
-#if 1
 void init_list(list)
     List *list;
 {
     list->head = list->tail = NULL;
 }
-#endif
 
 GENERIC *unlist(node, list)                /* delete Node from linked list */
     ListEntry *node;
@@ -34,19 +32,17 @@ GENERIC *unlist(node, list)                /* delete Node from linked list */
 {
     GENERIC *result;
 
-    if (node->next) node->next->prev = node->prev;
-    else list->tail = node->prev;
-    if (node->prev) node->prev->next = node->next;
-    else list->head = node->next;
-    result = node->data;
+    *(node->next ? &node->next->prev : &list->tail) = node->prev;
+    *(node->prev ? &node->prev->next : &list->head) = node->next;
+    result = node->datum;
     FREE(node);
     return result;
 }
 
-/* Create new node for data and insert into list in sorted order.
+/* Create new node for datum and insert into list in sorted order.
  */
-ListEntry *sinsert(data, list, cmp)
-    GENERIC *data;
+ListEntry *sinsert(datum, list, cmp)
+    GENERIC *datum;
     List *list;
     Cmp *cmp;
 {
@@ -54,25 +50,25 @@ ListEntry *sinsert(data, list, cmp)
 
     prev = NULL;
     node = list->head;
-    while (node && (*cmp)(data, node->data) > 0) {
+    while (node && (*cmp)(datum, node->datum) > 0) {
         prev = node;
         node = node->next;
     }
-    return inlist(data, list, prev);
+    return inlist(datum, list, prev);
 }
 
-/* Create new node for data and insert into list.
+/* Create new node for datum and insert into list.
  * If where is non-null, insert after it; else, insert at beginning
  */
-ListEntry *inlist(data, list, where)
-    GENERIC *data;
+ListEntry *inlist(datum, list, where)
+    GENERIC *datum;
     List *list;
     ListEntry *where;
 {
     ListEntry *node;
 
     node = (ListEntry *)MALLOC(sizeof(ListEntry));
-    node->data = data;
+    node->datum = datum;
     if (!where) {
         if (list->head) list->head->prev = node;
         node->next = list->head;
@@ -82,21 +78,8 @@ ListEntry *inlist(data, list, where)
         where->next = node;
     }
     node->prev = where;
-    if (node->next) node->next->prev = node;
-    else list->tail = node;
+    *(node->next ? &node->next->prev : &list->tail) = node;
     return node;
-}
-
-/* Remove all elements from src queue and put them on dest queue. */
-/* Much more efficient than dequeuing and enqueuing every element. */
-void queuequeue(src, dest)
-    Queue *src, *dest;
-{
-    if (!src->head) return;
-    src->tail->next = dest->head;
-    *(dest->head ? &dest->head->prev : &dest->tail) = src->tail;
-    dest->head = src->head;
-    src->head = src->tail = NULL;
 }
 
 void free_queue(q)
@@ -106,7 +89,7 @@ void free_queue(q)
 
     while ((node = q->tail)) {
         q->tail = q->tail->prev;
-        free_aline((Aline *)node->data);
+        free_aline((Aline *)node->datum);
         FREE(node);
     }
     q->head = NULL;
@@ -137,8 +120,8 @@ GENERIC *hash_find(name, table)       /* find entry by name */
     bucket = table->bucket[hash_string(name) % table->size];
     if (bucket) {
         for (node = bucket->head; node; node = node->next)
-            if ((*table->cmp)(name, *(char**)node->data) == 0)
-                return node->data;
+            if ((*table->cmp)(name, *(char**)node->datum) == 0)
+                return node->datum;
     }
     return NULL;
 }
@@ -153,18 +136,18 @@ static unsigned int hash_string(str)
     return h;
 }
 
-ListEntry *hash_insert(data, table)     /* add node to hash table */
-    GENERIC *data;
+ListEntry *hash_insert(datum, table)     /* add node to hash table */
+    GENERIC *datum;
     HashTable *table;
 {
     int indx;
 
-    indx = hash_string(*(char**)data) % table->size;
+    indx = hash_string(*(char**)datum) % table->size;
     if (!table->bucket[indx]) {
         table->bucket[indx] = (List *)MALLOC(sizeof(List));
         init_list(table->bucket[indx]);
     }
-    return inlist(data, table->bucket[indx], NULL);
+    return inlist(datum, table->bucket[indx], NULL);
 }
 
 
@@ -174,23 +157,18 @@ void hash_remove(node, table)         /* remove macro from hash table */
 {
     int indx;
 
-    indx = hash_string(*(char**)node->data) % table->size;
+    indx = hash_string(*(char**)node->datum) % table->size;
     unlist(node, table->bucket[indx]);
 }
 
+#ifndef HAVE_BSEARCH
 /*
- * binsearch - binary search by string
- * (base) points to an array of (nel) structures of (size) bytes.
- * The array must be sorted in ascending order.  Unlike ANSI's bsearch(),
- * the first member of the structures must be the string used for comparison.
- * Returns index of element matching (key), or -1 if not found.
+ * binsearch - replacement for bsearch().
  */
-
-int binsearch(key, base, nel, size, cmp)
-    char *key;
-    GENERIC *base;
+GENERIC *binsearch(key, base, nel, size, cmp)
+    CONST GENERIC *key, *base;
     int nel, size;
-    int FDECL((*cmp),(CONST char *, CONST char *));
+    int FDECL((*cmp),(CONST GENERIC *, CONST GENERIC *));
 {
     int bottom, top, mid, value;
 
@@ -198,12 +176,27 @@ int binsearch(key, base, nel, size, cmp)
     top = nel - 1;
     while (bottom <= top) {
         mid = (top + bottom) / 2;
-        value = (*cmp)(key, *(char **)((char *)base + size * mid));
+        value = (*cmp)(key, (GENERIC *)((char *)base + size * mid));
         if (value < 0) top = mid - 1;
         else if (value > 0) bottom = mid + 1;
-        else return mid;
+        else return (GENERIC *)((char *)base + size * mid);
     }
-    return -1;
+    return NULL;
+}
+#endif
+
+/* genstrcmp - does a strcmp on the first field of two structures */
+int genstrcmp(key, datum)
+    CONST GENERIC *key, *datum;
+{
+    return strcmp(*(char **)key, *(char **)datum);
+}
+
+/* gencstrcmp - does a cstrcmp on the first field of two structures */
+int gencstrcmp(key, datum)
+    CONST GENERIC *key, *datum;
+{
+    return cstrcmp(*(char **)key, *(char **)datum);
 }
 
 #ifdef DMALLOC

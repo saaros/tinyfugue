@@ -1,12 +1,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; TinyFugue - programmable mud client
-;;;; Copyright (C) 1993  Ken Keys
+;;;; Copyright (C) 1994 Ken Keys
 ;;;;
 ;;;; TinyFugue (aka "tf") is protected under the terms of the GNU
 ;;;; General Public License.  See the file "COPYING" for details.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;; $Id: stdlib.tf,v 32101.0 1993/12/20 07:12:39 hawkeye Stab $
+;;; $Id: stdlib.tf,v 32101.1 1994/03/30 22:55:51 hawkeye Exp $
 
 ;;; TF 3.0 macro library
 
@@ -16,6 +16,11 @@
 ;;; the defaults defined here, you should do so in your %HOME/.tfrc
 ;;; file (for personal commands) or %TFLIBDIR/local.tf (for public
 ;;; commands).
+
+;;; Many "hidden" macros here are named starting with "~" to minimize
+;;; conflicts with the user's namespace.  You should not give your own
+;;; macros names beginning with "~".  Also, you probably don't want to
+;;; use the -i flag in defining your own macros, although you can.
 
 
 ;;; file compression
@@ -30,6 +35,11 @@
 ;;; Commands
 ;; Some of these use helper macros starting with ~ to reduce conflicts with
 ;; the user's namespace.
+
+;; /world [-nlq] [<name>]
+;; /world [-nlq] <host> <port>
+
+/def -i world = /if /not /@fg -s %*%; /then /@connect %*%; /endif
 
 ;; for loop.
 ; syntax:  /for <var> <start> <end> <command>
@@ -66,15 +76,14 @@
 /def -i :
 
 ;; macro existance test.
-; The "0:0:" is a hack to avoid multipication in time interpretation.
-/def -i ~ismacro = /test +"0:0:%{2-0}"
-; The "x" is a placeholder, so %2=="0" if /list is empty.
-/def -i ismacro	= /~ismacro $(/list -s -i %{*-@}) x 0
+/def -i ismacro = /test $(/last $(/eval /list -s -i %{*-@}%%; /echo %%?))
 
 ;; other useful stuff.
 
-/def -i first	= /echo -- %1
-/def -i last	= /echo -- %L
+/def -i first	= /echo - %1
+/def -i rest	= /echo - %-1
+/def -i last	= /echo - %L
+/def -i nth	= /shift %1%; /echo - %1
 
 /def -i cd	= /let dir=%L%; /@eval /lcd %%{dir-%HOME}
 /def -i pwd	= /last $(/lcd)
@@ -93,7 +102,7 @@
 
 ;; Auto-switch connect hook
 
-/def -iFp0 -agG -hCONNECT ~connect_switch_hook = /world %1
+/def -iFp0 -agG -hCONNECT ~connect_switch_hook = /fg %1
 
 
 ;; Default worldtype hook: tiny login format (for backward compatibility),
@@ -123,32 +132,65 @@
 ;; Hooks for LP-worlds with telnet end-of-prompt markers:
 ;; login format, lp=off, always_echo=off.
 /eval \
-	/def -mglob -T{lpp|lpp.*} -hWORLD -iFp%{maxpri} ~world_hook_lpp = \
-		/set lp=0%%; \
-		/set always_echo=0%; \
-	/def -mglob -T{lpp|lpp.*} -hLOGIN -iFp%{maxpri} ~login_hook_lpp = \
-		/send -- $${world_character}%%; \
-		/send -- $${world_password}
+    /def -mglob -T{lpp|lpp.*} -hWORLD -iFp%{maxpri} ~world_hook_lpp = \
+        /set lp=0%%; \
+        /set always_echo=0%; \
+    /def -mglob -T{lpp|lpp.*} -hLOGIN -iFp%{maxpri} ~login_hook_lpp = \
+        /send -- $${world_character}%%; \
+        /send -- $${world_password}
 
 ;; Telnet hooks: login format, lp=on, and always_echo=on (except at
 ;; password prompt).
 /eval \
-    /def -mglob -T{telnet|telnet.*} -hWORLD -iFp%{maxpri} ~world_hook_telnet = \
+    /def -mglob -Ttelnet -hWORLD -iFp%{maxpri} ~world_hook_telnet = \
 	/set lp=1%%; \
 	/set always_echo=1%; \
-    /def -mglob -T{telnet|telnet.*} -hLOGIN -iFp%{maxpri} ~login_hook_telnet = \
+    /def -mglob -Ttelnet -hLOGIN -iFp%{maxpri} ~login_hook_telnet = \
 	/send -- $${world_character}%%; \
 	/send -- $${world_password}%; \
-    /def -mglob -T{telnet|telnet.*} -t'Password:' -iFp%{maxpri} ~telnet_passwd = \
-	/set always_echo=0%%;\
-	/def -w$${world_name} -t* -1 -iFp$[maxpri-1] ~echo_$${world_name} = \
-	    /set always_echo=1
+    /def -mregexp -Ttelnet -h'PROMPT ^Password: *$$' -iFp%{maxpri} \
+    ~telnet_passwd = \
+	/prompt %%*%%;\
+	/def -w$${world_name} -t* -1 -iFp%{maxpri} ~echo_$${world_name} = \
+	    /set always_echo=1%%;\
+	/set always_echo=0
 
 ;; /telnet <host> [<port>]
 ;; Defines a telnet-world and connects to it.
 /def -i telnet = \
 	/addtelnet %{1},%{2-telnet} %1 %{2-telnet}%; \
-	/world %{1},%{2-telnet}
+	/connect %{1},%{2-telnet}
+
+
+;;; /dokey functions.
+
+/def -i dokey_bspc	= /test kbdel(kbpoint() - 1)
+/def -i dokey_bword	= /test regmatch("[^ ]* *$$", kbhead()), \
+			        kbdel(kbpoint() - strlen(P0))
+/def -i dokey_dch	= /test kbdel(kbpoint() + 1)
+/def -i dokey_deol	= /test kbdel(kblen())
+/def -i dokey_dline	= /dokey dline
+/def -i dokey_down	= /test kbgoto(kbpoint() + wrapsize)
+/def -i dokey_dword	= /test kbdel(kbwordright())
+/def -i dokey_end	= /test kbgoto(kblen())
+/def -i dokey_home	= /test kbgoto(0)
+/def -i dokey_left	= /test kbgoto(kbpoint() - 1)
+/def -i dokey_lnext	= /dokey lnext
+/def -i dokey_newline	= /dokey newline
+/def -i dokey_recallb	= /dokey recallb
+/def -i dokey_recallf	= /dokey recallf
+/def -i dokey_right	= /test kbgoto(kbpoint() + 1)
+/def -i dokey_searchb	= /dokey searchb
+/def -i dokey_searchf	= /dokey searchf
+/def -i dokey_socketb	= /dokey socketb
+/def -i dokey_socketf	= /dokey socketf
+/def -i dokey_up	= /test kbgoto(kbpoint() - wrapsize)
+/def -i dokey_wleft	= /test kbgoto(kbwordleft())
+/def -i dokey_wright	= /test kbgoto(kbwordright())
+/def -i dokey_page	= /dokey page
+/def -i dokey_hpage	= /dokey hpage
+/def -i dokey_line	= /dokey line
+/def -i dokey_flush	= /dokey flush
 
 
 ;;; Default Key Bindings
@@ -184,25 +226,28 @@
 /defaultbind ^[OD LEFT
 
 ;; other useful bindings
+;; Any operation "foo" can be performed with "/dokey foo" or "/dokey_foo".
+;; The only difference between the two invocations is efficiency.
 
-/def -ib'^P'	= /DOKEY RECALLB
-/def -ib'^N'	= /DOKEY RECALLF
-/def -ib'^[p'	= /DOKEY SEARCHB
-/def -ib'^[n'	= /DOKEY SEARCHF
-/def -ib'^[b'	= /DOKEY SOCKETB
-/def -ib'^[f'	= /DOKEY SOCKETF
-/def -ib'^D'	= /DOKEY DCH
-/def -ib'^L'	= /DOKEY REDRAW
-/def -ib'^A'	= /DOKEY HOME
-/def -ib'^E'	= /DOKEY END
-/def -ib'^B'	= /DOKEY WLEFT
-/def -ib'^F'	= /DOKEY WRIGHT
-/def -ib'^K'	= /DOKEY DEOL
+/def -ib'^P'	= /dokey recallb
+/def -ib'^N'	= /dokey recallf
+/def -ib'^[p'	= /dokey searchb
+/def -ib'^[n'	= /dokey searchf
+/def -ib'^[b'	= /dokey socketb
+/def -ib'^[f'	= /dokey socketf
+/def -ib'^D'	= /dokey_dch
+/def -ib'^[d'	= /dokey_dword
+/def -ib'^L'	= /dokey redraw
+/def -ib'^A'	= /dokey_home
+/def -ib'^E'	= /dokey_end
+/def -ib'^B'	= /dokey_wleft
+/def -ib'^F'	= /dokey_wright
+/def -ib'^K'	= /dokey_deol
 /def -ib'^[v'	= /test insert := !insert
-/def -ib'^I'	= /DOKEY PAGE
-/def -ib'^[h'	= /DOKEY HPAGE
-/def -ib'^[l'	= /DOKEY LINE
-/def -ib'^[j'	= /DOKEY FLUSH
+/def -ib'^I'	= /dokey page
+/def -ib'^[h'	= /dokey hpage
+/def -ib'^[l'	= /dokey line
+/def -ib'^[j'	= /dokey flush
 
 /undef defaultbind
 
@@ -222,7 +267,7 @@
 ;;; list macros
 
 /def -i listdef		= /list %*
-/def -i listhilite	= /list -mglob -h0 -b{} -t'$(/escape ' %*)' -aurfdhbBC
+/def -i listhilite	= /list -mglob -h0 -b{} -t'$(/escape ' %*)' -aurfdhbBC0
 /def -i listgag		= /list -mglob -h0 -b{} -t'$(/escape ' %*)' -ag
 /def -i listtrig	= /list -mglob -h0 -b{} -t'$(/escape ' %*)' -an
 /def -i listbind	= /list -mglob -h0 -b'$(/escape ' %*)'
@@ -232,7 +277,7 @@
 ;;; purge macros
 
 /def -i purgedef	= /purge -mglob -h0 -b{} %{1-?*}
-/def -i purgehilite	= /purge -mglob -h0 -b{} -t'$(/escape ' %*)' -aurfdhbBC
+/def -i purgehilite	= /purge -mglob -h0 -b{} -t'$(/escape ' %*)' -aurfdhbBC0
 /def -i purgegag	= /purge -mglob -h0 -b{} -t'$(/escape ' %*)' -ag
 /def -i purgetrig	= /purge -mglob -h0 -b{} -t'$(/escape ' %*)' -an
 /def -i purgedeft	= /purge -mglob -h0 -b{} -t'$(/escape ' %*)' ?*
@@ -256,7 +301,7 @@
 /~def_file_command  load  world   WORLD
 
 /~def_file_command  save  def     MACRO   -mglob -h0 -b{} -t{} ?*
-/~def_file_command  save  hilite  HILITE  -mglob -h0 -b{} -t -aurfdhbBC
+/~def_file_command  save  hilite  HILITE  -mglob -h0 -b{} -t -aurfdhbBC0
 /~def_file_command  save  gag     GAG     -mglob -h0 -b{} -t -ag
 /~def_file_command  save  trig    TRIG    -mglob -h0 -b{} -t -an
 /~def_file_command  save  bind    BIND    -mglob -h0 -b
@@ -322,6 +367,7 @@
 ;; The user can of course redefine them.
 
 /set end_color			\033[37;0m
+
 /set start_color_black		\033[30m
 /set start_color_red		\033[31m
 /set start_color_green		\033[32m
@@ -331,6 +377,30 @@
 /set start_color_cyan		\033[36m
 /set start_color_white		\033[37m
 
+; This group is set up for 16 colors on xterms.
+; Colors 0-7 correspond to the 8 named colors above.  The named color
+; variables override the numbered variables below, so to use numbered
+; variables 0-7 you must unset the named variables (or reset them to
+; the codes below).
+
+/set start_color_0		\033[200m
+/set start_color_1		\033[201m
+/set start_color_2		\033[202m
+/set start_color_3		\033[203m
+/set start_color_4		\033[204m
+/set start_color_5		\033[205m
+/set start_color_6		\033[206m
+/set start_color_7		\033[207m
+/set start_color_8		\033[208m
+/set start_color_9		\033[209m
+/set start_color_10		\033[210m
+/set start_color_11		\033[211m
+/set start_color_12		\033[212m
+/set start_color_13		\033[213m
+/set start_color_14		\033[214m
+/set start_color_15		\033[215m
+
+
 ;;; Retry connections
 
 ;; /retry <world> [<delay>]
@@ -339,10 +409,10 @@
 
 /def -i retry = \
     /def -mglob -p%{maxpri} -F -h'CONFAIL $(/escape ' %1) *' ~retry_fail_%1 =\
-        /repeat -%{2-60} 1 /world %1%;\
+        /repeat -%{2-60} 1 /connect %1%;\
     /def -mglob -1 -p%{maxpri} -F -h'CONNECT $(/escape ' %1)' ~retry_succ_%1=\
         /undef ~retry_fail_%1%;\
-    /world %1
+    /connect %1
 
 ;; /retry_off [<world>]
 ;; Cancels "/retry <world>" (default: all worlds)

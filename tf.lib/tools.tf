@@ -9,7 +9,7 @@
 
 /def -i sys = \
     /if /test %#%; /then \
-        /quote -0 /echo -- !%{*}%;\
+        /quote -0 /echo -- \\!!%{*}%;\
     /else \
         /sh%;\
     /endif
@@ -22,7 +22,7 @@
 ; Stick an existing macro definition in the input window for editing.
 ; syntax:  /reedit <macroname>
 
-/def -i reedit = /grab $(/cddr $(/list - %{L-@}))
+/def -i reedit = /grab $(/cddr $(/list -i - %{L-@}))
 
 
 ;;; name - change your name (on a TinyMUD style mud)

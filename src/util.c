@@ -1,20 +1,17 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: util.c,v 33000.6 1994/04/03 22:25:49 hawkeye Exp $ */
 
 
 /*
  * Fugue utilities.
  *
- * Written by Greg Hudson and Ken Keys.
- *
  * Uppercase/lowercase table
- * Memory allocation routines
  * String handling routines
  * Mail checker
  * Cleanup routine
@@ -33,7 +30,6 @@
 #include "tty.h"	/* reset_tty() */
 
 static int mail_mtime = 0;      /* mail modification time */
-static char ctrl_values[128];   /* map of '^X' form to ascii */
 
 static int  FDECL(cmatch,(char **pat, int c1));
 static int  FDECL(wmatch,(char *wlist, char **str));
@@ -49,7 +45,7 @@ struct {
 
 void init_util()
 {
-    int i, j;
+    int i;
 
     /* Some non-standard compilers don't handle tolower() or toupper()
      * on a character that wouldn't ordinarily be converted.  So we
@@ -59,13 +55,11 @@ void init_util()
         lowercase_values[i] = isupper(i) ? tolower(i) : i;
         uppercase_values[i] = islower(i) ? toupper(i) : i;
     }
-
-    /* create map of "^X" forms to ascii characters */
-    for (i = 0; i < 128; i++) {
-        j = ucase(i) - 'A' + 1;
-        ctrl_values[i] = (j < 0) ? (j + 128) : j;
-    }
 }
+
+#undef CTRL
+/* convert to or from ctrl character */
+#define CTRL(c)  ((ucase(c) + '@') & 0x7F)
 
 /* Convert ascii string to printable string with "^X" forms. */
 /* Returns pointer to static area; copy if needed. */
@@ -78,7 +72,7 @@ char *ascii_to_print(key)
         if (*key == '^' || *key == '\\') {
             Stringadd(Stringadd(buffer, '\\'), *key);
         } else if (!isprint(*key) || iscntrl(*key)) {
-            Stringadd(Stringadd(buffer, '^'), (*key + '@') % 128);
+            Stringadd(Stringadd(buffer, '^'), CTRL(*key));
         } else Stringadd(buffer, *key);
     }
     return buffer->s;
@@ -94,7 +88,7 @@ char *print_to_ascii(src)
     Stringterm(dest, 0);
     while (*src) {
         if (*src == '^') {
-            Stringadd(dest, (*++src) ? ctrl_values[*src++] : '^');
+            Stringadd(dest, *++src ? CTRL(*src++) : '^');
         } else if (*src == '\\' && isdigit(*++src)) {
             Stringadd(dest, strtochr(&src));
         } else Stringadd(dest, *src++);
@@ -114,10 +108,10 @@ char strtochr(sp)
         while (isdigit(*++(*sp)));
     } else if (lcase(*++(*sp)) == 'x') {
         for ((*sp)++, c = 0; isxdigit(**sp); (*sp)++)
-            c = c * 16 + lcase(**sp) - (isdigit(**sp) ? '0' : ('a' - 10));
+            c = c * 0x10 + lcase(**sp) - (isdigit(**sp) ? '0' : ('a' - 10));
     } else {
         for (c = 0; isdigit(**sp); (*sp)++)
-            c = c * 8 + **sp - '0';
+            c = c * 010 + **sp - '0';
     }
     return (char)(c % 128);
 }
@@ -134,7 +128,7 @@ char strtochr(sp)
 /* case-insensitive strchr() */
 char *cstrchr(s, c)
     register CONST char *s;
-    register char c;
+    register int c;
 {
     for (c = lcase(c); *s; s++) if (lcase(*s) == c) return (char *)s;
     return (c) ? NULL : (char *)s;
@@ -143,7 +137,7 @@ char *cstrchr(s, c)
 /* c may be escaped by preceeding it with e */
 char *estrchr(s, c, e)
     register CONST char *s;
-    register char c, e;
+    register int c, e;
 {
     while (*s) {
         if (*s == c) return (char *)s;
@@ -160,9 +154,9 @@ char *STRSTR(s1, s2)
 {
     int len;
 
-    for (len = strlen(s2); *s1; s1++) {
-        if ((*s1 == *s2) && (strncmp(s1, s2, len) == 0))
-            return (char *)s1;
+    if ((len = strlen(s2) - 1) < 0) return (char*)s1;
+    while (s1 = strchr(s1, *s2)) {
+        if (strncmp(s1 + 1, s2 + 1, len) == 0) return (char*)s1;
     }
     return NULL;
 }
@@ -182,7 +176,7 @@ int cstrncmp(s, t, n)
     int n;
 {
     while (n && *s && lcase(*s) == lcase(*t)) s++, t++, n--;
-    return (n == 0) ? 0 : lcase(*s) - lcase(*t);
+    return n ? lcase(*s) - lcase(*t) : 0;
 }
 
 /* numarg
@@ -192,15 +186,16 @@ int cstrncmp(s, t, n)
 int numarg(str)
     char **str;
 {
-    char *start, *temp;
-    for (start = temp = *str; isdigit(*temp); temp++);
-    if (temp == *str) {
+    int result;
+    if (!isdigit(**str)) {
         cmderror("invalid or missing numeric argument");
         *str = NULL;
         return -1;
     }
-    for (*str = temp; isspace(**str); (*str)++);
-    return atoi(start);
+    result = atoi(*str);
+    while (isdigit(**str)) ++*str;
+    while (isspace(**str)) ++*str;
+    return result;
 }
 
 /* stringarg
@@ -213,38 +208,18 @@ char *stringarg(argp, spaces)
     char **argp;
     int *spaces;
 {
-    char *result, *bufp, quote;
+    char *start;
 
     if (spaces) *spaces = 0;
     while (isspace(**argp)) ++*argp;
-
-    if (quoted_args && (**argp == '"' || **argp == '\'' || **argp == '`')) {
-        quote = *(*argp)++;
-        bufp = result = *argp;
-        while (**argp && **argp != quote) {
-            *bufp++ = *(*argp)++;
-            if ((*argp)[0] == '\\' && ((*argp)[1])) (*argp)++;
-        }
-        if (!**argp) {
-            tfprintf(tferr, "%S: unmatched %c in argument",
-                error_prefix(), quote);
-            return NULL;
-        } else (*argp)++;
-        ++*argp;
-
-    } else {
-        result = *argp;
-        while (**argp && !isspace(**argp)) ++*argp;
-        bufp = *argp;
-    }
-
-    while (isspace(**argp)) {
-        ++*argp;
+    for (start = *argp; (**argp && !isspace(**argp)); ++*argp) ;
+    if (**argp) {
         if (spaces) ++*spaces;
+        for (*((*argp)++) = '\0'; isspace(**argp); ++*argp)
+            if (spaces) ++*spaces;
     }
-    *bufp = '\0';
 
-    return result;
+    return start;
 }
 
 int regexec_and_hold(re, str, temp)
@@ -286,14 +261,15 @@ void regrelease()
     reginfo.ok = 0;
 }
 
-String *regsubstr(dest, n)
+/* returns length of substituted string, or -1 if no substitution */
+int regsubstr(dest, n)
     String *dest;
     int n;
 {
-    regexp *re = reginfo.re;
-    if (reginfo.ok && n < NSUBEXP && re && re->startp[n])
-        Stringncat(dest, re->startp[n], re->endp[n] - re->startp[n]);
-    return dest;
+    CONST regexp *re = reginfo.re;
+    if (!(reginfo.ok && n < NSUBEXP && re && re->startp[n])) return -1;
+    Stringncat(dest, re->startp[n], re->endp[n] - re->startp[n]);
+    return re->endp[n] - re->startp[n];
 }
 
 void regerror(msg)
@@ -302,20 +278,26 @@ void regerror(msg)
     tfprintf(tferr, "%S: regexp error: %s", error_prefix(), msg);
 }
 
+/* call with (pat, NULL, 0) to zero-out pat.
+ * call with (pat, str, 0) to init pat with some outside string (ie, strdup).
+ * call with (pat, str, mflag) to init pat with some outside string.
+ * call with (pat, pat->str, mflag) in reinit pat with already duped string.
+ */
 int init_pattern(pat, str, mflag)
     Pattern *pat;
     char *str;
     int mflag;
 {
-    int error = 0;
-
-    pat->str = NULL;
     pat->re = NULL;
+    pat->str = NULL;
     if (!str) return 1;
-    if (mflag == 2) error = !(pat->re = regcomp(str));
-    else if (mflag == 1) error = !smatch_check(str);
-    if (!error) pat->str = STRDUP(str);
-    return !error;
+    if (mflag == 2) {
+        if (!(pat->re = regcomp(str))) return 0;
+    } else if (mflag == 1) {
+        if (!smatch_check(str)) return 0;
+    }
+    if (pat->str != str) pat->str = STRDUP(str);
+    return 1;
 }
 
 void free_pattern(pat)
@@ -340,13 +322,17 @@ int patmatch(pat, str, mflag, temp)
 
 static int cmatch(pat, c1)
     char **pat;
-    char c1;
+    int c1;
 {
     int result;
 
     c1 = lcase(c1);
     if ((result = (**pat == '^'))) ++*pat;
     while (1) {
+        if (**pat == ']') {
+            ++*pat;
+            return !result;
+        }
         if (**pat == '\\') ++*pat;
         if (*(*pat + 1) == '-') {
             char lo = **pat;
@@ -355,10 +341,6 @@ static int cmatch(pat, c1)
             if (c1 >= lcase(lo) && c1 <= lcase(**pat)) { ++*pat; break; }
         } else if (lcase(**pat) == c1) { ++*pat; break; }
         ++*pat;
-        if (**pat == ']') {
-            result = !result;
-            break;
-        }
     }
     *pat = estrchr(*pat, ']', '\\') + 1;
     return result;
@@ -394,6 +376,7 @@ static int wmatch(wlist, str)
 /* smatch_check() should be used on pat to check pattern syntax before
  * calling smatch().
  */
+/* Based on code by Leo Plotkin. */
 
 int smatch(pat, str)
     char *pat, *str;
@@ -471,14 +454,14 @@ int smatch_check(pat)
             break;
         case '[':
             if (!(pat = estrchr(pat, ']', '\\'))) {
-                cmderror("smatch error: unmatched '['");
+                cmderror("glob error: unmatched '['");
                 return 0;
             }
             pat++;
             break;
         case '{':
             if (inword) {
-                cmderror("smatch error: nested '{'");
+                cmderror("glob error: nested '{'");
                 return 0;
             }
             inword = TRUE;
@@ -495,7 +478,7 @@ int smatch_check(pat)
             break;
         }
     }
-    if (inword) cmderror("smatch error: unmatched '{'");
+    if (inword) cmderror("glob error: unmatched '{'");
     return !inword;
 }
 
@@ -503,25 +486,14 @@ int smatch_check(pat)
 char *stripstr(s)
     char *s;
 {
-    char *start, *end;
+    char *end;
 
-    if (!*s) return s;
-    for (start = s; isspace(*start); start++);
-    if (*start) {
-        for (end = start + strlen(start) - 1; isspace(*end); end--);
+    while (isspace(*s)) s++;
+    if (*s) {
+        for (end = s + strlen(s) - 1; isspace(*end); end--);
         *++end = '\0';
-    } else end = start;
-    if (start != s)
-        while ((*s++ = *start++));    /* strcpy may not be safe */
+    }
     return s;
-}
-
-String *stripString(str)
-    Stringp str;
-{
-    stripstr(str->s);
-    str->len = strlen(str->s);
-    return str;
 }
 
 
@@ -567,7 +539,6 @@ char nextopt(arg, num)
     char **arg;
     int *num;
 {
-    short error = FALSE;
     char *q, opt, quote;
     STATIC_BUFFER(buffer);
 
@@ -584,24 +555,29 @@ char nextopt(arg, num)
         *arg = argp;                  /*... for stuff like  /def -t"foo"=bar */
         return '\0';
     }
+
     opt = *argp;
-    if ((isdigit(opt) || opt == ':') && (q = strchr(options, '@'))) ;
-    else if (opt == ':' || opt == '#') error = TRUE;
-    else if ((q = strchr(options, opt)) != NULL) ;
-    /* else if (isdigit(opt) && (q = strchr(options, '0'))); */
-    else error = TRUE;
-    if (error) {
-        tfprintf(tferr, "%S: invalid option: %c", error_prefix(), opt);
-        return '?';
-    }
-    if (*q == '0') {
+
+    /* time option */
+    if ((isdigit(opt) || opt == ':') && strchr(options, '@')) {
+        *num = parsetime(&argp, NULL);
+        return '@';
+
+    /* numeric option */
+    } else if (isdigit(opt) && strchr(options, '0')) {
         *num = atoi(argp);
         while (isdigit(*++argp));
         return '0';
-    } else if (*q == '@') {
-        *num = parsetime(&argp, NULL);
-        return '@';
-    } else if (*++q == ':') {
+    }
+
+    /* other options */
+    if (!isalnum(opt) || !(q = strchr(options, opt))) {
+        tfprintf(tferr, "%S: invalid option: %c", error_prefix(), opt);
+        return '?';
+    }
+
+    /* option takes a string argument */
+    if (*++q == ':') {
         Stringterm(buffer, 0);
         ++argp;
         if (*argp == '"' || *argp == '\'' || *argp == '`') {
@@ -616,6 +592,8 @@ char nextopt(arg, num)
             } else argp++;
         } else while (*argp && !isspace(*argp)) Stringadd(buffer, *argp++);
         *arg = buffer->s;
+
+    /* option takes a numeric argument */
     } else if (*q == '#') {
         argp++;
         if (!isdigit(*argp)) {
@@ -625,7 +603,12 @@ char nextopt(arg, num)
         }
         *num = atoi(argp);
         while (isdigit(*++argp));
-    } else argp++;
+
+    /* option takes no argument */
+    } else {
+        argp++;
+    }
+
     inword = (*argp && !isspace(*argp));
     return opt;
 }
@@ -669,7 +652,7 @@ void free_aline(aline)
 
 void ch_maildelay()
 {
-    extern int mail_update;
+    extern TIME_T mail_update;
     mail_update = 0;
 }
 
@@ -686,8 +669,9 @@ void init_mail()
     Stringp path;
     char *name;
 
-    if (MAIL) return;
-    if ((name = getvar("LOGNAME")) || (name = getvar("USER"))) {
+    if (MAIL) {  /* was imported from environment */
+        ch_mailfile();
+    } else if ((name = getvar("LOGNAME")) || (name = getvar("USER"))) {
         Sprintf(Stringinit(path), 0, "%s/%s", MAILDIR, name);
         setvar("MAIL", path->s, FALSE);
         Stringfree(path);
@@ -702,7 +686,7 @@ void check_mail()
 
     if (!MAIL || !*MAIL || maildelay <= 0) return;
 
-    if (stat(MAIL, &buf) < 0) {
+    if (stat(expand_filename(MAIL), &buf) < 0) {
         if (mail_flag) { mail_flag = 0; status_bar(STAT_MAIL); }
         mail_mtime = 0;
     } else {

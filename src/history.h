@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: history.h,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: history.h,v 33000.0 1994/03/05 09:34:14 hawkeye Exp $ */
 
 #ifndef HISTORY_H
 #define HISTORY_H
@@ -20,6 +20,7 @@ typedef struct History {       /* circular list of Alines, and logfile */
 } History;
 
 extern void   NDECL(init_histories);
+extern void   FDECL(init_history,(History *hist, int maxsize));
 extern void   FDECL(free_history,(History *hist));
 extern void   FDECL(record_hist,(History *hist, Aline *aline));
 extern void   FDECL(record_global,(Aline *aline));

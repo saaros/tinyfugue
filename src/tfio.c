@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: tfio.c,v 33000.3 1994/03/14 16:53:28 hawkeye Exp $ */
 
 
 /***********************************
@@ -23,8 +23,8 @@
 #define SYS_TIME_H      /* to prevent <time.h> in "port.h" */
 #include "port.h"
 #include "dstring.h"
-#include "fd_set.h"
 #include "tf.h"
+#include "fd_set.h"
 #include "util.h"
 #include "output.h"
 #include "macro.h"
@@ -57,29 +57,25 @@ String *error_prefix()
 char *tfname(name, macro)
     char *name, *macro;
 {
-    STATIC_BUFFER(buffer);
-
     if (!name || !*name) 
         if (!macro || !(name = macro_body(macro)) || !*name) {
             tfputs("% Name of file unknown.", tferr);
             return NULL;
         }
-    Stringcpy(buffer, name);
-    expand_filename(buffer);
-    return buffer->s;
+    return expand_filename(name);
 }
 
-String *expand_filename(str)
-    Stringp str;
+char *expand_filename(str)
+    char *str;
 {
     char *env;
     STATIC_BUFFER(buffer);
 
-    Stringterm(buffer, 0);
-    if (str->s[0] != '~') return str;
-    Sprintf(buffer, 0, "%s%s", (env = getvar("HOME")) ? env : "", str->s + 1);
-    SStringcpy(str, buffer);
-    return str;
+    if (*str != '~') return str;
+    env = getvar("HOME");
+    Stringcpy(buffer, env ? env : "");
+    Stringcat(buffer, ++str);
+    return buffer->s;
 }
 
 /* tfopen - opens a TFILE.
@@ -95,7 +91,7 @@ TFILE *tfopen(name, mode)
     int type = TF_FILE;
     FILE *fp;
     TFILE *result = NULL;
-    char *prog, *suffix;
+    char *prog, *suffix, *newname;
     STATIC_BUFFER(buffer);
     STATIC_BUFFER(libfile);
 
@@ -119,42 +115,41 @@ TFILE *tfopen(name, mode)
         return result;
     }
 
-    fp = fopen(name, mode);
+    if ((fp = fopen(name, mode))) {
+        newname = STRDUP(name);
+    }
 
-    if (*mode == 'r' && !fp && errno == ENOENT) {
-        /* If file did not exist, look for compressed copy. */
-        if (restrict < RESTRICT_SHELL &&
-          (suffix = macro_body("compress_suffix")) && *suffix &&
-          (prog = macro_body("compress_read")) && *prog) {
-            Stringcat(Stringcpy(buffer, name), suffix);
-            if ((fp = fopen(buffer->s, mode)) != NULL) {  /* test readability */
-                fclose(fp);
-                Sprintf(buffer, 0, "%s %s%s", prog, name, suffix);
-                fp = popen(buffer->s, mode);
-                type = TF_PIPE;
-            }
-        }
+    /* If file did not exist, look for compressed copy. */
+    if (!fp && *mode == 'r' && errno == ENOENT && restrict < RESTRICT_SHELL &&
+      (suffix = macro_body("compress_suffix")) && *suffix &&
+      (prog = macro_body("compress_read")) && *prog) {
 
-        /* If file did not exist and is relative, look in TFLIBDIR. */
-        if (!fp && errno == ENOENT && *name != '/') {
-            if (!TFLIBDIR || *TFLIBDIR != '/') {
-                tfputs("% warning: invalid value for %TFLIBDIR", tferr);
-            } else {
-                Sprintf(libfile, 0, "%s/%s", TFLIBDIR, name);
-                return tfopen(libfile->s, mode);
-            }
+          Stringcat(Stringcpy(buffer, name), suffix);
+          if ((fp = fopen(buffer->s, mode)) != NULL) {  /* test readability */
+              fclose(fp);
+              Sprintf(buffer, 0, "%s %s%s", prog, name, suffix);
+              if ((fp = popen(buffer->s, mode))) {
+                  type = TF_PIPE;
+                  newname = (char*)MALLOC(strlen(name) + strlen(suffix) + 1);
+                  strcat(strcpy(newname, name), suffix);
+              }
+          }
+    }
+
+    /* If file did not exist and is relative, look in TFLIBDIR. */
+    if (!fp && *mode == 'r' && errno == ENOENT && *name != '/') {
+        if (!TFLIBDIR || *TFLIBDIR != '/') {
+            tfputs("% warning: invalid value for %TFLIBDIR", tferr);
+        } else {
+            Sprintf(libfile, 0, "%s/%s", TFLIBDIR, name);
+            return tfopen(libfile->s, mode);
         }
     }
 
     if (fp) {
         result = (TFILE*)MALLOC(sizeof(TFILE));
         result->type = type;
-        if (type == TF_PIPE) {
-            result->name = (char *)MALLOC(strlen(name) + strlen(suffix) + 1);
-            strcat(strcpy(result->name, name), suffix);
-        } else {
-            result->name = STRDUP(name);
-        }
+        result->name = newname;
         result->u.fp = fp;
     }
     return result;
@@ -228,7 +223,7 @@ void tfputs(str, file)
     TFILE *file;
 {
     if (file->type == TF_QUEUE) {
-        tfputa(new_aline(str, F_NEWLINE), file);
+        tfputa(new_aline(str, 0), file);
     } else {
         fputs(str, file->u.fp);
         fputc('\n', file->u.fp);
@@ -273,8 +268,8 @@ void vSprintf(buf, flags, fmt, ap)
     char *fmt;
     va_list ap;
 {
-    static smallstr lfmt, tempbuf;
-    char *q, *lfmtptr, quote;
+    static smallstr spec, tempbuf;
+    char *q, *specptr, quote;
     char *sval;
     String *Sval;
 
@@ -286,22 +281,23 @@ void vSprintf(buf, flags, fmt, ap)
             fmt = q - 1;
             continue;
         }
-        lfmtptr = lfmt;
-        *lfmtptr++ = '%';
-        while (*fmt && !strchr("dixXuofeEfGcsSq", *fmt)) *lfmtptr++ = *fmt++;
-        *lfmtptr++ = *fmt;
-        *lfmtptr = '\0';
+        specptr = spec;
+        *specptr++ = '%';
+        while (*fmt && !isalpha(*fmt)) *specptr++ = *fmt++;
+        /* if (*fmt == 'h' || ucase(*fmt) == 'L') fmt++; */
+        *specptr++ = *fmt;
+        *specptr = '\0';
         switch (*fmt) {
         case 'd':
         case 'i':
-            sprintf(tempbuf, lfmt, va_arg(ap, int));
+            sprintf(tempbuf, spec, va_arg(ap, int));
             Stringcat(buf, tempbuf);
             break;
         case 'x':
         case 'X':
         case 'u':
         case 'o':
-            sprintf(tempbuf, lfmt, va_arg(ap, unsigned int));
+            sprintf(tempbuf, spec, va_arg(ap, unsigned int));
             Stringcat(buf, tempbuf);
             break;
         case 'f':
@@ -309,7 +305,7 @@ void vSprintf(buf, flags, fmt, ap)
         case 'E':
         case 'g':
         case 'G':
-            sprintf(tempbuf, lfmt, va_arg(ap, double));
+            sprintf(tempbuf, spec, va_arg(ap, double));
             Stringcat(buf, tempbuf);
             break;
         case 'c':
@@ -334,7 +330,7 @@ void vSprintf(buf, flags, fmt, ap)
             }
             break;
         default:
-            Stringcat(buf, lfmt);
+            Stringcat(buf, spec);
             break;
         }
     }
@@ -480,5 +476,26 @@ String *tfgetS(str, file)
         if (str->s[str->len - 1] == '\n') str->s[--str->len] = '\0';
         return str;
     }
+}
+
+/*
+ * For each aline in <queue>, record it in global history and put
+ * it on the <tfscreen> output queue.
+ */
+void flushout_queue(src)
+    Queue *src;
+{
+    extern TFILE *tfscreen;
+    ListEntry *node;
+    Queue *dest = tfscreen->u.queue;
+
+    if (!src->head) return;
+    for (node = src->head; node; node = node->next)
+        record_global((Aline *)node->datum);
+    src->tail->next = dest->head;
+    *(dest->head ? &dest->head->prev : &dest->tail) = src->tail;
+    dest->head = src->head;
+    src->head = src->tail = NULL;
+    oflush();
 }
 

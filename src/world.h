@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: world.h,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: world.h,v 33000.0 1994/03/05 09:34:14 hawkeye Exp $ */
 
 #ifndef WORLD_H
 #define WORLD_H
@@ -24,7 +24,7 @@ typedef struct World {         /* World structure */
     char *port;                /* port number or service name */
     char *mfile;               /* macro file */
     char *type;                /* server type (tiny, lp...) */
-    struct Sock *socket;       /* open socket, if any */
+    struct Sock *sock;         /* open socket, if any */
 #ifndef NO_HISTORY
     struct History *history;   /* history and logging info */
 #endif
@@ -37,7 +37,6 @@ extern int    FDECL(list_worlds,(int full, char *pattern, TFILE *file));
 extern void   FDECL(free_world,(World *w));
 extern void   FDECL(nuke_world,(World *w));
 extern World *NDECL(get_default_world);
-extern World *NDECL(get_world_header);
 extern World *FDECL(find_world,(char *name));
 
 #endif /* WORLD_H */

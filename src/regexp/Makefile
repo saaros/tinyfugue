@@ -5,8 +5,8 @@
 # -DSTRCSPN		library does not have strcspn()
 # -Dstrchr=index	library does not have strchr()
 # -DERRAVAIL		have utzoo-compatible error() function and friends
-ENV=-Dvoid=int -DCHARBITS=0377 -DSTATIC=extern
-LENV=-Dvoid=int -DCHARBITS=0377
+ENV=-DCHARBITS=0377
+LENV=-DCHARBITS=0377
 
 # Things you might want to put in TEST:
 # -DDEBUG		debugging hooks

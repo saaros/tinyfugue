@@ -33,15 +33,15 @@
 ;/map		(see map.tf)
 ;/mark		(see map.tf)
 /def -i math	= /test %1 := %-1
-/message	= /@echo Not implemented; use hooks with gags.
+/def -i message	= /@echo Not implemented; use hooks with gags.
 /def -i -mregexp -p2 -h'send ^#([0-9]+) (.*)$' #rep_hook = /repeat %P1 %P2
 /def -i nop	= /:
-;path		(see map.tf)
-/def -i presub	/@echo Not implemented; use gags with or without -F flag.
+;/path		(see map.tf)
+/def -i presub =	/@echo Not implemented; use /def -ag -F or /def -ag.
 ;/redraw	not needed (always on)
-;return		(see map.tf)
+;/return	(see map.tf)
 /def -i read	= /load %*
-;savepath	(see map.tf)
+;/savepath	(see map.tf)
 
 /def -i session	= \
 	 	/if /test %#%; /then \
@@ -71,7 +71,7 @@
 
 ;/speedwalk	(see speedwalk.tf)
 /def -i split	= /isize %{1-3}%; /visual on
-/substitute	/@echo Not implemented.  Use gag and /echo.
+/def -i substitute	= /@echo Not implemented.  Use gag and /echo.
 /def -i system	= /sh %*
 ;/togglesubs	(no equiv)
 /def -i unaction	= /untrig %*

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: variable.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: variable.c,v 33000.7 1994/04/16 05:12:43 hawkeye Exp $ */
 
 
 /**************************************
@@ -26,20 +26,25 @@
 
 static Var     *FDECL(findlevelvar,(char *name, List *level));
 static Var     *FDECL(findlocalvar,(char *name));
-static Var     *FDECL(findglobalvar,(char *name));
 static Var     *FDECL(findnearestvar,(char *name));
-static Toggler *FDECL(set_tf_var,(Var *var, char *value));
+static Toggler *FDECL(set_special_var,(Var *var, char *value));
 static Var     *FDECL(newlocalvar,(char *name, char *value));
 static Var     *FDECL(newglobalvar,(char *name, char *value));
-static char    *FDECL(newstr,(char *name, char *value));
-static void     FDECL(append_env,(char *name, char *value));
-static char   **FDECL(find_env,(char *name));
-static void     FDECL(remove_env,(char **envp));
-static void     FDECL(replace_env,(char *name, char *value));
+static char    *FDECL(new_env,(char *name, char *value));
+static void     FDECL(append_env,(char *str));
+static char   **FDECL(find_env,(char *str));
+static void     FDECL(remove_env,(char *str));
+static void     FDECL(replace_env,(char *str));
+static void     FDECL(listvar,(int exportflag));
+
+#define findglobalvar(name)   (Var *)hash_find(name, var_table)
+#define findspecialvar(name) \
+        (Var *)binsearch((GENERIC*)&(name), (GENERIC*)special_var, NUM_VARS, \
+            sizeof(Var), genstrcmp)
 
 #define HASH_SIZE 197    /* prime number */
 
-static List *localvar;            /* local variables */
+static List localvar[1];          /* local variables */
 static HashTable var_table[1];    /* global variables */
 static int envsize;
 static int envmax;
@@ -52,92 +57,100 @@ char *enum_ctrl[] =	{ "off", "ascii", "ansi", NULL };
 char *enum_sub[] =	{ "off", "on", "full", NULL };
 char *enum_match[] =	{ "simple", "glob", "regexp", NULL };
 char *enum_mecho[] =	{ "off", "on", "all", NULL };
-char *enum_color[] =	{ "black", "red", "green", "yellow", "blue",
-			  "magenta", "cyan", "white", NULL };
+char *enum_color[] =	{ "black", "red", "green", "yellow",
+			  "blue", "magenta", "cyan", "white",
+			  "8", "9", "10", "11", "12", "13", "14", "15",
+			  NULL };
 
-#define VAREXPORT 1
-#define VARINT    2
-#define VARENUM   4
-#define VARSTR    8
+#define VARINT     001
+#define VARENUM    002
+#define VARSTR     004
+#define VARSPECIAL 010
+#define VAREXPORT  020
 
+/* Special variables.
+ * Omitted last field (node) is implicitly initialized to NULL.
+ */
 Var special_var[] = {
-  {"MAIL"		, NULL, VARSTR,  NULL     , 0    , ch_mailfile	, NULL},
-  {"TERM"		, NULL, VARSTR,  NULL     , 0    , change_term	, NULL},
-  {"TFHELP"         , HELPFILE, VARSTR,  NULL     , 0    , NULL		, NULL},
-  {"TFLIBDIR"	      , LIBDIR, VARSTR,  NULL     , 0    , NULL		, NULL},
-  {"always_echo"	, NULL, VARENUM, enum_flag, FALSE, NULL		, NULL},
-  {"background"		, NULL, VARENUM, enum_flag, TRUE , tog_bg	, NULL},
-  {"backslash"		, NULL, VARENUM, enum_flag, TRUE , NULL		, NULL},
-  {"bamf"		, NULL, VARENUM, enum_bamf, FALSE, NULL		, NULL},
-  {"beep"		, NULL, VARENUM, enum_flag, TRUE , NULL		, NULL},
-  {"bg_output"		, NULL, VARENUM, enum_flag, TRUE , NULL		, NULL},
-  {"borg"		, NULL, VARENUM, enum_flag, TRUE , NULL		, NULL},
-  {"catch_ctrls"	, NULL, VARENUM, enum_ctrl, FALSE, NULL		, NULL},
-  {"cleardone"		, NULL, VARENUM, enum_flag, FALSE, NULL		, NULL},
-  {"clearfull"		, NULL, VARENUM, enum_flag, FALSE, NULL		, NULL},
-  {"clock"		, NULL, VARENUM, enum_flag, TRUE , ch_clock	, NULL},
-  {"gag"		, NULL, VARENUM, enum_flag, TRUE , NULL		, NULL},
-  {"gpri"		, NULL, VARINT , NULL     , 0    , NULL		, NULL},
-  {"hilite"		, NULL, VARENUM, enum_flag, TRUE , NULL		, NULL},
-  {"hiliteattr"		, "B" , VARSTR,  NULL     , 0    , ch_hilite	, NULL},
-  {"hook"		, NULL, VARENUM, enum_flag, TRUE , NULL		, NULL},
-  {"hpri"		, NULL, VARINT , NULL     , 0    , NULL		, NULL},
-  {"ignore_sigquit"	, NULL, VARENUM, enum_flag, FALSE, tog_sigquit	, NULL},
-  {"insert"		, NULL, VARENUM, enum_flag, TRUE , tog_insert	, NULL},
-  {"isize"		, NULL, VARINT , NULL     , 3    , change_isize	, NULL},
-  {"kecho"		, NULL, VARENUM, enum_flag, FALSE, NULL		, NULL},
-  {"kprefix"		, NULL, VARSTR , NULL     , 0    , NULL		, NULL},
-  {"login"		, NULL, VARENUM, enum_flag, TRUE , NULL		, NULL},
-  {"lp"			, NULL, VARENUM, enum_flag, FALSE, tog_lp	, NULL},
-  {"lpquote"		, NULL, VARENUM, enum_flag, FALSE, NULL		, NULL},
-  {"maildelay"		, NULL, VARINT , NULL     , 60   , ch_maildelay	, NULL},
-  {"matching"		, NULL, VARENUM, enum_match,1    , NULL		, NULL},
-  {"max_recur"		, NULL, VARINT , NULL     , 100  , NULL		, NULL},
-  {"mecho"		, NULL, VARENUM, enum_mecho,0    , NULL		, NULL},
-  {"more"		, NULL, VARENUM, enum_flag, FALSE, tog_more	, NULL},
-  {"mprefix"		, "+",  VARSTR , NULL     , 0    , NULL		, NULL},
-  {"oldslash"		, NULL, VARINT , NULL     , 1    , NULL		, NULL},
-  {"prompt_sec"		, NULL, VARINT , NULL     , 0    , NULL		, NULL},
-  {"prompt_usec"	, NULL, VARINT , NULL     , 250000,NULL		, NULL},
-  {"ptime"		, NULL, VARINT , NULL     , 1    , NULL		, NULL},
-  {"qecho"		, NULL, VARENUM, enum_flag, FALSE, NULL		, NULL},
-  {"qprefix"		, NULL, VARSTR , NULL     , 0    , NULL		, NULL},
-  {"quiet"		, NULL, VARENUM, enum_flag, FALSE, NULL		, NULL},
-  {"quitdone"		, NULL, VARENUM, enum_flag, FALSE, NULL		, NULL},
-  {"quoted_args"	, NULL, VARENUM, enum_flag, FALSE, NULL		, NULL},
-  {"redef"		, NULL, VARENUM, enum_flag, FALSE, NULL		, NULL},
-  {"refreshtime"	, NULL, VARINT , NULL     , 250000,NULL		, NULL},
-  {"scroll"		, NULL, VARENUM, enum_flag, FALSE ,setup_screen	, NULL},
-  {"shpause"		, NULL, VARENUM, enum_flag, FALSE, NULL		, NULL},
-  {"snarf"		, NULL, VARENUM, enum_flag, FALSE, NULL		, NULL},
-  {"sockmload"		, NULL, VARENUM, enum_flag, FALSE, NULL		, NULL},
-  {"sub"		, NULL, VARENUM, enum_sub , 0    , NULL		, NULL},
-  {"time_format"      ,"%H:%M", VARSTR , NULL     , 0    , NULL		, NULL},
-  {"visual"		, NULL, VARENUM, enum_flag, FALSE, tog_visual	, NULL},
-  {"watchdog"		, NULL, VARENUM, enum_flag, FALSE, NULL		, NULL},
-  {"watchname"		, NULL, VARENUM, enum_flag, FALSE, NULL		, NULL},
-  {"wrap"		, NULL, VARENUM, enum_flag, TRUE , NULL		, NULL},
-  {"wraplog"		, NULL, VARENUM, enum_flag, FALSE, NULL		, NULL},
-  {"wrapsize"		, NULL, VARINT , NULL     , 0,     NULL		, NULL},
-  {"wrapspace"		, NULL, VARINT , NULL     , 0,     NULL		, NULL}
+  {"MAIL"	,	NULL, VARSTR,  NULL	, 0    , ch_mailfile },
+  {"TERM"	,	NULL, VARSTR,  NULL	, 0    , change_term },
+  {"TFHELP"     ,   HELPFILE, VARSTR,  NULL	, 0    , NULL },
+  {"TFLIBDIR"	,     LIBDIR, VARSTR,  NULL	, 0    , NULL },
+  {"always_echo",	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"background"	,	NULL, VARENUM, enum_flag, TRUE , tog_bg },
+  {"backslash"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
+  {"bamf"	,	NULL, VARENUM, enum_bamf, FALSE, NULL },
+  {"beep"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
+  {"bg_output"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
+  {"borg"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
+  {"catch_ctrls",	NULL, VARENUM, enum_ctrl, FALSE, NULL },
+  {"cleardone"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"clearfull"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"clock"	,	NULL, VARENUM, enum_flag, TRUE , tog_clock },
+  {"gag"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
+  {"gpri"	,	NULL, VARINT , NULL	, 0    , NULL },
+  {"hilite"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
+  {"hiliteattr"	,	"B" , VARSTR,  NULL	, 0    , ch_hilite },
+  {"hook"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
+  {"hpri"	,	NULL, VARINT , NULL	, 0    , NULL },
+  {"ignore_sigquit",	NULL, VARENUM, enum_flag, FALSE, tog_sigquit },
+  {"insert"	,	NULL, VARENUM, enum_flag, TRUE , tog_insert },
+  {"isize"	,	NULL, VARINT , NULL	, 3    , ch_isize },
+  {"kecho"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"kprefix"	,	NULL, VARSTR , NULL	, 0    , NULL },
+  {"login"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
+  {"lp"		,	NULL, VARENUM, enum_flag, FALSE, tog_lp },
+  {"lpquote"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"maildelay"	,	NULL, VARINT , NULL	, 60   , ch_maildelay },
+  {"matching"	,	NULL, VARENUM, enum_match,1    , NULL },
+  {"max_recur"	,	NULL, VARINT , NULL	, 100  , NULL },
+  {"mecho"	,	NULL, VARENUM, enum_mecho,0    , NULL },
+  {"more"	,	NULL, VARENUM, enum_flag, FALSE, tog_more },
+  {"mprefix"	,	"+",  VARSTR , NULL	, 0    , NULL },
+  {"oldslash"	,	NULL, VARINT , NULL	, 1    , NULL },
+  {"prompt_sec"	,	NULL, VARINT , NULL	, 0    , NULL },
+  {"prompt_usec",	NULL, VARINT , NULL	, 250000,NULL },
+  {"ptime"	,	NULL, VARINT , NULL	, 1    , NULL },
+  {"qecho"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"qprefix"	,	NULL, VARSTR , NULL	, 0    , NULL },
+  {"quiet"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"quitdone"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"quoted_args",	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"redef"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"refreshtime",	NULL, VARINT , NULL	, 250000,NULL },
+  {"scroll"	,	NULL, VARENUM, enum_flag, FALSE ,setup_screen },
+  {"shpause"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"snarf"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"sockmload"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"sub"	,	NULL, VARENUM, enum_sub , 0    , NULL },
+  {"telopt"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"time_format",    "%H:%M", VARSTR , NULL	, 0    , NULL },
+  {"visual"	,	NULL, VARENUM, enum_flag, FALSE, tog_visual },
+  {"watchdog"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"watchname"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"wordpunct"	,       "_-", VARSTR , NULL	, FALSE, NULL },
+  {"wrap"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
+  {"wraplog"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
+  {"wrapsize"	,	NULL, VARINT , NULL	, 0,     NULL },
+  {"wrapspace"	,	NULL, VARINT , NULL	, 0,     NULL },
+  {NULL         ,	NULL, 0      , NULL	, 0,     NULL }
 };
 
 /* initialize structures for variables */
 void init_variables()
 {
-    char **oldenv, **p, *value, buf[20];
-    int i;
+    char **oldenv, **p, *value, buf[20], *str;
     Var *var;
 
     init_hashtable(var_table, HASH_SIZE, strcmp);
-    init_list(localvar = (List *)MALLOC(sizeof(List)));
+    init_list(localvar);
 
     /* special pre-defined variables */
-    for (i = 0; i < NUM_VARS; i++) {
-        var = &special_var[i];
+    for (var = special_var; var->name; var++) {
+        var->flags |= VARSPECIAL;
         if (var->flags & VARSTR) {
             if (var->value) var->value = STRDUP(var->value);
-            var->ival = (var->value) ? 1 : 0;
+            var->ival = !!var->value;
         } else if (var->flags & VARENUM) {
             var->value = STRDUP(var->enumvec[var->ival]);
         } else /* VARINT */ {
@@ -155,35 +168,22 @@ void init_variables()
     environ = (char **)MALLOC((envmax + 1) * sizeof(char *));
     *environ = NULL;
     for (p = oldenv; *p; p++) {
-        value = strchr(*p, '=');
-        *value++ = '\0';
-        i = binsearch(*p, (GENERIC*)special_var, NUM_VARS, sizeof(Var), strcmp);
-        if (i < 0) {
+        append_env(str = STRDUP(*p));
+        /* There should always be an '=', but some shells (zsh?) violate this.*/
+        value = strchr(str, '=');
+        if (value) *value++ = '\0';
+        var = findspecialvar(str);
+        if (!var) {
             /* new variable */
-            var = newglobalvar(*p, value);
-            var->node = hash_insert((GENERIC *)var, var_table);
+            var = newglobalvar(str, value ? value : "");
+            var->node = hash_insert((GENERIC*)var, var_table);
         } else {
             /* overwrite a pre-defined variable */
-            var = &special_var[i];
             if (var->value) FREE(var->value);
-            set_tf_var(var, value);
+            set_special_var(var, value ? value : "");
         }
-        append_env(*p, value);
+        if (value) *--value = '=';
         var->flags |= VAREXPORT;
-        *--value = '=';
-    }
-}
-
-void init_values()
-{
-    Var *var;
-
-    for (var = special_var; var - special_var < NUM_VARS; var++) {
-        if (var->flags & VARSTR) {
-            if (var->value && *var->value && var->func) (*var->func)();
-        } else {
-            if (var->ival && var->func) (*var->func)();
-        }
     }
 }
 
@@ -198,7 +198,7 @@ int enum2int(str, vec, msg)
     }
     if (isdigit(*str)) {
         j = atoi(str);
-        if (j >= 0 && j < i) return j;
+        if (j < i) return j;
     }
     Sprintf(buf, 0, "%S: valid values for %s are: %s", error_prefix(), msg,
         vec[0]);
@@ -212,7 +212,8 @@ void newvarscope()
 {
     List *level;
 
-    init_list(level = (List *)MALLOC(sizeof(List)));
+    level = (List *)MALLOC(sizeof(List));
+    init_list(level);
     inlist((GENERIC *)level, localvar, NULL);
 }
 
@@ -235,32 +236,24 @@ static Var *findlevelvar(name, level)
     char *name;
     List *level;
 {
-    ListEntry *vnode;
-    Var *var = NULL;
+    ListEntry *node;
 
-    for (vnode = level->head; vnode && !var; vnode = vnode->next) {
-        if (strcmp(name, ((Var *)(vnode->data))->name) == 0)
-            var = (Var *)vnode->data;
+    for (node = level->head; node; node = node->next) {
+        if (strcmp(name, ((Var *)node->datum)->name) == 0) break;
     }
-    return var;
+    return node ? (Var *)node->datum : NULL;
 }
 
 static Var *findlocalvar(name)
     char *name;
 {
-    ListEntry *lnode;
+    ListEntry *node;
     Var *var = NULL;
 
-    for (lnode = localvar->head; lnode && !var; lnode = lnode->next) {
-        var = findlevelvar(name, (List *)lnode->data);
+    for (node = localvar->head; node && !var; node = node->next) {
+        var = findlevelvar(name, (List *)node->datum);
     }
     return var;
-}
-
-static Var *findglobalvar(name)
-    char *name;
-{
-    return (Var *)hash_find(name, var_table);
 }
 
 static Var *findnearestvar(name)
@@ -286,11 +279,16 @@ char *getnearestvar(name, np)
     int *np;
 {
     Var *var;
+    STATIC_BUFFER(buf);
 
     if (np) *np = 0;
     if ((var = findnearestvar(name))) {
         if (np) *np = (var->flags & VARSTR) ? 0 : var->ival;
         return var->value;
+    }
+    if (ucase(name[0]) == 'P' && isdigit(name[1])) {
+        Stringterm(buf, 0);
+        return regsubstr(buf, atoi(name + 1)) >= 0 ? buf->s : NULL;
     }
     return NULL;
 }
@@ -303,31 +301,9 @@ char *setnearestvar(name, value)
     if ((var = findlocalvar(name))) {
         FREE(var->value);
         return var->value = STRDUP(value);
-    } else if (!localvar->head || (var = findglobalvar(name))) {
+    } else {
         return setvar(name, value, FALSE);
-    } else {
-        var = newglobalvar(name, value);
-        var->node = hash_insert((GENERIC *)var, var_table);
-        return var->value;
     }
-}
-
-char *setlocalvar(name, value)
-    char *name, *value;
-{
-    Var *var;
-
-    if (!localvar->head) {
-        tfputs("% /let illegal at top level.", tferr);
-        return NULL;
-    }
-    if ((var = findlevelvar(name, (List *)localvar->head->data))) {
-        FREE(var->value);
-        var->value = STRDUP(value);
-    } else {
-        var = newlocalvar(name, value);
-    }
-    return var->value;
 }
 
 static Var *newlocalvar(name, value)
@@ -336,12 +312,13 @@ static Var *newlocalvar(name, value)
     Var *var;
 
     var = (Var *)MALLOC(sizeof(Var));
+    var->node = NULL;
     var->name = STRDUP(name);
     var->value = STRDUP(value);
     var->flags = VARSTR;
     /* var->ival = atoi(value); */ /* never used */
     var->func = NULL;
-    var->node = inlist((GENERIC *)var, (List*)(localvar->head->data), NULL);
+    inlist((GENERIC *)var, (List*)(localvar->head->datum), NULL);
     if (findglobalvar(name)) {
         do_hook(H_SHADOW, "%% Warning:  Local variable \"%s\" overshadows global variable of same name.", "%s", name);
     }
@@ -354,16 +331,22 @@ static Var *newglobalvar(name, value)
     Var *var;
 
     var = (Var *)MALLOC(sizeof(Var));
+    var->node = NULL;
     var->name = STRDUP(name);
     var->value = STRDUP(value);
     var->flags = VARSTR;
     /* var->ival = atoi(value); */ /* never used */
     var->func = NULL;
-    var->node = NULL;
     return var;
 }
 
-static char *newstr(name, value)
+
+/*
+ * Environment routines.
+ */
+
+/* create new environment string */
+static char *new_env(name, value)
     char *name, *value;
 {
     char *str;
@@ -373,88 +356,85 @@ static char *newstr(name, value)
 }
 
 /* Add "<name>=<value>" to environment.  Assumes name is not already defined. */
-static void append_env(name, value)
-    char *name, *value;
+/* str must be duped before call */
+static void append_env(str)
+    char *str;
 {
     if (envsize == envmax) {
-        envmax = envsize + 5;
+        envmax += 5;
         environ = (char **)REALLOC((char*)environ, (envmax+1) * sizeof(char*));
     }
-    environ[envsize] = newstr(name, value);
+    environ[envsize] = str;
     environ[++envsize] = NULL;
 }
 
-/* Find the environment string for <name>. */
-static char **find_env(name)
-    char *name;
+/* Find the environment string for <name>.  str can be in "<name>" or
+ * "<name>=<value>" format.
+ */
+static char **find_env(str)
+    char *str;
 {
     char **envp;
-    int len = strlen(name);
+    int len;
 
+    for (len = 0; str[len] && str[len] != '='; len++);
     for (envp = environ; *envp; envp++)
-        if (strncmp(*envp, name, len) == 0 && (*envp)[len] == '=')
+        if (strncmp(*envp, str, len) == 0 && (*envp)[len] == '=')
             return envp;
     return NULL;
 }
 
 /* Remove the environment string for <name>. */
-static void remove_env(envp)
-    char **envp;
+static void remove_env(str)
+    char *str;
 {
-    char *old;
+    char **envp;
 
-    old = *envp;
+    envp = find_env(str);
+    FREE(*envp);
     do *envp = *(envp + 1); while (*++envp);
     envsize--;
-    FREE(old);
 }
 
 /* Replace the environment string for <name> with "<name>=<value>". */
-static void replace_env(name, value)
-    char *name, *value;
+static void replace_env(str)
+    char *str;
 {
     char **envp;
 
-    envp = find_env(name);
+    envp = find_env(str);
     FREE(*envp);
-    *envp = newstr(name, value);
+    *envp = str;
 }
+
+
+/*
+ * Interfaces with rest of program.
+ */
 
 char *setvar(name, value, exportflag)
     char *name, *value;
     int exportflag;
 {
     Var *var;
-    int i;
     Toggler *func = NULL;
 
-    i = binsearch(name, (GENERIC *)special_var, NUM_VARS, sizeof(Var), strcmp);
-
-    if (i >= 0) {
-        var = &special_var[i];
+    if ((var = findspecialvar(name))) {
         if (var->value) FREE(var->value);
-        func = set_tf_var(&special_var[i], value);
-    } else if ((var = (Var *)hash_find(name, var_table))) {
+        func = set_special_var(var, value);
+    } else if ((var = findglobalvar(name))) {
         FREE(var->value);
         var->value = STRDUP(value);
-        /* var->ival = atoi(value); */ /* never used */
     } else {
         var = newglobalvar(name, value);
     }
+    if (!var->node) var->node = hash_insert((GENERIC *)var, var_table);
 
-    if (var->node) {                     /* is it already defined? */
-        if (var->flags & VAREXPORT) {
-            replace_env(name, value);
-        } else if (exportflag) {
-            append_env(name, value);
-            var->flags |= VAREXPORT;
-        }
-    } else {
-        var->node = hash_insert((GENERIC *)var, var_table);
-        if (exportflag) {
-            append_env(name, value);
-            var->flags |= VAREXPORT;
-        }
+    if (var->flags & VAREXPORT) {
+        replace_env(new_env(name, value));
+    } else if (exportflag) {
+        append_env(new_env(name, value));
+        var->flags |= VAREXPORT;
     }
 
     if (func) (*func)();
@@ -465,9 +445,62 @@ void setivar(name, value, exportflag)
     char *name;
     int value, exportflag;
 {
-    static char buf[20];
+    char buf[20];
     sprintf(buf, "%d", value);
     setvar(name, buf, exportflag);
+}
+
+int do_set(args, exportflag, localflag)
+    char *args;
+    int exportflag, localflag;
+{
+    char *value;
+    Var *var;
+    int i;
+
+    if (!*args) {
+        if (!localflag) listvar(exportflag);
+        return !localflag;
+    } else if ((value = strchr(args, '='))) {
+        *value++ = '\0';
+        if (!*args) {
+            tfputs("% missing variable name", tferr);
+            return 0;
+        }
+    } else if ((value = strchr(args, ' '))) {
+        for (*value++ = '\0'; isspace(*value); value++);
+    } else {
+        if ((var = localflag ? findlocalvar(args) : findglobalvar(args))) {
+            oprintf("%% %s=%s", args, var->value);
+            return 1;
+        } else {
+            oprintf("%% %s not set %sally", args, localflag ? "loc" : "glob");
+            return 0;
+        }
+    }
+
+    /* Posix.2 restricts the lhs of a variable assignment to
+     * alphanumerics and underscores.  We'll do the same.
+     */
+    for (i = 0; args[i]; i++) {
+        if (!(isalpha(args[i]) || args[i]=='_' || (i>0 && isdigit(args[i])))) {
+            oputs("% illegal variable name.");
+            return 0;
+        }
+    }
+
+    if (!localflag) return setvar(args, value, exportflag) ? 1 : 0;
+
+    if (!localvar->head) {
+        tfputs("% /let illegal at top level.", tferr);
+        return 0;
+    } else if ((var = findlevelvar(args, (List *)localvar->head->datum))) {
+        FREE(var->value);
+        var->value = STRDUP(value);
+    } else {
+        var = newlocalvar(args, value);
+    }
+    return 1;
 }
 
 int handle_export_command(name)
@@ -475,47 +508,45 @@ int handle_export_command(name)
 {
     Var *var;
 
-    if (!(var = (Var *)hash_find(name, var_table))) {
+    if (!(var = findglobalvar(name))) {
         tfprintf(tferr, "%% %s not defined.", name);
         return 0;
     }
-    if (!(var->flags & VAREXPORT)) append_env(var->name, var->value);
+    if (!(var->flags & VAREXPORT)) append_env(new_env(var->name, var->value));
+    var->flags |= VAREXPORT;
     return 1;
 }
 
 int handle_unset_command(name)
     char *name;
 {
-    int oldval, i;
+    int oldval;
     Var *var;
 
-    if (!(var = (Var *)hash_find(name, var_table))) return 0;
+    if (!(var = findglobalvar(name))) return 0;
 
     hash_remove(var->node, var_table);
-    var->node = NULL;
+    if (var->flags & VAREXPORT) remove_env(name);
+    FREE(var->value);
 
-    i = binsearch(name, (GENERIC*)special_var, NUM_VARS, sizeof(Var), strcmp);
-    if (i < 0) {
-        if (var->flags & VAREXPORT) remove_env(find_env(name));
+    if (!(var->flags & VARSPECIAL)) {
         FREE(var->name);
-        FREE(var->value);
         FREE(var);
     } else {
-        oldval = special_var[i].ival;
-        special_var[i].ival = 0;
-        if (special_var[i].flags & VAREXPORT) {
-            remove_env(find_env(name));
-            special_var[i].flags &= ~VAREXPORT;
-        }
-        FREE(special_var[i].value);
-        special_var[i].value = NULL;
-        if (oldval && special_var[i].func) (*special_var[i].func)();
+        var->flags &= ~VAREXPORT;
+        var->value = NULL;
+        var->node = NULL;
+        oldval = var->ival;
+        var->ival = 0;
+        if (oldval && var->func) (*var->func)();
     }
     return 1;
 }
 
+/*********/
+
 /* Set a special variable, with proper coersion of the value. */
-static Toggler *set_tf_var(var, value)
+static Toggler *set_special_var(var, value)
     Var *var;
     char *value;
 {
@@ -552,19 +583,20 @@ static Toggler *set_tf_var(var, value)
     return func;
 }
 
-void listvar(exportflag)
+static void listvar(exportflag)
     int exportflag;
 {
     int i;
     ListEntry *node;
+    Var *var;
 
     for (i = 0; i < var_table->size; i++) {
         if (var_table->bucket[i]) {
             for (node = var_table->bucket[i]->head; node; node = node->next) {
-                if (!(((Var *)(node->data))->flags & VAREXPORT) == !exportflag)
+                var = (Var*)node->datum;
+                if (!(var->flags & VAREXPORT) == !exportflag)
                     oprintf("/%s %s=%s", exportflag ? "setenv" : "set",
-                        ((Var *)(node->data))->name,
-                        ((Var *)(node->data))->value);
+                        var->name, var->value);
             }
         }
     }
@@ -575,7 +607,7 @@ void free_vars()
 {
     char **p;
     int i;
-    ListEntry *node, *next;
+    Var *var;
 
     for (p = environ; *p; p++) FREE(*p);
     FREE(environ);
@@ -587,15 +619,15 @@ void free_vars()
 
     for (i = 0; i < var_table->size; i++) {
         if (var_table->bucket[i]) {
-            for (node = var_table->bucket[i]->head; node; node = next) {
-                next = node->next;
-                FREE(((Var *)(node->data))->name);
-                FREE(((Var *)(node->data))->value);
-                FREE(node->data);
-                FREE(node);
+            while (var_table->bucket[i]->head) {
+                var = (Var *)unlist(var_table->bucket[i]->head, var_table->bucket[i]);
+                FREE(var->name);
+                FREE(var->value);
+                FREE(var);
             }
         }
     }
     free_hash(var_table);
 }
 #endif
+

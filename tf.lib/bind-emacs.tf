@@ -30,4 +30,4 @@
 /def -i -b"^[n"		= /dokey socketf
 /def -i -b"^[p"		= /dokey socketb
 /def -i -b"^[v"		= /dokey insert
-/def -i -b"^[^?"	= /dokey bword
+/def -i -b"^[^?"	= /kb_backward_kill_word

@@ -36,9 +36,9 @@
           Versions labled "alpha" are generally not as well tested as
           "beta" versions, so they have the potential for more bugs.
           For this reason, I leave some older versions at the ftp site
-          where I distribute _T_F (glia.biostr.washington.edu), which do
-          not have all the current features but may have fewer bugs
-          than the most recent release.
+          where I distribute _T_F (ftp.tcp.com), which do not have all
+          the current features but may have fewer bugs than the most
+          recent release.
 
 
      CCCCHHHHAAAANNNNGGGGEEEESSSS FFFFRRRROOOOMMMM VVVVEEEERRRRSSSSIIIIOOOONNNN 3333....1111 TTTTOOOO 3333....2222
@@ -60,7 +60,7 @@
 
 
 
-     Page 1                                         (printed 12/20/93)
+     Page 1                                           (printed 4/9/94)
 
 
 
@@ -126,7 +126,7 @@
 
 
 
-     Page 2                                         (printed 12/20/93)
+     Page 2                                           (printed 4/9/94)
 
 
 
@@ -192,7 +192,7 @@
 
 
 
-     Page 3                                         (printed 12/20/93)
+     Page 3                                           (printed 4/9/94)
 
 
 
@@ -258,7 +258,7 @@
 
 
 
-     Page 4                                         (printed 12/20/93)
+     Page 4                                           (printed 4/9/94)
 
 
 
@@ -324,7 +324,7 @@
 
 
 
-     Page 5                                         (printed 12/20/93)
+     Page 5                                           (printed 4/9/94)
 
 
 
@@ -348,10 +348,14 @@
           Washington Post all refused to comment.
 
 
-     AAAAUUUUTTTTHHHHOOOORRRR
+     CCCCOOOOPPPPYYYYRRRRIIIIGGGGHHHHTTTT
+          Copyright (C) 1993, 1994 Ken Keys
+
+          _T_i_n_y_F_u_g_u_e (aka "_t_f") is protected under the terms of the GNU
+          General Public License.  See the file "COPYING" for details.
+
           _T_F is currently supported by Ken Keys, who may be contacted
-          by e-mail at kkeys@ucsd.edu or
-          hawkeye@glia.biostr.washington.edu.
+          by e-mail at kkeys@ucsd.edu or hawkeye@tcp.com.
 
 
      BBBBAAAACCCCKKKKWWWWAAAARRRRDDDD IIIINNNNCCCCOOOOMMMMPPPPAAAATTTTIIIIBBBBIIIILLLLTTTTIIIIEEEESSSS
@@ -383,14 +387,10 @@
           be nonblocking.
 
           _T_i_n_y_t_a_l_k style name gags and hilites are no longer
-          supported.  You must use the '*' wildcard explicitly, as in
-          '/hilite hawkeye*'.
-
-          _T_i_n_y_t_a_l_k style page and whisper hilites are no longer
 
 
 
-     Page 6                                         (printed 12/20/93)
+     Page 6                                           (printed 4/9/94)
 
 
 
@@ -401,6 +401,10 @@
 
 
 
+          supported.  You must use the '*' wildcard explicitly, as in
+          '/hilite hawkeye*'.
+
+          _T_i_n_y_t_a_l_k style page and whisper hilites are no longer
           supported.  However, /hilite_page and /hilite_whisper macros
           are provided in the default macro library.
 
@@ -452,11 +456,7 @@
 
 
 
-
-
-
-
-     Page 7                                         (printed 12/20/93)
+     Page 7                                           (printed 4/9/94)
 
 
 

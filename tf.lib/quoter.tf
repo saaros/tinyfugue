@@ -22,7 +22,7 @@
 
 /def -i qmac = \
   /setenv prog=\
-      /^\\/def.* %L *=/ { f = 1; } \
+      /^\\/def.* %L[ 	]*=/ { f = 1; } \
       { if (f) print \$0; } \
       /^[^;].*[^\\\\]\$/ { f = 0; }%;\
   /eval /quote -0 %{-L-:|} !awk "\\\$prog" `ls %{_qmac_files} 2>/dev/null`

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tty.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: tty.c,v 33000.4 1994/04/16 05:10:09 hawkeye Exp $ */
 
 /*
  * TTY driver routines.
@@ -46,8 +46,9 @@
 
 #ifdef USE_TERMIOS
 # ifdef M_XENIX
-#  include <sys/stream.h>             /* needed for sys/ptem.h */
-#  include <sys/ptem.h>               /* needed for struct winsize */
+#  include <sys/types.h>              /* Needed for sys/stream.h, which is... */
+#  include <sys/stream.h>             /* needed for sys/ptem.h, which is... */
+#  include <sys/ptem.h>               /* needed for struct winsize.  Ugh. */
 # endif
 #endif
 
@@ -68,9 +69,8 @@ static int is_custom_tty = 0;        /* is tty in customized mode? */
 #include "tf.h"
 #include "util.h"
 #include "tty.h"
-#include "keyboard.h"     /* for set_ekey() */
 #include "output.h"       /* for redraw() */
-#include "macro.h"        /* for do_hook(), H_RESIZE */
+#include "macro.h"        /* for do_hook(), add_ibind(), H_RESIZE */
 
 #define DEFAULT_COLUMNS 80
 
@@ -124,12 +124,15 @@ void init_tty()
 #endif
 
     bs[1] = dline[1] = bword[1] = refresh[1] = lnext[1] = '\0';
-    /* Note that some systems use \0 to disable, others use \377. */
-    if (isascii(*bs) && *bs) set_ekey(bs, "/DOKEY BSPC");
-    if (isascii(*bword) && *bword) set_ekey(bword, "/DOKEY BWORD");
-    if (isascii(*dline) && *dline) set_ekey(dline, "/DOKEY DLINE");
-    if (isascii(*refresh) && *refresh) set_ekey(refresh, "/DOKEY REFRESH");
-    if (isascii(*lnext) && *lnext) set_ekey(lnext, "/DOKEY LNEXT");
+    /* Note that some systems use \0 to disable, others use \377; we must
+     * check both.  Also, some seem to leave garbage in some of the fields,
+     * so we'll ignore anything that isn't a control character.
+     */
+    if (iscntrl(*bs)      && *bs)      add_ibind(bs,      "/DOKEY BSPC");
+    if (iscntrl(*bword)   && *bword)   add_ibind(bword,   "/DOKEY BWORD");
+    if (iscntrl(*dline)   && *dline)   add_ibind(dline,   "/DOKEY DLINE");
+    if (iscntrl(*refresh) && *refresh) add_ibind(refresh, "/DOKEY REFRESH");
+    if (iscntrl(*lnext)   && *lnext)   add_ibind(lnext,   "/DOKEY LNEXT");
 
     cbreak_noecho_mode();
 }
@@ -146,10 +149,9 @@ int get_window_size()
     if (ioctl(0, TIOCGWINSZ, &size) < 0) return 0;
     if (size.ws_col) columns = size.ws_col;
     if (size.ws_row) lines = size.ws_row;
-    if (columns <= 20) columns = DEFAULT_COLUMNS;
     if (columns == ocol && lines == oline) return 1;
-    redraw();
     setivar("wrapsize", columns - (ocol - wrapsize), FALSE);
+    if (visual) redraw();
     do_hook(H_RESIZE, NULL, "%d %d", columns, lines);
     return 1;
 #else
@@ -165,21 +167,17 @@ void cbreak_noecho_mode()
         perror(ingetattr_error);
         die("Can't get terminal mode.");
     }
-    memcpy(&old_tty, &tty, sizeof(tty_struct));          /* structure copy */
+    structcpy(old_tty, tty);
 
 #ifdef USE_TERMIOS
     tty.c_lflag &= ~(ECHO | ICANON);
     tty.c_lflag |= ISIG;
     tty.c_iflag = IGNBRK | IGNPAR;
     tty.c_iflag &= ~ICRNL;
-#if 1
-    tty.c_oflag &= ~OPOST;      
-#else
     tty.c_oflag &= ~OCRNL;
-# ifdef ONLCR
-    tty.c_oflag &= ~ONLCR;   /* if not def'd, no biggie: we get double '\r's. */
-# endif
-#endif
+    /* Leave ONLCR on, so "write" and other things that blast onto the screen
+     * look at least somewhat sane.
+     */
     tty.c_cc[VMIN] = 0;
     tty.c_cc[VTIME] = 0;
 #endif
@@ -187,7 +185,10 @@ void cbreak_noecho_mode()
 #ifdef USE_HPUX_TERMIO
     tty.c_lflag &= ~(ECHO | ECHOE | ICANON);
     tty.c_iflag &= ~ICRNL;
-    tty.c_oflag &= ~OPOST;
+    tty.c_oflag &= ~OCRNL;
+    /* Leave ONLCR on, so "write" and other things that blast onto the screen
+     * look at least somewhat sane.
+     */
     tty.c_cc[VMIN] = 0;
     tty.c_cc[VTIME] = 0;
 #endif
@@ -195,6 +196,10 @@ void cbreak_noecho_mode()
 #ifdef USE_SGTTY
     tty.sg_flags |= CBREAK;
     tty.sg_flags &= ~(ECHO | CRMOD);
+    /* Sgtty's CRMOD is equivalent to termios' (ICRNL | OCRNL | ONLCR).
+     * So to turn off icrnl and ocrnl we must also turn off onlcr.
+     * This means we'll have to print '\r' ourselves in output.c.
+     */
 #endif
 
     if (insetattr(&tty) < 0) {

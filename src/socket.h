@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: socket.h,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: socket.h,v 33000.0 1994/03/05 09:34:14 hawkeye Exp $ */
 
 #ifndef SOCKET_H
 #define SOCKET_H
@@ -33,12 +33,12 @@ typedef struct Sock {          /* an open connection to a server */
     Stringp prompt;            /* prompt from server */
     Stringp buffer;            /* buffer for incoming characters */
     struct Queue *queue;       /* buffer for undisplayed lines */
-    char state;                /* state of parser finite state automaton */
+    unsigned char state;       /* state of parser finite state automaton */
 } Sock;
 
 
-extern void NDECL(init_sock);
 extern void NDECL(main_loop);
+extern void NDECL(init_sock);
 extern int  FDECL(is_active,(int fd));
 extern void FDECL(readers_clear,(int fd));
 extern void FDECL(readers_set,(int fd));
@@ -47,6 +47,7 @@ extern void FDECL(mapsock,(void FDECL((*func),(struct World *world))));
 extern struct World *NDECL(fworld);
 extern struct World *NDECL(xworld);
 extern void FDECL(background_hook,(char *line));
+extern int  FDECL(openworld,(char *name, char *port, int autologin, int quietlogin));
 extern int  FDECL(opensock,(struct World *w, int autologin, int quietlogin));
 extern int  FDECL(movesock,(int dir));
 extern void NDECL(no_sock);

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: malloc.h,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: malloc.h,v 33000.1 1994/03/14 20:55:45 hawkeye Exp $ */
 
 #ifndef MALLOC_H
 #define MALLOC_H
@@ -21,8 +21,10 @@
 #endif
 
 #ifdef DMALLOC
-extern GENERIC  *FDECL(dmalloc,(long unsigned size, CONST char *file, CONST int line));
-extern GENERIC  *FDECL(drealloc,(GENERIC *ptr, long unsigned size, CONST char *file, CONST int line));
+extern GENERIC  *FDECL(dmalloc,(long unsigned size,
+                       CONST char *file, CONST int line));
+extern GENERIC  *FDECL(drealloc,(GENERIC *ptr, long unsigned size,
+                       CONST char *file, CONST int line));
 extern void   FDECL(dfree,(GENERIC *ptr, CONST char *file, CONST int line));
 #else
 extern GENERIC  *FDECL(dmalloc,(long unsigned size));

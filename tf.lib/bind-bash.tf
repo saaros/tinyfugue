@@ -17,7 +17,7 @@
 ;/def -ib"^[>"	= /end-of-history
 ;/def -ib"^[?"	= /possible-completions
 ;/def -ib"^[@"	= /complete hostname
- /def -ib"^[^?"	= /dokey bword
+ /def -ib"^[^?"	= /kb_backward_kill_word
  /def -ib"^[^e"	= /kb_expand_line
  /def -ib"^[_"	= /kb_last_argument
  /def -ib"^[b"	= /dokey wleft

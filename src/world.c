@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: world.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: world.c,v 33000.1 1994/03/23 01:48:53 hawkeye Exp $ */
 
 
 /********************************************************
@@ -95,10 +95,10 @@ World *new_world(name, character, pass, address, port, mfile, type)
     result->mfile     = STRDUP(mfile);
     result->type      = STRDUP(type);
     result->flags = 0;
-    result->socket = NULL;
+    result->sock = NULL;
 #ifndef NO_HISTORY
-    result->history = (History *)MALLOC(sizeof(History));
-    result->history->alines = NULL;
+    /* Don't allocate the history's queue until we actually need it. */
+    init_history((result->history = (History *)MALLOC(sizeof(History))), 0);
 #endif
     return insertworld(result);
 }
@@ -124,7 +124,7 @@ int handle_addworld_command(args)
         default:   return 0;
         }
     }
-    if (!type) type = STRDUP("");
+    if (!type) type = STRNDUP("", 0);
 
     for (in = args = STRDUP(args), count = 0; *in && count < 6; count++) {
         fields[count] = stringarg(&in, NULL);
@@ -182,7 +182,7 @@ void nuke_world(w)
 {
     World *t;
 
-    if (w->socket) {
+    if (w->sock) {
         tfprintf(tferr, "%% %s: Cannot nuke world currently in use.", w->name);
     } else {
         if (w == hworld) hworld = w->next;
@@ -288,16 +288,12 @@ World *get_default_world()
     return defaultworld;
 }
 
-World *get_world_header()
-{
-    return hworld;
-}
-
 World *find_world(name)
     char *name;
 {
     World *p;
 
+    if (!name || !*name) return hworld;
     for (p=hworld; p && (!p->name || cstrcmp(name, p->name) != 0); p = p->next);
     return p;
 }

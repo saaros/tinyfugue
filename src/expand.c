@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expand.c,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: expand.c,v 33000.7 1994/04/15 05:46:02 hawkeye Exp $ */
 
 
 /********************************************************************
@@ -29,7 +29,7 @@
 #include "socket.h"
 #include "search.h"
 #include "output.h"	/* newpos() */
-#include "keyboard.h"	/* do_kbdel() */
+#include "keyboard.h"	/* kb*() */
 #include "expand.h"
 #include "commands.h"
 
@@ -37,6 +37,9 @@
 
 #define end_of_statement(p) ((p)[0] == '%' && ((p)[1] == ';' || (p)[1] == '\\'))
 #define end_of_cmdsub(p) (cmdsub_count && *(p) == ')')
+
+/* get Nth operand from stack (counting backwards from top) */
+#define opd(N) (stack[stacktop-(N)])
 
 /* keywords: must be sorted, and numbered in incmrements of 1 */
 #define BREAK    '\200'
@@ -61,9 +64,9 @@
 #define OP_ASSIGN   '\310'
 #define OP_FUNC     '\311'
 
-#define TYPE_INT  1
-#define TYPE_STR  2
-#define TYPE_ID   3
+#define TYPE_ID     1
+#define TYPE_STR    2
+#define TYPE_INT    3
 
 
 typedef struct Arg {
@@ -74,8 +77,8 @@ typedef struct Arg {
 typedef struct Value {
     int type;
     union {
-        int ival;
         char *sval;
+        int ival;
     } u;
 } Value;
 
@@ -122,8 +125,61 @@ static int    NDECL(primary_expr);
 static int    FDECL(pushval,(Value *val));
 static int    FDECL(reduce,(int op, int n));
 static Value *FDECL(do_function,(int n));
-static int    FDECL(countargs,(char *name, int req, int actual));
 static int    NDECL(parse_error);
+
+typedef struct ExprFunc {
+    char *name;          /* name invoked by user */
+    unsigned min, max;   /* minimum and maximum allowed argument counts */
+} ExprFunc;
+
+static ExprFunc functab[] = {
+    { "kbdel",		1,	1 },
+    { "kbgoto",		1,	1 },
+    { "kbhead",		0,	0 },
+    { "kblen",		0,	0 },
+    { "kbpoint",	0,	0 },
+    { "kbtail",		0,	0 },
+    { "kbwordleft",	0,	0 },
+    { "kbwordright",	0,	0 },
+    { "mod",		2,	2 },
+    { "rand",		0,	2 },
+    { "regmatch",	2,	2 },
+    { "strcat",		0,	(unsigned)-1 },
+    { "strchr",		2,	2 },
+    { "strcmp",		2,	2 },
+    { "strlen",		1,	1 },
+    { "strrchr",	2,	2 },
+    { "strrep",		2,	2 },
+    { "strstr",		2,	2 },
+    { "substr",		3,	3 },
+    { "tolower",	1,	1 },
+    { "toupper",	1,	1 }
+};
+
+enum func_id {
+    FN_KBDEL,
+    FN_KBGOTO,
+    FN_KBHEAD,
+    FN_KBLEN,
+    FN_KBPOINT,
+    FN_KBTAIL,
+    FN_KBWORDLEFT,
+    FN_KBWORDRIGHT,
+    FN_MOD,
+    FN_RAND,
+    FN_REGMATCH,
+    FN_STRCAT,
+    FN_STRCHR,
+    FN_STRCMP,
+    FN_STRLEN,
+    FN_STRRCHR,
+    FN_STRREP,
+    FN_STRSTR,
+    FN_SUBSTR,
+    FN_TOLOWER,
+    FN_TOUPPER
+};
+
 
 
 static Value *expr()
@@ -214,7 +270,7 @@ int process_macro(body, args, subs)
         Stringfree(buffer);
     }
 
-    if (args) {
+    if (argv) {
         while (--true_argc >= 0) FREE(true_argv[true_argc]);
         FREE(true_argv);
         FREE(args);
@@ -235,7 +291,7 @@ static int list(dest, subs)
     Stringp dest;
     int subs;
 {
-    int oneslash = 0, oldcondition, oldevalflag, oldblock, failed = 0;
+    int oneslash, oldcondition, oldevalflag, oldblock, failed = 0;
     char *start = NULL;
     STATIC_BUFFER(mprefix_deep);
 
@@ -249,7 +305,7 @@ static int list(dest, subs)
 
     if (block == WHILE) start = ip;
 
-    while(*ip) {
+    do /* while (*ip) */ {
         if (interrupted()) {
             tfputs("% macro evaluation interrupted.", tferr);
             return 0;
@@ -287,13 +343,13 @@ static int list(dest, subs)
                 }
                 evalflag = evalflag && condition;
                 condition = user_result;
-                break;
+                continue;
             case BREAK:
                 if (!breaking && evalflag && condition) {
                     breaking = 1;
                 }
                 block = oldblock;
-                break;
+                continue;
             case DONE:
                 if (oldblock != DO) {
                     cmderror("unexpected /done");
@@ -302,11 +358,12 @@ static int list(dest, subs)
                 }
                 if (breaking || !condition || !evalflag) {
                     breaking = 0;
-                    return 1;
+                    evalflag = 0;  /* don't eval any trailing garbage */
+                    return statement(dest, subs);  /* parse end of statement */
                 } else {
                     ip = start;
                     block = WHILE;
-                    break;
+                    continue;
                 }
             case IF:
                 oldevalflag = evalflag;
@@ -332,7 +389,7 @@ static int list(dest, subs)
                 }
                 evalflag = evalflag && condition;
                 condition = user_result;
-                break;
+                continue;
             case ELSEIF:
                 if (oldblock != THEN) {
                     cmderror("unexpected /elseif");
@@ -340,7 +397,7 @@ static int list(dest, subs)
                     return 0;
                 }
                 condition = !condition;
-                break;
+                continue;
             case ELSE:
                 if (oldblock != THEN) {
                     cmderror("unexpected /else");
@@ -348,31 +405,26 @@ static int list(dest, subs)
                     return 0;
                 }
                 condition = !condition;
-                break;
+                continue;
             case ENDIF:
                 if (oldblock != THEN && oldblock != ELSE) {
                     cmderror("unexpected /endif");
                     block = oldblock;
                     return 0;
                 }
-                return 1;
+                evalflag = 0; /* don't eval any trailing garbage */
+                return statement(dest, subs);  /* parse end of statement */
             default:
                 /* not a control statement */
                 ip--;
+                block = oldblock;
                 break;
             }
-            if (block) {
-                while (isspace(*ip)) ++ip;
-                continue;
-            }
-            block = oldblock;
         }
 
         if (!statement(dest, subs)) return 0;
 
-        /* I/O redirection will go here someday.  %>, %<, etc. */
-
-        if (!breaking && evalflag && condition && dest->len) {
+        if (!breaking && evalflag && condition && (dest->len || !snarf)) {
             extern int invis_flag;
             if (subs == SUB_MACRO && (mecho + !invis_flag) >= 2) {
                 int i;
@@ -384,8 +436,8 @@ static int list(dest, subs)
             if (oneslash) {
                 user_result = handle_command(dest->s + 1);
             } else {
-                if (subs == SUB_MACRO
-                  || !(do_hook(H_SEND, NULL, "%S", dest) & F_GAG)) {
+                extern int send_hook_level;
+                if (send_hook_level || !do_hook(H_SEND, NULL, "%S", dest)) {
                     Stringadd(dest, '\n');
                     user_result = send_line(dest->s, dest->len);
                 }
@@ -394,29 +446,28 @@ static int list(dest, subs)
 
         Stringterm(dest, 0);
         if (end_of_cmdsub(ip)) break;
-        /* Skip space between "%;" and next statement. */
-        while (isspace(*ip)) ip++;
-    }
+    } while (*ip);
     return 1;
 }
 
 static int keyword()
 {
     char *end, save;
-    int result;
+    char **result;
     static char *keyword_table[] = {
         "break", "do", "done", "else", "elseif",
         "endif", "if", "then", "while"
     };
 
-    for (end = ip; isalnum(*end) || *end == '_'; end++);
+    for (end = ip; *end && !isspace(*end) && *end != '%' && *end != ')'; end++);
     save = *end;
     *end = '\0';
-    result = binsearch(ip, (GENERIC*)keyword_table,
-        sizeof(keyword_table)/sizeof(char*), sizeof(char*), cstrcmp);
+    result = (char **)binsearch((GENERIC*)&ip, (GENERIC*)keyword_table,
+        sizeof(keyword_table)/sizeof(char*), sizeof(char*), gencstrcmp);
     *end = save;
-    if (result >= 0) for (ip = end; isspace(*ip); ip++);
-    return (result >= 0) ? (BREAK + result) : 0;
+    if (!result) return 0;
+    for (ip = end; isspace(*ip); ip++);
+    return BREAK + (result - keyword_table);
 }
 
 static int statement(dest, subs)
@@ -433,7 +484,10 @@ static int statement(dest, subs)
             ++ip;
             if (!slashsub(dest)) return 0;
         } else if (subs >= SUB_NEWLINE && end_of_statement(ip)) {
+            while (dest->len && isspace(dest->s[dest->len-1]))
+                Stringterm(dest, dest->len-1);  /* nuke spaces before %; */
             ip += 2;
+            while (isspace(*ip)) ip++; /* skip space after %; */
             break;
         } else if (subs >= SUB_FULL && end_of_cmdsub(ip)) {
             break;
@@ -452,10 +506,7 @@ static int statement(dest, subs)
             ++ip;
             if (!varsub(dest)) return 0;
         } else {
-            /* strchr("\\/$%})", *ip) is more obvious here, but
-             * ispunct(*ip) is a hell of a lot faster, increasing the
-             * overall speed of statement() by about 10%.
-             */
+            /* ispunct() is a fast heuristic to find next interesting char */
             for (start = ip++; *ip && !ispunct(*ip); ip++);
             Stringncat(dest, start, ip - start);
         }
@@ -528,9 +579,9 @@ static char *valstr(val)
     STATIC_BUFFER(buffer);
 
     switch (val->type) {
-        case TYPE_INT: Sprintf(buffer, 0, "%d", val->u.ival); return buffer->s;
-        case TYPE_STR: return val->u.sval;
-        case TYPE_ID:  return (str=getnearestvar(val->u.sval,NULL)) ? str : "";
+        case TYPE_INT:  Sprintf(buffer, 0, "%d", val->u.ival); return buffer->s;
+        case TYPE_STR:  return val->u.sval;
+        case TYPE_ID:   return (str=getnearestvar(val->u.sval,NULL)) ? str : "";
     }
     return NULL; /* impossible */
 }
@@ -548,18 +599,17 @@ static int pushval(val)
 
 static int parse_error()
 {
-    char *end = ip + 1;
+    char *end = ip + 1, save;
 
     if (isalnum(*ip) || *ip == '"') {
         while (isalnum(*end)) end++;
     }
+    save = *end;
     if (*ip) *end = '\0';
     tfprintf(tferr, "%% expression parse error before %s", *ip ? ip : "end");
+    if (*ip) *end = save;
     return 0;
 }
-
-/* get Nth operand from stack (counting backwards from top) */
-#define opd(N) (stack[stacktop-(N)])
 
 /* Pop n operands, apply op to them, and push result */
 static int reduce(op, n)
@@ -568,7 +618,6 @@ static int reduce(op, n)
 {
     Value *val = NULL;
     char *str;
-    int j;
     STATIC_BUFFER(buf);
 
     if (stacktop < n) {
@@ -582,20 +631,19 @@ static int reduce(op, n)
                         tfputs("% illegal left side of assignment.", tferr);
                     } else {
                         str = setnearestvar(opd(2)->u.sval, valstr(opd(1)));
-                        val = newstr(str, strlen(str));
+                        val = str ? newstr(str, strlen(str)) : newstr("", 0);
                     }
                     break;
     case '|':       val = newint(valint(opd(2))?valint(opd(2)):valint(opd(1)));
                     break;
-    case '&':       val = newint(valint(opd(2))?valint(opd(1)):valint(opd(2)));
-                    break;
-    case '>':       val = newint(valint(opd(2)) > valint(opd(1)));    break;
-    case '<':       val = newint(valint(opd(2)) < valint(opd(1)));    break;
+    case '&':       val = newint(valint(opd(2)) ? valint(opd(1)) : 0);  break;
+    case '>':       val = newint(valint(opd(2)) > valint(opd(1)));      break;
+    case '<':       val = newint(valint(opd(2)) < valint(opd(1)));      break;
     case '=':       /* fall thru to OP_EQUAL */
-    case OP_EQUAL:  val = newint(valint(opd(2)) == valint(opd(1)));   break;
-    case OP_NOTEQ:  val = newint(valint(opd(2)) != valint(opd(1)));   break;
-    case OP_GTE:    val = newint(valint(opd(2)) >= valint(opd(1)));   break;
-    case OP_LTE:    val = newint(valint(opd(2)) <= valint(opd(1)));   break;
+    case OP_EQUAL:  val = newint(valint(opd(2)) == valint(opd(1)));     break;
+    case OP_NOTEQ:  val = newint(valint(opd(2)) != valint(opd(1)));     break;
+    case OP_GTE:    val = newint(valint(opd(2)) >= valint(opd(1)));     break;
+    case OP_LTE:    val = newint(valint(opd(2)) <= valint(opd(1)));     break;
     case OP_STREQ:  val = newint(strcmp(valstr(opd(2)), valstr(opd(1))) == 0);
                     break;
     case OP_STRNEQ: val = newint(strcmp(valstr(opd(2)), valstr(opd(1))) != 0);
@@ -612,19 +660,22 @@ static int reduce(op, n)
     case '-':       if (n==1) val = newint(-valint(opd(1)));
                     else val = newint(valint(opd(2)) - valint(opd(1)));
                     break;
-    case '*':       val = newint(valint(opd(2)) * valint(opd(1)));     break;
+    case '*':       val = newint(valint(opd(2)) * valint(opd(1)));
+                    break;
     case '/':       if (block == IF && opd(1)->type == TYPE_ID)
                         /* catch common error: "/if /test <expr> /then ..." */
                         tfprintf(tferr,
                             "%% warning: possibly missing %%; before /%s",
                             opd(1)->u.sval);
-                    if ((j = valint(opd(1))) == 0) {
-                        cmderror("division by zero");
-                    } else {
-                        val = newint(valint(opd(2)) / j);
+                    {
+                        int i;
+                        if ((i = valint(opd(1))) == 0)
+                            cmderror("division by zero");
+                        else
+                            val = newint(valint(opd(2)) / i);
                     }
                     break;
-    case '!':       val = newint(!valint(opd(1)));                     break;
+    case '!':       val = newint(!valint(opd(1)));                  break;
     case OP_FUNC:   val = do_function(n);                           break;
     default:        tfprintf(tferr, "%% internal error: reduce: unknown op %c",
                         op);
@@ -641,13 +692,17 @@ static int reduce(op, n)
 static Value *do_function(n)
     int n;    /* number of operands (including function id) */
 {
-    int i, j;
-    char *id, *str, *ptr;
-    extern int keyboard_pos;
-    extern Stringp keybuf;
+    char *id;
     Handler *handler;
+    ExprFunc *funcrec;
     Macro *macro;
-    STATIC_BUFFER(buf);
+
+    int i, j, len;
+    char *str, *ptr;
+    extern unsigned int keyboard_pos;
+    extern Stringp keybuf;
+    regexp *re;
+    STATIC_BUFFER(scratch);
 
     if (opd(n)->type != TYPE_ID) {
         tfputs("%% function name must be an identifier.", tferr);
@@ -655,116 +710,133 @@ static Value *do_function(n)
     }
     id = opd(n--)->u.sval;
 
-    /* This should use a table if it gets any bigger. */
+    funcrec = (ExprFunc *)binsearch((GENERIC*)&id, (GENERIC*)functab,
+        sizeof(functab)/sizeof(ExprFunc), sizeof(ExprFunc), genstrcmp);
 
-    if (strcmp(id, "rand") == 0) {
-        if (n == 0) {
-            return newint(RANDOM());
-        } else if (n == 1) {
-            return newint(RANDOM() % valint(opd(1)));
-        } else if (n == 2) {
-            i = valint(opd(2));
-            return newint(RANDOM() % (valint(opd(1)) - i + 1) + i);
-        } else {
-            tfputs("rand: too many arguments", tferr);
+    if (funcrec) {
+        if (n < funcrec->min || n > funcrec->max) {
+            tfprintf(tferr, "%% %s: incorrect number of arguments", id);
             return NULL;
         }
-    } else if (strcmp(id, "regmatch") == 0) {
-        regexp *re;
-        if (!countargs(id, 2, n)) return NULL;
-        if (!(re = regcomp(valstr(opd(2))))) return newint(0);
-        return newint(regexec_and_hold(re, valstr(opd(1)), TRUE));
-    } else if (strcmp(id, "strcat") == 0) {
-        for (Stringterm(buf, 0); n; Stringcat(buf, valstr(opd(n--))));
-        return newstr(buf->s, buf->len);
-    } else if (strcmp(id, "strrep") == 0) {
-        if (!countargs(id, 2, n)) return NULL;
-        if ((i = valint(opd(1))) < 0) i = 0;
-        str = valstr(opd(2));
-        for (Stringterm(buf, 0); i; i--) Stringcat(buf, str);
-        return newstr(buf->s, buf->len);
-    } else if (strcmp(id, "strcmp") == 0) {
-        if (!countargs(id, 2, n)) return NULL;
-        return newint(strcmp(valstr(opd(2)), valstr(opd(1))));
-    } else if (strcmp(id, "strlen") == 0) {
-        if (!countargs(id, 1, n)) return NULL;
-        return newint(strlen(valstr(opd(1))));
-    } else if (strcmp(id, "substr") == 0) {
-        if (!countargs(id, 3, n)) return NULL;
-        str = valstr(opd(3));
-        if ((i = valint(opd(2))) < 0) i = 0;
-        if ((j = valint(opd(1))) < 0) j = 0;
-        if (i >= strlen(str)) return newstr("", 0);
-        Stringncpy(buf, str + i, j);
-        return newstr(buf->s, buf->len);
-    } else if (strcmp(id, "strstr") == 0) {
-        if (!countargs(id, 2, n)) return NULL;
-        str = valstr(opd(2));
-        ptr = STRSTR(str, valstr(opd(1)));
-        return newint(ptr ? (ptr - str) : -1);
-    } else if (strcmp(id, "strchr") == 0) {
-        if (!countargs(id, 2, n)) return NULL;
-        str = valstr(opd(2));
-        ptr = valstr(opd(1));
-        for (i = 0; str[i]; i++)
-            for (j = 0; ptr[j]; j++)
-                if (str[i] == ptr[j]) return newint(i);
-        return newint(-1);
-    } else if (strcmp(id, "strrchr") == 0) {
-        if (!countargs(id, 2, n)) return NULL;
-        str = valstr(opd(2));
-        ptr = valstr(opd(1));
-        for (i = strlen(str) - 1; i >= 0; i--)
-            for (j = 0; ptr[j]; j++)
-                if (str[i] == ptr[j]) return newint(i);
-        return newint(-1);
-    } else if (strcmp(id, "tolower") == 0) {
-        if (!countargs(id, 1, n)) return NULL;
-        Stringterm(buf, 0);
-        for (str = valstr(opd(1)); *str; str++) Stringadd(buf, lcase(*str));
-        return newstr(buf->s, buf->len);
-    } else if (strcmp(id, "toupper") == 0) {
-        if (!countargs(id, 1, n)) return NULL;
-        Stringterm(buf, 0);
-        for (str = valstr(opd(1)); *str; str++) Stringadd(buf, ucase(*str));
-        return newstr(buf->s, buf->len);
-    } else if (strcmp(id, "kbhead") == 0) {
-        if (!countargs(id, 0, n)) return NULL;
-        return newstr(keybuf->s, keyboard_pos);
-    } else if (strcmp(id, "kbtail") == 0) {
-        if (!countargs(id, 0, n)) return NULL;
-        Stringncpy(buf, keybuf->s + keyboard_pos, keybuf->len - keyboard_pos);
-        return newstr(buf->s, buf->len);
-    } else if (strcmp(id, "kbpoint") == 0) {
-        if (!countargs(id, 0, n)) return NULL;
-        return newint(keyboard_pos);
-    } else if (strcmp(id, "kbgoto") == 0) {
-        if (!countargs(id, 1, n)) return NULL;
-        newpos(valint(opd(1)));
-        return newint(keyboard_pos);
-    } else if (strcmp(id, "kbdel") == 0) {
-        if (!countargs(id, 1, n)) return NULL;
-        if ((i = valint(opd(1))) < 0) i = 0;
-        return (newint(do_kbdel(i)));
+        switch (funcrec - functab) {
+
+        case FN_MOD:
+            return newint(valint(opd(2)) % valint(opd(1)));
+
+        case FN_RAND:
+            if (n == 0) return newint(RAND());
+            i = (n==1) ? 0 : valint(opd(2));
+            if (i < 0) i = 0;
+            j = valint(opd(1)) - (n==1);
+            if (j < i) j = i;
+            return newint(RRAND(i, j));
+
+        case FN_REGMATCH:
+            if (!(re = regcomp(valstr(opd(2))))) return newint(0);
+            return newint(regexec_and_hold(re, valstr(opd(1)), TRUE));
+
+        case FN_STRCAT:
+            for (Stringterm(scratch, 0); n; n--)
+                Stringcat(scratch, valstr(opd(n)));
+            return newstr(scratch->s, scratch->len);
+
+        case FN_STRREP:
+            i = valint(opd(1));
+            str = valstr(opd(2));
+            for (Stringterm(scratch, 0); i > 0; i--)
+                Stringcat(scratch, str);
+            return newstr(scratch->s, scratch->len);
+
+        case FN_STRCMP:
+            return newint(strcmp(valstr(opd(2)), valstr(opd(1))));
+
+        case FN_STRLEN:
+            return newint(strlen(valstr(opd(1))));
+
+        case FN_SUBSTR:
+            len = strlen(str = valstr(opd(3)));
+            if ((i = valint(opd(2))) < 0) i = 0;
+            if ((j = valint(opd(1))) < 0) j = 0;
+            if (i > len) i = len;
+            str += i;
+            len -= i;
+            if (j > len) j = len;
+            return newstr(str, j);
+
+        case FN_STRSTR:
+            str = valstr(opd(2));
+            ptr = STRSTR(str, valstr(opd(1)));
+            return newint(ptr ? (ptr - str) : -1);
+
+        case FN_STRCHR:
+            str = valstr(opd(2));
+            ptr = valstr(opd(1));
+            for (i = 0; str[i]; i++)
+                for (j = 0; ptr[j]; j++)
+                    if (str[i] == ptr[j]) return newint(i);
+            return newint(-1);
+
+        case FN_STRRCHR:
+            str = valstr(opd(2));
+            ptr = valstr(opd(1));
+            for (i = strlen(str) - 1; i >= 0; i--)
+                for (j = 0; ptr[j]; j++)
+                    if (str[i] == ptr[j]) return newint(i);
+            return newint(-1);
+
+        case FN_TOLOWER:
+            Stringterm(scratch, 0);
+            for (str = valstr(opd(1)); *str; str++)
+                Stringadd(scratch, lcase(*str));
+            return newstr(scratch->s, scratch->len);
+
+        case FN_TOUPPER:
+            Stringterm(scratch, 0);
+            for (str = valstr(opd(1)); *str; str++)
+                Stringadd(scratch, ucase(*str));
+            return newstr(scratch->s, scratch->len);
+
+        case FN_KBHEAD:
+            return newstr(keybuf->s, keyboard_pos);
+
+        case FN_KBTAIL:
+            return newstr(keybuf->s + keyboard_pos, keybuf->len - keyboard_pos);
+
+        case FN_KBPOINT:
+            return newint(keyboard_pos);
+
+        case FN_KBGOTO:
+            return newint(newpos(valint(opd(1))));
+
+        case FN_KBDEL:
+            return (newint(do_kbdel(valint(opd(1)))));
+
+        case FN_KBWORDLEFT:
+            return newint(do_kbwordleft());
+
+        case FN_KBWORDRIGHT:
+            return newint(do_kbwordright());
+
+        case FN_KBLEN:
+            return newint(keybuf->len);
+
+        default:
+            /* impossible */
+            return NULL;
+
+        }
+
     } else if ((macro = find_macro(id)) || (handler = find_command(id))) {
         if (n > 1) {
             tfprintf(tferr, "%% %s:  command or macro called as function must take 0 or 1 arguments", id);
             return NULL;
         }
-        if (macro) return newint(do_macro(macro, valstr(opd(1))));
-        else return newint((*handler)(valstr(opd(1))));
+        if (macro) return newint(do_macro(macro, n ? valstr(opd(1)) : ""));
+        else return newint((*handler)(n ? valstr(opd(1)) : ""));
     }
+
     tfprintf(tferr, "%% %s: no such function", id);
     return NULL;
-}
-
-static int countargs(name, req, actual)
-    char *name;
-    int req, actual;
-{
-    if (req == actual) return 1;
-    tfprintf(tferr, "%% %s: incorrect number of arguments", name);
-    return 0;
 }
 
 static int top_expr()
@@ -824,7 +896,7 @@ static int relational_expr()
         else if (ip[0] == '<' && ip[1] == '=') op = OP_LTE;
         else if (ip[0] == '=' && ip[1] == '=') op = OP_EQUAL;
         else if (ip[0] == '!' && ip[1] == '=') op = OP_NOTEQ;
-        else if (strchr("<>=", *ip)) op = *ip;
+        else if (*ip == '<' || *ip == '>' || *ip == '=') op = *ip;
         else break;
         ip += 1 + !!(op & 0x80);     /* high bit means it's a 2-char op */
         if (!additive_expr()) return 0;
@@ -853,7 +925,7 @@ static int multiplicative_expr()
     char op;
 
     if (!unary_expr()) return 0;
-    while ((op = *ip) && strchr("*/", op)) {
+    while ((op = *ip), (op == '*' || op == '/')) {
         ++ip;
         if (!unary_expr()) return 0;
         if (!reduce(op, 2)) return 0;
@@ -866,7 +938,8 @@ static int unary_expr()
     char op;
 
     while (isspace(*ip)) ip++;
-    if ((op = *ip) && strchr("!+-", op = *ip)) {
+    op = *ip;
+    if (op == '!' || op == '+' || op == '-') {
         ++ip;
         if (!unary_expr()) return 0;
         if (!reduce(op, 1)) return 0;
@@ -912,7 +985,7 @@ static int primary_expr()
         ++ip;
     } else if (isdigit(*ip)) {
         if (!pushval(newint(parsetime(&ip, NULL)))) return 0;
-    } else if (*ip && strchr("\"'`", *ip)) {
+    } else if (*ip == '"' || *ip == '\'' || *ip == '`') {
         Stringterm(buffer, 0);
         quote = *ip;
         for (ip++; *ip && *ip != quote; Stringadd(buffer, *ip++))
@@ -946,7 +1019,7 @@ static int exprsub(dest)
     Stringp dest;
 {
     int result = 0;
-    Value *val = NULL;
+    Value *val;
 
     while (isspace(*ip)) ip++;
     if (!(val = expr())) return 0;
@@ -1160,7 +1233,8 @@ static int varsub(dest)
     if (done || breaking || !evalflag || !condition) return 1;
 
     if (pee) {
-        regsubstr(dest, n);
+        if (regsubstr(dest, n) <= 0)
+            if (buffer == defalt) SStringcat(dest, defalt);
         n = -1;
     } else if (ell) {
         if (except) first = 0, last = argc - n - 1;
@@ -1171,7 +1245,7 @@ static int varsub(dest)
         if (except) first = n, last = argc - 1;
         else first = last = n - 1;
     } else if (cstrcmp(selector->s, "R") == 0) {
-        if (argc > 0) n = first = last = RANDOM() % argc;
+        if (argc > 0) { n = 1; first = last = RRAND(0, argc-1); }
         else if (buffer == defalt) SStringcat(dest, defalt);
     } else {
         value = getnearestvar(selector->s, NULL);
@@ -1188,7 +1262,8 @@ static int varsub(dest)
         } else {
             for (i = first; i <= last; i++) {
                 Stringcat(dest, argv[i]->value);
-                if (i != last) Stringnadd(dest, ' ', argv[i]->spaces);
+                if (i != last || n == 0)
+                    Stringnadd(dest, ' ', argv[i]->spaces);
             }
         }
     }
@@ -1196,14 +1271,18 @@ static int varsub(dest)
     return 1;
 }
 
-int do_shift(count)
-    int count;
+int handle_shift_command(args)
+    char *args;
 {
+    int count;
     int error;
 
     if (!argv) return !0;
+    count = (*args) ? atoi(args) : 1;
+    if (count < 0) return 0;
     if ((error = (count > argc))) count = argc;
     argc -= count;
     argv += count;
     return !error;
 }
+

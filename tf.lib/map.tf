@@ -26,18 +26,28 @@
 /def -i mark = \
 	/echo %% Will start mapping here.%;\
 	/set path=%;\
-	/def -i -mglob -h'send {n|s|e|w|ne|sw|ne|sw|u|d}' _map_hook = /map %%*
+;       note: _map_hook can also be called from speedwalk.tf.
+	/def -iFp9999 -mglob -h'send {n|s|e|w|ne|sw|ne|sw|u|d}' _map_hook = \
+            /map %%*%;\
+;       _map_send catches and sends anything _map_hook caught, unless there was
+;       a non-fall-thru hook of intermediate priority that blocked it.
+	/def -i -mglob -h'send {n|s|e|w|ne|sw|ne|sw|u|d}' _map_send = \
+            /send %%*
 
 /def -i map	= /set path=%path %1
 
-/def -i unmark	= /set path=%; /undef _map_hook%; /echo %% Mapping disabled.
+/def -i unmark	=\
+    /set path=%;\
+    /undef _map_hook%;\
+    /undef _map_send%;\
+    /echo %% Mapping disabled.
 
 /def -i path	= /echo %% Path: %path
 
 /def -i savepath= /def -i %1 = /dopath %path
 
 /def -i dopath	= \
-    /if /test $[%1 != 0 && %# >= 2]%; /then \
+    /if /test $[%1 != 0 & %# >= 2]%; /then \
         /for i 1 %1 %2%;\
         /dopath %-2%;\
     /elseif /test %#%; /then \
@@ -50,14 +60,15 @@
 /def -i return = \
 	/let dir=$(/last %path)%;\
 	/unpath%;\
+;       These directions must be listed in complementary pairs.
 	/_return_aux n s e w ne sw nw se u d%;
 
 /def -i _return_aux = \
 	/if /test %# == 0%; /then \
 		/echo %% Don't know how to return from "%dir".%;\
 		/set path=%path %dir%;\
-	/elseif /test dir =~ "%1"%; /then %2%;\
-	/elseif /test dir =~ "%2"%; /then %1%;\
+	/elseif /test dir =~ "%1"%; /then /send - %2%;\
+	/elseif /test dir =~ "%2"%; /then /send - %1%;\
 	/else   /_return_aux %-2%;\
 	/endif
 

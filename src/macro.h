@@ -1,23 +1,23 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: macro.h,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: macro.h,v 33000.2 1994/03/19 22:41:01 hawkeye Exp $ */
 
 #ifndef MACRO_H
 #define MACRO_H
 
-#include "world.h"
+#include "world.h"   /* struct World */
 
 typedef struct Macro {
     char *name;
     struct ListEntry *numnode;		/* node in list by number */
-    struct ListEntry *trignode;		/* node in list by trigger priority */
+    struct ListEntry *trignode;		/* node in list by priority */
     struct ListEntry *hooknode;		/* node in list by hook */
-    struct ListEntry *bucketnode;	/* node in list in hash bucket */
+    struct ListEntry *hashnode;		/* node in list in hash bucket */
     struct Macro *tnext;		/* temp list ptr for collision/death */
     char *bind, *body;
     Pattern trig, hargs, wtype;		/* trigger/hook/worldtype patterns */
@@ -46,6 +46,7 @@ enum Hooks {
   H_MORE,
   H_PENDING,
   H_PROCESS,
+  H_PROMPT,
   H_REDEF,
   H_RESIZE,
   H_RESUME,
@@ -60,22 +61,22 @@ enum Hooks {
 
 extern void    NDECL(init_macros);
 extern short   FDECL(parse_attrs,(char **argp));
-extern Macro  *FDECL(macro_spec,(char *args));
 extern Macro  *FDECL(find_macro,(char *name));
 extern Macro  *FDECL(new_macro,(char *name, char *trig, char *binding,
     int hook, char *hargs, char *body, int pri, int prob, int attr, int invis));
 extern int     FDECL(add_macro,(struct Macro *macro));
-extern int     FDECL(install_bind,(struct Macro *spec));
 extern int     FDECL(add_hook,(char *name, char *body));
 extern int     FDECL(remove_macro,(char *args, int attr, int byhook));
 extern void    NDECL(nuke_dead_macros);
 extern void    FDECL(kill_macro,(struct Macro *macro));
-extern void    FDECL(remove_world_macros,(World *w));
+extern void    FDECL(remove_world_macros,(struct World *w));
 extern int     FDECL(save_macros,(char *args));
 extern int     FDECL(do_macro,(Macro *macro, char *args));
 extern short   VDECL(do_hook,(int indx, char *fmt, char *argfmt, ...));
 extern char   *FDECL(macro_body,(char *name));
-extern Aline  *FDECL(check_trigger,(char *s, int need));
-extern int     FDECL(rpricmp,(CONST Macro *m1, CONST Macro *m2));
+extern int     FDECL(find_and_run_matches,(char *text, int hook, Aline *aline));
+
+#define add_ibind(key, cmd) \
+    add_macro(new_macro("", NULL, key, 0, NULL, cmd, 0, 0, 0, TRUE))
 
 #endif /* MACRO_H */

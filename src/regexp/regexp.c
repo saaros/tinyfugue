@@ -992,6 +992,7 @@ char *p;
 	register int count = 0;
 	register char *scan;
 	register char *opnd;
+	extern char *strchr();   /* missing declaration added by ksk */
 
 	scan = reginput;
 	opnd = OPERAND(p);

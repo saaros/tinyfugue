@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993  Ken Keys
+ *  Copyright (C) 1993, 1994 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.h,v 32101.0 1993/12/20 07:10:00 hawkeye Stab $ */
+/* $Id: util.h,v 33000.3 1994/04/16 05:09:12 hawkeye Exp $ */
 
 #ifndef UTIL_H
 #define UTIL_H
@@ -18,14 +18,12 @@ extern char *sys_errlist[];
     "unknown error")
 
 #ifdef DMALLOC
-#define STRDUP(src) \
-    (strcpy(dmalloc(strlen(src) + 1, __FILE__, __LINE__), (src)))
-#define STRINGDUP(src) \
-    (strcpy(dmalloc((src)->len + 1, __FILE__, __LINE__), (src)->s))
+#define STRNDUP(src, len) \
+    (strcpy(dmalloc((len) + 1, __FILE__, __LINE__), (src)))
 #else
-#define STRDUP(src) (strcpy(dmalloc(strlen(src) + 1), (src)))
-#define STRINGDUP(src) (strcpy(dmalloc((src)->len + 1), (src)->s))
+#define STRNDUP(src, len) (strcpy(dmalloc((len) + 1), (src)))
 #endif
+#define STRDUP(src)  STRNDUP((src), strlen(src))
 
 extern char lowercase_values[128], uppercase_values[128];
 #define lcase(x) (lowercase_values[(int)(x)])
@@ -33,7 +31,7 @@ extern char lowercase_values[128], uppercase_values[128];
 #define STRMATCH(s, t) (!smatch((s), (t)))
 
 #ifdef HAVE_STRTOL
-# define strtochr(sp) (char)(strtol(*(sp), sp, 0) % 128)
+# define strtochr(sp)   (char)(strtol(*(sp), sp, 0) % 128)
 #else
 extern char   FDECL(strtochr,(char **sp));
 #endif
@@ -57,19 +55,18 @@ extern char  *FDECL(stringarg,(char **str, int *spaces));
 extern void   NDECL(regrelease);
 extern void   FDECL(reghold,(regexp *re, char *str, int temp));
 extern int    FDECL(regexec_and_hold,(regexp *re, char *str, int temp));
-extern String*FDECL(regsubstr,(String *dest, int n));
+extern int    FDECL(regsubstr,(String *dest, int n));
 extern int    FDECL(init_pattern,(Pattern *pat, char *str, int mflag));
 extern int    FDECL(patmatch,(Pattern *pat, char *str, int mflag, int temp));
 extern void   FDECL(free_pattern,(Pattern *pat));
 extern int    FDECL(smatch,(char *s, char *t));
 extern int    FDECL(smatch_check,(CONST char *s));
 extern char  *FDECL(stripstr,(char *s));
-extern String*FDECL(stripString,(String *s));
 extern void   FDECL(startopt,(char *args, char *opts));
 extern char   FDECL(nextopt,(char **arg, int *num));
 #ifdef DMALLOC
 extern Aline *FDECL(dnew_aline,(char *str, int attrs, char *file, int line));
-#define new_aline(s,a,c)  dnew_aline((s), (a), (c), __FILE__, __LINE__)
+#define new_aline(s,a)  dnew_aline((s), (a), __FILE__, __LINE__)
 #else
 extern Aline *FDECL(new_aline,(char *str, int attrs));
 #endif

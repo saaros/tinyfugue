@@ -4,7 +4,8 @@
 ;;; define your own bindings.
 
 ;;; /kb_backward_kill_line	delete from cursor to beginning of line
-;;; /kb_kill_word		delete from cursor to end of word
+;;; /kb_kill_word		delete from cursor to end of punctuated word
+;;; /kb_backward_kill_word	delete from cursor to start of punctuated word
 ;;; /kb_capitalize_word		capitialize current word
 ;;; /kb_downcase_word		convert current word to lowercase
 ;;; /kb_upcase_word		convert current word to uppercase
@@ -16,51 +17,37 @@
 
 /def -i kb_backward_kill_line = /test kbdel(0)
 
-/def -i kb_kill_word = \
-    /let i=0%;\
-    /let len=$[strlen(kbtail())]%;\
-    /while /test (substr(kbtail(), i, 1) =~ " ")%; /do \
-        /let i=$[i + 1]%;\
-    /done%;\
-    /while /test (substr(kbtail(), i, 1) !~ " ") & (i < len)%; /do \
-        /let i=$[i + 1]%;\
-    /done%;\
-    /test kbdel(kbpoint() + i)
+/def -i kb_kill_word = /test kbdel(kbwordright())
+/def -i kb_backward_kill_word  = /test kbdel(kbwordleft())
 
 /def -i kb_capitalize_word = \
-    /while /test substr(kbtail(), 0, 1) =~ " "%; /do /dokey right%; /done%;\
-    /let _insert=%{insert}%;\
+    /let old_insert=%{insert}%;\
     /set insert=0%;\
+    /test kbgoto(kbwordright()), kbgoto(kbwordleft()) %;\
     /test input(toupper(substr(kbtail(), 0, 1))) %;\
-    /dokey wright%;\
-    /set insert=%{_insert}
+    /test kbgoto(kbwordright())%;\
+    /set insert=%{old_insert}
 
 /def -i kb_downcase_word = \
-    /while /test substr(kbtail(), 0, 1) =~ " "%; /do /dokey right%; /done%;\
-    /let _insert=%{insert}%;\
+    /let old_insert=%{insert}%;\
     /set insert=0%;\
-    /let len=$[strchr(kbtail(), " ")]%;\
-    /if /test len < 0 %; /then /let len=$[strlen(kbtail())]%; /endif%;\
-    /test input(tolower(substr(kbtail(), 0, len))) %;\
-    /set insert=%{_insert}
+    /test input(tolower(substr(kbtail(), 0, kbwordright() - kbpoint()))) %;\
+    /set insert=%{old_insert}
 
 /def -i kb_upcase_word = \
-    /while /test substr(kbtail(), 0, 1) =~ " "%; /do /dokey right%; /done%;\
-    /let _insert=%{insert}%;\
+    /let old_insert=%{insert}%;\
     /set insert=0%;\
-    /let len=$[strchr(kbtail(), " ")]%;\
-    /if /test len < 0 %; /then /let len=$[strlen(kbtail())]%; /endif%;\
-    /test input(toupper(substr(kbtail(), 0, len))) %;\
-    /set insert=%{_insert}
+    /test input(toupper(substr(kbtail(), 0, kbwordright() - kbpoint()))) %;\
+    /set insert=%{old_insert}
 
 /def -i kb_transpose_chars = \
     /if /test kbpoint() > 0 %; /then \
-        /let _insert=%{insert}%;\
+        /let old_insert=%{insert}%;\
         /set insert=0%;\
-        /if /test kbtail() =~ ""%; /then /dokey left%; /endif%;\
+        /if /test kbpoint() == kblen()%; /then /dokey_left%; /endif%;\
         /dokey left%;\
         /test input(strcat(substr(kbtail(),1,1), substr(kbtail(),0,1))) %;\
-        /set insert=%{_insert}%;\
+        /set insert=%{old_insert}%;\
     /else \
         /beep 1%;\
     /endif
@@ -72,3 +59,4 @@
 
 /def -i kb_expand_line = \
     /eval /grab $(/recall -i 1)
+

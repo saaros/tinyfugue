@@ -28,7 +28,7 @@
         /log -w OFF%%;\
         /undef getfile_quiet%;\
     /def -i -1 -p99 -msimple -t"Entering editor." getfile_start =\
-        /log -w <file>%%;
+        /log -w <file>%%;\
         /def -i -p97 -ag -mglob -t"*" getfile_quiet%;\
     @edit %1%;\
     1 99999 l%;\
