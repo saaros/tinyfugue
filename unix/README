@@ -97,6 +97,18 @@ The variables TFHELP and TFLIBRARY can also be set in the environment,
 but this should not normally be necessary, since their default values are
 based on TFLIBDIR.
 
+If you want build tf for installation in one directory ("{FINAL}"), but you
+want to be able to test it by installing it in another directory ("{TEMP}")
+first, do:
+    ./configure --prefix={FINAL}
+    make
+    env prefix={TEMP} make -e install
+Then, you can test tf by running
+    {TEMP}/bin/tf -L{TEMP}/lib
+When you are satisfied it works, do
+    make install
+to install tf in {FINAL}.
+
 
 Public Installation
 -------------------

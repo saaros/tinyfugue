@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: variable.c,v 35004.80 2003/10/23 19:16:56 hawkeye Exp $";
+static const char RCSid[] = "$Id: variable.c,v 35004.84 2004/02/17 06:44:44 hawkeye Exp $";
 
 
 /**************************************
@@ -527,58 +527,35 @@ Var *setvar(Var *var, const char *name, unsigned int hash, int type,
     return var;
 }
 
-int do_set(String *args, int offset, int exportflag, int localflag)
+/* returns pointer to first character past valid variable name */
+char *spanvar(const char *start)
 {
-    char *cvalue, *name;
-    String *svalue;
-    Var *var;
-    int result, i;
-
-    if (!args->data[offset]) {
-        if (!localflag)
-            return listvar(NULL, NULL, MATCH_SIMPLE, exportflag, 0);
-    }
-
-    for (cvalue = args->data + offset + 1; ; cvalue++) {
-        if (*cvalue == '=') {
-            *cvalue++ = '\0';
-            break;
-        } else if (is_space(*cvalue)) {
-            for (*cvalue++ = '\0'; is_space(*cvalue); cvalue++);
-            if (*cvalue == '=')
-                eprintf("warning: '=' following space is part of value.");
-            if (*cvalue == '\0') cvalue = NULL;
-            break;
-        } else if (*cvalue == '\0') {
-            cvalue = NULL;
-            break;
-        }
-    }
-
+    const char *p;
     /* Restrict variable names to alphanumerics and underscores, like POSIX.2 */
-    name = args->data + offset;
-    for (i = 0; name[i]; i++) {
-        if (!(is_alpha(name[i]) || name[i]=='_' || (i && is_digit(name[i])))) {
-            eprintf("illegal variable name: %s", name);
-            return 0;
-        }
+    for (p = start; *p; p++) {
+        if (!(is_alpha(*p) || *p == '_' || (p != start && is_digit(*p))))
+            return (char *)p;
     }
+    return (char *)p;
+}
 
-    if (!cvalue) {
-        var = localflag ? findlocalvar(name) : findglobalvar(name);
-        if (var && (var->flags & VARSET)) {
-            if (!var->val.sval) valstr(&var->val);
-            oprintf("%% %s=%S", name, var->val.sval);
-            return 1;
-        } else {
-            oprintf("%% %s not set %sally", name, localflag ? "loc" : "glob");
-            return 0;
-        }
-    }
+char *spansetspace(const char *p)
+{
+    while (is_space(*p)) p++;
+    if (*p == '=')
+	eprintf("warning: '=' following space is part of value.");
+    return (char *)p;
+}
 
-    (svalue = Stringodup(args, cvalue - args->data))->links++;
+int do_set(const char *name, unsigned int hash, String *value, int offset,
+    int exportflag, int localflag)
+{
+    String *svalue;
+    int result;
+
+    (svalue = Stringodup(value, offset))->links++;
     if (!localflag) {
-        result = !!set_var_by_name(name, svalue, exportflag);
+        result = !!setvar(NULL, name, hash, TYPE_STR, svalue, exportflag);
     } else if (!localvar->head) {
         eprintf("illegal at top level.");
         result = 0;
@@ -588,6 +565,45 @@ int do_set(String *args, int offset, int exportflag, int localflag)
     }
     Stringfree(svalue);
     return result;
+}
+
+/* Note: "/set var=value" is handled by OP_SET if "var" is compile-time const */
+int command_set(String *args, int offset, int exportflag, int localflag)
+{
+    char *p, *name = args->data + offset;
+
+    if (!*name) {
+        if (localflag) return 0;
+	return listvar(NULL, NULL, MATCH_SIMPLE, exportflag, 0);
+    }
+
+    p = spanvar(name);
+    if (!*p) { /* no value */
+	Var *var = localflag ? findlocalvar(name) : findglobalvar(name);
+        if (!var || !(var->flags & VARSET)) {
+            oprintf("%% %s not set %sally", name, localflag ? "loc" : "glob");
+            return 0;
+        }
+	if (!var->val.sval) valstr(&var->val);
+	oprintf("%% %s=%S", name, var->val.sval);
+	return 1;
+
+    } else if (*p == '=') {
+	*(p++) = '\0';
+
+    } else if (*p == ' ') {
+	*(p++) = '\0';
+	p = spansetspace(p);
+
+    } else {
+	while (*p && !is_space(*p) && *p != '=') p++;
+	*p = '\0';
+	eprintf("illegal variable name: %s", name);
+	return 0;
+    }
+
+    return do_set(name, hash_string(name), args, p - args->data,
+	exportflag, localflag);
 }
 
 struct Value *handle_listvar_command(String *args, int offset)

@@ -11,6 +11,28 @@ If you have custom code to do any of the following in older versions,
   switch, or resuming from sh or suspend); scrollback; status line
   customizations; ...
 
+5.0 beta 4 (2004-02-17)
+----------
+Added /key_{shift,ctrl,meta}_{F1..F12} (for recent xterms).
+All command options that require numeric arguments (including getopts() "#"
+    options) can take a numeric expression as an argument.  (Actually added
+    in 50a13, documented now.)
+/set, /setenv, and /let are reserved words (may not be redefined).
+Added %interactive.
+/quit prompts "Really quit?" if interactive.  "/quit -y" forces quit.
+Improved generated macro code.
+Redraw (^L) recovers from garbled scroll region.
+Workaround for yet another kind of bad getaddrinfo() implementation.
+Warns about "%;" after "/if (...)", "/while (...)", or "/else".
+Fixed crash in handling of invalid "@{...}" inline attribute specifications.
+Fixed possible crash on trying to connect to bad host address.
+Fixed: "/@name" was calling macro instead of builtin. (50b3)
+Fixed "/let" with no args.
+Fixed "{0}" in expressions. (5.0)
+Fixed crash when sending to closed connectionless socket.
+Fixed /replace to work on strings containing spaces (i.e., arguments 3..N,
+    not just 3).
+
 5.0 beta 3 (2003-12-22)
 ----------
 Draws dividing line between old text and new text when you bring a world

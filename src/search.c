@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: search.c,v 35004.24 2003/10/11 22:19:17 hawkeye Exp $";
+static const char RCSid[] = "$Id: search.c,v 35004.28 2004/02/17 06:44:41 hawkeye Exp $";
 
 
 /**********************************************
@@ -176,11 +176,9 @@ unsigned int hash_string(const char *str)
     return h;
 }
 
-ListEntry *hash_insert(void *datum, HashTable *table)
+ListEntry *hashed_insert(void *datum, unsigned int hash, HashTable *table)
 {
-    int indx;
-
-    indx = hash_string(*(char**)datum) % table->size;
+    int indx = hash % table->size;
     if (!table->bucket[indx]) {
         table->bucket[indx] = (List *)XMALLOC(sizeof(List));
         init_list(table->bucket[indx]);
@@ -193,33 +191,6 @@ void hash_remove(ListEntry *node, HashTable *tab)
 {
     unlist(node, tab->bucket[hash_string(*(char**)node->datum) % tab->size]);
 }
-
-
-/*****************/
-/* binary search */
-/*****************/
-
-#if !HAVE_BSEARCH
-/*
- * binsearch - replacement for bsearch().
- */
-void *binsearch(const void *key, const void *base, int nel, int size,
-    Cmp *cmp)
-{
-    int bottom, top, mid, value;
-
-    bottom = 0;
-    top = nel - 1;
-    while (bottom <= top) {
-        mid = (top + bottom) / 2;
-        value = (*cmp)(key, (void *)((char *)base + size * mid));
-        if (value < 0) top = mid - 1;
-        else if (value > 0) bottom = mid + 1;
-        else return (void *)((char *)base + size * mid);
-    }
-    return NULL;
-}
-#endif
 
 
 /***************/

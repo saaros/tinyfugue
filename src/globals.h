@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: globals.h,v 35000.60 2003/12/19 22:46:32 hawkeye Exp $ */
+/* $Id: globals.h,v 35000.63 2004/02/17 06:44:37 hawkeye Exp $ */
 
 #ifndef GLOBALS_H
 #define GLOBALS_H
@@ -169,6 +169,7 @@ enum Vars {
 #define hpri		getintvar(VAR_hpri)
 #define iecho		getintvar(VAR_iecho)
 #define insert		getintvar(VAR_insert)
+#define interactive	getintvar(VAR_interactive)
 #define isize		getintvar(VAR_isize)
 #define istrip		getintvar(VAR_istrip)
 #define kbnum		getstrvar(VAR_kbnum)
@@ -191,6 +192,7 @@ enum Vars {
 #define more		getintvar(VAR_more)
 #define mprefix		getstdvar(VAR_mprefix)
 #define oldslash	getintvar(VAR_oldslash)
+#define optimize_user	getintvar(VAR_optimize)
 #define pedantic	getintvar(VAR_pedantic)
 #define prompt_wait	gettimevar(VAR_prompt_wait)
 #define proxy_host	getstdvar(VAR_proxy_host)

@@ -3233,7 +3233,7 @@ else
 fi
 done
 
-for ac_func in bcopy bsearch bzero connect fileno getcwd \
+for ac_func in bcopy bzero connect fileno getcwd \
     gethostbyname getipnodebyname \
     getpwnam gettimeofday getwd hstrerror index inet_aton
 do
@@ -3302,7 +3302,7 @@ fi
 if test "$enable_getaddrinfo" = "no"; then
     enable_inet6=no
 else
-    for ac_func in getaddrinfo
+    for ac_func in getaddrinfo gai_strerror
 do
 echo $ac_n "checking for $ac_func""... $ac_c" 1>&6
 echo "configure:3309: checking for $ac_func" >&5
@@ -3419,10 +3419,6 @@ done
 
 if test "$CYGWIN" = "yes"; then
     cat >> confdefs.h <<\EOF
-#define HAVE_BSEARCH 0  /* bsearch() is broken in cygwin32 b18. */
-EOF
-
-    cat >> confdefs.h <<\EOF
 #define HAVE_H_ERRNO 0  /* h_errno is broken in cygwin32 b18. */
 EOF
 
@@ -3430,10 +3426,10 @@ fi
 
 if test "$enable_inet6" = "yes"; then
     echo $ac_n "checking for IPv6 address structure""... $ac_c" 1>&6
-echo "configure:3434: checking for IPv6 address structure" >&5
+echo "configure:3430: checking for IPv6 address structure" >&5
     for type in in6_addr in_addr6; do
 	cat > conftest.$ac_ext <<EOF
-#line 3437 "configure"
+#line 3433 "configure"
 #include "confdefs.h"
 
 #include <sys/types.h>
@@ -3449,7 +3445,7 @@ int main() {
 	    
 ; return 0; }
 EOF
-if { (eval echo configure:3453: \"$ac_compile\") 1>&5; (eval $ac_compile) 2>&5; }; then
+if { (eval echo configure:3449: \"$ac_compile\") 1>&5; (eval $ac_compile) 2>&5; }; then
   rm -rf conftest*
   cat >> confdefs.h <<EOF
 #define IN6_ADDR $type
@@ -3468,12 +3464,12 @@ fi
 
 
 echo $ac_n "checking for Cygwin environment""... $ac_c" 1>&6
-echo "configure:3472: checking for Cygwin environment" >&5
+echo "configure:3468: checking for Cygwin environment" >&5
 if eval "test \"`echo '$''{'ac_cv_cygwin'+set}'`\" = set"; then
   echo $ac_n "(cached) $ac_c" 1>&6
 else
   cat > conftest.$ac_ext <<EOF
-#line 3477 "configure"
+#line 3473 "configure"
 #include "confdefs.h"
 
 int main() {
@@ -3484,7 +3480,7 @@ int main() {
 return __CYGWIN__;
 ; return 0; }
 EOF
-if { (eval echo configure:3488: \"$ac_compile\") 1>&5; (eval $ac_compile) 2>&5; }; then
+if { (eval echo configure:3484: \"$ac_compile\") 1>&5; (eval $ac_compile) 2>&5; }; then
   rm -rf conftest*
   ac_cv_cygwin=yes
 else
@@ -3501,19 +3497,19 @@ echo "$ac_t""$ac_cv_cygwin" 1>&6
 CYGWIN=
 test "$ac_cv_cygwin" = yes && CYGWIN=yes
 echo $ac_n "checking for mingw32 environment""... $ac_c" 1>&6
-echo "configure:3505: checking for mingw32 environment" >&5
+echo "configure:3501: checking for mingw32 environment" >&5
 if eval "test \"`echo '$''{'ac_cv_mingw32'+set}'`\" = set"; then
   echo $ac_n "(cached) $ac_c" 1>&6
 else
   cat > conftest.$ac_ext <<EOF
-#line 3510 "configure"
+#line 3506 "configure"
 #include "confdefs.h"
 
 int main() {
 return __MINGW32__;
 ; return 0; }
 EOF
-if { (eval echo configure:3517: \"$ac_compile\") 1>&5; (eval $ac_compile) 2>&5; }; then
+if { (eval echo configure:3513: \"$ac_compile\") 1>&5; (eval $ac_compile) 2>&5; }; then
   rm -rf conftest*
   ac_cv_mingw32=yes
 else
@@ -3532,7 +3528,7 @@ test "$ac_cv_mingw32" = yes && MINGW32=yes
 
 
 echo $ac_n "checking for executable suffix""... $ac_c" 1>&6
-echo "configure:3536: checking for executable suffix" >&5
+echo "configure:3532: checking for executable suffix" >&5
 if eval "test \"`echo '$''{'ac_cv_exeext'+set}'`\" = set"; then
   echo $ac_n "(cached) $ac_c" 1>&6
 else
@@ -3542,7 +3538,7 @@ else
   rm -f conftest*
   echo 'int main () { return 0; }' > conftest.$ac_ext
   ac_cv_exeext=
-  if { (eval echo configure:3546: \"$ac_link\") 1>&5; (eval $ac_link) 2>&5; }; then
+  if { (eval echo configure:3542: \"$ac_link\") 1>&5; (eval $ac_link) 2>&5; }; then
     for file in conftest.*; do
       case $file in
       *.c | *.o | *.obj) ;;
@@ -3563,13 +3559,13 @@ echo "$ac_t""${ac_cv_exeext}" 1>&6
 ac_exeext=$EXEEXT
 
 echo $ac_n "checking for object suffix""... $ac_c" 1>&6
-echo "configure:3567: checking for object suffix" >&5
+echo "configure:3563: checking for object suffix" >&5
 if eval "test \"`echo '$''{'ac_cv_objext'+set}'`\" = set"; then
   echo $ac_n "(cached) $ac_c" 1>&6
 else
   rm -f conftest*
 echo 'int i = 1;' > conftest.$ac_ext
-if { (eval echo configure:3573: \"$ac_compile\") 1>&5; (eval $ac_compile) 2>&5; }; then
+if { (eval echo configure:3569: \"$ac_compile\") 1>&5; (eval $ac_compile) 2>&5; }; then
   for ac_file in conftest.*; do
     case $ac_file in
     *.c) ;;
@@ -3591,7 +3587,7 @@ if test "$enable_mailcheck" = "no"; then
     MAILDIR=""
 elif test "$enable_mailcheck" = "yes"; then
     echo $ac_n "checking location of mail directory""... $ac_c" 1>&6
-echo "configure:3595: checking location of mail directory" >&5
+echo "configure:3591: checking location of mail directory" >&5
     if test -n "$MAIL" ; then
         # Not every system has dirname.  sigh.
                 MAILDIR=`echo $MAIL | sed 's;/[^/]*$;;'`

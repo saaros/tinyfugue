@@ -1,82 +1,115 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 2000-2003 Ken Keys
+ *  Copyright (C) 2000-2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: opcodes.h,v 35004.19 2003/08/31 03:18:33 hawkeye Exp $ */
+/* $Id: opcodes.h,v 35004.25 2004/02/17 06:44:39 hawkeye Exp $ */
 
-/*        label     code  type  arg   result */
-/*        -----     ----  ----  ---   ------ */
+/*
+ * Expression operators use the ASCII character as their opcode to be
+ * mnemonic; other operators use characters just because that's the easiest
+ * way to avoid colliding with the expression operator characters and
+ * keep them in the 0x7F OPNUM_MASK space.
+ */
 
-/* 01-1F expression operators without 1-char tokens */
-defopcode(EQUAL    ,0x01, EXPR, INT,  NONE)  /*  ==  */
-defopcode(NOTEQ    ,0x02, EXPR, INT,  NONE)  /*  !=  */
-defopcode(GTE      ,0x03, EXPR, INT,  NONE)  /*  >=  */
-defopcode(LTE      ,0x04, EXPR, INT,  NONE)  /*  <=  */
-defopcode(STREQ    ,0x05, EXPR, INT,  NONE)  /*  =~  */
-defopcode(STRNEQ   ,0x06, EXPR, INT,  NONE)  /*  !~  */
-defopcode(MATCH    ,0x07, EXPR, INT,  NONE)  /*  =/  */
-defopcode(NMATCH   ,0x08, EXPR, INT,  NONE)  /*  !/  */
+/*        label     code  type  arg   flag */
+/*        -----     ----  ----  ---   ---- */
+
+/* 01-1F: expression operators without 1-char tokens.  Flag: has side effect */
+defopcode(EQUAL    ,0x01, EXPR, INT,  0)     /*  ==  */
+defopcode(NOTEQ    ,0x02, EXPR, INT,  0)     /*  !=  */
+defopcode(GTE      ,0x03, EXPR, INT,  0)     /*  >=  */
+defopcode(LTE      ,0x04, EXPR, INT,  0)     /*  <=  */
+defopcode(STREQ    ,0x05, EXPR, INT,  0)     /*  =~  */
+defopcode(STRNEQ   ,0x06, EXPR, INT,  0)     /*  !~  */
+defopcode(MATCH    ,0x07, EXPR, INT,  0)     /*  =/  */
+defopcode(NMATCH   ,0x08, EXPR, INT,  0)     /*  !/  */
 defopcode(ASSIGN   ,0x09, EXPR, INT,  SIDE)  /*  :=  */
 defopcode(PREINC   ,0x0A, EXPR, INT,  SIDE)  /*  ++  */
 defopcode(PREDEC   ,0x0B, EXPR, INT,  SIDE)  /*  --  */
 defopcode(FUNC     ,0x0C, EXPR, INT,  SIDE)  /*  name(...)  */
-/* 20-7E: expr ops w/ tokens represented by the corresponding ASCII char */
-defopcode(NOT      ,'!',  EXPR, INT,  NONE)
-defopcode(MUL      ,'*',  EXPR, INT,  NONE)
-defopcode(ADD      ,'+',  EXPR, INT,  NONE)
-defopcode(SUB      ,'-',  EXPR, INT,  NONE)
-defopcode(DIV      ,'/',  EXPR, INT,  NONE)
-defopcode(LT       ,'<',  EXPR, INT,  NONE)
-defopcode(GT       ,'>',  EXPR, INT,  NONE)
-/* 80-8F substitution operators (append/push pairs) */
-defopcode(ASPECIAL ,0x80, SUB,  CHAR, APP)   /* special variable [0*#?R] */
-defopcode(PSPECIAL ,0x81, SUB,  CHAR, PUSH)
-defopcode(AREG     ,0x82, SUB,  INT,  APP)   /* regexp captured string */
-defopcode(PREG     ,0x83, SUB,  INT,  PUSH)
-defopcode(APARM    ,0x84, SUB,  INT,  APP)   /* positional param */
-defopcode(PPARM    ,0x85, SUB,  INT,  PUSH)
-defopcode(ALPARM   ,0x86, SUB,  INT,  APP)   /* pos. param, from end */
-defopcode(PLPARM   ,0x87, SUB,  INT,  PUSH)
-defopcode(ACMDSUB  ,0x88, SUB,  NONE, APP)   /* output of a cmdsub */
-defopcode(PCMDSUB  ,0x89, SUB,  NONE, PUSH)
-defopcode(AMAC     ,0x8A, SUB,  STRP, APP)   /* value of macro */
-defopcode(PMAC     ,0x8B, SUB,  STRP, PUSH)
-defopcode(AVAR     ,0x8C, SUB,  VALP, APP)   /* value of variable */
-defopcode(PVAR     ,0x8D, SUB,  VALP, PUSH)
-defopcode(PBUF     ,0x8F, SUB,  STRP, PUSH)
-/* A0-AF jump operators.  Complementary pairs differ only in last bit. */
-defopcode(JZ       ,0xA0, JUMP, INT,  NONE)   /* jump if zero */
-defopcode(JNZ      ,0xA1, JUMP, INT,  NONE)   /* jump if not zero */
-defopcode(JRZ      ,0xA2, JUMP, INT,  NONE)   /* jump if user_result == 0 */
-defopcode(JRNZ     ,0xA3, JUMP, INT,  NONE)   /* jump if user_result != 0 */
-defopcode(JEMPTY   ,0xA4, JUMP, INT,  NONE)   /* jump if empty string */
-defopcode(JNEMPTY  ,0xA5, JUMP, INT,  NONE)   /* jump if not empty string */
-defopcode(JUMP     ,0xAF, JUMP, INT,  NONE)
-/* B0-FF control operators */
-defopcode(SEND     ,0xB0, CTRL, STRP, NONE)   /* send string to server */
-defopcode(EXECUTE  ,0xB1, CTRL, STRP, NONE)   /* execute arbitrary cmd line */
-defopcode(BUILTIN  ,0xB2, CTRL, CMDP, TRUE)   /* execute a resovled builtin */
-defopcode(COMMAND  ,0xB4, CTRL, CMDP, TRUE)   /* execute a resovled command */
-defopcode(MACRO    ,0xB6, CTRL, STRP, TRUE)   /* execute a macro cmd line */
-defopcode(ARG      ,0xB8, CTRL, STRP, NONE)   /* arg for BUILTIN or COMMAND */
-defopcode(APPEND   ,0xB9, CTRL, STRP, NONE)
-defopcode(PUSHBUF  ,0xBA, CTRL, NONE, NONE)
-defopcode(POPBUF   ,0xBB, CTRL, NONE, NONE)
-defopcode(CMDSUB   ,0xBC, CTRL, NONE, NONE)   /* new frame & tfout queue */
-/*defopcode(POPFILE  ,0xBD, CTRL, CHAR, NONE)*/   /* pop pointer to a tfile */
-defopcode(PUSH     ,0xC3, CTRL, VALP, NONE)
-defopcode(POP      ,0xC4, CTRL, NONE, NONE)
-defopcode(DUP      ,0xC5, CTRL, INT,  NONE)
-defopcode(RETURN   ,0xC6, CTRL, VALP, NONE)
-defopcode(RESULT   ,0xC7, CTRL, VALP, NONE)
-defopcode(TEST     ,0xC8, CTRL, VALP, NONE)
-defopcode(DONE     ,0xC9, CTRL, NONE, NONE)
-defopcode(ENDIF    ,0xCA, CTRL, NONE, NONE)
-defopcode(PIPE     ,0xCB, CTRL, NONE, NONE)   /* pipe from this stmt to next */
-defopcode(NOP      ,0xCC, CTRL, NONE, NONE)
-defopcode(EXPR     ,0xCD, CTRL, NONE, NONE)
+
+/* expr ops w/ tokens represented by the corresponding ASCII char */
+defopcode(NOT      ,'!',  EXPR, INT,  0)
+defopcode(MUL      ,'*',  EXPR, INT,  0)
+defopcode(ADD      ,'+',  EXPR, INT,  0)
+defopcode(SUB      ,'-',  EXPR, INT,  0)
+defopcode(DIV      ,'/',  EXPR, INT,  0)
+defopcode(LT       ,'<',  EXPR, INT,  0)
+defopcode(GT       ,'>',  EXPR, INT,  0)
+
+/* positional parameter substitution operators.  Flag: 0 push, 1 append */
+defopcode(PPARM    ,'A', SUB,  INT,  0)     /* {3} positional param */
+defopcode(APARM    ,'A', SUB,  INT,  APP)
+defopcode(PXPARM   ,'B', SUB,  INT,  0)     /* {-3} complementary pos param */
+defopcode(AXPARM   ,'B', SUB,  INT,  APP)
+defopcode(PLPARM   ,'C', SUB,  INT,  0)     /* {L3} pos param, from end */
+defopcode(ALPARM   ,'C', SUB,  INT,  APP)
+defopcode(PLXPARM  ,'D', SUB,  INT,  0)     /* {-L3} comp pos param from end */
+defopcode(ALXPARM  ,'D', SUB,  INT,  APP)
+defopcode(PPARM_CNT,'E', SUB,  NONE, 0)     /* {#} pos. param. count */
+defopcode(APARM_CNT,'E', SUB,  NONE, APP)
+defopcode(PPARM_ALL,'F', SUB,  NONE, 0)     /* {*} all pos. params. */
+defopcode(APARM_ALL,'F', SUB,  NONE, APP)
+defopcode(PPARM_RND,'G', SUB,  NONE, 0)     /* {R} random pos. param. */
+defopcode(APARM_RND,'G', SUB,  NONE, APP)
+
+/* other substitution operators.  Flag: 0 push, 1 append */
+defopcode(PRESULT  ,'P', SUB,  NONE, 0)     /* {?} user_result */
+defopcode(ARESULT  ,'P', SUB,  NONE, APP)
+defopcode(PREG     ,'Q', SUB,  INT,  0)     /* regexp captured string */
+defopcode(AREG     ,'Q', SUB,  INT,  APP)
+defopcode(PCMDSUB  ,'R', SUB,  NONE, 0)     /* output of a cmdsub */
+defopcode(ACMDSUB  ,'R', SUB,  NONE, APP)
+defopcode(PMAC     ,'S', SUB,  STRP, 0)     /* value of macro */
+defopcode(AMAC     ,'S', SUB,  STRP, APP)
+defopcode(PVAR     ,'T', SUB,  VALP, 0)     /* value of variable */
+defopcode(AVAR     ,'T', SUB,  VALP, APP)
+defopcode(PBUF     ,'U', SUB,  STRP, 0)	    /* buf */
+/*defopcode(ABUF     ,'U', SUB,  STRP, APP)*/
+defopcode(PCMDNAME ,'V', SUB, NONE, 0)	    /* {0} command name */
+defopcode(ACMDNAME ,'V', SUB, NONE, APP)
+
+/* jump operators.  Flag: negate condition */
+defopcode(JZ       ,'0', JUMP, INT,  0)     /* jump if zero */
+defopcode(JNZ      ,'0', JUMP, INT,  NEG)   /* jump if not zero */
+defopcode(JRZ      ,'1', JUMP, INT,  0)     /* jump if user_result == 0 */
+defopcode(JRNZ     ,'1', JUMP, INT,  NEG)   /* jump if user_result != 0 */
+/*defopcode(JEMPTY   ,'2', JUMP, INT,  0)*/ /* jump if empty string */
+defopcode(JNEMPTY  ,'2', JUMP, INT,  NEG)   /* jump if not empty string */
+defopcode(JUMP     ,'3', JUMP, INT,  0)
+
+/* control operators.  Flag: negate result. */
+/* STRP defaults to buffer. */
+defopcode(SEND     ,'a', CTRL, STRP, 0)     /* send string to server */
+defopcode(EXECUTE  ,'b', CTRL, STRP, 0)     /* execute arbitrary cmd line */
+defopcode(BUILTIN  ,'c', CTRL, CMDP, 0)     /* execute a resovled builtin */
+defopcode(NBUILTIN ,'c', CTRL, CMDP, NEG)   /* execute a resovled builtin */
+defopcode(COMMAND  ,'d', CTRL, CMDP, 0)     /* execute a resovled command */
+defopcode(NCOMMAND ,'d', CTRL, CMDP, NEG)   /* execute a resovled command */
+defopcode(MACRO    ,'e', CTRL, VALP, 0)     /* execute a macro cmd line */
+defopcode(NMACRO   ,'e', CTRL, VALP, NEG)   /* execute a macro cmd line */
+defopcode(ARG      ,'f', CTRL, STRP, 0)     /* arg for BUILTIN, COMMAND, SET */
+defopcode(APPEND   ,'g', CTRL, STRP, 0)
+defopcode(PUSHBUF  ,'h', CTRL, NONE, 0)
+defopcode(POPBUF   ,'i', CTRL, NONE, 0)
+defopcode(CMDSUB   ,'j', CTRL, NONE, 0)     /* new frame & tfout queue */
+/*defopcode(POPFILE  ,'k', CTRL, CHAR, 0)*/ /* pop pointer to a tfile */
+defopcode(PUSH     ,'l', CTRL, VALP, 0)
+defopcode(POP      ,'m', CTRL, NONE, 0)
+defopcode(DUP      ,'n', CTRL, INT,  0)
+defopcode(RETURN   ,'o', CTRL, VALP, 0)
+defopcode(RESULT   ,'p', CTRL, VALP, 0)
+defopcode(TEST     ,'q', CTRL, VALP, 0)
+defopcode(DONE     ,'s', CTRL, NONE, 0)
+defopcode(ENDIF    ,'t', CTRL, NONE, 0)
+defopcode(PIPE     ,'u', CTRL, NONE, 0)     /* pipe from this stmt to next */
+defopcode(NOP      ,'v', CTRL, NONE, 0)
+defopcode(EXPR     ,'w', CTRL, NONE, 0)
+defopcode(LET      ,'x', CTRL, VALP, 0)	    /* set local variable */
+defopcode(SET      ,'y', CTRL, VALP, 0)	    /* set global variable */
+defopcode(SETENV   ,'z', CTRL, VALP, 0)	    /* set environment variable */
 
 #undef defopcode

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: macro.c,v 35004.151 2003/12/20 01:28:32 hawkeye Exp $";
+static const char RCSid[] = "$Id: macro.c,v 35004.156 2004/02/17 06:44:38 hawkeye Exp $";
 
 
 /**********************************************
@@ -40,7 +40,10 @@ int invis_flag = 0;
 
 static Macro  *macro_spec(String *args, int offset, int *mflag, int allowshort);
 static int     macro_match(Macro *spec, Macro *macro, AuxPat *aux);
-static int     complete_macro(Macro *spec, int num, ListEntry *where);
+static int     add_numbered_macro(Macro *macro, unsigned int hash, int num,
+		ListEntry *numnode);
+static int     complete_macro(Macro *spec, unsigned int hash, int num,
+		ListEntry *numnode);
 static int     init_aux_patterns(Macro *spec, int mflag, AuxPat *aux);
 static Macro  *match_exact(int hooknum, const char *str, attr_t attrs);
 static int     list_defs(TFILE *file, Macro *spec, int mflag);
@@ -160,7 +163,7 @@ char *parse_attrs(const char *str, attr_t *attrp, int delimiter)
 int hookname2int(const char *name)
 {
     const hookrec_t *hookrec;
-    hookrec = binsearch((void*)(name), (void *)hook_table,
+    hookrec = bsearch((void*)(name), (void *)hook_table,
 	NUM_HOOKS, sizeof(hookrec_t), cstrstructcmp);
     if (hookrec)
 	return hookrec - hook_table;
@@ -547,11 +550,11 @@ static int macro_match(Macro *spec, Macro *macro, AuxPat *aux)
 }
 
 /* find Macro by name */
-Macro *find_macro(const char *name)
+Macro *find_hashed_macro(const char *name, unsigned int hash)
 {
     if (!*name) return NULL;
-    if (*name == '#') return find_num_macro(atoi(name + 1));
-    return (Macro *)hash_find(name, macro_table);
+    if (*name == '#') return find_num_macro(hash);
+    return (Macro *)hashed_find(name, hash, macro_table);
 }
 
 /* find single exact match */
@@ -585,7 +588,7 @@ static Macro *match_exact(int hooknum, const char *str, attr_t attrs)
  **************************/
 
 /* create a Macro */
-Macro *new_macro(const char *trig, const char *bind, const hookvec_t *hook,
+int add_new_macro(const char *trig, const char *bind, const hookvec_t *hook,
     const char *hargs, const char *body, int pri, int prob, attr_t attr,
     int invis, int mflag)
 {
@@ -593,8 +596,8 @@ Macro *new_macro(const char *trig, const char *bind, const hookvec_t *hook,
     int error = 0;
 
     if (!(new = (Macro *) MALLOC(sizeof(struct Macro)))) {
-        eprintf("new_macro: not enough memory");
-        return NULL;
+        eprintf("add_new_macro: not enough memory");
+        return 0;
     }
     new->numnode = new->trignode = new->hashnode = NULL;
     new->flags = MACRO_TEMP;
@@ -627,9 +630,10 @@ Macro *new_macro(const char *trig, const char *bind, const hookvec_t *hook,
     new->used[USED_NAME] = new->used[USED_TRIG] =
 	new->used[USED_HOOK] = new->used[USED_KEY] = 0;
 
-    if (!error) return new;
+    if (!error)
+	return add_numbered_macro(new, 0, 0, NULL);
     nuke_macro(new);
-    return NULL;
+    return 0;
 }
 
 /* add_macro
@@ -638,15 +642,20 @@ Macro *new_macro(const char *trig, const char *bind, const hookvec_t *hook,
  * assumed to be error- and conflict-free.  If the bind_key fails, the
  * macro will be nuked.
  */
-static int install_macro(Macro *macro)
+static int add_numbered_macro(Macro *macro, unsigned int hash, int num,
+    ListEntry *numnode)
 {
+    if (!macro) return 0;
+    macro->num = num ? num : ++mnum;
+    macro->numnode = inlist((void *)macro, maclist, numnode);
+
     if (*macro->bind && !bind_key(macro)) {
 	unlist(macro->numnode, maclist);
 	nuke_macro(macro);
 	return 0;
     }
     if (*macro->name) {
-        macro->hashnode = hash_insert((void *)macro, macro_table);
+        macro->hashnode = hashed_insert((void *)macro, hash, macro_table);
 	if (macro->builtin) { /* macro->builtin was set in complete_macro() */
 	    macro->builtin->macro = macro;
 	}
@@ -669,25 +678,6 @@ static int install_macro(Macro *macro)
         eprintf("warning: new macro (#%d) does not have a name.", macro->num);
     }
     return macro->num;
-}
-
-/* add_macro
- * Install a permanent Macro in appropriate structures.
- * Only the keybinding is checked for conflicts; everything else is assumed
- * assumed to be error- and conflict-free.  If the bind_key fails, the
- * macro will be nuked.
- */
-static int add_numbered_macro(Macro *macro, int num, ListEntry *where)
-{
-    if (!macro) return 0;
-    macro->num = num ? num : ++mnum;
-    macro->numnode = inlist((void *)macro, maclist, where);
-    return install_macro(macro);
-}
-
-int add_macro(Macro *macro)
-{
-    return add_numbered_macro(macro, 0, NULL);
 }
 
 /* rebind_key_macros
@@ -733,13 +723,14 @@ struct Value *handle_def_command(String *args, int offset)
 
     if (!(args->len - offset) || !(spec = macro_spec(args, offset, NULL, FALSE)))
         return shareval(val_zero);
-    return newint(complete_macro(spec, 0, NULL));
+    return newint(complete_macro(spec, macro_hash(spec->name), 0, NULL));
 }
 
 /* Fill in "don't care" fields with default values, and add_numbered_macro().
  * If error checking fails, spec will be nuked.
  */
-static int complete_macro(Macro *spec, int num, ListEntry *where)
+static int complete_macro(Macro *spec, unsigned int hash, int num,
+    ListEntry *numnode)
 {
     Macro *macro = NULL;
     int i;
@@ -834,12 +825,15 @@ static int complete_macro(Macro *spec, int num, ListEntry *where)
 
     if (!spec->bind) spec->bind = STRNDUP("", 0);
 
-    if (*spec->name && (macro = find_macro(spec->name)) && !redef) {
+    if (*spec->name &&
+	(macro = (Macro *)hashed_find(spec->name, hash, macro_table)) &&
+	!redef)
+    {
         eprintf("macro %s already exists", macro->name);
         nuke_macro(spec);
         return 0;
     }
-    if (!add_numbered_macro(spec, num, where)) return 0;
+    if (!add_numbered_macro(spec, hash, num, numnode)) return 0;
     if (macro) {
         do_hook(H_REDEF, "!Redefined %s %s", "%s %s", "macro", macro->name);
         kill_macro(macro);
@@ -855,8 +849,7 @@ int add_hook(char *args, const char *body)
     VEC_ZERO(&hook);
     if (!parse_hook(&args, &hook)) return 0;
     if (args && !*args) args = NULL;
-    return add_macro(new_macro(NULL, "", &hook, args, body, 0, 100, 0, 0,
-        matching));
+    return add_new_macro(NULL, "", &hook, args, body, 0, 100, 0, 0, matching);
 }
 
 /* /edit: Edit an existing macro.
@@ -870,7 +863,8 @@ struct Value *handle_edit_command(String *args, int offset)
     Macro *spec, *macro = NULL;
     int error = 0;
     int num;
-    ListEntry *where;
+    unsigned int hash = 0;
+    ListEntry *numnode;
 
     if (!(args->len - offset) || !(spec = macro_spec(args, offset, NULL, FALSE))) {
         return shareval(val_zero);
@@ -878,8 +872,11 @@ struct Value *handle_edit_command(String *args, int offset)
         eprintf("You must specify a macro.");
     } else if (spec->name[0] == '$') {
         macro = match_exact(0, spec->name + 1, F_ATTR);
-    } else if (!(macro = find_macro(spec->name))) {
-        eprintf("macro %s does not exist", spec->name);
+	if (macro) hash = macro_hash(macro->name);
+    } else {
+	hash = macro_hash(spec->name); /* used for lookup and insertion */
+	if (!(macro = find_hashed_macro(spec->name, hash)))
+	    eprintf("macro %s does not exist", spec->name);
     }
 
     if (!macro) {
@@ -888,7 +885,7 @@ struct Value *handle_edit_command(String *args, int offset)
     }
 
     num = macro->num;
-    where = macro->numnode->prev;
+    numnode = macro->numnode->prev;
     kill_macro(macro);
 
     FREE(spec->name);
@@ -929,7 +926,7 @@ struct Value *handle_edit_command(String *args, int offset)
     spec->used[USED_KEY] = macro->used[USED_KEY];
 
     if (!error) {
-        complete_macro(spec, num, where);
+        complete_macro(spec, hash, num, numnode);
         return newint(spec->num);
     }
 
@@ -937,7 +934,7 @@ struct Value *handle_edit_command(String *args, int offset)
     macro = dead_macros;
     macro->flags &= ~MACRO_DEAD;
     dead_macros = macro->tnext;
-    add_numbered_macro(macro, num, where);
+    add_numbered_macro(macro, hash, num, numnode);
     return shareval(val_zero);
 }
 
@@ -1079,12 +1076,12 @@ struct Value *handle_undefn_command(String *args, int offset)
 
 Macro *find_num_macro(int num)
 {
-    ListEntry *node;
-
-    for (node = maclist->head; node; node = node->next) {
-        if (MAC(node)->num == num) return MAC(node);
-        /* Macros are in decending numeric order, so we can stop if passed. */
-        if (MAC(node)->num < num) break;
+    if (maclist->tail && num >= MAC(maclist->tail)->num) {
+	/* search from high end, assuming high macros are more likely;
+	 * stop when past */
+	ListEntry *node = maclist->head;
+	for ( ; node && MAC(node)->num >= num; node = node->next)
+	    if (MAC(node)->num == num) return MAC(node);
     }
     eprintf("no macro with number %d", num);
     return NULL;

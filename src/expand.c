@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: expand.c,v 35004.195 2003/12/12 11:07:48 hawkeye Exp $";
+static const char RCSid[] = "$Id: expand.c,v 35004.208 2004/02/17 06:44:36 hawkeye Exp $";
 
 
 /********************************************************************
@@ -34,7 +34,7 @@ static const char RCSid[] = "$Id: expand.c,v 35004.195 2003/12/12 11:07:48 hawke
 #include "command.h"
 #include "variable.h"
 
-typedef struct { BuiltinCmd *cmd; opcode_t op; } opcmd_t;
+typedef struct { void *ptr; opcode_t op; } opcmd_t;
 
 Value *user_result = NULL;		/* result of last user command */
 int recur_count = 0;			/* expansion nesting count */
@@ -47,15 +47,15 @@ keyword_id_t block = 0;			/* type of current block */
 Value *val_zero = NULL;
 Value *val_one = NULL;
 Value *val_blank = NULL;
-const char *oplabel[256];
+const char *oplabel_table[256];
 
 static int cmdsub_count = 0;		/* cmdsub nesting count */
 
 
 #define KEYWORD_LENGTH	6	/* length of longest keyword */
 static const char *keyword_table[] = {
-    "BREAK", "DO", "DONE", "ELSE", "ELSEIF", "ENDIF",
-    "EXIT", "IF", "RESULT", "RETURN", "TEST", "THEN", "WHILE"
+    "BREAK", "DO", "DONE", "ELSE", "ELSEIF", "ENDIF", "EXIT", "IF",
+    "LET", "RESULT", "RETURN", "SET", "SETENV", "TEST", "THEN", "WHILE"
 };
 
 
@@ -87,8 +87,8 @@ void init_expand(void)
     val_one = newint(1);
     val_blank = newSstr(blankline);
 
-#define defopcode(name, num, optype, argtype, resulttype) \
-    oplabel[num] = #name;
+#define defopcode(name, num, optype, argtype, flag) \
+    oplabel_table[(num)|(OPF_##flag)] = #name;
 #include "opcodes.h"
 }
 
@@ -114,8 +114,8 @@ static void prog_free_tail(Program *prog, int start)
 void prog_free(Program *prog)
 {
     prog_free_tail(prog, 0);
-    Stringfree(prog->src);
     if (prog->code) FREE(prog->code);
+    Stringfree(prog->src);
     FREE(prog);
 }
 
@@ -130,15 +130,14 @@ static void inst_dump(Program *prog, int i, char prefix)
     (buf = Stringnew(NULL, 0, 0))->links++;
     Sprintf(buf, "%c%5d: ", prefix, i);
     op = prog->code[i].op;
+    Sappendf(buf, "%04X ", op);
     if (op >= 0x20 && op < 0x7F) {
 	Sappendf(buf, "%c        %d", op, prog->code[i].arg.i);
     } else {
-	if (!oplabel[opnum(op)]) {
-	    Sappendf(buf, "0x%04X   ", op);
-	} else if (op_type_is(op, CTRL) && (op & OPR_FALSE)) {
-	    Sappendf(buf, "!%-7s ", oplabel[opnum(op)]);
+	if (!oplabel(op)) {
+	    Sappendf(buf, "%8s ", "");
 	} else {
-	    Sappendf(buf, "%-8s ", oplabel[opnum(op)]);
+	    Sappendf(buf, "%-8s ", oplabel(op));
 	}
 	switch(op_arg_type(op)) {
 	case OPA_INT:
@@ -218,9 +217,9 @@ struct Value *handle_eval_command(String *args, int offset)
  * there is one and builtin was not explicitly required, otherwise execute
  * the builtin. */
 static int execute_command(BuiltinCmd *cmd, String *args, int offset,
-    int is_builtin)
+    int builtin_only)
 {
-    if (!is_builtin && cmd->macro) {
+    if (!builtin_only && cmd->macro) {
 	current_command = cmd->name;
 	return do_macro(cmd->macro, args, offset, USED_NAME, NULL);
     } else if (cmd->func) {
@@ -234,10 +233,11 @@ static int execute_command(BuiltinCmd *cmd, String *args, int offset,
 }
 
 /* A command with a name not matching a builtin was called.  Call the macro. */
-static int execute_macro(const char *name, String *args, int offset)
+static int execute_macro(const char *name, unsigned int hash, String *args,
+    int offset)
 {
     Macro *macro;
-    if (!(macro = find_macro(name))) {
+    if (!(macro = find_hashed_macro(name, hash))) {
         do_hook(H_NOMACRO, "!%s: no such command or macro", "%s", name);
         return 0;
     }
@@ -310,7 +310,7 @@ int handle_command(String *cmd_line)
         if ((cmd = find_builtin_cmd(name))) {
 	    error += !execute_command(cmd, cmd_line, offset, FALSE);
         } else {
-	    error += !execute_macro(name, cmd_line, offset);
+	    error += !execute_macro(name, macro_hash(name), cmd_line, offset);
 	}
     }
 
@@ -369,7 +369,7 @@ Program *compile_tf(String *src, int srcstart, int subs, int is_expr,
     (prog->src = src)->links++;
     prog->srcstart = srcstart;
     prog->mark = src->data + srcstart;
-    prog->optimize = optimize;
+    prog->optimize = optimize_user ? optimize : 0;
     ip = src->data + srcstart;
     if (is_expr) {
 	if (expr(prog)) {
@@ -460,14 +460,13 @@ Value *prog_interpret(Program *prog, int in_expr)
     Value *val, *result = NULL;
     String *str, *tbuf;
     int user_result_is_set = 0;
-    int cip, stackbot, no_arg, i;
+    int cip, stackbot, no_arg;
     int empty;	/* for varsub default */
     opcode_t op;
     int first, last, n;
     int instruction_count = 0;
     String *buf;
     const char *cstr, *old_cmd;
-    BuiltinCmd *cmd;
     struct tf_frame {
 	TFILE *orig_tfin, *orig_tfout;	/* restored when done */
 	TFILE *local_tfin, *local_tfout;/* restored after pipes */
@@ -544,35 +543,37 @@ Value *prog_interpret(Program *prog, int in_expr)
 	case OP_ARG:
 	    str = prog->code[cip].arg.str;
 	    if ((no_arg = !str)) str = buf;
-	    /* no_arg and str will be used by OP_BUILTIN or OP_COMMAND */
+	    /* no_arg and str will be used by BUILTIN, MACRO, SET, ... */
 	    break;
 
-	case OP_BUILTIN:
-	case OP_BUILTIN | OPR_FALSE:
-	case OP_COMMAND:
-	case OP_COMMAND | OPR_FALSE:
+	case OP_LET:
+	case OP_SET:
+	case OP_SETENV:
 	    /* no_arg and str were set by OP_ARG */
-	    cmd = prog->code[cip].arg.cmd;
+	    do_set(prog->code[cip].arg.val->name,
+		prog->code[cip].arg.val->u.hash,
+		str, 0, op == OP_SETENV, op == OP_LET);
+	    if (no_arg) Stringtrunc(buf, 0);
+	    break;
+
+	case OP_BUILTIN: case OP_NBUILTIN:
+	case OP_COMMAND: case OP_NCOMMAND:
+	    /* no_arg and str were set by OP_ARG */
 	    old_cmd = execute_start(&str);    /*XXX optimize: needn't dup buf */
-	    execute_command(cmd, str, 0, opnum(op) == OP_BUILTIN);
-	    execute_end(old_cmd, !(op & OPR_FALSE), str);
+	    execute_command(prog->code[cip].arg.cmd, str, 0,
+		opnum_eq(op, OP_BUILTIN));
+	    execute_end(old_cmd, !(op & OPF_NEG), str);
 	    if (no_arg) Stringtrunc(buf, 0);
 	    user_result_is_set = 1;
 	    setup_next_io();
 	    break;
 
-	case OP_MACRO:
-	case OP_MACRO | OPR_FALSE:
-	    str = prog->code[cip].arg.str;
-	    if ((no_arg = !str)) str = buf;
+	case OP_MACRO: case OP_NMACRO:
+	    /* no_arg and str were set by OP_ARG */
 	    old_cmd = execute_start(&str);    /*XXX optimize: needn't dup buf */
-	    for (i = 0; str->data[i] && !is_space(str->data[i]); i++);
-	    if (str->data[i]) {
-		str->data[i] = '\0';
-		do { ++i; } while (is_space(str->data[i]));
-	    }
-	    execute_macro(str->data, str, i);
-	    execute_end(old_cmd, !(op & OPR_FALSE), str);
+	    execute_macro(prog->code[cip].arg.val->name,
+		prog->code[cip].arg.val->u.hash, str, 0);
+	    execute_end(old_cmd, !(op & OPF_NEG), str);
 	    if (no_arg) Stringtrunc(buf, 0);
 	    user_result_is_set = 1;
 	    setup_next_io();
@@ -599,8 +600,8 @@ Value *prog_interpret(Program *prog, int in_expr)
 	case OP_APPEND:
 	    str = prog->code[cip].arg.str;
 	    if (!str) {
-		SStringcat(buf, opdstr(1));
-		freeval(stack[--stacktop]);
+		SStringcat(buf, valstr(popval()));
+		freeval(opd(0));
 	    } else {
 		SStringcat(buf, str);
 	    }
@@ -613,14 +614,14 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    cip = jumpaddr(prog);
 	    break;
 	case OP_JZ:
-	    if (!opdbool(1))
+	    if (!valbool(popval()))
 		cip = jumpaddr(prog);
-	    freeval(stack[--stacktop]);
+	    freeval(opd(0));
 	    break;
 	case OP_JNZ:
-	    if (opdbool(1))
+	    if (valbool(popval()))
 		cip = jumpaddr(prog);
-	    freeval(stack[--stacktop]);
+	    freeval(opd(0));
 	    break;
 	case OP_JRZ:
 	    if (!valbool(user_result))
@@ -649,7 +650,7 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    if ((val = prog->code[cip].arg.val))
 		val->count++;
 	    else
-		val = stack[--stacktop];
+		val = popval();
 	    set_user_result(valval(val));
 	    if (op == OP_RESULT && !argtop) {
 		str = valstr(val);
@@ -662,7 +663,7 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    if ((val = prog->code[cip].arg.val))
 		val->count++;
 	    else
-		val = stack[--stacktop];
+		val = popval();
 	    set_user_result(valval(val));
 	    setup_next_io();
 	    break;
@@ -673,8 +674,8 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    break;
 	case OP_POPBUF:
 	    Stringfree(buf);
-	    buf = valstr(stack[--stacktop]); /* XXX optimize */
-	    freeval(stack[stacktop]);
+	    buf = valstr(popval()); /* XXX optimize */
+	    freeval(opd(0));
 	    break;
 	case OP_CMDSUB:
 	    if (!pushval(newptr(frame))) /* XXX optimize */
@@ -688,8 +689,8 @@ Value *prog_interpret(Program *prog, int in_expr)
 	case OP_POPFILE:
 	    filep = which_tfile_p(prog->code[cip].arg.c);
 	    tfclose(*filep);
-	    *filep = (TFILE*)valptr(stack[--stacktop]); /* XXX optimize */
-	    freeval(stack[stacktop]);
+	    *filep = (TFILE*)valptr(popval()); /* XXX optimize */
+	    freeval(opd(0));
 	    break;
 #endif
 	case OP_ACMDSUB:
@@ -714,10 +715,10 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    }
 	    tfclose(tfout);
 	    FREE(frame);
-	    frame = valptr(stack[--stacktop]); /* XXX optimize */
+	    frame = valptr(popval()); /* XXX optimize */
 	    tfout = frame->outpipe ? frame->outpipe : frame->local_tfout;
 	    tfin = frame->inpipe ? frame->inpipe : frame->local_tfin;
-	    freeval(stack[stacktop]);
+	    freeval(opd(0));
 	    if (op_is_push(op)) {
 		if (!pushval(newSstr(tbuf)))
 		    goto prog_interpret_exit;
@@ -726,8 +727,8 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    break;
 	case OP_PBUF:
 	    str = buf;
-	    buf = valstr(stack[--stacktop]); /* XXX optimize */
-	    freeval(stack[stacktop]);
+	    buf = valstr(popval()); /* XXX optimize */
+	    freeval(opd(0));
 	    if (!pushval(newSstr(str)))
 		goto prog_interpret_exit;
 	    Stringfree(str);
@@ -738,8 +739,8 @@ Value *prog_interpret(Program *prog, int in_expr)
 		str->links++;
 	    } else {
 		str = buf;
-		buf = valstr(stack[--stacktop]); /* XXX optimize */
-		freeval(stack[stacktop]);
+		buf = valstr(popval()); /* XXX optimize */
+		freeval(opd(0));
 	    }
 	    if (!(cstr = macro_body(str->data))) {
 		tfprintf(tferr, "%% macro not defined: %S", str);
@@ -755,18 +756,18 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    Stringfree(str);
 	    break;
 	case OP_AVAR:
+	    (val = (prog->code[cip].arg.val))->count++;
+	    str = valstr(val);
+	    empty = !str->len;
+	    SStringcat(buf, str);
+	    freeval(val);
+	    break;
 	case OP_PVAR:
 	    (val = (prog->code[cip].arg.val))->count++;
-	    if (op_is_push(op)) {
-		(val = valval(val))->count++;
-		if (!pushval(val))
-		    goto prog_interpret_exit;
-		empty = (val->type & TYPE_STR && !val->sval->len);
-	    } else {
-		str = valstr(val);
-		empty = !str->len;
-		SStringcat(buf, str);
-	    }
+	    (val = valval(val))->count++;
+	    if (!pushval(val))
+		goto prog_interpret_exit;
+	    empty = (val->type & TYPE_STR && !val->sval->len);
 	    freeval(val);
 	    break;
 	case OP_AREG:
@@ -780,89 +781,98 @@ Value *prog_interpret(Program *prog, int in_expr)
 		goto prog_interpret_exit;
 	    break;
 	case OP_APARM:
+	    first = prog->code[cip].arg.i - 1;
+	    if (!do_parmsub(buf, first, first, &empty))
+		goto prog_interpret_exit;
+	    break;
 	case OP_PPARM:
-	    first = prog->code[cip].arg.i;
-	    if (first < 0) {
-		first = -first;
-		last = tf_argc - 1;
-	    } else {
-		last = first = first - 1;
-	    }
-	    if (!do_parmsub(op_is_push(op) ? NULL : buf, first, last, &empty))
+	    first = prog->code[cip].arg.i - 1;
+	    if (!do_parmsub(NULL, first, first, &empty))
+		goto prog_interpret_exit;
+	    break;
+	case OP_AXPARM:
+	    if (!do_parmsub(buf, prog->code[cip].arg.i, tf_argc - 1, &empty))
+		goto prog_interpret_exit;
+	    break;
+	case OP_PXPARM:
+	    if (!do_parmsub(NULL, prog->code[cip].arg.i, tf_argc - 1, &empty))
 		goto prog_interpret_exit;
 	    break;
 	case OP_ALPARM:
-	case OP_PLPARM:
-	    first = prog->code[cip].arg.i;
-	    if (first < 0) {
-		last = tf_argc + first - 1;
-		first = 0;
-	    } else {
-		last = first = tf_argc - first;
-	    }
-	    if (!do_parmsub(op_is_push(op) ? NULL : buf, first, last, &empty))
+	    first = tf_argc - prog->code[cip].arg.i;
+	    if (!do_parmsub(buf, first, first, &empty))
 		goto prog_interpret_exit;
 	    break;
-	case OP_ASPECIAL:	/* append */
-	    empty = 0;
-	    switch (prog->code[cip].arg.c) {
-	    case '#':
-		Sappendf(buf, "%d", tf_argc);
-		break;
-	    case '?':
-		SStringcat(buf, valstr(user_result));
-		break;
-	    case '0':
-		if (!(empty = !(current_command && *current_command != '\b')))
-		    Stringcat(buf, current_command);
-		break;
-	    case '*':
-		if (!do_parmsub(buf, 0, tf_argc - 1, &empty))
-		    goto prog_interpret_exit;
-		break;
-	    case 'R':
-		n = tf_argc ? RRAND(0, tf_argc - 1) : -1;
-		if (!do_parmsub(buf, n, n, &empty))
-		    goto prog_interpret_exit;
-		break;
-	    }
+	case OP_PLPARM:
+	    first = tf_argc - prog->code[cip].arg.i;
+	    if (!do_parmsub(NULL, first, first, &empty))
+		goto prog_interpret_exit;
 	    break;
-	case OP_PSPECIAL:	/* push */
+	case OP_ALXPARM:
+	    last = tf_argc - prog->code[cip].arg.i - 1;
+	    if (!do_parmsub(buf, 0, last, &empty))
+		goto prog_interpret_exit;
+	    break;
+	case OP_PLXPARM:
+	    last = tf_argc - prog->code[cip].arg.i - 1;
+	    if (!do_parmsub(NULL, 0, last, &empty))
+		goto prog_interpret_exit;
+	    break;
+	case OP_APARM_CNT:
 	    empty = 0;
-	    switch (prog->code[cip].arg.c) {
-	    case '#':
-		if (!pushval(newint(tf_argc)))
-		    goto prog_interpret_exit;
-		break;
-	    case '?':
-		if (!pushval(user_result))
-		    goto prog_interpret_exit;
-		user_result->count++;
-		break;
-	    case '0':
-		if ((empty = (current_command && *current_command != '\b')))
-		    val = shareval(val_blank);
-		else
-		    val = newstr(current_command, -1);
-		if (!pushval(val))
-		    goto prog_interpret_exit;
-	    case '*':
-		if (!do_parmsub(NULL, 0, tf_argc - 1, &empty))
-		    goto prog_interpret_exit;
-		break;
-	    case 'R':
-		n = tf_argc ? RRAND(0, tf_argc - 1) : -1;
-		if (!do_parmsub(NULL, n, n, &empty))
-		    goto prog_interpret_exit;
-		break;
-	    }
+	    Sappendf(buf, "%d", tf_argc);
+	    break;
+	case OP_PPARM_CNT:
+	    empty = 0;
+	    if (!pushval(newint(tf_argc)))
+		goto prog_interpret_exit;
+	    break;
+	case OP_ARESULT:
+	    empty = 0;
+	    SStringcat(buf, valstr(user_result));
+	    break;
+	case OP_PRESULT:
+	    empty = 0;
+	    if (!pushval(user_result))
+		goto prog_interpret_exit;
+	    user_result->count++;
+	    break;
+	case OP_ACMDNAME:
+	    if (!(empty = !(current_command && *current_command != '\b')))
+		Stringcat(buf, current_command);
+	    break;
+	case OP_PCMDNAME:
+	    if ((empty = !(current_command && *current_command != '\b')))
+		val = shareval(val_blank);
+	    else
+		val = newstr(current_command, -1);
+	    if (!pushval(val))
+		goto prog_interpret_exit;
+	    break;
+	case OP_APARM_ALL:
+	    if (!do_parmsub(buf, 0, tf_argc - 1, &empty))
+		goto prog_interpret_exit;
+	    break;
+	case OP_PPARM_ALL:
+	    if (!do_parmsub(NULL, 0, tf_argc - 1, &empty))
+		goto prog_interpret_exit;
+	    break;
+	case OP_APARM_RND:
+	    n = tf_argc ? RRAND(0, tf_argc - 1) : -1;
+	    if (!do_parmsub(buf, n, n, &empty))
+		goto prog_interpret_exit;
+	    break;
+	case OP_PPARM_RND:
+	    n = tf_argc ? RRAND(0, tf_argc - 1) : -1;
+	    if (!do_parmsub(NULL, n, n, &empty))
+		goto prog_interpret_exit;
 	    break;
 	case OP_DUP:	/* duplicate the ARGth item from the top of the stack */
 	    (val = opd(prog->code[cip].arg.i))->count++;
 	    if (!pushval(val)) goto prog_interpret_exit;
 	    break;
 	case OP_POP:	/* argument is ignored */
-	    freeval(stack[--stacktop]);
+	    freeval(popval());
 	    break;
 	case OP_PUSH:	/* push (Value*)ARG onto stack */
 	    (val = (prog->code[cip].arg.val))->count++;
@@ -882,7 +892,7 @@ Value *prog_interpret(Program *prog, int in_expr)
     }
 
     if (stacktop == stackbot + in_expr) {
-	result = in_expr ? stack[--stacktop] : user_result;
+	result = in_expr ? popval() : user_result;
     } else {
 	eprintf("expression stack underflow or dirty (%+d)",
 	    stacktop - (stackbot + in_expr));
@@ -897,7 +907,7 @@ prog_interpret_exit:
     tfout = frame->orig_tfout;
 
     while (stacktop > stackbot)
-	freeval(stack[--stacktop]);
+	freeval(popval());
     Stringfree(buf);
     return result;
 }
@@ -1040,14 +1050,18 @@ static void vcode_add(Program *prog, opcode_t op, int use_mark, va_list ap)
     ((inst)->op == OP_PUSH && (inst)->arg.val->type != TYPE_ID)
 
     while (1) {
-	if (inst->comefroms)
+	if (inst->comefroms) {
+	    /* Something jumps to this instruction, so we can't consolidate it
+	     * with any instruction before it. */
 	    return;
+	}
 
 	switch (op_type(inst->op)) {
 	case OPT_EXPR:
 	    /* An expression operator with no side effects and compile-time
 	     * constant operands can be reduced at compile time.
 	     */
+	    /* e.g. {PUSH 3; PUSH 4; +;} to {PUSH 7} */
 	    if (!op_has_sideeffect(inst->op)) {
 		int i, n;
 		int old_stacktop = stacktop;
@@ -1066,11 +1080,11 @@ static void vcode_add(Program *prog, opcode_t op, int use_mark, va_list ap)
 		prog->len -= n;
 		inst = &prog->code[prog->len - 1];
 		/* inst->op = OP_PUSH; */ /* already true */
-		inst->arg.val = stack[--stacktop];
+		inst->arg.val = popval();
 		continue;
 	    const_expr_error:
 		while (stacktop > old_stacktop)
-		    freeval(stack[--stacktop]);
+		    freeval(popval());
 		return /* 0 */; /* XXX */
 	    }
 	    return;
@@ -1079,18 +1093,16 @@ static void vcode_add(Program *prog, opcode_t op, int use_mark, va_list ap)
 	    if (prog->len <= 1)
 		return;
 
-	    if (inst->op == OP_APPEND) {
-		if (!inst->arg.str && inst_is_const(inst-1)) {
-		    Value *val = inst[-1].arg.val;
+	    if (inst->op == OP_APPEND && inst->arg.str) {
+		/* {APPEND "x";} */
+
+		if (inst->arg.str->len == 0) {
+		    /* {APPEND "";} to {} */
 		    prog->len--;
 		    inst--;
-		    inst->op = inst[1].op;
-		    (inst->arg.str = valstr(val))->links++;
-		    freeval(val);
 		    continue;
-		} else if (inst->arg.str && inst[-1].op == OP_APPEND &&
-		    inst[-1].arg.str)
-		{
+		} else if (inst[-1].op == OP_APPEND && inst[-1].arg.str) {
+		    /* e.g. {APPEND "x"; APPEND "y";} to {APPEND "xy";} */
 		    prog->len--;
 		    inst--;
 		    SStringcat(inst->arg.str, inst[1].arg.str);
@@ -1099,20 +1111,47 @@ static void vcode_add(Program *prog, opcode_t op, int use_mark, va_list ap)
 		    continue;
 		}
 
-	    } else if (inst->op == OP_ARG && !inst->arg.val && prog->len == 2 &&
+	    } else if (inst->op == OP_APPEND && !inst->arg.str) {
+		/* {APPEND NULL;} */
+
+		if (op_type_is(inst[-1].op, SUB) && op_is_push(inst[-1].op)) {
+		    /* e.g. {PPARM 1; APPEND NULL;} to {APARM 1;} */
+		    prog->len--;
+		    inst--;
+		    inst->op |= OPF_APP;
+		    continue;
+		} else if (inst_is_const(inst-1)) {
+		    /* e.g. {PUSH "x"; APPEND NULL;} to {APPEND "x";} */
+		    Value *val = inst[-1].arg.val;
+		    prog->len--;
+		    inst--;
+		    inst->op = inst[1].op;
+		    (inst->arg.str = valstr(val))->links++;
+		    freeval(val);
+		    continue;
+		}
+
+	    } else if (op_arg_type_is(inst->op, STRP) && !inst->arg.str &&
 		inst[-1].op == OP_APPEND && inst[-1].arg.str)
 	    {
-		/* {0: APPEND string; 1: ARG NULL} to {0: ARG string} */
+		/* e.g. {APPEND string; MACRO NULL;} to {MACRO string;} */
+		/* but only if not preceeded by other append operators */
+		if (prog->len > 2 &&
+		   (inst[-2].op == OP_APPEND /* could be {APPEND NULL;} */ ||
+		   (op_type_is(inst[-2].op, SUB) && op_is_append(inst[-2].op))))
+		{
+		    return;
+		}
 		prog->len--;
 		inst--;
 		inst->op = inst[1].op;
 		/* keep inst->arg.str */
 		continue;
 
-	    } else if (op_arg_type(inst->op) == OPA_VALP && !inst->arg.val &&
+	    } else if (op_arg_type_is(inst->op, VALP) && !inst->arg.val &&
 		inst_is_const(inst-1))
 	    {
-		/* e.g., {PUSH val; TEST NULL} to {TEST val} */
+		/* e.g., {PUSH val; TEST NULL;} to {TEST val;} */
 		prog->len--;
 		inst--;
 		inst->op = inst[1].op;
@@ -1124,31 +1163,37 @@ static void vcode_add(Program *prog, opcode_t op, int use_mark, va_list ap)
 	case OPT_JUMP:
 	    if (prog->len <= 1)
 		return;
-	    if ((inst->op & ~1) == OP_JZ) {
+	    if (opnum_eq(inst->op, OP_JZ)) {
 		if (inst[-1].op == '!') {
-		    /* e.g., {! 1; JZ x} to {JNZ x} */
+		    /* e.g., {! 1; JZ x;} to {JNZ x;} */
 		    prog->len--;
 		    inst--;
-		    inst->op = inst[1].op ^ 1;
+		    inst->op = inst[1].op ^ OPF_NEG;
 		    inst->arg = inst[1].arg;
 		    continue;
 		} else if (inst_is_const(inst-1)) {
-		    /* e.g., {PUSH INT 0; JZ x} to {JUMP x} */
+		    /* e.g., {PUSH INT 0; JZ x;} to {JUMP x;} */
+		    /* e.g., {PUSH INT 1; JZ x;} to {} */
 		    int flag;
 		    prog->len--;
 		    inst--;
 		    flag = valbool(inst->arg.val);
 		    freeval(inst->arg.val);
-		    inst->op = (!flag == !(inst[1].op & 1)) ? OP_JUMP : OP_NOP;
-		    inst->arg.i = inst[1].arg.i;
+		    if (!flag == !(inst[1].op & OPF_NEG)) {
+			inst->op = OP_JUMP;
+			inst->arg.i = inst[1].arg.i;
+		    } else {
+			prog->len--;
+			inst--;
+		    }
 		    continue;
 		}
 	    }
 	    return;
 
-	case OPT_SUB:
-	    /* sub of a macro whose name is literal */
-	    if ((inst->op == OP_PMAC || inst->op == OP_AMAC) &&
+	default:
+	    /* sub of a macro whose name is compile-time constant */
+	    if (opnum_eq(inst->op, OP_PMAC) &&
 		!inst->arg.str && prog->len > 2 && inst[-2].op == OP_PUSHBUF &&
 		inst[-1].op == OP_APPEND)
 	    {
@@ -1156,6 +1201,7 @@ static void vcode_add(Program *prog, opcode_t op, int use_mark, va_list ap)
 		inst[-2].op = inst->op;
 		inst[-2].arg.str = inst[-1].arg.str;
 		prog->len -= 2;
+		continue;
 	    }
 
 	    if (inst->op == OP_PBUF && !inst->arg.str && prog->len > 2 &&
@@ -1165,9 +1211,9 @@ static void vcode_add(Program *prog, opcode_t op, int use_mark, va_list ap)
 		inst[-2].op = OP_PUSH;
 		inst[-2].arg.val = newSstr(inst[-1].arg.str);
 		prog->len -= 2;
+		continue;
 	    }
 
-	default:
 	    return;
 	}
     }
@@ -1212,7 +1258,7 @@ static int list(Program *prog, int subs)
     const char *stmtstart;
     static const char unexpect_msg[] = "unexpected /%s in %s block";
     int is_pipe = 0;
-    int block_start, jump_point;
+    int block_start, jump_point, oldlen;
 
 #define unexpected(innerblock, outerblock) \
     eprintf(unexpect_msg, keyword_table[innerblock - BREAK], \
@@ -1266,6 +1312,12 @@ static int list(Program *prog, int subs)
                 }
 		++ip; /* skip ')' */
 		eat_space(prog);
+		if (is_end_of_statement(ip)) {
+		    eprintf("warning: \"%2.2s\" following \"/%s (...)\" "
+			"sends blank line to server, "
+			"which is probably not what was intended.",
+			ip, keyword_table[block - BREAK]);
+		}
                 block = (block == WHILE) ? DO : THEN;
             } else if (*ip) {
                 eprintf("warning: statement starting with %s in /%s "
@@ -1296,9 +1348,13 @@ static int list(Program *prog, int subs)
                     block = oldblock;
                     goto list_exit;
                 }
+		oldlen = prog->len;
 		code_add(prog, is_a_condition ? OP_JZ : OP_JRZ, -1);
 		code_mark(prog, ip);
-		jump_point = prog->len - 1;
+		if (prog->len > oldlen) /* code was emitted */
+		    jump_point = prog->len - 1;
+		else /* code was completely optimized away */
+		    jump_point = - 1;
                 continue;
 
             case BREAK:
@@ -1368,7 +1424,13 @@ static int list(Program *prog, int subs)
 		code_add_nomecho(prog, is_a_condition ? OP_JZ : OP_JRZ,
 		    ENDIF_PLACEHOLDER);
 		code_mark(prog, ip);
-		jump_point = prog->len - 1;
+		if (prog->len > 0 &&
+		    op_type_is(prog->code[prog->len - 1].op, JUMP))
+		{
+		    jump_point = prog->len - 1;
+		} else { /* jump was completely optimized away */
+		    jump_point = -1;
+		}
                 continue;
 
             case ELSEIF:
@@ -1380,6 +1442,13 @@ static int list(Program *prog, int subs)
                 }
 		code_add_nomecho(prog, OP_JUMP, ENDIF_PLACEHOLDER);
 		comefrom(prog, jump_point, prog->len);
+		eat_space(prog);
+		if (block == ELSE && is_end_of_statement(ip)) {
+		    eprintf("warning: \"%2.2s\" following \"/%s\" "
+			"sends blank line to server, "
+			"which is probably not what was intended.",
+			ip, keyword_table[block - BREAK]);
+		}
                 continue;
 
             case ENDIF:
@@ -1402,6 +1471,35 @@ static int list(Program *prog, int subs)
 		}
 		code_add(prog, OP_ENDIF);   /* no-op, to hold mecho pointers */
                 result = 1;  goto list_exit;
+
+	    case LET:
+	    case SET:
+	    case SETENV:
+	      {
+		String *dest;
+		Value *val;
+		const char *start = ip, *end;
+		while (is_space(*start)) start++;
+		end = spanvar(start);
+		if (!end || (*end != '=' && !is_space(*end)))
+		    goto noncontrol;
+		ip = end + 1;
+		if (*end != '=')
+		    ip = spansetspace(ip);
+		(dest = Stringnew(NULL, 1, 0))->links++;
+		if (!(result = expand(prog, dest, subs, NULL)))
+		    goto list_exit;
+		val = newid(start, end - start);
+		code_add(prog, OP_ARG, result == 1 ? dest : NULL);
+		switch (block) {
+		    case LET:    code_add(prog, OP_LET,    val); break;
+		    case SET:    code_add(prog, OP_SET,    val); break;
+		    case SETENV: code_add(prog, OP_SETENV, val); break;
+		    default:     /* impossible */ break;
+		}
+		block = oldblock;
+		break;
+	      }
 
 	    case RETURN:
 	    case RESULT:
@@ -1456,6 +1554,7 @@ static int list(Program *prog, int subs)
 	    }
 
             default:
+            noncontrol:
                 /* not a control statement */
                 ip = stmtstart - 1;
                 is_special = 0;
@@ -1498,7 +1597,13 @@ static int list(Program *prog, int subs)
 	    eat_space(prog);
 	    code_mark(prog, ip);
         } else if (*ip) {
-            parse_error(prog, "macro", "end of statement");
+	    const char *expect;
+	    switch (is_special) {
+		case IF:    expect = "end of statement after /endif";  break;
+		case WHILE: expect = "end of statement after /done";   break;
+		default:    expect = "end of statement";               break;
+	    }
+	    parse_error_suggest(prog, "macro", expect, "Possibly missing '%;'");
             goto list_exit;
         }
 
@@ -1518,7 +1623,7 @@ list_exit:
 
 const char **keyword(const char *id)
 {
-    return (const char **)binsearch((void*)id, (void*)keyword_table,
+    return (const char **)bsearch((void*)id, (void*)keyword_table,
         sizeof(keyword_table)/sizeof(char*), sizeof(char*), cstrstructcmp);
 }
 
@@ -1546,7 +1651,7 @@ static keyword_id_t keyword_parse(Program *prog)
 }
 
 /* percentsub() and dollarsub() append to the compile-time buffer *destp if
- * source is compile-time constant; otherwise, it emits [APPEND *destp],
+ * source is compile-time constant; otherwise, it emits {APPEND *destp},
  * creates a new compile-time buffer, and emits code for the sub.
  */
 static int percentsub(Program *prog, int subs, String **destp)
@@ -1630,31 +1735,31 @@ static int expand(Program *prog, String *dest, int subs, opcmd_t *opcmdp)
             while (*ip && !is_statmeta(*ip) && !(is_space(*ip) && opcmdp))
 		ip++;
             SStringoncat(dest, prog->src, start - prog->src->data, ip - start);
-	    if (opcmdp && (!*ip || is_space(*ip) ||
-		is_end_of_statement(ip)))
-	    {
+	    if (opcmdp && (!*ip || is_space(*ip) || is_end_of_statement(ip))) {
 		/* command name is constant, can be resolved at compile time */
 		int i, truth = 1;
 		for (i = 0; dest->data[i] == '!'; i++)
 		    truth = !truth;
 		opcmdp->op = (dest->data[i] == '@') ? (++i, OP_BUILTIN) :
 		    OP_COMMAND;
-		if ((opcmdp->cmd = find_builtin_cmd(dest->data + i))) {
-		    Stringtrunc(dest, 0);
-		    while (is_space(*ip)) { ip++; }
+		if ((opcmdp->ptr = find_builtin_cmd(dest->data + i))) {
+		    /* BUILTIN or COMMAND: ptr is CMD builtin */
 		} else if (opcmdp->op == OP_BUILTIN) {
 		    eprintf("%s: not a builtin command", dest->data + i);
 		    error++;
 		    break;
 		} else {
-		    int j = 0;
-		    while (i <= dest->len)
-			dest->data[j++] = dest->data[i++];
-		    dest->len = j - 1;
+		    /* MACRO: ptr is ID name */
+		    Value *val = newid(dest->data + i, dest->len - i);
+		    if (dest->data[i] == '#') /* macro_hash() */
+			val->u.hash = atoi(dest->data + i + 1);
+		    opcmdp->ptr = val;
 		    opcmdp->op = OP_MACRO;
 		}
+		Stringtrunc(dest, 0);
+		while (is_space(*ip)) { ip++; }
 		if (!truth)
-		    opcmdp->op |= OPR_FALSE;
+		    opcmdp->op |= OPF_NEG;
 		opcmdp = NULL;
 	    }
         }
@@ -1685,7 +1790,7 @@ static int statement(Program *prog, int subs)
     int result;
     opcmd_t opcmd, *opcmdp = NULL;
 
-    opcmd.cmd = NULL;
+    opcmd.ptr = NULL;
 
     if (ip[0] != '/') {
 	opcmd.op = OP_SEND;
@@ -1706,9 +1811,9 @@ static int statement(Program *prog, int subs)
     if (!result)
 	return 0;
 
-    if (opcmd.cmd) {
+    if (opcmd.ptr) {
 	code_add(prog, OP_ARG, result == 1 ? dest : NULL);
-	code_add(prog, opcmd.op, opcmd.cmd);
+	code_add(prog, opcmd.op, opcmd.ptr);
     } else {
 	code_add(prog, opcmd.op, result == 1 ? dest : NULL);
     }
@@ -1746,6 +1851,13 @@ void parse_error(Program *prog, const char *type, const char *expect)
         type, expect, error_text(prog));
 }
 
+void parse_error_suggest(Program *prog, const char *type, const char *expect,
+    const char *suggestion)
+{
+    eprintf("%s syntax error: expected %s, found %s.  (%s)",
+        type, expect, error_text(prog), suggestion);
+}
+
 
 int exprsub(Program *prog, int in_expr)
 {
@@ -1757,7 +1869,7 @@ int exprsub(Program *prog, int in_expr)
     if (!*ip || is_end_of_statement(ip)) {
         eprintf("unmatched $[");
     } else if (*ip != ']') {
-        parse_error(prog, "expression", "operator");
+        parse_error(prog, "expression", "operator or ']'");
     } else {
 	if (!in_expr)
 	    code_add(prog, OP_APPEND, NULL);
@@ -1799,7 +1911,7 @@ static int cmdsub(Program *prog, int in_expr)
 static int macsub(Program *prog, int in_expr)
 {
     const char *s;
-    int bracket, dynamic = 0;
+    int bracket;
     String *name;
 
     code_add(prog, OP_PUSHBUF, 0);
@@ -1829,7 +1941,6 @@ static int macsub(Program *prog, int in_expr)
                 else Stringadd(name, *ip++);
             }
         } else if (*ip == '%') {
-	    dynamic++;
             ++ip;
             if (!percentsub(prog, SUB_FULL, &name)) goto macsub_err;
         } else {
@@ -1846,17 +1957,8 @@ static int macsub(Program *prog, int in_expr)
         ip++;
     }
 
-#if 0 /* XXX optimize */
-    if (dynamic) {
-#endif
-	code_add(prog, OP_APPEND, name);
-	name = NULL;
-#if 0
-    } else {
-	prog->len -= 2;
-    }
-#endif
-    code_add(prog, in_expr ? OP_PMAC : OP_AMAC, name);
+    code_add(prog, OP_APPEND, name);
+    code_add(prog, in_expr ? OP_PMAC : OP_AMAC, NULL);
 
     return 1;
 
@@ -1909,11 +2011,11 @@ int varsub(Program *prog, int sub_warn, int in_expr)
 
     if (ip[0] == '#' && (!bracket || ip[1] == '}')) {
         ++ip;
-	code_add(prog, in_expr ? OP_PSPECIAL : OP_ASPECIAL, '#');
+	code_add(prog, in_expr ? OP_PPARM_CNT : OP_APARM_CNT);
 
     } else if (ip[0] == '?' && (!bracket || ip[1] == '}')) {
         ++ip;
-	code_add(prog, in_expr ? OP_PSPECIAL : OP_ASPECIAL, '?');
+	code_add(prog, in_expr ? OP_PRESULT : OP_ARESULT);
 
     } else {
         if (is_digit(*ip)) {
@@ -1957,20 +2059,26 @@ int varsub(Program *prog, int sub_warn, int in_expr)
         }
 
 	if (star) {
-	    code_add(prog, in_expr ? OP_PSPECIAL : OP_ASPECIAL, '*');
+	    code_add(prog, in_expr ? OP_PPARM_ALL : OP_APARM_ALL);
 	} else if (pee) {
 	    if (n < 0) n = 1;
 	    code_add(prog, in_expr ? OP_PREG : OP_AREG, n);
 	    n = -1;
 	} else if (ell) {
 	    if (n < 0) n = 1;
-	    code_add(prog, in_expr ? OP_PLPARM : OP_ALPARM, except ? -n : n);
+	    if (except)
+		code_add(prog, in_expr ? OP_PLXPARM : OP_ALXPARM, n);
+	    else
+		code_add(prog, in_expr ? OP_PLPARM : OP_ALPARM, n);
 	} else if (n > 0) {
-	    code_add(prog, in_expr ? OP_PPARM : OP_APARM, except ? -n : n);
+	    if (except)
+		code_add(prog, in_expr ? OP_PXPARM : OP_AXPARM, n);
+	    else
+		code_add(prog, in_expr ? OP_PPARM : OP_APARM, n);
 	} else if (n == 0) {
-	    code_add(prog, in_expr ? OP_PSPECIAL : OP_ASPECIAL, '0');
+	    code_add(prog, in_expr ? OP_PCMDNAME : OP_ACMDNAME);
 	} else if (cstrcmp(selector->data, "R") == 0) {
-	    code_add(prog, in_expr ? OP_PSPECIAL : OP_ASPECIAL, 'R');
+	    code_add(prog, in_expr ? OP_PPARM_RND : OP_APARM_RND);
 	} else if (cstrcmp(selector->data, "PL") == 0) {
 	    code_add(prog, in_expr ? OP_PREG : OP_AREG, -1);
 	} else if (cstrcmp(selector->data, "PR") == 0) {
@@ -2031,8 +2139,7 @@ int varsub(Program *prog, int sub_warn, int in_expr)
 	if (in_expr) {
 	    code_add(prog, OP_PBUF, NULL);
 	}
-	code_add(prog, OP_NOP, NULL);
-	comefrom(prog, jump_point, prog->len - 1);
+	comefrom(prog, jump_point, prog->len);
     }
 
     if (bracket) {

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: keyboard.c,v 35004.75 2003/12/22 05:35:17 hawkeye Exp $";
+static const char RCSid[] = "$Id: keyboard.c,v 35004.78 2004/02/17 06:44:38 hawkeye Exp $";
 
 /**************************************************
  * Fugue keyboard handling.
@@ -24,7 +24,6 @@ static const char RCSid[] = "$Id: keyboard.c,v 35004.75 2003/12/22 05:35:17 hawk
 #include "history.h"	/* history_sub() */
 #include "expand.h"	/* macro_run() */
 #include "commands.h"
-#include "tty.h"	/* no_tty */
 #include "variable.h"	/* unsetvar() */
 
 static int literal_next = FALSE;
@@ -151,10 +150,6 @@ int handle_keyboard_input(int read_flag)
 	    /* Don't close stdin; we might be wrong (solaris bug), and we
 	     * don't want the fd to be reused anyway. */
 	    eof++;
-#if 0
-            if (!no_tty)
-                internal_error(__FILE__, __LINE__, "read 0 from stdin tty");
-#endif
         }
     }
 
@@ -326,7 +321,7 @@ struct Value *handle_dokey_command(String *args, int offset)
     n = kbnumval;
     if (kbnum) reset_kbnum();
 
-    ptr = (const char **)binsearch((void*)(args->data + offset),
+    ptr = (const char **)bsearch((void*)(args->data + offset),
         (void*)efunc_table,
         sizeof(efunc_table)/sizeof(char*), sizeof(char*), cstrstructcmp);
 

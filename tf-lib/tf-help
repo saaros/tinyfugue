@@ -593,8 +593,12 @@ addworld()
 #/def -p
 #-p
   -p<[4mpri[24m> 
-          Sets the [1mpriority[22;0m of the [1mmacro[22;0m's [1mtrigger[22;0m or [1mhook[22;0m to <[4mpri[24m>.  Default: 
-          1.  See also: [1mfall-thru[22;0m.  See: [1mpriority[22;0m, [1m/def -F[22;0m.  
+          Sets the [1mpriority[22;0m of the [1mmacro[22;0m's [1mtrigger[22;0m or [1mhook[22;0m to <[4mpri[24m>.  As in 
+          all [1mnumeric options[22;0m, the argument to -p may be an [1mexpression[22;0m that 
+          has a numeric value.  E.g.  "[1m/def[22;0m -pmaxpri ..." will set the macro's 
+          priority to the value of the variable maxpri.  The [1mexpression[22;0m is 
+          evaluated only once, when the macro is defined.  Default: 1.  See 
+          also: [1mfall-thru[22;0m.  See: [1mpriority[22;0m, [1m/def -F[22;0m.  
 
 #/def -c
 #-c
@@ -2685,12 +2689,14 @@ mapping
 
   Usage: 
 
-  [1m/QUIT[22;0m
+  [1m/QUIT[22;0m [-y]
   ____________________________________________________________________________
 
-  Exits from TinyFugue.  All [1msocket[22;0m connections will be disconnected; all 
-  logfiles will be closed; [1m/quote[22;0ms and [1m/repeat[22;0ms will be killed; and all 
-  [1mhistory[22;0m, unsaved [1mmacros[22;0m, and [1mvariables[22;0m will be lost.  
+  Prompts "Really quit tf?", and if you type 'y' or 'Y', TF will exit.  If TF 
+  is not [1minteractive[22;0m, or the "-y" option is given, TF exits without prompting. 
+  All [1msocket[22;0m connections will be disconnected; all logfiles will be closed; 
+  [1m/quote[22;0ms and [1m/repeat[22;0ms will be killed; and all [1mhistory[22;0m, unsaved [1mmacros[22;0m, and 
+  [1mvariables[22;0m will be lost.  
 
   See: [1m/dc[22;0m 
 
@@ -3378,6 +3384,9 @@ Quoter Commands
   -W      sends <[4mtext[24m> to all connected worlds.  
   -n      send <[4mtext[24m> without an end-of-line marker (CR LF).  
   -h      test for and invoke matching SEND [1mhooks[22;0m.  
+
+  The return value of [1msend[22;0m is 0 if the text is not successfully sent, nonzero 
+  if it is.  
 
   See: [1mfunctions[22;0m.  
 
@@ -4409,7 +4418,8 @@ colors
 copyright
 
   TinyFugue - programmable mud client
-  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys 
+  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken 
+  Keys 
 
   PCRE regexp package is Copyright (C) 1997-1999 University of Cambridge 
 
@@ -5038,9 +5048,11 @@ String functions
 #inline_attr()
 #decode_attr
 #decode_attr()
-  [1mdecode_attr[22m([4ms[24m) 
-          (str) Returns <[4ms[24m> with "@{<[4mattr[24m>}" codes interpeted as display 
-          [1mattributes[22;0m, as in [1m/echo[22;0m -p.  
+  [1mdecode_attr[22m([4ms1[24m [, [4ms2[24m]) 
+          (str) Returns <[4ms1[24m> with "@{<[4mattr[24m>}" codes interpeted as display 
+          [1mattributes[22;0m, as in [1m/echo[22;0m -p.  If present, <[4ms2[24m> is a string of 
+          [1mattributes[22;0m that will be applied to the entire string (as in [1m/echo[22;0m 
+          -a<[4ms2[24m>).  
 #decode_ansi
 #decode_ansi()
   [1mdecode_ansi[22m([4ms[24m) 
@@ -5313,10 +5325,11 @@ getopts()
   the format described by <[4moptions[24m>.  <[4mOptions[24m> is a list of letters that 
   [1mgetopts()[22;0m will accept.  If a letter is followed by ":", the option will be 
   expected to have a string argument; if a letter is followed by "#", the 
-  option will be expected to have a (possibly signed) integer argument; if a 
-  letter is followed by "@", the option will be expected to have a time 
-  argument.  The option syntax accepted by [1mgetopts()[22;0m is a subset of that 
-  accepted by builtin tf commands, as described under "[1moptions[22;0m".  
+  option will be expected to have a [1mexpression[22;0m argument that evaluates to a 
+  (possibly signed) integer; if a letter is followed by "@", the option will 
+  be expected to have a time argument.  The option syntax accepted by 
+  [1mgetopts()[22;0m is a subset of that accepted by builtin tf commands, as described 
+  under "[1moptions[22;0m".  
 
   When an option is found, [1mgetopts()[22;0m creates a new local [1mvariable[22;0m named 
   "opt_X", where "X" is the letter of the option.  If an argument is expected, 
@@ -6021,15 +6034,15 @@ Using keys
 
   On recent versions of xterm with the modifyCursorKeys resource, tf can 
   recognize when the CTRL, SHIFT, or META modifier is held down while pressing 
-  the editor keys (insert, delete, home, end, pgdn, pgup) or arrow keys, and 
-  calls /key_ctrl_<[4mname[24m>, /key_shift_<[4mname[24m>, or /key_meta_<[4mname[24m>, 
-  respectively.  Additionally, by default, each /key_meta_<[4mname[24m> calls the 
-  corresponding /key_esc_<[4mname[24m>, so, for example, pressing META-Left has the 
-  same effect as ESC Left.  If you use another terminal emulator that 
-  generates unique character sequences for ctrl-, shift-, and meta-modified 
-  keys, you can bind those sequences to call the corresponding 
-  /key_<[4mmod[24m>_<[4mname[24m> (and send them to the [1mauthor[22;0m for inclusion in a future 
-  release of tf).  
+  the editor keys (insert, delete, home, end, pgdn, pgup), arrow keys, or 
+  numbered function keys, and calls /key_ctrl_<[4mname[24m>, /key_shift_<[4mname[24m>, or 
+  /key_meta_<[4mname[24m>, respectively.  Additionally, by default, each 
+  /key_meta_<[4mname[24m> calls the corresponding /key_esc_<[4mname[24m>, so, for example, 
+  pressing META-Left has the same effect as ESC Left.  If you use another 
+  terminal emulator that generates unique character sequences for ctrl-, 
+  shift-, and meta-modified keys, you can bind those sequences to call the 
+  corresponding /key_<[4mmod[24m>_<[4mname[24m> (and send them to the [1mauthor[22;0m for inclusion 
+  in a future release of tf).  
 
   [1mTF[22m tries to put the keypad in "application mode", which on many terminals 
   will make the keypad keys generate unique character sequences if Num Lock is 
@@ -6732,6 +6745,9 @@ options
       single quotes, or backquotes.  
     * A literal delimiter character or '\' within a delimited string must 
       be escaped by preceding it with '\'.  
+    * A numeric option-argument may be given as an [1mexpression[22;0m that 
+      evaluates to a numeric value.  If the expression contains spaces or 
+      quotes, they must be quoted or escaped as in a string option-argument.  
     * All options must precede normal arguments.  
     * A '-' or '--' by itself may be used to mark the end of the options.  
       This is useful when the first regular argument begins with '-'.  
@@ -8209,8 +8225,10 @@ virtual windows
   [1mforeground[22;0m, the old [1msocket[22;0m's window is hidden, but remembers all of its text 
   and current position; when you return that old [1msocket[22;0m to the [1mforeground[22;0m, the 
   text is redrawn at the remembered position, and you can resume reading where 
-  you left off.  The same is true when a [1msocket[22;0m's window is hidden by [1m/suspend[22;0m 
-  or [1m/sh[22;0m, and even when the terminal's size changes.  
+  you left off.  A [1mdividing line[22;0m makes it easy to find the point where the old 
+  text ends and the new text begins.  The text of a window is also refilled 
+  after resuming from [1m/suspend[22;0m or [1m/sh[22;0m, and even when the terminal's size 
+  changes.  
 
   In the table below, the "[1m/dokey[22;0m" columns indicate the argument to the [1m/dokey[22;0m 
   command that performs the scrolling, and the "keys" column indicates the 
@@ -8220,8 +8238,8 @@ virtual windows
       amount       [1m/dokey[22;0m  keys      [1m/dokey[22;0m     keys
       -----------  ------- -------   ---------- ----
       normal       [1mPgDn[22;0m    PgDn      [1mPgUp[22;0m       PgUp
-      1/2 screen   [1mhpage[22;0m   ^X] ^[h   [1mhpageback[22;0m  ^X[
-      1 screen     [1mpage[22;0m    ^X} TAB   [1mpageback[22;0m   ^X{
+      1/2 screen   [1mhpage[22;0m   ^[h ^X]   [1mhpageback[22;0m  ^X[
+      1 screen     [1mpage[22;0m    TAB ^X}   [1mpageback[22;0m   ^X{
       1 line       [1mline[22;0m    ^[^N      [1mlineback[22;0m   ^[^P
 
   Note that the line-scrolling keys may be typable as meta-ctrl-n and 
@@ -8245,7 +8263,7 @@ virtual windows
 
   (or, "/load kb-emacs.tf").  
 
-  A virtual screen can be redraw with ^L, or cleared with ^[^L (ESC ctrl-L).  
+  A virtual screen can be redrawn with ^L, or cleared with ^[^L (ESC ctrl-L).  
   Once lines are cleared from a screen, they can be redrawn by scrolling back 
   to them.  They are not automatically redrawn when you hide the screen and 
   then unhide it again.  
@@ -8773,6 +8791,13 @@ Special global variables
           (flag) If on, keyboard input is inserted; if off, input overstrikes 
           existing text.  
 
+#interactive
+#%interactive
+  [1minteractive[22m 
+          (flag) If off, TF will not prompt for [1m/quit[22;0m, returning from [1m/sh[22;0m, or 
+          [1mSIGINT[22;0m (^C).  Defaults to on if standard input and output are 
+          attatched to a terminal, off otherwise.  
+
 #isize
 #%isize
   [1misize[22m=3 
@@ -9031,7 +9056,8 @@ Special global variables
 #shpause
 #%shpause
   [1mshpause[22m=on 
-          (flag) Wait for a keypress after returning from [1m/sh[22;0m.  
+          (flag) Wait for a keypress after returning from [1m/sh[22;0m (unless 
+          [1m%interactive[22;0m is off).  
 
 #sigfigs
 #%sigfigs
@@ -9101,6 +9127,7 @@ Special global variables
 #separator
 #separator.tf
 #divider
+#=====
 #dividing line
 #%textdiv
   [1mtextdiv[22m=on 
@@ -9216,7 +9243,8 @@ Special global variables
   [1mwrappunct[22m=10 
           When [1mwrapping[22;0m, allow wrapping at any punctuation if wrapping only at 
           spaces would have caused more than [1m%wrappunct[22;0m characters to wrap.  
-          This is particularly useful for long URLs.  
+          This is particularly useful for long URLs.  Setting [1m%wrappunct[22;0m to 0 
+          disables wrapping at punctuation other than spaces.  
 
 #wrapsize
 #%wrapsize

@@ -32,7 +32,6 @@
 #endif
 
 /* #undef HAVE_BCOPY */
-#define HAVE_BSEARCH 1
 /* #undef HAVE_BZERO */
 #define HAVE_CONNECT 1 /* ? */
 #define HAVE_FILENO 1

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: dstring.c,v 35004.34 2003/11/15 18:48:42 hawkeye Exp $";
+static const char RCSid[] = "$Id: dstring.c,v 35004.35 2004/02/17 06:44:36 hawkeye Exp $";
 
 
 /*********************************************************************

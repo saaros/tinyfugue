@@ -1,7 +1,7 @@
 ########################################################################
 #
 #  TinyFugue - programmable mud client
-#  Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+#  Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
 #
 #  TinyFugue (aka "tf") is protected under the terms of the GNU
 #  General Public Licence.  See the file "COPYING" for details.

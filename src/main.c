@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: main.c,v 35004.96 2003/12/12 11:53:06 hawkeye Exp $";
+static const char RCSid[] = "$Id: main.c,v 35004.99 2004/02/17 06:44:39 hawkeye Exp $";
 
 
 /***********************************************
@@ -47,12 +47,12 @@ const char version[] =
 #if DEVELOPMENT
     "DEVELOPMENT VERSION: "
 #endif
-    "TinyFugue version 5.0 beta 3";
+    "TinyFugue version 5.0 beta 4";
 
 const char mods[] = "";
 
 const char copyright[] =
-    "Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys (hawkeye@tcp.com)";
+    "Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys (hawkeye@tcp.com)";
 
 const char contrib[] =
 #ifdef PLATFORM_OS2
@@ -190,6 +190,10 @@ int main(int argc, char *argv[])
     /* If %visual was not explicitly set, set it now. */
     if (getintvar(VAR_visual) < 0 && !no_tty)
         set_var_by_id(VAR_visual, autovisual);
+
+    /* If %interactive was not explicitly set, set it now. */
+    if (getintvar(VAR_interactive) < 0)
+        set_var_by_id(VAR_visual, !no_tty);
 
     if (argc > 0 || worldflag) {
 	int flags = 0;

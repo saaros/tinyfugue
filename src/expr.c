@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: expr.c,v 35004.131 2003/12/10 02:20:36 hawkeye Exp $";
+static const char RCSid[] = "$Id: expr.c,v 35004.137 2004/02/17 06:44:36 hawkeye Exp $";
 
 
 /********************************************************************
@@ -56,8 +56,8 @@ static int    and_expr(Program *prog);
 static int    relational_expr(Program *prog);
 static int    additive_expr(Program *prog);
 static int    multiplicative_expr(Program *prog);
-static int    unary_expr(Program *prog);
-static int    primary_expr(Program *prog);
+static int    unary_expr(Program *prog, int is_rhs_div);
+static int    primary_expr(Program *prog, int is_rhs_div);
 static Value *reduce_arithmetic(opcode_t op, int n);
 static Value *function_switch(int symbol, int n, const char *parent);
 static Value *do_function(int n);
@@ -464,23 +464,13 @@ int reduce(opcode_t op, int n)
     long i; /* scratch */
 
     if (stacktop < n) {
-	if (oplabel[opnum(op)])
+	if (oplabel(op))
 	    internal_error(__FILE__, __LINE__,
-		"stack underflow, op=%s, n=%d", oplabel[opnum(op)], n);
+		"stack underflow, op=%s, n=%d", oplabel(op), n);
 	else
 	    internal_error(__FILE__, __LINE__,
 		"stack underflow, op=0x%04X, n=%d", op, n);
         return 0;
-    }
-
-    if (op == '/' && (block == IF || block == ELSEIF || block == WHILE) &&
-	opd(1)->type == TYPE_ID && !hfindnearestvar(opd(1)->name, opd(1)->u.hash))
-    {
-	/* common error: "/{if,while} /test expr /{then,do,stuff} ..." */
-	/* common error: "/{if,while} (expr /stuff ..." */
-	eprintf("%% warning: possibly missing '%s' before /%s",
-	    (cstrcmp(current_command, "test") == 0) ? "%;" : ")",
-	    opd(1)->name);
     }
 
     if ((op == OP_ASSIGN || op == OP_PREINC || op == OP_PREDEC) &&
@@ -593,7 +583,7 @@ int reduce(opcode_t op, int n)
     }
 
 reduce_exit:
-    while (n--) freeval(stack[--stacktop]);
+    while (n--) freeval(popval());
     return val ? pushval(val) : 0;
 }
 
@@ -1396,7 +1386,7 @@ static Value *function_switch(int symbol, int n, const char *parent)
 }
 
 static ExprFunc *find_builtin_func(const char *name) {
-    return (ExprFunc *)binsearch((void*)name, (void*)functab,
+    return (ExprFunc *)bsearch((void*)name, (void*)functab,
 	sizeof(functab)/sizeof(ExprFunc), sizeof(ExprFunc), strstructcmp);
 }
 
@@ -1406,18 +1396,17 @@ static Value *do_function(int n /* number of operands (including func id) */)
     ExprFunc *funcrec = NULL;
     Macro *macro = NULL;
     BuiltinCmd *cmd = NULL;
-    const char *id = NULL, *old_command;
+    const char *old_command;
     STATIC_BUFFER(scratch);
     int i;
 
     val = opd(n);
-    id = val->name;
     n--;
 
     if (val->type == TYPE_FUNC) {
 	funcrec = valptr(val);
         old_command = current_command;
-        current_command = id;
+        current_command = val->name;
         errno = 0;
         val = function_switch(funcrec - functab, n, old_command);
 #if !NO_FLOAT
@@ -1442,8 +1431,8 @@ static Value *do_function(int n /* number of operands (including func id) */)
 	cmd = valptr(val);
 	if (cmd->macro)
 	    macro = (cmd->macro);
-    } else if (!(macro = find_macro(id))) {
-	eprintf("%s: no such function", id);
+    } else if (!(macro = find_hashed_macro(val->name, val->u.hash))) {
+	eprintf("%s: no such function", val->name);
 	return NULL;
     }
 
@@ -1454,9 +1443,9 @@ static Value *do_function(int n /* number of operands (including func id) */)
 
 	/* pass parameters by value, not by [pseudo]reference */
 	for (i = 1; i <= n; i++) {
-	    val = stack[stacktop-i];
+	    val = opd(i);
 	    if (val->type == TYPE_ID) {
-		stack[stacktop-i] = newSstr(Stringdup(valstr(val)));
+		opd(i) = newSstr(Stringdup(valstr(val)));
 		freeval(val);
 	    }
 	}
@@ -1627,16 +1616,16 @@ static int multiplicative_expr(Program *prog)
 {
     opcode_t op;
 
-    if (!unary_expr(prog)) return 0;
+    if (!unary_expr(prog, 0)) return 0;
     while (is_mult(*ip)) {
         op = *ip++;
-        if (!unary_expr(prog)) return 0;
+        if (!unary_expr(prog, op == '/')) return 0;
 	code_add(prog, op, 2);
     }
     return 1;
 }
 
-static int unary_expr(Program *prog)
+static int unary_expr(Program *prog, int is_rhs_div)
 {
     opcode_t op;
 
@@ -1651,12 +1640,12 @@ static int unary_expr(Program *prog)
 	    op = (ip[1] == '-') ? ++ip, OP_PREDEC : '-';
 	}
 	ip++;
-        if (!unary_expr(prog)) return 0;
+        if (!unary_expr(prog, 0)) return 0;
 	code_add(prog, op, 1);
         return 1;
 
     } else {
-        if (!primary_expr(prog)) return 0;
+        if (!primary_expr(prog, is_rhs_div)) return 0;
 
         if (*ip == '(') {
             /* function call expression */
@@ -1718,7 +1707,7 @@ static int unary_expr(Program *prog)
     }
 }
 
-static int primary_expr(Program *prog)
+static int primary_expr(Program *prog, int is_rhs_div)
 {
     const char *end;
     Value *val;
@@ -1746,6 +1735,13 @@ static int primary_expr(Program *prog)
         val = newid(ip, end - ip);
         ip = end;
 	code_add(prog, OP_PUSH, val);
+	if (is_rhs_div &&
+	    (keyword(val->name) || find_builtin_cmd(val->name) ||
+	    find_macro(val->name)))
+	{
+	    eprintf("warning: possibly missing '%%;' or ')' before /%s",
+		val->name);
+	}
     } else if (*ip == '$') {
         static int warned = 0;
         ++ip;

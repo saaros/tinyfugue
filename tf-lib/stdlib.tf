@@ -1,12 +1,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; TinyFugue - programmable mud client
-;;;; Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002 Ken Keys
+;;;; Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
 ;;;;
 ;;;; TinyFugue (aka "tf") is protected under the terms of the GNU
 ;;;; General Public License.  See the file "COPYING" for details.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-/set tf_stdlib_id=$Id: stdlib.tf,v 35000.81 2003/12/22 05:37:59 hawkeye Exp $
+/set tf_stdlib_id=$Id: stdlib.tf,v 35000.85 2004/02/18 06:34:28 hawkeye Exp $
 
 ;;; TF macro library
 
@@ -365,7 +365,7 @@
 
 
 ;; Proxy server connect hook
-/eval /def -iFp%{maxpri} -agG -hPROXY proxy_hook = /proxy_command
+/def -iFp'maxpri' -agG -hPROXY proxy_hook = /proxy_command
 
 /def -i proxy_command = \
     /proxy_connect%; \
@@ -408,73 +408,67 @@
 ; and undefine the hooks to avoid false positives later.  We must also create
 ; a disconnect hook to undefine the prompt hooks if we disconnect before the
 ; timeout, and have the timeout process undefine the disconnect hook.
-    /def -iFp%{maxpri} -n1 -w -hDISCONNECT = %cleanup%; \
+    /def -iFp'maxpri' -n1 -w -hDISCONNECT = %cleanup%; \
     /let cleanup=%cleanup%%; /purge -i #%?%; \
     /repeat -5 1 %cleanup
 
 
 ;; Default worldtype hook: tiny login format (for backward compatibility),
 ;; but do not change any flags.
-/eval \
-    /def -mglob -T{} -hLOGIN -iFp%{maxpri} ~default_login_hook = \
-        /~login_hook_tiny
+/def -mglob -T{} -hLOGIN -iFp'maxpri' ~default_login_hook = \
+    /~login_hook_tiny
 
 ;; Tiny hooks: login format, lp=off.
-/eval \
-    /def -mglob -T{tiny|tiny.*} -hWORLD -iFp%{maxpri} ~world_hook_tiny = \
-        /set lp=0%; \
-    /def -mglob -T{tiny|tiny.*} -hLOGIN -iFp%{maxpri} ~login_hook_tiny = \
-        /let _char=$${world_character}%%;\
-        /if (strchr(_char, ' ') >= 0) /let _char="%%_char"%%; /endif%%; \
-        /let _pass=$${world_password}%%;\
-        /if (strchr(_pass, ' ') >= 0) /let _pass="%%_pass"%%; /endif%%; \
-        /send connect %%_char %%_pass
+/def -mglob -T{tiny|tiny.*} -hWORLD -iFp'maxpri' ~world_hook_tiny = \
+    /set lp=0
+/def -mglob -T{tiny|tiny.*} -hLOGIN -iFp'maxpri' ~login_hook_tiny = \
+    /let _char=${world_character}%;\
+    /if (strchr(_char, ' ') >= 0) /let _char="%_char"%; /endif%; \
+    /let _pass=${world_password}%;\
+    /if (strchr(_pass, ' ') >= 0) /let _pass="%_pass"%; /endif%; \
+    /send connect %_char %_pass
 
 ;; Generic prompt-world hooks: lp=on.
-/eval \
-    /def -mglob -Tprompt -hWORLD -iFp%{maxpri} ~world_hook_prompt = \
-        /set lp=1
+/def -mglob -Tprompt -hWORLD -iFp'maxpri' ~world_hook_prompt = \
+    /set lp=1
 
 ;; LP/Diku/Aber/etc. hooks: login format, lp=on.
-/eval \
-    /def -mglob -T{lp|lp.*|diku|diku.*|aber|aber.*} -hWORLD -iFp%{maxpri} \
-    ~world_hook_lp = \
-        /set lp=1%; \
-    /def -mglob -T{lp|lp.*|diku|diku.*|aber|aber.*} -hLOGIN -iFp%{maxpri} \
-    ~login_hook_lp = \
-        /send -- $${world_character}%%; \
-        /send -- $${world_password}
+/def -mglob -T{lp|lp.*|diku|diku.*|aber|aber.*} -hWORLD -iFp'maxpri' \
+  ~world_hook_lp = \
+    /set lp=1
+/def -mglob -T{lp|lp.*|diku|diku.*|aber|aber.*} -hLOGIN -iFp'maxpri' \
+  ~login_hook_lp = \
+    /send -- ${world_character}%; \
+    /send -- ${world_password}
 
 ;; Hooks for LP-worlds with telnet end-of-prompt markers:
 ;; login format, lp=off.
-/eval \
-    /def -mglob -T{lpp|lpp.*} -hWORLD -iFp%{maxpri} ~world_hook_lpp = \
-        /set lp=0%; \
-    /def -mglob -T{lpp|lpp.*} -hLOGIN -iFp%{maxpri} ~login_hook_lpp = \
-        /send -- $${world_character}%%; \
-        /send -- $${world_password}
+/def -mglob -T{lpp|lpp.*} -hWORLD -iFp'maxpri' ~world_hook_lpp = \
+    /set lp=0
+/def -mglob -T{lpp|lpp.*} -hLOGIN -iFp'maxpri' ~login_hook_lpp = \
+    /send -- ${world_character}%; \
+    /send -- ${world_password}
 
 
 ;; Telnet hooks: login format, lp=on, and localecho=on (except at
 ;; password prompt).
-/eval \
-    /def -mglob -T{telnet|telnet.*} -hCONNECT -iFp%{maxpri} ~con_hook_telnet =\
-        /def -w -qhPROMPT -n1 -iFp$[maxpri-1] = /localecho on%;\
-    /def -mglob -T{telnet|telnet.*} -hWORLD -iFp%{maxpri} ~world_hook_telnet =\
-        /set lp=1%; \
-    /def -mglob -T{telnet|telnet.*} -hLOGIN -iFp%{maxpri} ~login_hook_telnet =\
-        /def -n1 -ip%{maxpri} -mregexp -w -h'PROMPT [Ll]ogin: *$$' \
-        ~telnet_login_$${world_name} = \
-            /send -- $$${world_character}%%; \
-        /def -n1 -ip%{maxpri} -mregexp -w -h'PROMPT [Pp]assword: *$$' \
-        ~telnet_pass_$${world_name} = \
-            /send -- $$${world_password}%; \
-    /def -mregexp -T'^telnet(\\\\..*)?$$' -h'PROMPT [Pp]assword: *$$' \
-    -iFp$[maxpri-1] ~telnet_passwd = \
-        /@test prompt(strcat({PL}, {P0}))%%;\
-        /def -w -q -hSEND -i -n1 -Fp%{maxpri} ~echo_$${world_name} =\
-            /localecho on%%;\
-        /localecho off
+/def -mglob -T{telnet|telnet.*} -hCONNECT -iFp'maxpri' ~con_hook_telnet =\
+    /def -w -qhPROMPT -n1 -iFp'maxpri-1' = /localecho on
+/def -mglob -T{telnet|telnet.*} -hWORLD -iFp'maxpri' ~world_hook_telnet =\
+    /set lp=1
+/def -mglob -T{telnet|telnet.*} -hLOGIN -iFp'maxpri' ~login_hook_telnet =\
+    /def -n1 -ip'maxpri' -mregexp -w -h'PROMPT login: *$$' \
+      ~telnet_login_${world_name} = \
+	/send -- $${world_character}%; \
+    /def -n1 -ip'maxpri' -mregexp -w -h'PROMPT password: *$$' \
+      ~telnet_pass_${world_name} = \
+	/send -- $${world_password}
+/def -mregexp -T'^telnet(\\..*)?$' -h'PROMPT password: *$' -iFp'maxpri-1' \
+  ~telnet_passwd = \
+    /@test prompt(strcat({PL}, {P0}))%;\
+    /def -w -q -hSEND -i -n1 -Fp'maxpri' ~echo_${world_name} =\
+	/localecho on%;\
+    /localecho off
 
 
 ;; /telnet <host> [<port>]
@@ -588,7 +582,7 @@
 ;;;; Replace
 ;;; syntax:  /replace <old> <new> <string>
 
-/def -i replace = /result replace({1}, {2}, {3})
+/def -i replace = /result replace({1}, {2}, {-2})
 
 
 ;;; /loadhist [-lig] [-w<world>] file
@@ -605,9 +599,9 @@
 ;; until successful.
 
 /def -i retry = \
-    /def -mglob -p%{maxpri} -F -h'CONFAIL $(/escape ' %1) *' ~retry_fail_%1 =\
+    /def -mglob -p'maxpri' -F -h'CONFAIL $(/escape ' %1) *' ~retry_fail_%1 =\
         /repeat -%{2-60} 1 /connect %1%;\
-    /def -mglob -1 -p%{maxpri} -F -h'CONNECT $(/escape ' %1)' ~retry_succ_%1=\
+    /def -mglob -n1 -p'maxpri' -F -h'CONNECT $(/escape ' %1)' ~retry_succ_%1=\
         /undef ~retry_fail_%1%;\
     /connect %1
 

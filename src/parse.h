@@ -1,38 +1,36 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: parse.h,v 35004.38 2003/08/31 03:18:33 hawkeye Exp $ */
+/* $Id: parse.h,v 35004.44 2004/02/17 06:44:41 hawkeye Exp $ */
 
 #ifndef PARSE_H
 #define PARSE_H
 
 /* keywords: must be sorted and numbered sequentially */
 typedef enum {
-    BREAK = 0200, DO, DONE, ELSE, ELSEIF, ENDIF,
-    EXIT, IF, RESULT, RETURN, TEST, THEN, WHILE
+    BREAK = 0200, DO, DONE, ELSE, ELSEIF, ENDIF, EXIT, IF,
+    LET, RESULT, RETURN, SET, SETENV, TEST, THEN, WHILE
 } keyword_id_t;
 
-#define OPNUM_MASK	0x00FF
+#define OPNUM_MASK	0x007F
 
 /* opcode type */
-#define OPT_MASK	0x3000
+#define OPT_MASK	0x7000
 #define OPT_EXPR	0x0000	/* must be zero, for ascii operators */
 #define OPT_SUB		0x1000
 #define OPT_JUMP	0x2000
 #define OPT_CTRL	0x3000
 
-/* opcode result type */
-#define OPR_MASK	0x8000
-#define OPR_NONE	0x0000	/* (for resultless operators) */
-#define OPR_PUSH	0x0000	/* push (for SUB operators) */
-#define OPR_APP		0x8000	/* append (for SUB operators) */
-#define OPR_FALSE	0x8000	/* negate result (for CTRL operators) */
-#define OPR_TRUE	0x0000	/* normal result (for CTRL operators) */
-#define OPR_SIDE	0x8000	/* has side effect (for EXPR operators) */
+/* opcode flag */
+#define OPF_MASK	0x0080
+#define OPF_0		0x0000
+#define OPF_APP		0x0080	/* append (SUB & PSUB) */
+#define OPF_NEG		0x0080	/* negate result (CTRL); negate cond (JUMP) */
+#define OPF_SIDE	0x0080	/* has side effect (EXPR) */
 
 /* opcode arg type */
 #define OPA_MASK	0x0700
@@ -43,18 +41,22 @@ typedef enum {
 #define OPA_VALP	0x0400
 #define OPA_CMDP	0x0500
 
+#define OPLABEL_MASK	(OPNUM_MASK | OPF_MASK)
+
 #define op_type(op)			((op) & OPT_MASK)
 #define op_type_is(op, type)		(op_type(op) == OPT_##type)
 #define op_arg_type(op)			((op) & OPA_MASK)
 #define op_arg_type_is(op, type)	(op_arg_type(op) == OPA_##type)
-#define op_is_push(op)			(((op) & OPR_MASK) == OPR_PUSH)
-#define op_is_append(op)		(((op) & OPR_MASK) == OPR_APP)
-#define op_has_sideeffect(op)		(((op) & OPR_MASK) == OPR_SIDE)
+#define op_is_push(op)			(((op) & OPF_MASK) != OPF_APP)
+#define op_is_append(op)		(((op) & OPF_MASK) == OPF_APP)
+#define op_has_sideeffect(op)		(((op) & OPF_MASK) == OPF_SIDE)
 #define opnum(op)			((op) & OPNUM_MASK)
+#define opnum_eq(op1, op2)		(opnum(op1) == opnum(op2))
+#define oplabel(op)			(oplabel_table[(op) & OPLABEL_MASK])
 
 typedef enum {
-#define defopcode(name, num, optype, argtype, resulttype) \
-    OP_##name = (num | OPT_##optype | OPA_##argtype | OPR_##resulttype),
+#define defopcode(name, num, optype, argtype, flag) \
+    OP_##name = (num | OPT_##optype | OPA_##argtype | OPF_##flag),
 #include "opcodes.h"
     OP_ENDOFLIST = 0xffff
 } opcode_t;
@@ -90,7 +92,10 @@ typedef struct Arg {
     int start, end;
 } Arg;
 
-extern void        parse_error(Program *prog, const char *type, const char *expect);
+extern void        parse_error(Program *prog, const char *type,
+		    const char *expect);
+extern void        parse_error_suggest(Program *prog, const char *type,
+		    const char *expect, const char *suggestion);
 extern int         varsub(Program *prog, int sub_warn, int in_expr);
 extern int         exprsub(Program *prog, int in_expr);
 extern int         dollarsub(Program *prog, String **destp);
@@ -112,6 +117,9 @@ extern int         reduce(opcode_t op, int n);
 
 extern struct Value *newptr_fl(void *ptr, const char *file, int line);
 
+#define popval() \
+    ((Value*)stack[--stacktop])
+
 /* get Nth operand from stack (counting backwards from top) */
 #define opd(N)          (stack[stacktop-(N)])
 #define opdfloat(N)     valfloat(opd(N))	/* float value of opd(N) */
@@ -125,8 +133,10 @@ extern struct Value *newptr_fl(void *ptr, const char *file, int line);
 
 #define comefrom(prog, from, to) \
     do { \
-	(prog)->code[(from)].arg.i = (to); \
-	(prog)->code[(to)].comefroms++; \
+	if (from >= 0) { \
+	    (prog)->code[(from)].arg.i = (to); \
+	    (prog)->code[(to)].comefroms++; \
+	} \
     } while (0)
 
 #define ip  (prog->sip)	/* XXX */
@@ -140,6 +150,6 @@ extern String *argstring;		/* command argument text */
 extern keyword_id_t block;		/* type of current expansion block */
 extern int condition;			/* checked by /if and /while */
 extern int evalflag;			/* flag: should we evaluate? */
-extern const char *oplabel[];		/* opcode labels */
+extern const char *oplabel_table[];	/* opcode labels */
 
 #endif /* PARSE_H */

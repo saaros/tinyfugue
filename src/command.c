@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: command.c,v 35004.121 2003/12/10 09:12:02 hawkeye Exp $";
+static const char RCSid[] = "$Id: command.c,v 35004.126 2004/02/17 06:44:35 hawkeye Exp $";
 
 
 /*****************************************************************
@@ -141,7 +141,7 @@ STATIC_STRING(limit_no_match, "% No lines matched criteria.", 0);
 
 BuiltinCmd *find_builtin_cmd(const char *name)
 {
-    return (BuiltinCmd *)binsearch((void*)name, (void*)cmd_table,
+    return (BuiltinCmd *)bsearch((void*)name, (void*)cmd_table,
         NUM_CMDS, sizeof(BuiltinCmd), cstrstructcmp);
 }
 
@@ -275,17 +275,17 @@ static struct Value *handle_localecho_command(String *args, int offset)
 
 static struct Value *handle_set_command(String *args, int offset)
 {
-    return newint(do_set(args, offset, FALSE, FALSE));
+    return newint(command_set(args, offset, FALSE, FALSE));
 }
 
 static struct Value *handle_setenv_command(String *args, int offset)
 {
-    return newint(do_set(args, offset, TRUE, FALSE));
+    return newint(command_set(args, offset, TRUE, FALSE));
 }
 
 static struct Value *handle_let_command(String *args, int offset)
 {
-    return newint(do_set(args, offset, FALSE, TRUE));
+    return newint(command_set(args, offset, FALSE, TRUE));
 }
 
 /********
@@ -293,6 +293,24 @@ static struct Value *handle_let_command(String *args, int offset)
  ********/
 static struct Value *handle_quit_command(String *args, int offset)
 {
+    int yes = 0;
+    int c;
+    startopt(args, "y");
+    while ((c = nextopt(NULL, NULL, NULL, &offset))) {
+        if (c == 'y') yes++;
+        else return shareval(val_zero);
+    }
+
+    if (interactive && !yes) {
+	fix_screen();
+	puts("Really quit tf? (y/N)\r");
+	fflush(stdout);
+	c = igetchar();
+	redraw();
+	if (lcase(c) != 'y') {
+	    return shareval(val_zero);
+	}
+    }
     quit_flag = 1;
     return shareval(val_one);
 }
@@ -792,8 +810,8 @@ static struct Value *handle_hilite_command(String *args, int offset)
         return shareval(val_zero);
     } else {
         split_args(args->data + offset);
-        return newint(add_macro(new_macro(pattern, "", NULL, NULL, body,
-            hpri, 100, F_HILITE, 0, matching)));
+        return newint(add_new_macro(pattern, "", NULL, NULL, body,
+            hpri, 100, F_HILITE, 0, matching));
     }
 }
 
@@ -810,8 +828,8 @@ static struct Value *handle_gag_command(String *args, int offset)
         return shareval(val_zero);
     } else {
         split_args(args->data + offset);
-        return newint(add_macro(new_macro(pattern, "", NULL, NULL, body,
-            gpri, 100, F_GAG, 0, matching)));
+        return newint(add_new_macro(pattern, "", NULL, NULL, body,
+            gpri, 100, F_GAG, 0, matching));
     }
 }
 
@@ -828,8 +846,8 @@ static struct Value *handle_trigpc_command(String *args, int offset)
     if ((pri = numarg(&ptr)) < 0) return shareval(val_zero);
     if ((prob = numarg(&ptr)) < 0) return shareval(val_zero);
     split_args(ptr);
-    return newint(add_macro(new_macro(pattern, "", NULL, NULL, body, pri,
-        prob, 0, 0, matching)));
+    return newint(add_new_macro(pattern, "", NULL, NULL, body, pri,
+        prob, 0, 0, matching));
 }
 
 
@@ -870,12 +888,9 @@ static struct Value *handle_unbind_command(String *args, int offset)
 
 static struct Value *handle_bind_command(String *args, int offset)
 {
-    Macro *spec;
-
     if (!(args->len - offset)) return shareval(val_zero);
     split_args(args->data + offset);
-    spec = new_macro(NULL, print_to_ascii(pattern)->data, NULL, NULL, body,
-        0, 100, 0, FALSE, 0);
-    return newint(add_macro(spec));
+    return newint(add_new_macro(NULL, print_to_ascii(pattern)->data,
+	NULL, NULL, body, 0, 100, 0, FALSE, 0));
 }
 

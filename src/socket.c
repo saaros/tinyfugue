@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: socket.c,v 35004.238 2003/12/22 18:32:32 hawkeye Exp $";
+static const char RCSid[] = "$Id: socket.c,v 35004.242 2004/02/17 06:44:42 hawkeye Exp $";
 
 
 /***************************************************************
@@ -106,6 +106,11 @@ struct sockaddr_in {
 #endif
 
 #include NETDB_H
+
+#if !HAVE_GAI_STRERROR || !defined(AI_NUMERICHOST) || !defined(EAI_SERVICE)
+  /* System's implementation is incomplete.  Avoid it. */
+# undef HAVE_GETADDRINFO
+#endif
 
 #define TF_EAI_ADDRFAMILY  -1 /* address family for hostname not supported */
 #define TF_EAI_AGAIN       -2 /* temporary failure in name resolution */
@@ -1324,26 +1329,24 @@ static const char *printai(struct addrinfo *ai)
     static char buf[1024];
     static char hostbuf[INET6_ADDRSTRLEN+1];
     const void *hostaddr = NULL;
-    unsigned short port;
+    unsigned short port = 0;
+    const char *host = NULL;
+
     switch (ai->ai_family) {
 	case AF_INET:
 	    hostaddr = &((struct sockaddr_in*)ai->ai_addr)->sin_addr;
 	    port = ((struct sockaddr_in*)ai->ai_addr)->sin_port;
+	    host = inet_ntoa(*(struct in_addr*)hostaddr);
 	    break;
 #if ENABLE_INET6
 	case AF_INET6:
 	    hostaddr = &((struct sockaddr_in6*)ai->ai_addr)->sin6_addr;
 	    port = ((struct sockaddr_in6*)ai->ai_addr)->sin6_port;
+	    host = inet_ntop(ai->ai_family, hostaddr, hostbuf, sizeof(hostbuf));
 	    break;
 #endif
     }
-    sprintf(buf, port ? "%s %d" : "%s",
-#if ENABLE_INET6
-	inet_ntop(ai->ai_family, hostaddr, hostbuf, sizeof(hostbuf)),
-#else
-	inet_ntoa(*(struct in_addr*)hostaddr),
-#endif
-	ntohs(port));
+    sprintf(buf, port ? "%s %d" : "%s", host ? host : "?", ntohs(port));
     return buf;
 }
 
@@ -2296,8 +2299,10 @@ int handle_fake_recv_function(String *string, const char *world,
     }
 
     sock = (!world || !*world) ? xsock : find_sock(world);
-    if (!sock) {
-        eprintf("No current socket.");
+    if (!sock ||
+	xsock->constate <= SS_CONNECTING || xsock->constate >= SS_ZOMBIE)
+    {
+        eprintf("no open world %s", world ? world : "");
 	return 0;
     }
     if (raw)
@@ -2686,6 +2691,9 @@ static int handle_socket_input(const char *simbuffer, int simlen)
 #endif
     fd_set readfds;
     int count, n, received = 0;
+
+    if (xsock->constate <= SS_CONNECTING || xsock->constate >= SS_ZOMBIE)
+	return 0;
 
     if (xsock->prompt && !(xsock->flags & SOCKPROMPT)) {
         /* We assumed last text was a prompt, but now we have more text, so

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: output.c,v 35004.184 2003/12/22 18:32:31 hawkeye Exp $";
+static const char RCSid[] = "$Id: output.c,v 35004.190 2004/02/17 06:44:40 hawkeye Exp $";
 
 
 /*****************************************************************
@@ -627,7 +627,7 @@ const char *get_keycode(const char *name)
 {
     Keycode *keycode;
 
-    keycode = (Keycode *)binsearch(name, keycodes, N_KEYCODES,
+    keycode = (Keycode *)bsearch(name, keycodes, N_KEYCODES,
         sizeof(Keycode), cstrstructcmp);
     return !keycode ? NULL : keycode->code ? keycode->code : "";
 }
@@ -1150,6 +1150,7 @@ int redraw(void)
     alert_pos = 0;
     alert_len = 0;
     if (visual) {
+	top_margin = bottom_margin = -1;  /* force scroll region reset */
         clr();
     } else {
         bufputnc('\n', lines);     /* scroll region impossible */
@@ -1765,6 +1766,7 @@ void fix_screen(void)
         clear_line();
 #ifdef SCREEN
     } else {
+	top_margin = bottom_margin = -1;  /* force scroll region reset */
         setscroll(1, lines);
         clear_lines(ystatus, lines);
         xy(1, ystatus);
@@ -2391,7 +2393,7 @@ void reset_outcount(Screen *screen)
 /* return TRUE if okay to print */
 static int check_more(Screen *screen)
 {
-    if (!screen->paused && more && !no_tty && screen->outcount-- <= 0)
+    if (!screen->paused && more && interactive && screen->outcount-- <= 0)
     {
         /* status bar is updated in oflush() to avoid scroll region problems */
         screen->paused = 1;
@@ -3092,6 +3094,7 @@ String *decode_attr(const String *src, attr_t attrs)
     return dst;
 
 decode_attr_error:
+    dst->links++;
     Stringfree(dst);
     return NULL;
 }

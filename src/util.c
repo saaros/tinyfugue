@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: util.c,v 35004.120 2003/12/17 19:50:03 hawkeye Exp $";
+static const char RCSid[] = "$Id: util.c,v 35004.123 2004/02/17 06:44:43 hawkeye Exp $";
 
 
 /*
@@ -120,7 +120,9 @@ void init_util1(void)
     tf_ctype['d']  |= IS_KEYSTART;  /* do, done */
     tf_ctype['e']  |= IS_KEYSTART;  /* else, elseif, endif, exit */
     tf_ctype['i']  |= IS_KEYSTART;  /* if */
+    tf_ctype['l']  |= IS_KEYSTART;  /* let */
     tf_ctype['r']  |= IS_KEYSTART;  /* return, result */
+    tf_ctype['s']  |= IS_KEYSTART;  /* set */
     tf_ctype['t']  |= IS_KEYSTART;  /* then, test */
     tf_ctype['w']  |= IS_KEYSTART;  /* while */
 
@@ -128,7 +130,9 @@ void init_util1(void)
     tf_ctype['D']  |= IS_KEYSTART;  /* DO, DONE */
     tf_ctype['E']  |= IS_KEYSTART;  /* ELSE, ELSEIF, ENDIF, EXIT */
     tf_ctype['I']  |= IS_KEYSTART;  /* IF */
+    tf_ctype['L']  |= IS_KEYSTART;  /* LET */
     tf_ctype['R']  |= IS_KEYSTART;  /* RETURN, RESULT */
+    tf_ctype['S']  |= IS_KEYSTART;  /* SET */
     tf_ctype['T']  |= IS_KEYSTART;  /* THEN, TEST */
     tf_ctype['W']  |= IS_KEYSTART;  /* WHILE */
 
@@ -201,7 +205,7 @@ int enum2int(const char *str, long val, String *vec, const char *msg)
     if (val >= 0 && val < i) return val;
     SStringcpy(buf, &vec[0]);
     for (i = 1; vec[i].data; ++i) Sappendf(buf, ", %S", &vec[i]);
-    eprintf("valid values for %s are: %S", msg, buf);
+    eprintf("invalid %s value \"%s\".  Valid values are: %S", msg, str, buf);
     return -1;
 }
 

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: signals.c,v 35004.53 2003/11/30 20:03:21 hawkeye Exp $";
+static const char RCSid[] = "$Id: signals.c,v 35004.55 2004/02/17 06:44:42 hawkeye Exp $";
 
 /* Signal handling, core dumps, job control, and interactive shells */
 
@@ -223,7 +223,7 @@ static void handle_interrupt(void)
     VEC_CLR(SIGINT, &pending_signals);
     /* so status line macros in setup_screen() aren't gratuitously killed */
 
-    if (no_tty)
+    if (!interactive)
         die("Interrupt, exiting.", 0);
     reset_kbnum();
     fix_screen();
@@ -267,7 +267,7 @@ static RETSIGTYPE core_handler(int sig)
     setsighandler(sig, core_handler);  /* restore handler (POSIX) */
 
     if (sig == SIGQUIT) {
-	if (!no_tty) {
+	if (interactive) {
 	    fix_screen();
 #if DISABLE_CORE
 	    puts("SIGQUIT received.  Exit?  (y/n)\r");
@@ -313,7 +313,7 @@ static RETSIGTYPE core_handler(int sig)
 #endif /* DISABLE_CORE */
     }
 
-    if (!no_tty) {
+    if (interactive) {
 	close_all();
         fputs("\nPress any key.\r\n", stderr);
         fflush(stderr);
@@ -420,7 +420,7 @@ int shell(const char *cmd)
     cbreak_noecho_mode();
     if (result == -1) {
         eprintf("%s", strerror(errno));
-    } else if (shpause && !no_tty) {
+    } else if (shpause && interactive) {
         puts("\r\n% Press any key to continue tf.\r");
         igetchar();
     }

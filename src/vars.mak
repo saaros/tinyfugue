@@ -1,7 +1,7 @@
-# $Id: vars.mak,v 1.46 2003/12/12 11:53:06 hawkeye Exp $
+# $Id: vars.mak,v 1.48 2004/02/17 06:44:44 hawkeye Exp $
 ########################################################################
 #  TinyFugue - programmable mud client
-#  Copyright (C) 1998, 1999, 2002 Ken Keys
+#  Copyright (C) 1998, 1999, 2002, 2003, 2004 Ken Keys
 #
 #  TinyFugue (aka "tf") is protected under the terms of the GNU
 #  General Public License.  See the file "COPYING" for details.
@@ -16,7 +16,7 @@
 # Predefined variables:
 #   O - object file suffix (e.g., "o" or "obj")
 
-TFVER=50b3
+TFVER=50b4
 
 SOURCE = command.c dstring.c expand.c help.c history.c keyboard.c \
   macro.c main.c malloc.c output.c process.c search.c signals.c \

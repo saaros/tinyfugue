@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: history.c,v 35004.100 2003/12/10 02:20:37 hawkeye Exp $";
+static const char RCSid[] = "$Id: history.c,v 35004.102 2004/02/17 06:44:37 hawkeye Exp $";
 
 
 /****************************************************************
@@ -26,7 +26,7 @@ static const char RCSid[] = "$Id: history.c,v 35004.100 2003/12/10 02:20:37 hawk
 #include "socket.h"		/* xworld() */
 #include "world.h"
 #include "output.h"		/* update_status_field(), etc */
-#include "macro.h"		/* add_macro(), new_macro() */
+#include "macro.h"		/* add_new_macro() */
 #include "commands.h"
 #include "keyboard.h"		/* keybuf */
 #include "variable.h"		/* set_var_by_*() */
@@ -577,8 +577,8 @@ int is_watchname(History *hist, String *line)
     if (nmatches < wnmatch) return 0;
     Sprintf(buf, "{%.*s}*", end - line->data, line->data);
     oprintf("%% Watchname: gagging \"%S\"", buf);
-    return add_macro(new_macro(buf->data, "", NULL, NULL, "", gpri, 100, F_GAG,
-	0, MATCH_GLOB));
+    return add_new_macro(buf->data, "", NULL, NULL, "", gpri, 100, F_GAG,
+	0, MATCH_GLOB);
 }
 
 int is_watchdog(History *hist, String *line)

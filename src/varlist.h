@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: varlist.h,v 35000.59 2003/12/19 22:46:33 hawkeye Exp $ */
+/* $Id: varlist.h,v 35000.62 2004/02/17 06:44:44 hawkeye Exp $ */
 
 /* This keeps the constants and the array in the same place, so they can't
  * get out of sync.
@@ -68,6 +68,7 @@ varflag(VAR_hook,	"hook",		TRUE,		NULL)
 varint (VAR_hpri,	"hpri",		0,		NULL)
 varenum(VAR_iecho,	"iecho",	0,		NULL,	enum_mecho)
 varflag(VAR_insert,	"insert",	TRUE,		NULL)
+varflag(VAR_interactive,"interactive",	-1,		NULL)
 varpos (VAR_isize,	"isize",	3,		ch_visual)
 varflag(VAR_istrip,	"istrip",	FALSE,		NULL)
 varstr (VAR_kbnum,	"kbnum",	NULL,		NULL)
@@ -94,6 +95,7 @@ varenum(VAR_meta_esc,	"meta_esc",	META_NONPRINT,	NULL,	enum_meta)
 varflag(VAR_more,	"more",		FALSE,		tog_more)
 varstr (VAR_mprefix,	"mprefix",	"+",		NULL)
 varflag(VAR_oldslash,	"oldslash",	TRUE,		NULL)
+varflag(VAR_optimize,	"optimize",	TRUE,		NULL)
 varflag(VAR_pedantic,	"pedantic",	FALSE,		NULL)
 varstr (VAR_prompt_sec,	"prompt_sec",	NULL,		obsolete_prompt)
 varstr (VAR_prompt_usec,"prompt_usec",	NULL,		obsolete_prompt)

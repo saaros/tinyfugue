@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: variable.h,v 35004.28 2003/05/27 01:09:26 hawkeye Exp $ */
+/* $Id: variable.h,v 35004.31 2004/02/17 06:44:44 hawkeye Exp $ */
 
 #ifndef VARIABLE_H
 #define VARIABLE_H
@@ -43,8 +43,12 @@ extern Var *setvar(Var *var, const char *name, unsigned int hash, int type,
                           void *value, int exportflag);
 extern int  unsetvar(Var *var);
 extern void freevar(Var *var);
-extern int  do_set(String *args, int offset, int exportflag,
-			int localflag);
+extern char *spanvar(const char *start);
+extern char *spansetspace(const char *p);
+extern int  do_set(const char *name, unsigned int hash, String *value,
+	    int offset, int exportflag, int localflag);
+extern int  command_set(String *args, int offset, int exportflag,
+	    int localflag);
 extern Var *setlocalvar(const char *name, int type, void *value);
 extern void pushvarscope(struct List *level);
 extern void popvarscope(void);

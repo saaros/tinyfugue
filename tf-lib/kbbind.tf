@@ -126,6 +126,48 @@
 /~keyseq f11		^[[23~
 /~keyseq f12		^[[24~
 
+; Function with Ctrl, for versions of xterm with modifyCursorKeys
+/~keyseq ctrl_f1	^[[11;5~	^[O5P
+/~keyseq ctrl_f2	^[[12;5~	^[O5Q
+/~keyseq ctrl_f3	^[[13;5~	^[O5R
+/~keyseq ctrl_f4	^[[14;5~	^[O5S
+/~keyseq ctrl_f5	^[[15;5~
+/~keyseq ctrl_f6	^[[17;5~
+/~keyseq ctrl_f7	^[[18;5~
+/~keyseq ctrl_f8	^[[19;5~
+/~keyseq ctrl_f9	^[[20;5~
+/~keyseq ctrl_f10	^[[21;5~
+/~keyseq ctrl_f11	^[[23;5~
+/~keyseq ctrl_f12	^[[24;5~
+
+; Function with Meta, for versions of xterm with modifyCursorKeys
+/~keyseq meta_f1	^[[11;3~	^[O3P
+/~keyseq meta_f2	^[[12;3~	^[O3Q
+/~keyseq meta_f3	^[[13;3~	^[O3R
+/~keyseq meta_f4	^[[14;3~	^[O3S
+/~keyseq meta_f5	^[[15;3~
+/~keyseq meta_f6	^[[17;3~
+/~keyseq meta_f7	^[[18;3~
+/~keyseq meta_f8	^[[19;3~
+/~keyseq meta_f9	^[[20;3~
+/~keyseq meta_f10	^[[21;3~
+/~keyseq meta_f11	^[[23;3~
+/~keyseq meta_f12	^[[24;3~
+
+; Function with Shift, for versions of xterm with modifyCursorKeys
+/~keyseq shift_f1	^[[11;2~	^[O2P
+/~keyseq shift_f2	^[[12;2~	^[O2Q
+/~keyseq shift_f3	^[[13;2~	^[O2R
+/~keyseq shift_f4	^[[14;2~	^[O2S
+/~keyseq shift_f5	^[[15;2~
+/~keyseq shift_f6	^[[17;2~
+/~keyseq shift_f7	^[[18;2~
+/~keyseq shift_f8	^[[19;2~
+/~keyseq shift_f9	^[[20;2~
+/~keyseq shift_f10	^[[21;2~
+/~keyseq shift_f11	^[[23;2~
+/~keyseq shift_f12	^[[24;2~
+
 ; other
 /~keyseq tab		^I
 
@@ -223,6 +265,18 @@
 /def -i key_meta_down	= /key_esc_down
 /def -i key_meta_left	= /key_esc_left
 /def -i key_meta_right	= /key_esc_right
+/def -i key_meta_f1	= /key_esc_f1
+/def -i key_meta_f2	= /key_esc_f2
+/def -i key_meta_f3	= /key_esc_f3
+/def -i key_meta_f4	= /key_esc_f4
+/def -i key_meta_f5	= /key_esc_f5
+/def -i key_meta_f6	= /key_esc_f6
+/def -i key_meta_f7	= /key_esc_f7
+/def -i key_meta_f8	= /key_esc_f8
+/def -i key_meta_f9	= /key_esc_f9
+/def -i key_meta_f10	= /key_esc_f10
+/def -i key_meta_f11	= /key_esc_f11
+/def -i key_meta_f12	= /key_esc_f12
 
 ;; bindings to cycle through sockets that don't depend on working arrow keys
 /def -ib'^[{'	= /dokey_socketb
