@@ -552,7 +552,7 @@ addworld()
           <[4mexpression[24m> should not rely on values that may be changed by other 
           macros that match the same [1mtrigger[22;0m or [1mhook[22;0m.  
           Default: no [1mexpression[22;0m (i.e., always match if the [1mtrigger[22;0m or [1mhook[22;0m 
-          matches).  
+          matches).  See: [1mexpressions[22;0m.  
 
 #/def -t
 #-t
@@ -562,7 +562,7 @@ addworld()
           be enclosed in quotes (", ', or `); if so, all occurances of quotes 
           and '\' within the pattern must be preceded with a '\'.  The [1mpattern[22;0m 
           matching style is determined by the [1m-m[22;0m option, or defaults to the 
-          value of [1m%{matching}[22;0m.  Default: no [1mtrigger[22;0m.  
+          value of [1m%{matching}[22;0m.  Default: no [1mtrigger[22;0m.  See: [1mtriggers[22;0m.  
 
 #/def -h
 #-h
@@ -574,27 +574,27 @@ addworld()
           omitted.  If quotes are used, then all occurances of quotes and '\' 
           within the option argument must be preceded with a '\'.  The [1mpattern[22;0m 
           matching style is determined by the [1m-m[22;0m option, or defaults to the 
-          value of [1m%{matching}[22;0m.  Default: no [1mhook[22;0m.  
+          value of [1m%{matching}[22;0m.  Default: no [1mhook[22;0m.  See: [1mhooks[22;0m.  
 
 #/def -b
 #-b
   -b<[4mbind[24m> 
           The [1mmacro[22;0m will be called when the string <[4mbind[24m> is typed at the 
           keyboard.  Default: no binding.  The <[4mbind[24m> string may contain the 
-          special codes described under "[1mbind[22;0m".  
+          special codes described under "[1mbind[22;0m".  See: [1mkeys[22;0m.  
 
 #/def -B
 #-B
   -B<[4mkeyname[24m> 
           Deprecated.  The [1mmacro[22;0m will be called when the key named <[4mkeyname[24m> 
           (according to the termcap database) is typed at the keyboard.  
-          Default: none.  See "[1mkeybindings[22;0m".  
+          Default: none.  See "[1mkeys[22;0m".  
 
 #/def -p
 #-p
   -p<[4mpri[24m> 
           Sets the [1mpriority[22;0m of the [1mmacro[22;0m's [1mtrigger[22;0m or [1mhook[22;0m to <[4mpri[24m>.  Default: 
-          1.  See also: [1mfall-thru[22;0m.  
+          1.  See also: [1mfall-thru[22;0m.  See: [1mpriority[22;0m, [1m/def -F[22;0m.  
 
 #/def -c
 #-c
@@ -628,7 +628,7 @@ addworld()
           Set [1mattribute[22;0m(s) (normal, [1mgag[22;0m, norecord, underline, reverse, flash, 
           dim, bold, bell, [1mhilite[22;0m, Color) used to display text matched by the 
           [1mtrigger[22;0m or to display the default message of a [1mhook[22;0m.  Default: 
-          normal.  See "[1mattributes[22;0m".  
+          normal.  See: [1mattributes[22;0m.  
 
 #/def -P
 #-P
@@ -649,7 +649,7 @@ addworld()
           If <[4mpart[24m> is omitted it defaults to 0.  If <[4mpart[24m> is a number and 
           there are multiple matches in the text, the <[4mattr[24m> will be applied 
           to all of the matches.  Implies [1m-m[22;0mregexp.  Only one [1m-P[22;0m option is 
-          allowed.  See "[1mattributes[22;0m".  
+          allowed.  See: [1mattributes[22;0m.  
 
 #/def -f
 #-f
@@ -741,13 +741,12 @@ addworld()
   [1m/DOKEY[22;0m <[4mname[24m>
   ____________________________________________________________________________
 
-  Executes the function of the edit key <[4mname[24m>.  Most of the edit key 
-  functions are not meaningful when the [1m/dokey[22;0m command is executed from the 
-  regular command line, but are intended to be called from a keybinding 
-  created with [1m/bind[22;0m or [1m/def[22;0m [1m-b[22;0m.  
+  Performs an action that is intended to be invoked from a [1mkeybinding[22;0m created 
+  with [1m/bind[22;0m or [1m/def -b[22;0m.  Most of the actions not meaningful or useful when 
+  the [1m/dokey[22;0m command is executed from the command line.  
 
 
-    Name          Default binding   Function
+    Name          Default binding   Action
     ----          ---------------   --------
 #bs
 #backspace
@@ -764,13 +763,13 @@ addworld()
 #
 
 #up
-    UP            (termcap), ^[[A   Cursor up
+    UP            (none)            Cursor up
 #down
-    DOWN          (termcap), ^[[B   Cursor down
+    DOWN          (none)            Cursor down
 #right
-    RIGHT         (termcap), ^[[C   Cursor right
+    RIGHT         [1mkey_right[22;0m         Cursor right
 #left
-    LEFT          (termcap), ^[[D   Cursor left
+    LEFT          [1mkey_left[22;0m          Cursor left
 #
 
 #newline
@@ -814,17 +813,17 @@ addworld()
 #pause
     PAUSE         ^S                Pause screen
 #page
-    PAGE          ^I                Scroll 1 page forward ("[1mmore[22;0m")
+    PAGE          [1mkey_tab[22;0m           Scroll 1 page forward ("[1mmore[22;0m")
 #pageback
-    PAGEBACK                        Scroll 1 page backward ("[1mmore[22;0m")
+    PAGEBACK      (none)            Scroll 1 page backward ("[1mmore[22;0m")
 #hpage
     HPAGE         ^X]               Scroll half page forward ("[1mmore[22;0m")
 #hpageback
     HPAGEBACK     ^X[               Scroll half page backward ("[1mmore[22;0m")
 #pgup
-    PGDN          PgDn              [1m/dokey_hpage[22;0m
+    PGDN          [1mkey_pgdn[22;0m          [1m/dokey_hpage[22;0m
 #pgup
-    PGUP          PgUp              [1m/dokey_hpageback[22;0m
+    PGUP          [1mkey_pgup[22;0m          [1m/dokey_hpageback[22;0m
 #line
     LINE          ^[^N              Scroll forward 1 line ("[1mmore[22;0m")
 #lineback
@@ -838,24 +837,24 @@ addworld()
 #
 
   A default of "(stty)" means the key sequence is that used by your terminal 
-  driver.  A default of "(termcap)" means the key sequence is that given in 
-  the termcap entry for [1m%TERM[22;0m.  
+  driver.  A default of the form "key_<[4mname[24m>" means the key named <[4mname[24m> (see 
+  [1mkeybindings[22;0m).  
 
-  The return value of [1m/dokey[22;0m depends on the function.  The movement and 
-  deletion functions return the new position of the cursor.  The return values 
-  of other functions aren't very useful.  
+  The return value of [1m/dokey[22;0m depends on the action.  The movement and deletion 
+  actions return the new position of the cursor; the scrolling actions return 
+  the number of lines scrolled.  The return values of other actions aren't 
+  very useful.  
 
   See "[1mkeybindings[22;0m" for a complete list of keybindings.  
 
   Example: 
 
-    [1m/bind[22;0m ^? = [1m/dokey[22;0m BSPC
-    [1m/bind[22;0m ^H = [1m/dokey[22;0m BSPC
+    [1m/bind[22;0m ^B = [1m/dokey[22;0m RECALLB
+    [1m/bind[22;0m ^F = [1m/dokey[22;0m RECALLF
 
-  Both ^H and DEL could then be used to do backspacing (this is already done 
-  by default).  
+  Then, ^B and ^F could be used to recall input backwards and forwards.  
 
-  See: [1mkeybindings[22;0m, [1mgeneral[22;0m, [1msockets[22;0m, [1mhistory[22;0m, [1m/bind[22;0m, [1m/more[22;0m 
+  See: [1mkeybindings[22;0m, [1m/bind[22;0m, [1msockets[22;0m, [1mhistory[22;0m, [1m/more[22;0m 
 
 &/echo
 &/_echo
@@ -1184,17 +1183,20 @@ eval()
   -c<[4mN[24m>   Repeat the -< or -> option <[4mN[24m> times.  
   -l      ignored.  
   -q      quiet: jump to the last screenful of text, instead of starting at 
-          the same location you were at the last time the [1msocket[22;0m was current.  
+          the same location you were at the last time the [1msocket[22;0m was in the 
+          [1mforeground[22;0m.  
 
-  [1m/fg[22;0m returns 0 on failure, nonzero otherwise.  
+  If successful, [1m/fg[22;0m returns nonzero and invokes the WORLD [1mhook[22;0m; otherwise, it 
+  returns 0.  
 
-  If successful, [1m/fg[22;0m invokes the WORLD [1mhook[22;0m, which by default echoes 
-  "---- World <[4mworld[24m> ----" or "---- No world ----".  
+  By default, [1m/fg[22;0m draws a dividing line between old and new text.  If you 
+  would prefer no dividing line, or clearing old text, this can be configured 
+  with [1m%textdiv[22;0m.  
 
   [1m/bg[22;0m puts all [1msockets[22;0m in the [1mbackground[22;0m, and is equivalent to [1m/fg[22;0m -n.  By 
   default, [1m/bg[22;0m is bound to the ^] [1mkey[22;0m (not ESC, which is ^[) 
 
-  See: [1m/connect[22;0m, [1mworlds[22;0m, [1msockets[22;0m 
+  See: [1m/connect[22;0m, [1mworlds[22;0m, [1msockets[22;0m, [1m%textdiv[22;0m, [1m%textdiv_str[22;0m.  
 
 &finger.tf
 &/finger
@@ -3016,7 +3018,6 @@ Quoter Commands
 
   See: [1m/recall[22;0m, [1m/quote[22;0m, [1mhistory[22;0m 
 
-&sleep
 &delay
 &/repeat
 
@@ -3089,7 +3090,7 @@ Quoter Commands
       [1m/def[22;0m foo_loop = \
           [1m/if[22;0m (condition) \
               /do_stuff%; \
-              [1m/repeat[22;0m -5 1 /foo%; \
+              [1m/repeat[22;0m -5 1 /foo_loop%; \
           [1m/else[22;0m
               /after_stuff%; \
           [1m/endif[22;0m
@@ -4413,9 +4414,9 @@ copyright
   PCRE regexp package is Copyright (C) 1997-1999 University of Cambridge 
 
   For bug reports, questions, suggestions, etc., I can be reached by email at 
-  hawkeye@tf.tcp.com.  For problems specific to the OS/2 version, contact 
-  Andreas Sahlbach at asa@stardiv.de.  Please see "[1mproblems[22;0m" before sending a 
-  bug report.  
+  hawkeye@tcp.com.  For problems specific to the OS/2 version, contact Andreas 
+  Sahlbach at asa@stardiv.de.  Please see "[1mproblems[22;0m" before sending a bug 
+  report.  
 
   This program is free software; you can redistribute it and/or modify it 
   under the terms of the [1mGNU General Public License[22;0m as published by the Free 
@@ -5157,7 +5158,7 @@ Information functions
           negative, it reverse-scrolls abs(<[4mi[24m>) lines of text from the window 
           buffer into the window from the top.  If abs(<[4mi[24m>) is larger than one 
           screenful, the actual scrolling is skipped, and only the end result 
-          is displayed.  
+          is displayed.  Returns the number of lines actually scrolled.  
 #moresize
 #moresize()
   [1mmoresize[22m([[4ms1[24m [, [4ms2[24m]]) 
@@ -5855,8 +5856,14 @@ Default keybindings
 
   Here, and throughout the TF documentation, the notation "^X" means the 
   character generated by typing the X key while holding the CTRL key.  Also, 
-  "^[" can be more easily typed just by pressing the ESC key.  Keys with "*" 
-  in the "Meaning" column make use of [1mkbnum[22;0m (see [1mbelow[22;0m).  
+  "^[" can be more easily typed just by pressing the ESC key.  [1m/Def -b[22;0m and 
+  [1m/bind[22;0m accept the ^X notation as well as "\<[4mnumber[24m>" notation, where <[4mnumber[24m> 
+  is the octal, hexadecimal, or decimal number of the character's ascii value. 
+  For example, the escape character can be given in any of these forms: ^[, 
+  \033, \0x1B, or \27.  
+
+  In the tables below, keys with "*" in the "Meaning" column make use of [1mkbnum[22;0m 
+  (see [1mbelow[22;0m).  
 
 Named keys
 
@@ -5909,7 +5916,7 @@ Unnamed key sequences
   "^F"    [1m/dokey[22;0m RIGHT            *cursor right
   "^G"    [1m/beep[22;0m 1                  beep
   "^H"    (internal)              *backspace
-  "^I"    [1m/dokey[22;0m page             *scroll forward 1 screenful
+  "^I"    [1m/key_tab[22;0m                 perform the function assigned to the TAB key
   "^J"    (internal)               execute current line
   "^K"    [1m/dokey_deol[22;0m              delete to end of line
   "^L"    [1m/dokey[22;0m redraw            redraw (not clear) screen
@@ -5935,7 +5942,7 @@ Unnamed key sequences
   "^[^E"  [1m/kb_expand_line[22;0m          [1mexpand[22;0m current input line in place
   "^[^H"  [1m/kb_backward_kill_word[22;0m  *delete backward word (punctuation-delimited)
   "^[^I"  [1m/complete[22;0m                complete current word, depending on context
-  "^[^L"  [1m/dokey[22;0m clear             clear screen
+  "^[^L"  [1m/dokey[22;0m clear             clear screen (can be refilled with [1mscrollback[22;0m)
   "^[^N"  [1m/dokey[22;0m line             *scroll forward one line
   "^[^P"  [1m/dokey[22;0m lineback         *scroll back one line
   "^[^W"  [1m/complete worldname[22;0m      complete TF world name
@@ -5968,10 +5975,22 @@ Unnamed key sequences
   "^[p"   [1m/dokey[22;0m searchb          *search backward input [1mhistory[22;0m
   "^[u"   [1m/kb_upcase_word[22;0m         *convert word to upper case
   "^[v"   [1m/@test[22;0m insert:=!insert   toggle insert mode
+  "^[w"   /to_active_or_prev_world [1m/fg[22;0m next active world, or previous world
   "^[{"   [1m/fg[22;0m -<                  *[1mforeground[22;0m previous [1msocket[22;0m
   "^[}"   [1m/fg[22;0m ->                  *[1mforeground[22;0m next [1msocket[22;0m
   "^[^?"  [1m/kb_backward_kill_word[22;0m  *delete backward word (punctuation-delimited)
   "^]"    [1m/bg[22;0m                      put all [1msockets[22;0m in [1mbackground[22;0m
+
+Other useful commands not bound by default
+
+  Command                 Meaning
+  -------                 -------
+  [1m/dokey[22;0m_bspc             *delete character
+  [1m/dokey[22;0m UP               *cursor up
+  [1m/dokey[22;0m DOWN             *cursor down
+  [1m/dokey[22;0m RECALLB          *recall input backward
+  [1m/dokey[22;0m RECALLF          *recall input forward
+  [1m/dokey[22;0m NEWLINE           execute input line
 
 #terminal
 #tty
@@ -5985,7 +6004,7 @@ Terminal keys
       ---   ----   -------
       ^C    int    generates a SIGINT [1msignal[22;0m.
       ^\    quit   generates a SIGQUIT [1msignal[22;0m.
-      ^Z    susp   suspends the TF process
+      ^Z    susp   [1msuspends[22;0m the TF process
 
   When TF starts, it disables the terminal driver's "stop" and "start" keys 
   (typically ^S and ^Q), so they are available for binding within TF.  
@@ -6000,11 +6019,17 @@ Using keys
   Named Key table above, but only the ones with default meanings are listed in 
   the table; the rest are available for custom definitions.  
 
-  Keys with names of the form "ctrl_<[4mname[24m>" correspond to holding down the 
-  CTRL key while pressing the <[4mname[24m> key.  However, many terminal emulators do 
-  not support these keys in a way that TF can use (i.e., they do not generate 
-  unique character sequences for these keys).  They are supported by recent 
-  versions of xterm with the modifyCursorKeys resource.  
+  On recent versions of xterm with the modifyCursorKeys resource, tf can 
+  recognize when the CTRL, SHIFT, or META modifier is held down while pressing 
+  the editor keys (insert, delete, home, end, pgdn, pgup) or arrow keys, and 
+  calls /key_ctrl_<[4mname[24m>, /key_shift_<[4mname[24m>, or /key_meta_<[4mname[24m>, 
+  respectively.  Additionally, by default, each /key_meta_<[4mname[24m> calls the 
+  corresponding /key_esc_<[4mname[24m>, so, for example, pressing META-Left has the 
+  same effect as ESC Left.  If you use another terminal emulator that 
+  generates unique character sequences for ctrl-, shift-, and meta-modified 
+  keys, you can bind those sequences to call the corresponding 
+  /key_<[4mmod[24m>_<[4mname[24m> (and send them to the [1mauthor[22;0m for inclusion in a future 
+  release of tf).  
 
   [1mTF[22m tries to put the keypad in "application mode", which on many terminals 
   will make the keypad keys generate unique character sequences if Num Lock is 
@@ -6045,10 +6070,25 @@ Mapping Named Keys to functions
   /kb_* command that key_<[4mname[24m> calls.  There are several advantages to this 
   method: you do not need to know what characters are generated by the special 
   keys on your keyboard, and they will work on multiple terminals.  For 
-  example, if you want PgUp and PgDn to scroll a half screen instead of a full 
-  screen, you should redefine "/def key_pgdn = /dokey_hpage" and "/def 
-  key_pgup = /dokey_hpageback".  If you want Insert to invoke your own macro 
-  /foo, you should redefine "/def key_insert = /foo".  
+  example, if you want Insert to invoke your own macro /foo, you should 
+  redefine "/def key_insert = /foo".  
+
+  Examples of popular alternatives to the standard key definitions: 
+
+  Make PgUp and PgDn to scroll a half screen instead of a full screen: 
+
+      /def key_pgdn = /dokey_hpage
+      /def key_pgup = /dokey_hpageback
+
+  Make up and down arrow keys perform movement only: 
+
+      /def key_up = /dokey_up
+      /def key_down = /dokey_down
+
+  Make up and down arrow keys perform input recall only: 
+
+      /def key_up = /dokey_recallb
+      /def key_down = /dokey_recallf
 
   Before version 5.0, [1m/def -B[22;0m was the only way to bind a named key to a [1mmacro[22;0m. 
   This, however, has been superceded by the use of "key_<[4mname[24m>" macros.  
@@ -6703,8 +6743,9 @@ options
 
 patterns
 
-  Patterns are used in [1mtriggers[22;0m, [1mhooks[22;0m, [1m/purge[22;0m, [1m/list[22;0m, and [1m/recall[22;0m.  There are 
-  four styles of pattern matching available: 
+  Patterns are used throughout TF, including [1mtriggers[22;0m, [1mhooks[22;0m, [1m/purge[22;0m, [1m/list[22;0m, 
+  [1m/limit[22;0m, [1m/recall[22;0m, and [1mexpressions[22;0m.  There are four styles of pattern matching 
+  available: 
   simple  target string and pattern string must be identical 
   glob    similar to shell filename patterns 
   regexp  perl-compatible regular expressions 
@@ -7056,10 +7097,8 @@ Notes.
 
       Outside a character class, in the default matching mode, the circumflex 
       character is an assertion which is true only if the current matching 
-      point is at the start of the subject string.  If the <[4mstartoffset[24m> 
-      argument of [1mpcre_exec()[22m is non-zero, circumflex can never match.  Inside 
-      a character class, circumflex has an entirely different meaning (see 
-      below).  
+      point is at the start of the subject string.  Inside a character class, 
+      circumflex has an entirely different meaning (see below).  
 
       Circumflex need not be the first character of the pattern if a number of 
       alternatives are involved, but it should be the first thing in each 
@@ -7228,10 +7267,9 @@ Notes.
 
       2.  It sets up the subpattern as a capturing subpattern (as defined 
       above).  When the whole pattern matches, that portion of the subject 
-      string that matched the subpattern is passed back to the caller via the 
-      <[4movector[24m> argument of [1mpcre_exec()[22m.  Opening parentheses are counted from 
-      left to right (starting from 1) to obtain the numbers of the capturing 
-      subpatterns.  
+      string that matched the subpattern is remembered for the TinyFugue %Pn 
+      substitutions.  Opening parentheses are counted from left to right 
+      (starting from 1) to obtain the numbers of the capturing subpatterns.  
 
       For example, if the string "the red king" is matched against the pattern 
 
@@ -8178,20 +8216,39 @@ virtual windows
   command that performs the scrolling, and the "keys" column indicates the 
   default keystrokes that perform the scrolling.  
 
-  scroll       ....forward....   ...backward....
-  amount       [1m/dokey[22;0m  keys      [1m/dokey[22;0m     keys
-  -----------  ------- -------   ---------- ----
-  normal       [1mPgDn[22;0m    PgDn      [1mPgUp[22;0m       PgUp
-  1/2 screen   [1mhpage[22;0m   ^X] ^[h   [1mhpageback[22;0m  ^X[
-  1 screen     [1mpage[22;0m    ^X} TAB   [1mpageback[22;0m   ^X{
-  1 line       [1mline[22;0m    ^[^N      [1mlineback[22;0m   ^[^P
+      scroll       ....forward....   ...backward....
+      amount       [1m/dokey[22;0m  keys      [1m/dokey[22;0m     keys
+      -----------  ------- -------   ---------- ----
+      normal       [1mPgDn[22;0m    PgDn      [1mPgUp[22;0m       PgUp
+      1/2 screen   [1mhpage[22;0m   ^X] ^[h   [1mhpageback[22;0m  ^X[
+      1 screen     [1mpage[22;0m    ^X} TAB   [1mpageback[22;0m   ^X{
+      1 line       [1mline[22;0m    ^[^N      [1mlineback[22;0m   ^[^P
 
   Note that the line-scrolling keys may be typable as meta-ctrl-n and 
   meta-ctrl-p (depending on your [1m%meta_esc[22;0m and [1mlocale[22;0m).  "Normal" scrolling is 
-  1/2 screenful by default.  If you prefer PgUp and PgDn to scroll a full 
-  screen instead of a half, you should not redefine the bindings; instead, you 
-  should redefine "/def dokey_pgdn = /dokey_page" and "/def dokey_pgup = 
-  /dokey_pageback".  
+  a full screenful by default.  If you prefer PgUp and PgDn to scroll a half 
+  screen instead, you should redefine 
+
+      [1m/def[22;0m key_pgdn = /dokey_hpage
+      [1m/def[22;0m key_pgup = /dokey_hpageback
+
+  Some terminal emulators do not send PgUp and PgDn keys to tf.  If you have 
+  such a terminal, you may wish to 
+
+      [1m/bind[22;0m ^F = /dokey_page
+      [1m/bind[22;0m ^B = /dokey_pageback
+
+  If you're an emacs user, you may want to bind 
+
+      [1m/bind[22;0m ^V = /dokey_page
+      [1m/bind[22;0m ^[v = /dokey_pageback
+
+  (or, "/load kb-emacs.tf").  
+
+  A virtual screen can be redraw with ^L, or cleared with ^[^L (ESC ctrl-L).  
+  Once lines are cleared from a screen, they can be redrawn by scrolling back 
+  to them.  They are not automatically redrawn when you hide the screen and 
+  then unhide it again.  
 
   Some [1mhooks[22;0m need to print messages that do not make sense at the bottom of 
   the [1mforeground[22;0m window (as they did before version 5.0).  For example, if you 
@@ -8217,14 +8274,15 @@ virtual windows
 
 signals
 
-  TF catches several signals from the OS and handles them specially: 
+  TF catches several signals from the operating system and handles them 
+  specially: 
   SIGINT (normally generated by typing ^C) 
           Aborts any running [1mmacro[22;0m or blocking [1mhostname resolution[22;0m or [1mconnect[22;0m, 
           and offers a menu of choices:
           C) continue tf; X) exit; T) disable triggers; P) kill processes.  
   SIGQUIT (normally generated by typing ^\) 
           Prompts the user to quit.  If the answer is 'y', TF will dump a core 
-          file if the OS supports it, and exit.  
+          file if configured to do so, and exit.  
   SIGTERM 
           Calls the SIGTERM [1mhook[22;0m, and then exits TF.  
   SIGHUP (normally generated when the terminal disconnects) 
@@ -8304,10 +8362,10 @@ sockets
     * By using a [1m/connect[22;0m or [1m/world[22;0m command.  
     * By "[1mbamfing[22;0m" through a portal between muds (see "[1mbamf[22;0m").  
 
-  You can switch between [1mforeground[22;0m [1msockets[22;0m with the [1m/fg[22;0m command; the next 
-  [1msocket[22;0m and previous [1msocket[22;0m keys, which default to ESC-left and ESC-right, 
-  and can be modified with [1m/bind[22;0m; and, when the file world-q.tf is loaded, 
-  with the ESC-w keybinding.  
+  You can switch between [1mforeground[22;0m [1msockets[22;0m with the [1m/fg[22;0m command; the [1m/dokey[22;0m 
+  socketb and [1m/dokey[22;0m socketf commands, which by default are [1mbound[22;0m to ESC-left 
+  and ESC-right; and with the ESC-w [1mkeybinding[22;0m, which switches to the next 
+  world with activity, or if there is none, to the last world you were on.  
 
   If the [1m%{quitdone}[22;0m flag is on, and you disconnect from all worlds (either 
   with [1m/dc[22;0m or because the other end of the [1msocket[22;0m's network connection 
@@ -8825,7 +8883,7 @@ Special global variables
 
 #max_trig
 #%max_trig
-  [1mmax_trig[22m=100 
+  [1mmax_trig[22m=1000 
           Maximum number of [1mtriggers[22;0m allowed in a 10 second period.  When this 
           value is exceeded, a message is printed and [1m%borg[22;0m is automatically 
           turned off to disable triggers.  This helps prevent infinite trigger 
@@ -8958,12 +9016,11 @@ Special global variables
 
 #refreshtime
 #%refreshtime
-  [1mrefreshtime[22m=250000 
+  [1mrefreshtime[22m=100000 
           The delay (in microseconds) for redisplaying your keyboard input 
           after it is overwritten by incoming text in [1mnon-visual[22;0m mode.  If you 
-          you are on a slow modem, you may wish to increase this delay.  On a 
-          fast connection, you may wish to decrease it.  The default is 250000 
-          (1/4 second).  
+          have a slow connection between you and tf, you may wish to increase 
+          this delay.  The default is 100000 (1/10 second).  
 
 #scroll
 #%scroll
@@ -9039,6 +9096,40 @@ Special global variables
   [1mtelopt[22m=off 
           (flag) Display [1mtelnet[22;0m option negotiations (for debugging purposes).  
           See also: [1m%emulation[22;0m=debug, [1mdebugging[22;0m.  
+
+#textdiv
+#separator
+#separator.tf
+#divider
+#dividing line
+#%textdiv
+  [1mtextdiv[22m=on 
+          (flag) When you bring a socket into the foreground, TF can help you 
+          distinguish old text that has been displayed before from new text 
+          that is being displayed for the first time by printing a dividing 
+          line between the old and new text or by clearing the old text.  The 
+          setting of [1m%textdiv[22;0m controls this behavior: 
+          "off" (0): 
+                  Never print a divider or clear the screen; just draw old and 
+                  new text normally.  
+          "on" (1): 
+                  Print a [1m%textdiv_str[22;0m divider between old and new text.  The 
+                  divider is temporary: when it scrolls off the screen, or the 
+                  screen is backgrounded, it disappears forever.  
+          "always" (2): 
+                  Print a [1m%textdiv_str[22;0m divider after the old text even if 
+                  there is no new text.  
+          "clear" (3): 
+                  Clear (don't redraw) all old text before displaying new 
+                  text.  Old text can be manually redisplayed by [1mscrolling 
+                  back[22;0m.  
+          See also: [1m%textdiv_str[22;0m, [1m/fg[22;0m.  
+
+#textdiv_str
+#%textdiv_str
+  [1mtextdiv_str[22m====== 
+          The dividing line printed between old and new text when bringing a 
+          socket to the foreground.  See [1m%textdiv[22;0m.  
 
 #tfhost
 #%tfhost
@@ -10057,9 +10148,6 @@ triggers
 &tintin
 &/tick
 &/watch
-&worldqueue
-&world-q
-&esc-w
 &utilities
 
 utilities
@@ -10099,8 +10187,6 @@ utilities
   tr.tf   [1m/tr[22;0m: character translation 
   watch.tf 
           [1m/watch[22;0m: Watch for a particular player.  
-  world-q.tf 
-          Keep track of active worlds.  
 
   There are also other files, not listed here.  
 

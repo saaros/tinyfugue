@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: expand.c,v 35004.194 2003/12/11 02:06:19 hawkeye Exp $";
+static const char RCSid[] = "$Id: expand.c,v 35004.195 2003/12/12 11:07:48 hawkeye Exp $";
 
 
 /********************************************************************
@@ -214,40 +214,34 @@ struct Value *handle_eval_command(String *args, int offset)
     return_user_result();
 }
 
-/* A builtin command was explicitly called; execute it. */
-static int execute_builtin(BuiltinCmd *cmd, String *args, int offset)
-{
-    Value *result;
-    current_command = cmd->name;
-    result = ((*cmd->func)(args, offset));
-    set_user_result(result);
-    return 1;
-}
-
 /* A command with the same name as a builtin was called; execute the macro if
- * there is one, otherwise execute the builtin. */
-static int execute_command(BuiltinCmd *cmd, String *args, int offset)
+ * there is one and builtin was not explicitly required, otherwise execute
+ * the builtin. */
+static int execute_command(BuiltinCmd *cmd, String *args, int offset,
+    int is_builtin)
 {
-    Value *result;
-    current_command = cmd->name;
-    if (cmd->macro)
+    if (!is_builtin && cmd->macro) {
+	current_command = cmd->name;
 	return do_macro(cmd->macro, args, offset, USED_NAME, NULL);
-    result = ((*cmd->func)(args, offset));
-    set_user_result(result);
-    return 1;
+    } else if (cmd->func) {
+	current_command = cmd->name;
+	set_user_result((*cmd->func)(args, offset));
+	return 1;
+    }
+    /* eprefix depends on current_command still referring to caller */
+    do_hook(H_NOMACRO, "!/%s is disabled in this copy of tf", "%s", cmd->name);
+    return 0;
 }
 
 /* A command with a name not matching a builtin was called.  Call the macro. */
-static int execute_macro(const char *name, String *args, int offset,
-    const char *old_command)
+static int execute_macro(const char *name, String *args, int offset)
 {
     Macro *macro;
-    current_command = name;
     if (!(macro = find_macro(name))) {
-        current_command = old_command;  /* for eprefix() */
         do_hook(H_NOMACRO, "!%s: no such command or macro", "%s", name);
         return 0;
     }
+    current_command = name;
     return do_macro(macro, args, offset, USED_NAME, NULL);
 }
 
@@ -310,13 +304,13 @@ int handle_command(String *cmd_line)
             eprintf("%s: not a builtin command", name);
             error++;
         } else {
-	    error += !execute_builtin(cmd, cmd_line, offset);
+	    error += !execute_command(cmd, cmd_line, offset, TRUE);
 	}
     } else {
         if ((cmd = find_builtin_cmd(name))) {
-	    error += !execute_command(cmd, cmd_line, offset);
+	    error += !execute_command(cmd, cmd_line, offset, FALSE);
         } else {
-	    error += !execute_macro(name, cmd_line, offset, old_command);
+	    error += !execute_macro(name, cmd_line, offset);
 	}
     }
 
@@ -555,22 +549,12 @@ Value *prog_interpret(Program *prog, int in_expr)
 
 	case OP_BUILTIN:
 	case OP_BUILTIN | OPR_FALSE:
-	    /* no_arg and str were set by OP_ARG */
-	    cmd = prog->code[cip].arg.cmd;
-	    old_cmd = execute_start(&str);    /*XXX optimize: needn't dup buf */
-	    execute_builtin(cmd, str, 0);
-	    execute_end(old_cmd, !(op & OPR_FALSE), str);
-	    if (no_arg) Stringtrunc(buf, 0);
-	    user_result_is_set = 1;
-	    setup_next_io();
-	    break;
-
 	case OP_COMMAND:
 	case OP_COMMAND | OPR_FALSE:
 	    /* no_arg and str were set by OP_ARG */
 	    cmd = prog->code[cip].arg.cmd;
 	    old_cmd = execute_start(&str);    /*XXX optimize: needn't dup buf */
-	    execute_command(cmd, str, 0);
+	    execute_command(cmd, str, 0, opnum(op) == OP_BUILTIN);
 	    execute_end(old_cmd, !(op & OPR_FALSE), str);
 	    if (no_arg) Stringtrunc(buf, 0);
 	    user_result_is_set = 1;
@@ -587,7 +571,7 @@ Value *prog_interpret(Program *prog, int in_expr)
 		str->data[i] = '\0';
 		do { ++i; } while (is_space(str->data[i]));
 	    }
-	    execute_macro(str->data, str, i, old_cmd);
+	    execute_macro(str->data, str, i);
 	    execute_end(old_cmd, !(op & OPR_FALSE), str);
 	    if (no_arg) Stringtrunc(buf, 0);
 	    user_result_is_set = 1;

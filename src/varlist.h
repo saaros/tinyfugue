@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: varlist.h,v 35000.57 2003/12/12 05:59:21 hawkeye Exp $ */
+/* $Id: varlist.h,v 35000.59 2003/12/19 22:46:33 hawkeye Exp $ */
 
 /* This keeps the constants and the array in the same place, so they can't
  * get out of sync.
@@ -83,7 +83,7 @@ varenum(VAR_matching,	"matching",	1,		NULL,	enum_match)
 varint (VAR_max_instr,	"max_instr",	1000000,	NULL)
 varint (VAR_max_kbnum,	"max_kbnum",	999,		NULL)
 varint (VAR_max_recur,	"max_recur",	100,		NULL)
-varint (VAR_max_trig,	"max_trig",	100,		NULL)
+varint (VAR_max_trig,	"max_trig",	1000,		NULL)
 #if HAVE_MCCP
 varflag(VAR_mccp,	"mccp",		TRUE,		NULL)
 #else
@@ -106,7 +106,7 @@ varstr (VAR_qprefix,	"qprefix",	NULL,		NULL)
 varflag(VAR_quiet,	"quiet",	FALSE,		NULL)
 varflag(VAR_quitdone,	"quitdone",	FALSE,		NULL)
 varflag(VAR_redef,	"redef",	TRUE,		NULL)
-varint (VAR_refreshtime,"refreshtime",	250000,		NULL)
+varint (VAR_refreshtime,"refreshtime",	100000,		NULL)
 varflag(VAR_scroll,	"scroll",	FALSE,		ch_visual)
 varflag(VAR_shpause,	"shpause",	TRUE,		NULL)
 varint (VAR_sigfigs,	"sigfigs",	15,		NULL)
@@ -121,6 +121,8 @@ varstr (VAR_stint_world,"status_int_world",NULL,	ch_status_int)
 varenum(VAR_sub,	"sub",		SUB_KEYWORD,	NULL,	enum_sub)
 varpos (VAR_tabsize,	"tabsize",	8,		NULL)
 varflag(VAR_telopt,	"telopt",	FALSE,		NULL)
+varenum(VAR_textdiv,	"textdiv",	TRUE,		NULL,	enum_textdiv)
+varstr (VAR_textdiv_str,"textdiv_str",	"=====",	NULL)
 varstr (VAR_tfhost,	"tfhost",	NULL,		NULL)
 varstr (VAR_time_format,"time_format",	"%H:%M",	NULL)
 varflag(VAR_virtscreen,	"virtscreen",	TRUE,		NULL)

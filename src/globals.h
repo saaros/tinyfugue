@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: globals.h,v 35000.59 2003/12/10 02:20:37 hawkeye Exp $ */
+/* $Id: globals.h,v 35000.60 2003/12/19 22:46:32 hawkeye Exp $ */
 
 #ifndef GLOBALS_H
 #define GLOBALS_H
@@ -212,6 +212,8 @@ enum Vars {
 #define sub		getintvar(VAR_sub)
 #define tabsize		getintvar(VAR_tabsize)
 #define telopt		getintvar(VAR_telopt)
+#define textdiv		getintvar(VAR_textdiv)
+#define textdiv_str	getstrvar(VAR_textdiv_str)
 #define tfhost		getstdvar(VAR_tfhost)
 #define time_format	getstrvar(VAR_time_format)
 #define virtscreen	getintvar(VAR_virtscreen)

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.h,v 35004.58 2003/12/10 02:20:37 hawkeye Exp $ */
+/* $Id: output.h,v 35004.59 2003/12/22 05:35:18 hawkeye Exp $ */
 
 #ifndef OUTPUT_H
 #define OUTPUT_H
@@ -66,7 +66,7 @@ extern int  selflush(void);
 extern void do_refresh(void);
 extern void logical_refresh(void);
 extern void physical_refresh(void);
-extern void reset_outcount(void);
+extern void reset_outcount(Screen *screen);
 extern void enscreen(Screen *screen, String *line);
 extern void screenout(String *line);
 extern void update_prompt(String *newprompt, int display);

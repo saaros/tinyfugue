@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: macro.c,v 35004.150 2003/12/11 02:04:33 hawkeye Exp $";
+static const char RCSid[] = "$Id: macro.c,v 35004.151 2003/12/20 01:28:32 hawkeye Exp $";
 
 
 /**********************************************
@@ -1225,7 +1225,7 @@ static void print_def(TFILE *file, String *buffer, Macro *p)
     if (p->quiet) Stringcat(buffer, "-q ");
     if (*p->name == '-') Stringcat(buffer, "- ");
     if (*p->name) Sappendf(buffer, "%s ", p->name);
-    if (p->body->len) Sappendf(buffer, "= %S", p->body);
+    if (p->body && p->body->len) Sappendf(buffer, "= %S", p->body);
 
     tfputline(buffer, file ? file : tfout);
     Stringfree(buffer);
@@ -1429,7 +1429,7 @@ const char *macro_body(const char *name)
     if (strncmp("world_", name, 6) == 0 && (body = world_info(NULL, name + 6)))
         return body;
     if (!(m = find_macro(name))) return NULL;
-    return m->body->data;
+    return m->body ? m->body->data : "";
 }
 
 
@@ -1554,7 +1554,7 @@ int find_and_run_matches(String *text, int hooknum, String **linep,
         if (!(
 	    (hooknum<0 && (
 		(borg && macro->body && (macro->prob > 0)) ||
-		(hilite && ((macro->attr & F_HILITE) || macro->nsubattr)) ||
+		(hilite && ((macro->attr & F_HWRITE) || macro->nsubattr)) ||
 		(gag && (macro->attr & F_GAG)))) ||
 	    (hooknum>=0 && VEC_ISSET(hooknum, &macro->hook))))
 	{
@@ -1692,18 +1692,28 @@ static void apply_attrs_of_match(
 {
     RegInfo *old, *ri;
 
-    if (text)
-        old = new_reg_scope(hooknum>=0 ? macro->hargs.ri : macro->trig.ri, text);
+    if (!hilite && !gag) return;
 
     /* Apply attributes (full and partial) to line. */
-    ri = macro->trig.ri;
-    line->attrs = adj_attr(line->attrs, macro->attr);
+    if (!hilite)
+	line->attrs = adj_attr(line->attrs, macro->attr & F_GAG);
+    else if (!gag)
+	line->attrs = adj_attr(line->attrs, macro->attr & ~F_GAG);
+    else
+	line->attrs = adj_attr(line->attrs, macro->attr);
+
+    ri = (hooknum>=0 ? macro->hargs : macro->trig).ri;
+
     if (hooknum<0 && macro->trig.mflag == MATCH_REGEXP && line->len && hilite
-	&& macro->nsubattr && ri->ovector[0] < ri->ovector[1])
+	&& macro->nsubattr)
     {
 	int i, x, offset = 0;
 	short start, end;
 	int *saved_ovector = NULL;
+
+	if (text)
+	    old = new_reg_scope(ri, text);
+
 	check_charattrs(line, line->len, 0, __FILE__, __LINE__);
 	do {
 	    for (x = 0; x < macro->nsubattr; x++) {
@@ -1720,8 +1730,9 @@ static void apply_attrs_of_match(
 		for (i = start; i < end; ++i)
 		    line->charattrs[i] =
 			adj_attr(line->charattrs[i], macro->subattr[x].attr);
-		offset = ri->ovector[1];
 	    }
+	    if (offset == ri->ovector[1]) break; /* offset wouldn't move */
+	    offset = ri->ovector[1];
 	    if (!saved_ovector) {
 		saved_ovector = ri->ovector;
 		ri->ovector = NULL;
@@ -1734,10 +1745,10 @@ static void apply_attrs_of_match(
 	    ri->ovector = saved_ovector;
 	}
 	(ri->Str = line)->links++;
-    }
 
-    if (text)
-        restore_reg_scope(old);
+	if (text)
+	    restore_reg_scope(old);
+    }
 }
 
 /* run a macro that has been selected by a trigger or hook */
@@ -1749,6 +1760,9 @@ static int run_match(
     int ran = 0;
     struct Sock *callingsock = xsock;
     RegInfo *old;
+
+    if (hooknum<0 && !borg)
+	return 0;
 
     if (hooknum<0 && text && max_trig > 0) {
 	static int bucket[2] = {0,0};
@@ -1785,7 +1799,7 @@ static int run_match(
                     hooknum>=0 ? " HOOK" : "TRIGGER",
                     *macro->name ? macro->name : numbuf);
             }
-            if (macro->body->len) {
+            if (macro->body && macro->body->len) {
                 do_macro(macro, text, 0, hooknum>=0 ? USED_HOOK : USED_TRIG, NULL);
                 ran += !macro->quiet;
             }

@@ -15,6 +15,9 @@
 
 /loaded __TFLIB__/kbfunc.tf
 
+;;; Don't give the warning if this file is reloaded
+/purge ~hook_redef_dokey
+
 ;;; /dokey functions.
 
 /def -i dokey_bspc	= /@test kbdel(kbpoint() - (kbnum?:1))
@@ -53,7 +56,6 @@
 /def -i dokey_flush	= /dokey flush
 /def -i dokey_selflush	= /dokey selflush
 
-; These two are intended to be redefined as the user wants
 /def -i dokey_pgup	= /dokey_pageback
 /def -i dokey_pgdn	= /dokey_page
 
@@ -136,3 +138,7 @@
 /def -i kb_down_or_recallf = \
     /if (kbpoint() == kblen()) /dokey_recallf%; /else /dokey_down%; /endif
 
+/eval /def -ip%maxpri -mregexp -h'REDEF macro (dokey|kb)_' ~hook_redef_dokey = \
+    /echo -e %%% Warning: redefining the %%2 macro is not recommended; \
+	instead, you should probably redefine the /key_* macro that calls it.  \
+	See /help keys.

@@ -4,17 +4,22 @@
 
 /def -i changes = \
     /let _ver=%{*-$(/ver)}%; \
-    /def ~changes = /~changes_out %%*%;\
-    /def ~changes_out = \
-;       ; look for the version number marking top of section
-        /if ({*} !/ ": %{_ver} *") /break%%; /endif%%;\
-        /echo - %%{-L}%%; \
-        /edit ~changes = /~changes_in %%%*%; \
-    /def ~changes_in = \
-        /echo - %%{-L}%%; \
-;       ; look for blank line marking end of section
-        /if ({*} =~ ":  :") \
-            /edit ~changes = /~changes_out %%%*%%; \
-        /endif%;\
-    /quote -S /~changes : '"%TFLIBDIR/CHANGES" :%; \
-    /purge ~changes*
+    /let _pat=%{_ver} *%; \
+    /let _name=%TFLIBDIR/CHANGES%; \
+    /let _fd=$[tfopen(_name, "r")]%; \
+    /let _line=%; \
+    /let _in=0%; \
+    /while (tfread(_fd, _line) >= 0) \
+	/if (!_in) \
+	    /if (_line =~ _ver | _line =/ _pat) \
+		/test _in := 1%; \
+		/test echo(_line)%; \
+	    /endif%; \
+	/else \
+	    /test echo(_line)%; \
+	    /if (_line =~ "") \
+		/test _in := 0%; \
+	    /endif%; \
+	/endif%; \
+    /done%; \
+    /test tfclose(_fd)

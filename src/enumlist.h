@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: enumlist.h,v 35000.16 2003/05/27 01:09:21 hawkeye Exp $ */
+/* $Id: enumlist.h,v 35000.18 2003/12/22 05:35:17 hawkeye Exp $ */
 
 /* It may not be easy to read, but it keeps the constants and the array in the
  * same place, so they can't get out of sync.
@@ -29,6 +29,15 @@ bicode(META_OFF,	STRING_LITERAL("off")),
 bicode(META_ON,		STRING_LITERAL("on")),
 bicode(META_NONPRINT,	STRING_LITERAL("nonprint")),
 bicode(META_COUNT,	STRING_NULL)
+};
+
+bicode(enum,		static String enum_textdiv[] = )
+{
+bicode(TEXTDIV_OFF,	STRING_LITERAL("off")),
+bicode(TEXTDIV_ON,	STRING_LITERAL("on")),
+bicode(TEXTDIV_ALWAYS,	STRING_LITERAL("always")),
+bicode(TEXTDIV_CLEAR,	STRING_LITERAL("clear")),
+bicode(TEXTDIV_COUNT,	STRING_NULL)
 };
 
 bicode(enum,		static String enum_emul[] = )

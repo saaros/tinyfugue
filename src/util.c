@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: util.c,v 35004.119 2003/12/10 02:56:50 hawkeye Exp $";
+static const char RCSid[] = "$Id: util.c,v 35004.120 2003/12/17 19:50:03 hawkeye Exp $";
 
 
 /*
@@ -710,6 +710,7 @@ int smatch(const char *pat, const char *str)
 int smatch_check(const char *pat)
 {
     int inword = FALSE;
+    const char *patstart = pat;
 
     while (*pat) {
         switch (*pat) {
@@ -728,16 +729,29 @@ int smatch_check(const char *pat)
                 eprintf("glob error: nested '{'");
                 return 0;
             }
+	    if (!(pat==patstart || is_space(pat[-1]) || strchr("*?]", pat[-1])))
+	    {
+                eprintf("glob error: '%c' before '{' can never match", pat[-1]);
+		return 0;
+	    }
             inword = TRUE;
             pat++;
             break;
         case '}':
+	    if (!(!pat[1] || is_space(pat[1]) || strchr("*?[", pat[1]))) {
+                eprintf("glob error: '%c' after '}' can never match", pat[1]);
+		return 0;
+	    }
             inword = FALSE;
             pat++;
             break;
         case '?':
         case '*':
         default:
+	    if (inword && is_space(*pat)) {
+                eprintf("glob error: space inside '{...}' can never match");
+		return 0;
+	    }
             pat++;
             break;
         }

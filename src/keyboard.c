@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: keyboard.c,v 35004.74 2003/12/03 20:07:11 hawkeye Exp $";
+static const char RCSid[] = "$Id: keyboard.c,v 35004.75 2003/12/22 05:35:17 hawkeye Exp $";
 
 /**************************************************
  * Fugue keyboard handling.
@@ -360,7 +360,7 @@ struct Value *handle_dokey_command(String *args, int offset)
 
 static int dokey_newline(void)
 {
-    reset_outcount();
+    reset_outcount(NULL);
     inewline();
     /* We might be in the middle of a macro (^M -> /dokey newline) now,
      * so we can't process the input now, or weird things will happen with

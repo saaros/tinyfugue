@@ -6,7 +6,7 @@
 ;;;; General Public License.  See the file "COPYING" for details.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-/set tf_stdlib_id=$Id: stdlib.tf,v 35000.80 2003/12/08 22:42:28 hawkeye Exp $
+/set tf_stdlib_id=$Id: stdlib.tf,v 35000.81 2003/12/22 05:37:59 hawkeye Exp $
 
 ;;; TF macro library
 
@@ -662,7 +662,8 @@
 ; Since the default page key (TAB) is not obvious to a new user, we display
 ; instructions when he executes "/more on" if he hasn't re-bound the key.
 /def -i more = \
-    /if ( {*} =/ "{on|1}" & ismacro("-ib'^I' = /dokey page") ) \
+    /if ( {*} =/ "{on|1}" & ismacro("-ib'^I' = /key_tab") & \
+      ismacro("-i key_tab = /dokey page") ) \
         /echo -e %% "More" paging enabled.  Use TAB to scroll.%;\
     /endif%; \
     /set more %*
@@ -726,6 +727,7 @@
 
 /eval /load -q %TFLIBDIR/kbbind.tf
 /eval /if (systype() =~ "os/2") /load -q %TFLIBDIR/kb-os2.tf%; /endif
+/eval /load -q %TFLIBDIR/world-q.tf
 /eval /load -q %TFLIBDIR/color.tf
 /eval /load -q %TFLIBDIR/changes.tf
 /eval /load -q %TFLIBDIR/at.tf

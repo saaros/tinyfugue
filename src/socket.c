@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: socket.c,v 35004.235 2003/12/12 08:15:43 hawkeye Exp $";
+static const char RCSid[] = "$Id: socket.c,v 35004.238 2003/12/22 18:32:32 hawkeye Exp $";
 
 
 /***************************************************************
@@ -1034,6 +1034,7 @@ static int fg_sock(Sock *sock, int quiet)
     depth++;
 
     if (!virtscreen) update_status_field(NULL, STAT_WORLD);
+    hide_screen(NULL);
 
     if (sock) {
 	if (sock->alert_id == alert_id) {
@@ -1047,6 +1048,7 @@ static int fg_sock(Sock *sock, int quiet)
             update_status_field(NULL, STAT_ACTIVE);
         }
         fg_screen = sock->world->screen;
+	unhide_screen(fg_screen); /* must do before hook which might oflush */
         world_hook((sock->constate >= SS_ZOMBIE) ?
             "---- World %s (dead) ----" : "---- World %s ----",
            sock->world->name);
@@ -1056,6 +1058,7 @@ static int fg_sock(Sock *sock, int quiet)
         if (sockmload) wload(sock->world);
     } else {
         fg_screen = default_screen;
+	unhide_screen(fg_screen);
         world_hook("---- No world ----", NULL);
 	switch_screen(quiet || !bg_output);
         update_prompt(NULL, 1);

@@ -11,6 +11,32 @@ If you have custom code to do any of the following in older versions,
   switch, or resuming from sh or suspend); scrollback; status line
   customizations; ...
 
+5.0 beta 3 (2003-12-22)
+----------
+Draws dividing line between old text and new text when you bring a world
+    window to the foreground.  Configurable with %textdiv and %textdiv_str.
+    Includes option to clear old text before drawing new text.
+    (Replaces separator.tf from 50a13).
+Once a screen is cleared, it stays clear:  hiding and unhiding it does not
+    redraw the cleared lines.  You must scroll back to redraw them.
+"ESC w" switches to next active world (i.e. world-q.tf is loaded by default).
+activity_status.tf just replaces "@active" with "activity" field, it does not
+    redefine the entire status bar.  activity_status2.tf moves and shrinks
+    other fields to make more room for the activity field.
+    Length of abbreviations can be limited by setting %status_abbr_max.
+Fixed handling of commands disabled by --disable-process or --disable-history.
+Increased default value of %max_trig.
+Decreased default value of %refreshtime.
+In recent versions of xterm, Meta-<NamedKey> acts like ESC <NamedKey>.
+Added /key_shift_{insert,delete,home,end,pgup,pgdn} (for recent xterms).
+Improved glob diagnostics.
+Improved/fixed handling of small terminals.
+moresize() returns number of lines scrolled.
+Fixed: bodyless triggers sometimes didn't apply attributes if borg=0. (40g3)
+Fixed: %max_trig could sometimes produce multiple warnings.
+Fixed L and R partial hilites on zero-width regexp matches.
+Some documentation improvements.
+
 5.0 beta 2 (2003-12-12)
 ----------
 Fixed: prompts were not displaying, and were making tf eat CPU time. (50b1)

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: output.c,v 35004.177 2003/12/11 00:06:33 hawkeye Exp $";
+static const char RCSid[] = "$Id: output.c,v 35004.184 2003/12/22 18:32:31 hawkeye Exp $";
 
 
 /*****************************************************************
@@ -644,7 +644,7 @@ void setup_screen(void)
     if (visual && (!can_have_visual)) {
         eprintf("Visual mode is not supported on this terminal.");
         set_var_by_id(VAR_visual, 0);  /* XXX recursion problem?? */
-    } else if (visual && (lines < 3 || columns < status_left + status_right)) {
+    } else if (visual && lines < 4) {
         eprintf("Screen is too small for visual mode.");
         set_var_by_id(VAR_visual, 0);  /* XXX recursion problem?? */
     }
@@ -656,7 +656,7 @@ void setup_screen(void)
 #ifdef SCREEN
     } else {
         prompt = fgprompt();
-        if (isize > lines - 2) set_var_by_id(VAR_isize, lines - 2);
+        if (isize > lines - 3) set_var_by_id(VAR_isize, lines - 3);
         ystatus = lines - isize;
 #if 0
         outcount = ystatus - 1;
@@ -685,6 +685,7 @@ void setup_screen(void)
 /* returns true if str passes filter */
 static int screen_filter(Screen *screen, String *str)
 {
+    if (str == textdiv_str) return 1; /* hack to make divider always visible */
     return (!screen->selflush || interesting(str))
 	&&
 	(!screen->filter_enabled ||
@@ -756,6 +757,8 @@ static int nextbot(Screen *screen)
 	    if (!screen->top)
 		screen->top = screen->bot;
 	    screen->viewsize++;
+	    if (screen->viewsize >= winlines())
+		screen->partialview = 0;
 	    return 1;
 	}
 	if (bot == screen->maxbot)
@@ -781,6 +784,8 @@ static int prevtop(Screen *screen)
 	if ((pl->visible = screen_filter(screen, pl->str))) {
 	    screen->top = prev;
 	    screen->viewsize++;
+	    if (screen->viewsize >= winlines())
+		screen->partialview = 0;
 	    return 1;
 	}
 	/* XXX optimize for pl's that share same ll */
@@ -792,21 +797,31 @@ static int prevtop(Screen *screen)
 /* Remove a line from the bottom.  bot always moves. */
 static int prevbot(Screen *screen)
 {
+    ListEntry *node;
     PhysLine *pl;
     int viewsize_changed = 0;
 
     if (!screen->bot) return 0;
     while (screen->bot->prev) {
-	pl = screen->bot->datum;
+	pl = (node = screen->bot)->datum;
 	/* visible flags are maintained in [top,bot], we needn't recalculate */
 	if (pl->visible) {
 	    /* line being knocked off was visible */
 	    screen->viewsize--;
-	    screen->nback_filtered++;
+	    screen->nback_filtered += !pl->tmp;
 	    viewsize_changed = 1;
 	}
 	screen->bot = screen->bot->prev;
-	screen->nback++;
+	screen->nback += !pl->tmp;
+
+	if (pl->tmp) {
+	    /* line being knocked off was temporary */
+	    if (screen->maxbot == node)
+		screen->maxbot = screen->maxbot->prev;
+	    unlist(node, &screen->pline);
+	    Stringfree(pl->str);
+	    pfree(pl, plpool, str);
+	}
 
 	/* stop if the viewsize has changed and we've found a new visible bot */
 	pl = screen->bot->datum;
@@ -820,18 +835,26 @@ static int prevbot(Screen *screen)
 static int nexttop(Screen *screen)
 {
     PhysLine *pl;
+    ListEntry *newtop;
     int viewsize_changed = 0;
 
     if (!screen->top) return 0;
     while (screen->top->next) {
 	pl = screen->top->datum;
+	newtop = screen->top->next;
 	/* visible flags are maintained in [top,bot], we needn't recalculate */
 	if (pl->visible) {
 	    /* line being knocked off was visible */
 	    screen->viewsize--;
 	    viewsize_changed = 1;
 	}
-	screen->top = screen->top->next;
+	if (pl->tmp) {
+	    /* line being knocked off was temporary */
+	    unlist(screen->top, &screen->pline);
+	    Stringfree(pl->str);
+	    pfree(pl, plpool, str);
+	}
+	screen->top = newtop;
 
 	/* stop if the viewsize has changed and we've found a new visible top */
 	pl = screen->top->datum;
@@ -896,6 +919,7 @@ static int screen_refilter(Screen *screen)
     (pl = screen->bot->datum)->visible = 1;
     /* recalculate top: start at bot and move top up until view is full */
     screen->viewsize = 1;
+    screen->partialview = 0;
     screen->top = screen->bot;
     want = winlines();
     while ((screen->viewsize < want) && prevtop(screen))
@@ -957,6 +981,7 @@ static int wraplines(String *ll, List *plines, int visible)
     do {
 	palloc(pl, PhysLine, plpool, str, __FILE__, __LINE__);
 	pl->visible = visible;
+	pl->tmp = 0;
 	(pl->str = ll)->links++;
 	pl->start = offset;
 	pl->indent = wrapflag && pl->start && wrapspace < Wrap ? wrapspace : 0;
@@ -976,6 +1001,7 @@ static void rewrap(Screen *screen)
     int wrapped, old_bot_visible, old_maxbot_visible;
 
     if (!screen->bot) return;
+    hide_screen(screen); /* delete temp lines */
 
     old_pline.head = screen->pline.head;
     old_pline.tail = screen->pline.tail;
@@ -1049,6 +1075,7 @@ static void rewrap(Screen *screen)
     }
 
     /* recalculate nback_filtered, nnew_filtered, viewsize, top */
+    /* XXX TODO: should honor screen->partialview */
     screen_refilter(screen);
 
     screen->scr_wrapsize = Wrap;
@@ -1069,11 +1096,15 @@ int redraw_window(Screen *screen, int already_clear)
 	screen->scr_wrapspace != wrapspace)
     {
 	rewrap(screen);
-    } else if (screen->viewsize) {  /* not called by clear_display_screen() */
-	while (screen->viewsize > winlines()) /* terminal height decreased */
+    } else {
+	/* if terminal height decreased or textdiv was inserted */
+	while (screen->viewsize > winlines())
 	    nexttop(screen);
-	while (screen->viewsize < winlines()) /* terminal height increased */
-	    if (!prevtop(screen)) break;
+	/* if terminal height increased */
+	if (!screen->partialview) {
+	    while (screen->viewsize < winlines())
+		if (!prevtop(screen)) break;
+	}
     }
 
     if (!visual) xy(1, lines);
@@ -1125,16 +1156,27 @@ int redraw(void)
     }
     setup_screen();
 
+    if (virtscreen) {
+	hide_screen(display_screen);
+	unhide_screen(display_screen);
+    }
     return redraw_window(display_screen, 1);
+}
+
+static void clear_screen_view(Screen *screen)
+{
+    if (screen->bot) {
+	screen->top = screen->bot->next;
+	screen->viewsize = 0;
+	screen->partialview = 1;
+	reset_outcount(screen);
+    }
 }
 
 int clear_display_screen(void)
 {
-    if (!display_screen->bot)
-	return 0;
-    display_screen->top = display_screen->bot->next;
-    display_screen->viewsize = 0;
-    reset_outcount();
+    if (!display_screen->bot) return 0;
+    clear_screen_view(display_screen);
     return redraw_window(display_screen, 0);
 }
 
@@ -1240,8 +1282,8 @@ int ch_status_fields(void)
     }
 
     if (width > columns) {
-        eprintf("status_fields: status width %d would be larger than screen", width);
-        goto ch_status_fields_error;
+        eprintf("status_fields: status width (%d) is wider than screen (%d)",
+	    width, columns);
     }
 
     /* update new fields */
@@ -1330,16 +1372,25 @@ ch_status_fields_error:
 /* returns column of field, or -1 if field is obscured by alert */
 static inline int status_field_column(StatusField *field)
 {
-    return (field->column < 0 ? columns : 0) + field->column;
+    int column;
+    if (field->column >= 0)
+	return (field->column > columns) ? columns : field->column;
+    column = field->column +
+	((status_left + status_right > columns) ?
+	status_left + status_right : columns);
+    return (column > columns) ? columns : column;
 }
 
-static int status_width(StatusField *field)
+static int status_width(StatusField *field, int start)
 {
-    int start = status_field_column(field);
-    int width = (field->width > 0) ? field->width :
-        columns - status_right - status_left;
+    int width;
+    if (start >= columns) return 0;
+    width = (field->width == 0) ? columns - status_right - status_left :
+	(field->width > 0) ? field->width : -field->width;
     if (width > columns - start)
         width = columns - start;
+    if (width < 0)
+	width = 0;
     return width;
 }
 
@@ -1371,7 +1422,7 @@ int handle_status_width_func(const char *name)
 {
     StatusField *field;
     field = find_status_field(name);
-    return field ? status_width(field) : 0;
+    return field ? status_width(field, status_field_column(field)) : 0;
 }
 
 static int format_status_field(StatusField *field)
@@ -1420,8 +1471,7 @@ static int format_status_field(StatusField *field)
     }
 
     x = status_field_column(field);
-
-    width = status_width(field);
+    width = status_width(field, x);
     if (scratch->len > width)
         Stringtrunc(scratch, width);
 
@@ -1498,6 +1548,8 @@ void update_status_field(Var *var, stat_id_t internal)
 	}
         if (internal >= 0 && field->internal != internal) continue;
 	column = status_field_column(field);
+	if (column >= columns) /* doesn't fit, nor will any later fields */
+	    break;
 	count++;
         width = format_status_field(field);
 
@@ -1532,7 +1584,7 @@ void format_status_line(void)
 {
     ListEntry *node;
     StatusField *field;
-    int column, width;
+    int column = 0, width = 0;
 
     for (node = status_field_list->head; node; node = node->next) {
         field = (StatusField*)node->datum;
@@ -2328,10 +2380,11 @@ static void hwrite(String *line, int start, int len, int indent)
     if (current) attributes_off(current);
 }
 
-void reset_outcount(void)
+void reset_outcount(Screen *screen)
 {
-    display_screen->outcount = visual ?
-        (scroll ? (ystatus - 1) : display_screen->outcount) :
+    if (!screen) screen = display_screen;
+    screen->outcount = visual ?
+        (scroll ? (ystatus - 1) : screen->outcount) :
         lines - 1;
 }
 
@@ -2361,22 +2414,22 @@ int pause_screen(void)
 int clear_more(int new)
 {
     PhysLine *pl;
-    int use_insert, need_redraw = 0;
+    int use_insert, need_redraw = 0, scrolled = 0;
 
     if (new < 0) {
 	if (!visual /* XXX || !can_scrollback */) return 0;
-	new = -new;
-	use_insert = insert_line && new < winlines();
+	use_insert = insert_line && -new < winlines();
 	setscroll(1, ystatus - 1);
-	while (new && prevtop(display_screen)) {
+	while (scrolled > new && prevtop(display_screen)) {
 	    pl = display_screen->top->datum;
 	    if (display_screen->viewsize <= winlines()) {
-		/* visible area is not full (after clear_display_screen()) */
+		/* visible area is not full:  add to the top of visible area */
 		xy(1, winlines() - display_screen->viewsize + 1);
 		hwrite(pl->str, pl->start,
 		    pl->len < Wrap - pl->indent ? pl->len : Wrap - pl->indent,
 		    pl->indent);
 	    } else {
+		/* visible area is full:  insert at top and push bottom off */
 		display_screen->paused = 1;
 		display_screen->outcount = 0;
 		if (use_insert) {
@@ -2390,9 +2443,9 @@ int clear_more(int new)
 		}
 		prevbot(display_screen);
 	    }
-	    new--;
+	    scrolled--;
 	}
-	while (new && display_screen->viewsize > 1) {
+	while (scrolled > new && display_screen->viewsize > 1) {
 	    /* no more lines in list to scroll on to top. insert blanks. */
 	    display_screen->paused = 1;
 	    display_screen->outcount = 0;
@@ -2403,10 +2456,11 @@ int clear_more(int new)
 		need_redraw++;
 	    }
 	    prevbot(display_screen);
-	    new--;
+	    scrolled--;
 	}
 	if (need_redraw) {
-	    return redraw();
+	    redraw();
+	    return scrolled;
 	}
 	update_status_field(NULL, STAT_MORE);
     } else { /* new >= 0 */
@@ -2414,17 +2468,17 @@ int clear_more(int new)
 	if (display_screen->nback_filtered) {
 	    setscroll(1, ystatus - 1);
 	    if (cy != ystatus - 1) xy(columns, ystatus - 1);
-	    while (new && nextbot(display_screen)) {
+	    while (scrolled < new && nextbot(display_screen)) {
 		pl = display_screen->bot->datum;
 		output_scroll(pl);
-		new--;
+		scrolled++;
 	    }
 	}
 	while (display_screen->viewsize > winlines())
 	    nexttop(display_screen);
-	if (new) {
+	if (scrolled < new) {
 	    display_screen->paused = 0;
-	    display_screen->outcount = new;
+	    display_screen->outcount = new - scrolled;
 	    if (visual) {
 		update_status_field(NULL, STAT_MORE);
 		if (!scroll) display_screen->outcount = ystatus - 1;
@@ -2435,13 +2489,13 @@ int clear_more(int new)
 	}
     }
     set_refresh_pending(REF_PHYSICAL);
-    return 1;
+    return scrolled;
 }
 
 int tog_more(void)
 {
     if (!more) clear_more(display_screen->outcount);
-    else reset_outcount();
+    else reset_outcount(display_screen);
     return 1;
 }
 
@@ -2460,12 +2514,13 @@ int screen_end(int need_redraw)
     Screen *screen = display_screen;
     int oldmore = more;
 
+    hide_screen(screen);
     if (screen->nback_filtered) {
 	screen->nback_filtered = screen->nback = 0;
 	screen->nnew_filtered = screen->nnew = 0;
 	special_var[VAR_more].val.u.ival = 0;
 
-	/* XXX optimize if (jump < screenful) */
+	/* XXX optimize if (jump < screenful) (but what about tmp lines?) */
 	need_redraw = 1;
 	screen->maxbot = screen->bot = screen->pline.tail;
 	screen_refilter(screen);
@@ -2474,7 +2529,7 @@ int screen_end(int need_redraw)
     }
 
     screen->paused = 0;
-    reset_outcount();
+    reset_outcount(screen);
     if (need_redraw) {
 	redraw_window(screen, 0);
 	update_status_field(NULL, STAT_MORE);
@@ -2685,6 +2740,81 @@ static void output_scroll(PhysLine *pl)
     hwrite(pl->str, pl->start, pl->len, pl->indent);
 }
 #endif
+
+void hide_screen(Screen *screen)
+{
+    ListEntry *node, *next;
+    PhysLine *pl;
+
+    if (!screen) screen = fg_screen;
+    if (screen->viewsize > 0) {
+	/* delete any temp lines in [top,bot] */
+	int done;
+	for (done = 0, node = screen->top; !done; node = next) {
+	    done = (node == screen->bot);
+	    next = node->next;
+	    pl = node->datum;
+	    if (pl->tmp) {
+		if (screen->top == node)
+		    screen->top = node->next;
+		if (screen->bot == node)
+		    screen->bot = node->prev;
+		if (screen->maxbot == node)
+		    screen->maxbot = node->prev;
+		unlist(node, &screen->pline);
+		Stringfree(pl->str);
+		pfree(pl, plpool, str);
+		screen->viewsize--;
+		screen->npline--;
+		screen->nlline--;
+	    }
+	}
+    }
+}
+
+void unhide_screen(Screen *screen)
+{
+    PhysLine *pl;
+
+    if (!virtscreen || !textdiv) {
+	return;
+
+    } else if (textdiv == TEXTDIV_CLEAR) {
+	clear_screen_view(screen);
+
+    } else if (textdiv_str && fg_screen->maxbot &&
+	((PhysLine*)(fg_screen->maxbot->datum))->str != textdiv_str &&
+	(textdiv == TEXTDIV_ALWAYS ||
+	    fg_screen->maxbot != fg_screen->bot || fg_screen->maxbot->next))
+	/* If textdiv is enabled and there's no divider at maxbot already... */
+    {
+	/* insert divider at maxbot */
+	palloc(pl, PhysLine, plpool, str, __FILE__, __LINE__);
+	pl->visible = 1;
+	pl->tmp = 1;
+	(pl->str = textdiv_str)->links++;
+	pl->start = 0;
+	pl->indent = 0;
+	pl->len = wraplen(textdiv_str->data, textdiv_str->len, 0);
+	inlist(pl, &fg_screen->pline, fg_screen->maxbot);
+	if (fg_screen->bot == fg_screen->maxbot) {
+	    /* insert ABOVE bot, so it doesn't look like new activity */
+	    fg_screen->bot = fg_screen->maxbot->next;
+	    if (fg_screen->viewsize == 0)
+		fg_screen->top = fg_screen->bot;
+	    fg_screen->viewsize++;
+	    if (fg_screen->viewsize >= winlines())
+		fg_screen->partialview = 0;
+	} else {
+	    /* inserting BELOW bot; we must increment nback* */
+	    fg_screen->nback++;
+	    fg_screen->nback_filtered++;
+	}
+	fg_screen->maxbot = fg_screen->maxbot->next;
+	fg_screen->npline++;
+	fg_screen->nlline++;
+    }
+}
 
 /*
  * Switch to new fg_screen.

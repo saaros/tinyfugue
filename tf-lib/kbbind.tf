@@ -3,9 +3,6 @@
 
 /loaded __TFLIB__/kbbind.tf
 
-/require kbfunc.tf
-/require complete.tf
-
 ; ^J, ^M, ^H, and ^? are handled internally.
 
 /def -i ~bind_if_not_bound = \
@@ -30,11 +27,23 @@
 /~keyseq left		^[[D	^[OD
 /~keyseq center		^[[E	^[OE
 
-; arrows with Ctrl, for recent versions of xterm with modifyCursorKeys
+; arrows with Ctrl, for versions of xterm with modifyCursorKeys
 /~keyseq ctrl_up	^[[1;5A
 /~keyseq ctrl_down	^[[1;5B
 /~keyseq ctrl_right	^[[1;5C
 /~keyseq ctrl_left	^[[1;5D
+
+; arrows with Meta, for versions of xterm with modifyCursorKeys
+/~keyseq meta_up	^[[1;3A
+/~keyseq meta_down	^[[1;3B
+/~keyseq meta_right	^[[1;3C
+/~keyseq meta_left	^[[1;3D
+
+; arrows with Shift, for versions of xterm with modifyCursorKeys
+/~keyseq shift_up	^[[1;2A
+/~keyseq shift_down	^[[1;2B
+/~keyseq shift_right	^[[1;2C
+/~keyseq shift_left	^[[1;2D
 
 ; Some broken terminal emulators (TeraTerm, NiftyTelnet) send incorrect
 ; char sequences for the editor keypad (the 6 keys above the arrow keys).
@@ -54,13 +63,31 @@
 /~keyseq pgup		^[[5~
 /~keyseq pgdn		^[[6~
 
-; Editor Keypad with Ctrl, for recent versions of xterm with modifyCursorKeys
+; Editor Keypad with Ctrl, for versions of xterm with modifyCursorKeys
 /~keyseq ctrl_insert	^[[2;5~
 /~keyseq ctrl_delete	^[[3;5~
 /~keyseq ctrl_home	^[[1;5~	^[[1;5H
 /~keyseq ctrl_end	^[[4;5~	^[[1;5F
 /~keyseq ctrl_pgup	^[[5;5~
 /~keyseq ctrl_pgdn	^[[6;5~
+
+; Editor Keypad with Meta, for versions of xterm with modifyCursorKeys
+/~keyseq meta_insert	^[[2;3~
+/~keyseq meta_delete	^[[3;3~
+/~keyseq meta_home	^[[1;3~	^[[1;3H
+/~keyseq meta_end	^[[4;3~	^[[1;3F
+/~keyseq meta_pgup	^[[5;3~
+/~keyseq meta_pgdn	^[[6;3~
+
+; Editor Keypad with Shift, for versions of xterm with modifyCursorKeys
+; Note, xterm by default traps shift-{insert,pgup,pgdn} itself, so won't
+; pass them to tf.
+/~keyseq shift_insert	^[[2;2~
+/~keyseq shift_delete	^[[3;2~
+/~keyseq shift_home	^[[1;2~	^[[1;2H
+/~keyseq shift_end	^[[4;2~	^[[1;2F
+/~keyseq shift_pgup	^[[5;2~
+/~keyseq shift_pgdn	^[[6;2~
 
 ;; Numeric Keypad for xterm
 ;
@@ -104,7 +131,7 @@
 
 ;;; Named keys with character sequences defined in termcap/terminfo.
 ; Many of these will redefine hardcoded sequences above
-/def -ag -hREDEF ~gag_redef
+/def -i -ag -hREDEF ~gag_redef
 /set warn_def_B=0
 /def -i ~keyname = /if (keycode({1}) !~ "") /def -iB'%{1}' = /key_%2%; /endif
 
@@ -185,6 +212,17 @@
 /def -i key_esc_right	= /dokey_socketf
 /def -i key_esc_delete	= /kb_backward_kill_word
 
+;; make meta_<namedkey> act like esc_<namedkey>
+/def -i key_meta_insert	= /key_esc_insert
+/def -i key_meta_delete	= /key_esc_delete
+/def -i key_meta_home	= /key_esc_home
+/def -i key_meta_end	= /key_esc_end
+/def -i key_meta_pgup	= /key_esc_pgup
+/def -i key_meta_pgdn	= /key_esc_pgdn
+/def -i key_meta_up	= /key_esc_up
+/def -i key_meta_down	= /key_esc_down
+/def -i key_meta_left	= /key_esc_left
+/def -i key_meta_right	= /key_esc_right
 
 ;; bindings to cycle through sockets that don't depend on working arrow keys
 /def -ib'^[{'	= /dokey_socketb
@@ -292,4 +330,9 @@
 /def -ib'^[^?'	= /kb_backward_kill_word
 
 /def -ib'^]'	= /bg
+
+
+;;;; other necessary libraries
+/require kbfunc.tf
+/require complete.tf
 

@@ -12,6 +12,8 @@
 /def -i -b"^l"		= /dokey redraw
 /def -i -b"^n"		= /dokey recallf
 /def -i -b"^p"		= /dokey recallb
+/def -i -b"^r"		= /dokey searchb
+/def -i -b"^s"		= /dokey searchf
 /def -i -b"^v"		= /dokey page
 ;def -i -b"^?"		= /dokey_bspc
 /def -i -b"^hm"		= /visual
@@ -35,5 +37,5 @@
 /def -i -b"^[f"		= /dokey wright
 /def -i -b"^[n"		= /dokey socketf
 /def -i -b"^[p"		= /dokey socketb
-/def -i -b"^[v"		= /dokey insert
+/def -i -b"^[v"		= /dokey pageback
 /def -i -b"^[^?"	= /kb_backward_kill_word

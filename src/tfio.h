@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.h,v 35004.52 2003/12/03 20:07:12 hawkeye Exp $ */
+/* $Id: tfio.h,v 35004.56 2003/12/22 18:32:32 hawkeye Exp $ */
 
 #ifndef TFIO_H
 #define TFIO_H
@@ -39,6 +39,7 @@ typedef struct PhysLine {
     short len;
     short indent;
     char visible; /* line passed screen_filter() */
+    char tmp;     /* should only be displayed once */
 } PhysLine;
 
 typedef struct Queue {
@@ -70,6 +71,7 @@ struct Screen {
     char filter_attr;		/* filter by attributes? */
     char selflush;		/* selective flushing flag */
     char needs_refilter;	/* top and bot need to be recalculated */
+    char partialview;		/* do not expand viewsize to fit terminal */
 };
 
 /* TF's analogue of stdio's FILE */
@@ -153,6 +155,8 @@ extern TFILE *find_tfile(const char *handle);
 extern TFILE *find_usable_tfile(const char *handle, int mode);
 extern struct String *tfgetS(struct String *str, TFILE *file);
 
+extern void   hide_screen(Screen *screen);
+extern void   unhide_screen(Screen *screen);
 extern void   switch_screen(int quiet);
 
 #endif /* TFIO_H */
