@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: dstring.c,v 35004.9 1999/01/31 00:27:39 hawkeye Exp $ */
+static const char RCSid[] = "$Id: dstring.c,v 35004.30 2003/05/27 01:09:21 hawkeye Exp $";
 
 
 /*********************************************************************
@@ -13,227 +13,371 @@
  *                                                                   *
  * dSinit() must be used to initialize a dynamically allocated       *
  * string, and dSfree() to free up the contents.  To minimize        *
- * realloc()s, initialize the size to be a little more than the      *
+ * resize()s, initialize the size to be a little more than the       *
  * median expected size.                                             *
  *********************************************************************/
 
 #include "config.h"
 #include "port.h"
 #include "malloc.h"
-#include "dstring.h"
+#include "tf.h"
 #include "signals.h"	/* core() */
 
+static String *Stringpool = NULL;	/* freelist */
+Stringp blankline = { STRING_LITERAL("") };
+
+#if USE_MMALLOC
+# define MD(str)	(str->md)
+#else
+# define MD(str)	(NULL)
+#endif
+
 #define lcheck(str, file, line) \
-        do { if ((str)->len >= (str)->size)  resize(str, file, line); } while(0)
+    do { if ((str)->len >= (str)->size)  resize(str, file, line); } while(0)
 
-static void  FDECL(resize,(Stringp str, CONST char *file, int line));
-
-String *dSinit(str, size, file, line)
-    Stringp str;
-    unsigned size;    /* estimate just over median size, to minimize resizes */
-    CONST char *file;
-    int line;
-{
-    str->size = ((size + ALLOCSIZE - 1) / ALLOCSIZE) * ALLOCSIZE;
-    str->s = (char *) xmalloc(str->size * sizeof(char), file, line);
-    str->s[0] = '\0';
-    str->len = 0;
-#ifdef DMALLOC
-    str->is_static = 0;
+#if USE_DMALLOC
+# define Smalloc(str, size) \
+    (str->static_struct ? \
+        mmalloc(MD(str), size) : xmalloc(MD(str), size, file, line))
+# define Srealloc(str, ptr, size) \
+    (str->static_struct ? \
+        mrealloc(MD(str), ptr, size) : xrealloc(MD(str), ptr, size, file, line))
+# define Sfree(str, ptr) \
+    (str->static_struct ? mfree(MD(str), ptr) : xfree(MD(str), ptr, file, line))
+#else
+# define Smalloc(str, size)		xmalloc(MD(str), size, file, line)
+# define Srealloc(str, ptr, size)	xrealloc(MD(str), ptr, size, file, line)
+# define Sfree(str, ptr)		xfree(MD(str), ptr, file, line)
 #endif
-    /* fprintf(stderr, "%s:%d\tinit\t%8u\n", file, line, str->size); */
-    return str;
-}
 
-void dSfree(str, file, line)
-    Stringp str;
-    CONST char *file;
-    int line;
-{
-    /* fprintf(stderr, "%s:%d\tfree\t%8u (%8u)\n", file, line, str->size, str->len); */
-#ifdef DMALLOC
-    if (!str->is_static)
-#endif
-    if (str->s) FREE(str->s);
-    str->s = NULL;
-    str->size = str->len = 0;
-}
+static void  resize(String *str, const char *file, int line);
 
-static void resize(str, file, line)
-    Stringp str;
-    CONST char *file;
-    int line;
+
+/* create charattrs and initialize first n elements */
+void check_charattrs(String *str, int n, cattr_t cattrs,
+    const char *file, int line)
 {
-    /* fprintf(stderr, "%s:%d\tresize\t%8u to %8lu (%8u)\n",
-        file, line, str->size, (str->len/ALLOCSIZE+1)*ALLOCSIZE, str->len); */
-    str->size = (str->len / ALLOCSIZE + 1) * ALLOCSIZE;
-#ifdef DMALLOC
-    if (str->is_static) {
-        str->s = (str->s)
-            ? (char*) realloc(str->s, str->size * sizeof(char))
-            : (char*) malloc(str->size * sizeof(char));
-        if (!str->s)
-            error_exit("{m,re}alloc(%ld): out of memory.",
-                file, line, (long)str->size);
-    } else
-#endif
-    {
-        str->s = (str->s)
-            ? (char*) xrealloc(str->s, str->size * sizeof(char), file, line)
-            : (char*) xmalloc(str->size * sizeof(char), file, line);
+    if (!str->charattrs) {
+        cattrs &= F_HWRITE;
+        str->charattrs = Smalloc(str, sizeof(cattr_t) * str->size);
+        while (--n >= 0)
+            str->charattrs[n] = cattrs;
     }
 }
 
-String *dSadd(str, c, file, line)
-    Stringp str;
-    int c;
-    CONST char *file;
-    int line;
+/* copy old trailing charattr to new tail */
+void extend_charattrs(String *str, int oldlen, cattr_t cattrs)
+{
+    int i;
+
+    for (i = oldlen+1; i < str->len; i++)
+        str->charattrs[i] = str->charattrs[oldlen] | cattrs;
+    str->charattrs[str->len] = str->charattrs[oldlen];
+    str->charattrs[oldlen] = cattrs;
+}
+
+static void resize(String *str, const char *file, int line)
+{
+    if (!str->resizable) {
+        internal_error(str->file, str->line, "");
+        core("resize: data not resizable", file, line, 0);
+    }
+    if (str->size < 0) {
+        internal_error(str->file, str->line, "");
+        core("resize freed string", file, line, 0);
+    }
+    str->size = (str->len / ALLOCSIZE + 1) * ALLOCSIZE;
+
+    str->data = Srealloc(str, str->data, str->size);
+
+    if (str->charattrs) {
+        str->charattrs =
+            Srealloc(str, str->charattrs, sizeof(cattr_t) * str->size);
+    }
+}
+
+/* dSinit()
+ *  data && len >= 0:  allocate exactly len, copy data
+ *  data && len < 0:   allocate exactly strlen(data), copy data
+ * !data && len > 0:   allocate rounded len
+ * !data && len <= 0:  don't allocate
+ * md is used only if (!str && data).
+ */
+String *dSinit(
+    String *str,	/* if NULL, a String will be allocated */
+    const char *data,	/* optional initializer data */
+    int len,		/* length of data */
+    attr_t attrs,	/* line display attributes */
+    void *md,		/* mmalloc descriptor */
+    const char *file,
+    int line)
+{
+    if (data && len < 0)
+        len = strlen(data);
+    if (!str) {
+        if (data) {
+            /* allocate String and data in one chunk for better locality */
+#if USE_MMALLOC
+            if (md) str = dmalloc(md, sizeof(*str) + len + 1, file, line);
+            if (!md || !str)
+#endif
+            {
+                md = NULL;
+                str = xmalloc(NULL, sizeof(*str) + len + 1, file, line);
+            }
+            str->data = (char*)str + sizeof(*str);
+            str->dynamic_data = 0;
+        } else {
+            palloc(str, String, Stringpool, data, file, line);
+            str->dynamic_data = 1;
+        }
+        str->dynamic_struct = 1;
+        str->static_struct = 0;
+    } else {
+        str->dynamic_struct = 0;
+        str->static_struct = 0;
+        if (data) {
+            str->data = Smalloc(str, len + 1);
+            str->dynamic_data = 1;
+        }
+    }
+    if (data) {
+#if USE_MMALLOC
+        str->md = md;
+#endif
+        str->resizable = 0;
+        str->len = len;
+        str->size = len + 1;
+        memcpy(str->data, data, str->len);
+        str->data[str->len] = '\0';
+    } else if (len > 0) {
+#if USE_MMALLOC
+        str->md = NULL;
+#endif
+        str->resizable = 1;
+        str->dynamic_data = 1;
+        str->size = ((len + ALLOCSIZE - 1) / ALLOCSIZE) * ALLOCSIZE;
+        str->data = Smalloc(str, str->size);
+        str->len = 0;
+        str->data[str->len] = '\0';
+    } else {
+#if USE_MMALLOC
+        str->md = NULL;
+#endif
+        str->resizable = 1;
+        str->dynamic_data = 1;
+        str->data = NULL;
+        str->size = str->len = 0;
+    }
+    str->attrs = attrs;
+    str->charattrs = NULL;
+    str->links = 0;
+    str->time.tv_sec = str->time.tv_usec = -1;  /* caller will set if needed */
+    str->file = file;
+    str->line = line;
+    return str;
+}
+
+/* dSfree() assumes links has been decremented and tested by Stringfree() */
+void dSfree(String *str, const char *file, int line)
+{
+    if (str->links < 0) {
+        internal_error(str->file, str->line, "");
+        core("dSfree: links==%ld", file, line, (long)str->links);
+    }
+
+    if (str->charattrs) Sfree(str, str->charattrs);
+    if (str->dynamic_data && str->data)
+        Sfree(str, str->data);
+
+    str->size = -42;  /* break lcheck if str is reused without dSinit */
+    str->len = 0;
+    if (str->dynamic_struct) {
+        if (!str->dynamic_data)	/* str and data were alloced together */
+            Sfree(str, str);
+#if USE_MMALLOC
+        else if (str->md)
+            Sfree(str, str);
+#endif
+        else
+            pfree_fl(str, Stringpool, data, file, line);
+    }
+}
+
+String *dSadd(String *str, int c, const char *file, int line)
 {
     str->len++;
     lcheck(str, file, line);
-    str->s[str->len - 1] = c;
-    str->s[str->len] = '\0';
+    str->data[str->len - 1] = c;
+    str->data[str->len] = '\0';
+    if (str->charattrs) {
+        str->charattrs[str->len] = str->charattrs[str->len-1];
+    }
     return str;
 }
 
-String *dSnadd(str, c, n, file, line)
-    Stringp str;
-    int c;
-    unsigned int n;
-    CONST char *file;
-    int line;
+String *dSnadd(String *str, int c, int n, const char *file, int line)
 {
-    if ((int)n < 0) core("dSnadd: n==%ld", file, line, (long)n);
+    int oldlen = str->len;
+    if (n < 0) core("dSnadd: n==%ld", file, line, (long)n);
     str->len += n;
     lcheck(str, file, line);
-    while (n) str->s[str->len - n--] = c;
-    str->s[str->len] = '\0';
+    for (n = oldlen; n < str->len; n++)
+        str->data[n] = c;
+    str->data[str->len] = '\0';
+    if (str->charattrs) extend_charattrs(str, oldlen, 0);
     return str;
 }
 
-String *dSterm(str, len, file, line)
-    Stringp str;
-    unsigned int len;
-    CONST char *file;
-    int line;
+String *dStrunc(String *str, int len, const char *file, int line)
 {
     /* if (str->size && str->len < len) return str; */
     unsigned int oldlen = str->len;
     str->len = len;
     lcheck(str, file, line);
-    if (len < oldlen)
-        str->s[len] = '\0';
-    else
+    if (len <= oldlen) {
+        str->data[len] = '\0';
+    } else {
         str->len = oldlen;
+    }
     return str;
 }
 
-String *dScpy(dest, src, file, line)
-    Stringp dest;
-    CONST char *src;
-    CONST char *file;
-    int line;
+String *dScpy(String *dest, const char *src, const char *file, int line)
 {
     dest->len = strlen(src);
+    if (dest->charattrs) {
+        Sfree(dest, dest->charattrs);
+        dest->charattrs = NULL;
+    }
     lcheck(dest, file, line);
-    strcpy(dest->s, src);
+    memcpy(dest->data, src, dest->len + 1);
     return dest;
 }
 
-String *dSScpy(dest, src, file, line)
-    Stringp dest;
-    CONST Stringp src;
-    CONST char *file;
-    int line;
+String *dSncpy(String *dest, const char *src, int n, const char *file, int line)
 {
-    dest->len = src->len;
-    lcheck(dest, file, line);
-    strcpy(dest->s, src->s ? src->s : "");
-    return dest;
-}
+    int len = strlen(src);
 
-String *dSncpy(dest, src, n, file, line)
-    Stringp dest;
-    CONST char *src;
-    unsigned int n;
-    CONST char *file;
-    int line;
-{
-    unsigned len = strlen(src);
-
-    if ((int)n < 0) core("dSncpy: n==%ld", file, line, (long)n);
+    if (n < 0) core("dSncpy: n==%ld", file, line, (long)n);
     if (n > len) n = len;
     dest->len = n;
+    if (dest->charattrs) {
+        Sfree(dest, dest->charattrs);
+        dest->charattrs = NULL;
+    }
     lcheck(dest, file, line);
-    strncpy(dest->s, src, n);
-    dest->s[n] = '\0';
+    memcpy(dest->data, src, n);
+    dest->data[n] = '\0';
     return dest;
 }
 
-String *dScat(dest, src, file, line)
-    Stringp dest;
-    CONST char *src;
-    CONST char *file;
-    int line;
+String *dSScpy(String *dest, const String *src, const char *file, int line)
 {
-    unsigned int len = dest->len;
+    if (dest->charattrs && !src->charattrs) {
+        Sfree(dest, dest->charattrs);
+        dest->charattrs = NULL;
+    }
+    dest->len = src->len;
+    lcheck(dest, file, line);
+    memcpy(dest->data, src->data ? src->data : "", src->len+1);
+    if (src->charattrs) {
+        check_charattrs(dest, 0, 0, file, line);
+        memcpy(dest->charattrs, src->charattrs, sizeof(cattr_t) * (src->len+1));
+    }
+    dest->attrs = src->attrs;
+    return dest;
+}
+
+String *dScat(String *dest, const char *src, const char *file, int line)
+{
+    int oldlen = dest->len;
 
     dest->len += strlen(src);
     lcheck(dest, file, line);
-    strcpy(dest->s + len, src);
+    memcpy(dest->data + oldlen, src, dest->len - oldlen + 1);
+    if (dest->charattrs) extend_charattrs(dest, oldlen, 0);
     return dest;
 }
 
-String *dSScat(dest, src, file, line)
-    Stringp dest;
-    CONST Stringp src;
-    CONST char *file;
+String *dSSoncat(dest, src, start, len, file, line)
+    String *dest;
+    const String *src;
+    const char *file;
     int line;
 {
-    unsigned int len = dest->len;
+    int oldlen = dest->len;
+    int i, j;
+    cattr_t cattrs;
 
-    dest->len += src->len;
+    if (len < 0)
+        len = src->len - start;
+    dest->len += len;
     lcheck(dest, file, line);
-    strcpy(dest->s + len, src->s ? src->s : "");
+    memcpy(dest->data + oldlen, src->data ? src->data + start: "", len);
+    dest->data[dest->len] = '\0';
+
+    if (src->charattrs || dest->charattrs || src->attrs != dest->attrs) {
+        if (dest->charattrs && dest->attrs) {
+	    cattrs = attr2cattr(dest->attrs);
+            for (i = 0; i < oldlen; i++)
+                dest->charattrs[i] = adj_attr(cattrs, dest->charattrs[i]);
+        } else {
+            check_charattrs(dest, oldlen, dest->attrs, file, line);
+        }
+        dest->attrs = 0;
+
+        if (src->charattrs && src->attrs) {
+	    cattrs = attr2cattr(src->attrs);
+	    for (i = oldlen, j = start; i < dest->len; i++, j++)
+                dest->charattrs[i] = adj_attr(cattrs, src->charattrs[j]);
+        } else if (src->charattrs) {
+            memcpy(dest->charattrs + oldlen, src->charattrs + start,
+                sizeof(cattr_t) * len);
+        } else {
+	    for (i = oldlen; i < dest->len; i++)
+                dest->charattrs[i] = src->attrs;
+        }
+        dest->charattrs[dest->len] = 0;
+    }
+
     return dest;
 }
 
 /* slow version of dSncat, verifies that length of input >= n */
-String *dSncat(dest, src, n, file, line)
-    Stringp dest;
-    CONST char *src;
-    unsigned int n;
-    CONST char *file;
-    int line;
+String *dSncat(String *dest, const char *src, int n, const char *file, int line)
 {
-    unsigned int oldlen = dest->len;
-    unsigned int len = strlen(src);
+    int oldlen = dest->len;
+    int len = strlen(src);
 
-    if ((int)n < 0) core("dSncat: n==%ld", file, line, (long)n);
+    if (n < 0) core("dSncat: n==%ld", file, line, (long)n);
     if (n > len) n = len;
     dest->len += n;
     lcheck(dest, file, line);
-    strncpy(dest->s + oldlen, src, n);
-    dest->s[dest->len] = '\0';
+    memcpy(dest->data + oldlen, src, n);
+    dest->data[dest->len] = '\0';
+    if (dest->charattrs) extend_charattrs(dest, oldlen, 0);
     return dest;
 }
 
 /* fast version of dSncat, assumes length of input >= n */
-String *dSfncat(dest, src, n, file, line)
-    Stringp dest;
-    CONST char *src;
-    unsigned int n;
-    CONST char *file;
-    int line;
+String *dSfncat(String *dest, const char *src, int n, const char *file, int line)
 {
     unsigned int oldlen = dest->len;
 
     if ((int)n < 0) core("dSfncat: n==%ld", file, line, (long)n);
     dest->len += n;
     lcheck(dest, file, line);
-    strncpy(dest->s + oldlen, src, n);
-    dest->s[dest->len] = '\0';
+    memcpy(dest->data + oldlen, src, n);
+    dest->data[dest->len] = '\0';
+    if (dest->charattrs) extend_charattrs(dest, oldlen, 0);
     return dest;
 }
+
+#if USE_DMALLOC
+void free_dstring(void)
+{
+    pfreepool(String, Stringpool, data);
+}
+#endif
 

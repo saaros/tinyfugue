@@ -1,4 +1,4 @@
-.\" $Id: tf.1.nroffman,v 34000.3 1994/08/29 00:15:29 hawkeye Exp $
+.\" $Id: tf.1.nroffman,v 34000.6 2002/03/13 00:41:13 hawkeye Exp $
 .TH TF 1 LOCAL
 .SH NAME
 tf \- TinyFugue, a MUD client
@@ -181,7 +181,7 @@ Post all refused to comment.
 
 .SH COPYRIGHT
 
-Copyright (C) 1993, 1994 Ken Keys
+Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002 Ken Keys
 .sp
 \fITinyFugue\fR (aka "\fItf\fR") is protected under the terms of the GNU
 General Public License.  See the file "COPYING" for details.

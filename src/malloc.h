@@ -1,63 +1,111 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: malloc.h,v 35004.10 1999/01/31 00:27:48 hawkeye Exp $ */
+/* $Id: malloc.h,v 35004.21 2003/05/27 01:09:23 hawkeye Exp $ */
+
+/* Function hierarchy:
+ *  xmalloc: will kill process if it fails.  Calls dmalloc.
+ *  dmalloc: if USE_DMALLOC, do debugging.  Calls mmalloc.
+ *  mmalloc: if USE_MMALLOC, use GNU mmalloc; otherwise call native functions.
+ *   malloc: if !USE_MMALLOC, use native functions; otherwise, call mmalloc.
+ *
+ * XMALLOC is like xmalloc, but has file and line built in.
+ *  MALLOC is like dmalloc, but has file and line built in.
+ *
+ * Most code will call XMALLOC() (for automatic error checking) or MALLOC()
+ * (if it can handle failure itself).  Code may call xmalloc() or dmalloc() 
+ * to use nonlocal file and line info.  Code should almost never call
+ * mmalloc() or malloc() directly.
+ */
 
 #ifndef MALLOC_H
 #define MALLOC_H
 
 extern int low_memory_warning;
 
-#define XMALLOC(size) xmalloc((size), __FILE__, __LINE__)
-#define XREALLOC(ptr, size) xrealloc((ptr), (size), __FILE__, __LINE__)
-#define MALLOC(size) dmalloc((size), __FILE__, __LINE__)
-#define REALLOC(ptr, size) drealloc((ptr), (size), __FILE__, __LINE__)
-#define FREE(ptr) xfree((GENERIC*)(ptr), __FILE__, __LINE__)
-
-#ifdef DMALLOC
-extern GENERIC  *FDECL(dmalloc,(long unsigned size,
-                       CONST char *file, CONST int line));
-extern GENERIC  *FDECL(dcalloc,(long unsigned size,
-                       CONST char *file, CONST int line));
-extern GENERIC  *FDECL(drealloc,(GENERIC *ptr, long unsigned size,
-                       CONST char *file, CONST int line));
-extern void   FDECL(dfree,(GENERIC *ptr, CONST char *file, CONST int line));
+#if USE_MMALLOC
+# include "mmalloc/mmalloc.h"
+# define malloc(size)			mmalloc(NULL, size)
+# define calloc(size)			mcalloc(NULL, size)
+# define realloc(ptr, size)		mrealloc(NULL, ptr, size)
+# define free(ptr)			mfree(NULL, ptr)
 #else
-# define dmalloc(size, file, line) malloc(size)
-# define dcalloc(size, file, line) calloc(size)
-# define drealloc(ptr, size, file, line) realloc((GENERIC*)(ptr), (size))
-# define dfree(ptr, file, line) free((GENERIC*)(ptr))
+# define mmalloc(md, size)		malloc(size)
+# define mcalloc(md, size)		calloc(size)
+# define mrealloc(md, ptr, size)	realloc(ptr, size)
+# define mfree(md, ptr)			free(ptr)
 #endif
 
-extern GENERIC  *FDECL(xmalloc,(long unsigned size,
-                       CONST char *file, CONST int line));
-extern GENERIC  *FDECL(xrealloc,(GENERIC *ptr, long unsigned size,
-                       CONST char *file, CONST int line));
-extern void      FDECL(xfree,(GENERIC *ptr, CONST char *file, CONST int line));
-extern void      NDECL(init_malloc);
+#define XMALLOC(size) xmalloc(NULL, (size), __FILE__, __LINE__)
+#define XCALLOC(size) xcalloc(NULL, (size), __FILE__, __LINE__)
+#define XREALLOC(ptr, size) xrealloc(NULL, (ptr), (size), __FILE__, __LINE__)
+#define MALLOC(size) dmalloc(NULL, (size), __FILE__, __LINE__)
+#define CALLOC(size) dcalloc(NULL, (size), __FILE__, __LINE__)
+#define REALLOC(ptr, size) drealloc(NULL, (ptr), (size), __FILE__, __LINE__)
+#define FREE(ptr) xfree(NULL, (void*)(ptr), __FILE__, __LINE__)
+
+#if USE_DMALLOC
+extern void  *dmalloc(void *md, long unsigned size,
+                       const char *file, const int line);
+extern void  *dcalloc(void *md, long unsigned size,
+                       const char *file, const int line);
+extern void  *drealloc(void *md, void *ptr, long unsigned size,
+                       const char *file, const int line);
+extern void   dfree(void *md, void *ptr,
+                       const char *file, const int line);
+#else
+# define dmalloc(md, size, file, line)	mmalloc(md, size)
+# define dcalloc(md, size, file, line)	mcalloc(md, size)
+# define drealloc(md, ptr, size, file, line) \
+					mrealloc(md, (void*)(ptr), (size))
+# define dfree(md, ptr, file, line)	mfree(md, (void*)(ptr))
+#endif
+
+extern void  *xmalloc(void *md, long unsigned size,
+                       const char *file, const int line);
+extern void  *xcalloc(void *md, long unsigned size,
+                       const char *file, const int line);
+extern void  *xrealloc(void *md, void *ptr, long unsigned size,
+                       const char *file, const int line);
+extern void      xfree(void *md, void *ptr,
+                       const char *file, const int line);
+extern void      init_malloc(void);
 
 /* Fast allocation from pool.
- * Should be used only on objects which are freed frequently.
+ * Should be used only on objects which are freed frequently, with md==NULL.
  */
 #define palloc(item, type, pool, next, file, line) \
     ((pool) ? \
-      ((item) = (pool), (pool) = pool->next) : \
-      ((item) = (type *)xmalloc(sizeof(type), file, line)))
+      ((item) = (pool), (pool) = (void*)(pool)->next) : \
+      ((item) = (type *)xmalloc(NULL, sizeof(type), file, line)))
 
-#ifndef DMALLOC
-#define pfree(item, pool, next)  (item->next = (pool), (pool) = (item))
+#if !USE_DMALLOC
+# define pfree_fl(item, pool, next, file, line) \
+    ((item)->next = (void*)(pool), (pool) = (item))
+# define pfreepool(type, pool, next) \
+    do { \
+	type *tmp; \
+	while (pool) { \
+	   tmp = pool; \
+	   pool = (type*)pool->next; \
+	   FREE(tmp); \
+	} \
+    } while (0)
 #else
-#define pfree(item, pool, next)  dfree(item, __FILE__, __LINE__)
+# define pfree_fl(item, pool, next, file, line) \
+    dfree(NULL, item, file, line)
+# define pfreepool(type, pool, next)	/* do nothing */
 #endif
 
+#define pfree(item, pool, next)  pfree_fl(item, pool, next, __FILE__, __LINE__)
 
-#ifdef DMALLOC
-extern void   NDECL(free_reserve);
-extern void   FDECL(debug_mstats,(CONST char *s));
+#if USE_DMALLOC
+extern void   free_reserve(void);
+extern void   debug_mstats(const char *s);
 #endif
 
 #endif /* MALLOC_H */

@@ -8,12 +8,13 @@
 /def -i shl = /sys %*
 
 
-; Put an existing definition in the input window for editing.
+;;; Put an existing {macro,variable,world} definition in the input window for
+;;; editing.
 ; syntax:  /ed{mac,var,world} <name>
 
-/def -i edmac = /grab $(/cddr $(/list -i - %{L-@}))
-/def -i edvar = /grab $(/listvar - %{L-@})
-/def -i edworld = /grab $(/listworlds -c - %{L-@})
+/def -i edmac = /grab $(/cddr $(/@list -i - %{L-@}))
+/def -i edvar = /grab $(/@listvar - %{L-@})
+/def -i edworld = /grab $(/@listworlds -c - %{L-@})
 
 /def -i reedit = /edmac %*
 

@@ -19,7 +19,7 @@
 /require pcmd.tf
 
 /def -i _qdef = /send - %_prefix %-2
-/def -i qdef = /let _prefix=%{-L-%{qdef_prefix-:|}}%; /quote -S /_qdef `/list -i %{L-@}
+/def -i qdef = /let _prefix=%{-L-%{qdef_prefix-:|}}%; /quote -S /_qdef `/@list -i %{L-@}
 
 /def -i ~qmac_files = \
     /echo %{HOME}/.tfrc%; \
@@ -38,7 +38,7 @@
   /eval /quote -S %{-L-%{qmac_prefix-:|}} !\
       %{_qmac_awk} "\\\$prog" `ls $(/~qmac_files %TFLIBDIR %TFPATH) 2>/dev/null`
 
-/def -i qworld = /quote -S %{-L-%{qworld_prefix-:|}} `/listworlds %{L-@}
+/def -i qworld = /quote -S %{-L-%{qworld_prefix-:|}} `/@listworlds %{L-@}
 
 /def -i qfile = /quote -S %{-L-%{qfile_prefix-:|}} '%{L-@}
 

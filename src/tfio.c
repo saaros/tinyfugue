@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.c,v 35004.60 1999/01/31 00:27:55 hawkeye Exp $ */
+static const char RCSid[] = "$Id: tfio.c,v 35004.89 2003/05/27 01:09:25 hawkeye Exp $";
 
 
 /***********************************
@@ -18,32 +18,27 @@
 
 #include "config.h"
 #include <sys/types.h>
-#ifdef SYS_SELECT_H
-# include SYS_SELECT_H
+#if HAVE_SYS_SELECT_H
+# include <sys/select.h>
 #endif
 /* #include <sys/time.h> */   /* for struct timeval, in select() */
 #include <sys/stat.h>
 
-#ifndef HAVE_PWD_H
-# undef HAVE_getpwnam
-#else
-# ifdef HAVE_getpwnam
-#  include <pwd.h>	/* getpwnam() */
-# endif
+#if HAVE_GETPWNAM
+# include <pwd.h>	/* getpwnam() */
 #endif
 
 #include "port.h"
-#include "dstring.h"
 #include "tf.h"
 
 #include "util.h"
 
+#include "search.h"	/* queues */
 #include "tfio.h"
 #include "tfselect.h"
 #include "output.h"
 #include "macro.h"	/* macro_body() */
 #include "history.h"
-#include "search.h"	/* queues */
 #include "signals.h"	/* shell_status() */
 #include "variable.h"	/* getvar() */
 #include "keyboard.h"	/* keyboard_pos */
@@ -55,22 +50,25 @@ int loadline = 0;       /* line number in /load'ing file */
 int loadstart = 0;      /* line number of start of command in /load'ing file */
 int read_depth = 0;     /* nesting level of user kb reads */
 int readsafe = 0;       /* safe to do a user kb read? */
-TFILE *tfkeyboard;      /* user input */
-TFILE *tfscreen;        /* text waiting to be displayed */
-TFILE *tfin;            /* pointer to current input queue */
-TFILE *tfout;           /* pointer to current output queue */
-TFILE *tferr;           /* pointer to current error queue */
+TFILE *tfkeyboard;      /* user input (placeholder) */
+TFILE *tfscreen;        /* screen output (placeholder) */
+TFILE *tfin;            /* current input queue file */
+TFILE *tfout;           /* current output queue file */
+TFILE *tferr;           /* current error queue file */
+TFILE *tfalert;         /* current alert queue file */
+Screen *fg_screen;	/* current screen, to which tf writes */
+Screen *default_screen;	/* default screen, used if unconnected or !virtscreen */
 
 static TFILE *filemap[FD_SETSIZE];
 static int selectable_tfiles = 0;
 static List userfilelist[1];
 static int max_fileid = 0;
 
-static void FDECL(fileputs,(CONST char *str, FILE *fp));
-static void FDECL(queueputa,(Aline *aline, TFILE *file));
+static void fileputs(const char *str, FILE *fp);
+static void queueputline(String *line, TFILE *file);
 
 
-void init_tfio()
+void init_tfio(void)
 {
     int i;
 
@@ -78,13 +76,15 @@ void init_tfio()
         filemap[i] = NULL;
     init_list(userfilelist);
 
-    /* tfkeyboard's queue is never actually used, it's just a place holder */
     tfin = tfkeyboard = tfopen("<tfkeyboard>", "q");
     tfkeyboard->mode = S_IRUSR;
 
-    tfout = tferr = tfscreen = tfopen("<tfscreen>", "q");
+    tfout = tferr = tfalert = tfscreen = tfopen("<tfscreen>", "q");
     tfscreen->mode = S_IWUSR;
-    tfscreen_size = 0;
+    tfalert = tfopen("<tfalert>", "q");
+    tfalert->mode = S_IWUSR;
+
+    fg_screen = default_screen = new_screen(1000/*XXX make configurable*/); 
 }
 
 /* tfname
@@ -92,8 +92,7 @@ void init_tfio()
  * "~username" followed by '/' or end of string is expanded to <username>'s
  * home directory; a leading "~" is expanded to the user's home directory.
  */
-char *tfname(name, macro)
-    CONST char *name, *macro;
+char *tfname(const char *name, const char *macro)
 {
     if (!name || !*name) {
         if (macro) {
@@ -108,10 +107,9 @@ char *tfname(name, macro)
     return (name && *name) ? expand_filename(name) : NULL;
 }
 
-char *expand_filename(str)
-    CONST char *str;
+char *expand_filename(const char *str)
 {
-    CONST char *dir, *user;
+    const char *dir, *user;
     STATIC_BUFFER(buffer);
 
     if (str) {
@@ -121,23 +119,56 @@ char *expand_filename(str)
             dir = getvar("HOME");
         } else {
 
-#ifndef HAVE_getpwnam
+#if !HAVE_GETPWNAM
             eprintf("warning: \"~user\" filename expansion is not supported.");
 #else
             struct passwd *pw;
             Stringncpy(buffer, user, str - user);
-            if ((pw = getpwnam(buffer->s)))
+            if ((pw = getpwnam(buffer->data)))
                 dir = pw->pw_dir;
             else
-#endif /* HAVE_getpwnam */
+#endif /* HAVE_GETPWNAM */
                 return (char*)--user;
         }
         Stringcpy(buffer, dir ? dir : "");
         Stringcat(buffer, str);
     } else {
-        Stringterm(buffer, 0);
+        Stringtrunc(buffer, 0);
     }
-    return buffer->s;
+    return buffer->data;
+}
+
+Screen *new_screen(long size)
+{
+    Screen *screen;
+
+    screen = XCALLOC(sizeof(Screen));
+    screen->outcount = lines;
+    screen->maxlline = size;
+    screen->scr_wrapflag = wrapflag;
+    screen->scr_wrapsize = wrapsize;
+    screen->scr_wrapspace = wrapspace;
+    init_list(&screen->pline);
+    init_pattern(&screen->filter_pat, NULL, -1);
+    return screen;
+}
+
+void free_screen_lines(Screen *screen)
+{
+    PhysLine *pl;
+
+    while (screen->pline.head) {
+	pl = unlist(screen->pline.head, &screen->pline);
+        if (pl->str) Stringfree(pl->str);
+	pfree(pl, plpool, str);
+    }
+}
+
+void free_screen(Screen *screen)
+{
+    free_screen_lines(screen);
+    free_pattern(&screen->filter_pat);
+    FREE(screen);
 }
 
 /* tfopen - opens a TFILE.
@@ -148,21 +179,23 @@ char *expand_filename(str)
  * If tfopen() fails, it will return NULL with errno set as in fopen();
  * if found file is a directory, tfopen() will return NULL with errno==EISDIR.
  */
-TFILE *tfopen(name, mode)
-    CONST char *name, *mode;
+TFILE *tfopen(const char *name, const char *mode)
 {
     int type = TF_FILE;
     FILE *fp;
     TFILE *result = NULL;
-    CONST char *prog, *suffix;
+    const char *prog, *suffix;
     char *newname = NULL;
     STATIC_BUFFER(buffer);
     struct stat buf;
     MODE_T st_mode = 0;
 
     if (*mode == 'q') {
-        errno = EAGAIN;  /* in case malloc fails */
-        if (!(result = (TFILE *)MALLOC(sizeof(TFILE)))) return NULL;
+        struct tfile_queue { TFILE file; Queue queue; } *fq;
+        errno = ENOMEM;  /* in case malloc fails */
+        if (!(fq = (struct tfile_queue *)MALLOC(sizeof(*fq)))) return NULL;
+        result = &fq->file;
+        result->u.queue = &fq->queue;
         result->type = TF_QUEUE;
         result->name = name ? STRDUP(name) : NULL;
         result->id = -1;
@@ -170,7 +203,6 @@ TFILE *tfopen(name, mode)
         result->mode = S_IRUSR | S_IWUSR;
         result->tfmode = *mode;
         result->autoflush = 1;
-        result->u.queue = (Queue *)XMALLOC(sizeof(Queue));
         init_queue(result->u.queue);
         return result;
     }
@@ -185,7 +217,11 @@ TFILE *tfopen(name, mode)
         eprintf("TF does not support pipes under cygwin32.");
         errno = EPIPE;
         return NULL;
-#endif
+#else
+	if (restriction >= RESTRICT_SHELL) {
+	    errno = EPERM;
+	    return NULL;
+	}
         if (!(fp = popen(name, "r"))) return NULL;
         result = (TFILE *)XMALLOC(sizeof(TFILE));
         result->type = TF_PIPE;
@@ -200,6 +236,7 @@ TFILE *tfopen(name, mode)
         filemap[fileno(fp)] = result;
         selectable_tfiles++;
         return result;
+#endif
     }
 
     if ((fp = fopen(name, mode)) && fstat(fileno(fp), &buf) == 0) {
@@ -228,7 +265,7 @@ TFILE *tfopen(name, mode)
 #ifdef PLATFORM_OS2
             Sprintf(buffer, 0, "%s %s 2>nul", prog, newname);
 #endif
-            fp = popen(buffer->s, mode);
+            fp = popen(buffer->data, mode);
             type = TF_PIPE;
         }
     }
@@ -263,18 +300,19 @@ TFILE *tfopen(name, mode)
 /* tfclose
  * Close a TFILE created by tfopen().
  */
-int tfclose(file)
-    TFILE *file;
+int tfclose(TFILE *file)
 {
     int result;
+    List *list;
 
     if (!file) return -1;
     if (file->name) FREE(file->name);
     switch(file->type) {
     case TF_QUEUE:
-        while(file->u.queue->head)
-            free_aline((Aline*)unlist(file->u.queue->head, file->u.queue));
-        FREE(file->u.queue);
+        list = &file->u.queue->list;
+        while (list->head)
+            Stringfree((String*)unlist(list->head, list));
+        /* FREE(file->u.queue); */ /* queue was allocated with file */
         result = 0;
         break;
     case TF_FILE:
@@ -295,10 +333,8 @@ int tfclose(file)
 }
 
 /* tfselect() is like select(), but also checks buffered TFILEs */
-int tfselect(nfds, readers, writers, excepts, timeout)
-    int nfds;
-    fd_set *readers, *writers, *excepts;
-    struct timeval *timeout;
+int tfselect(int nfds, fd_set *readers, fd_set *writers, fd_set *excepts,
+    struct timeval *timeout)
 {
     int i, count, tfcount = 0;
     fd_set tfreaders;
@@ -324,7 +360,7 @@ int tfselect(nfds, readers, writers, excepts, timeout)
     } else {
         /* we found at least one; poll the rest, but don't wait */
         struct timeval zero;
-        zero.tv_sec = zero.tv_usec = 0;
+        zero = tvzero;
         count = select(nfds, readers, writers, excepts, &zero);
         if (count < 0) return count;
         count += tfcount;
@@ -348,14 +384,12 @@ int tfselect(nfds, readers, writers, excepts, timeout)
  * Print to a TFILE.
  * Unlike fputs(), tfputs() always appends a newline when writing to a file.
  */
-void tfputs(str, file)
-    CONST char *str;
-    TFILE *file;
+void tfputs(const char *str, TFILE *file)
 {
     if (!file || file->type == TF_NULL) {
         /* do nothing */
     } else if (file->type == TF_QUEUE) {
-        queueputa(new_aline(str, 0), file);
+        queueputline(Stringnew(str, -1, 0), file);
     } else {
         fileputs(str, file->u.fp);
         if (file->autoflush) tfflush(file);
@@ -365,66 +399,61 @@ void tfputs(str, file)
 /* tfputansi
  * Print to a TFILE, with embedded ANSI display codes.
  */
-attr_t tfputansi(str, file, attrs)
-    CONST char *str;
-    TFILE *file;
-    attr_t attrs;
+attr_t tfputansi(const char *str, TFILE *file, attr_t attrs)
 {
-    Aline *aline;
+    String *line;
 
     if (file && file->type != TF_NULL) {
-        (aline = new_aline(str, 0))->links++;
-        attrs = handle_ansi_attr(aline, attrs);
+        (line = Stringnew(str, -1, 0))->links++;
+        attrs = handle_ansi_attr(line, attrs, EMUL_ANSI_ATTR);
         if (attrs >= 0)
-            tfputa(aline, file);
-        free_aline(aline);
+            tfputline(line, file);
+        Stringfree(line);
     }
     return attrs;
 }
 
-/* tfputa
- * Print an Aline to a TFILE, with embedded newline handling.
+/* tfputline
+ * Print a String to a TFILE, with embedded newline handling.
  */
-void tfputa(aline, file)
-    Aline *aline;
-    TFILE *file;
+void tfputline(String *line, TFILE *file)
 {
-    aline->links++;
+    /* Many callers pass line with links==0, so the ++ and free are vital. */
+    line->links++;
     if (!file || file->type == TF_NULL) {
         /* do nothing */
+    } else if (file == tfalert) {
+        alert(line);
     } else if (file->type == TF_QUEUE) {
-        queueputa(aline, file);
+        queueputline(line, file);
     } else {
-        fileputs(aline->str, file->u.fp);
+        fileputs(line->data, file->u.fp);
         if (file->autoflush) tfflush(file);
     }
-    free_aline(aline);
+    Stringfree(line);
 }
 
-static void queueputa(aline, file)
-    Aline *aline;
-    TFILE *file;
+static void queueputline(String *line, TFILE *file)
 {
-    aline->links++;
+    /* Many callers pass line with links==0, so the ++ and free are vital. */
+    line->links++;
     if (file == tfscreen) {
-        record_local(aline);
-        record_global(aline);
-        screenout(aline);
+        record_local(line);
+        record_global(line);
+        screenout(line);
     } else if (!file) {
         /* do nothing */
     } else if (file->type == TF_QUEUE) {
-        aline->links++;
-        enqueue(file->u.queue, aline);
+        line->links++;
+        enqueue(file->u.queue, line);
     }
-    free_aline(aline);
+    Stringfree(line);
 }
 
 /* print a string to a file, converting embedded newlines to spaces */
-static void fileputs(str, fp)
-    CONST char *str;
-    FILE *fp;
+static void fileputs(const char *str, FILE *fp)
 {
-    CONST char *p;
+    const char *p;
 
     while ((p = strchr(str, '\n'))) {
         write(fileno(fp), str, p - str);   /* up to newline */
@@ -439,25 +468,22 @@ static void fileputs(str, fp)
 /* vSprintf
  * Similar to vsprintf, except:
  * second arg is a flag, third arg is format.
- * %S is like %s, but takes a Stringp argument.
+ * %S is like %s, but takes a String* argument.
  * %q takes a char c and a string s; prints s, with \ before each c.
  * %s, %S, and %q arguments may be NULL.
+ * %q does not support '*" width or precision.
  * newlines are not allowed in the format string (this is not enforced).
  */
 
-void vSprintf(buf, flags, fmt, ap)
-    Stringp buf;
-    int flags;
-    CONST char *fmt;
-    va_list ap;
+void vSprintf(String *buf, int flags, const char *fmt, va_list ap)
 {
     static smallstr spec, tempbuf;
-    CONST char *q, *sval;
+    const char *q, *sval;
     char *specptr, quote;
     String *Sval;
-    int len, min, max, leftjust;
+    int len, min, max, leftjust, stars;
 
-    if (!(flags & SP_APPEND)) Stringterm(buf, 0);
+    if (!(flags & SP_APPEND)) Stringtrunc(buf, 0);
     while (*fmt) {
         if (*fmt != '%' || *++fmt == '%') {
             for (q = fmt + 1; *q && *q != '%'; q++);
@@ -468,34 +494,34 @@ void vSprintf(buf, flags, fmt, ap)
 
         specptr = spec;
         *specptr++ = '%';
-        while (*fmt && !is_alpha(*fmt)) *specptr++ = *fmt++;
+        for (stars = 0; *fmt && !is_alpha(*fmt); fmt++) {
+            if (*fmt == '*') stars++;
+            *specptr++ = *fmt;
+        }
         if (*fmt == 'h' || lcase(*fmt) == 'l') *specptr++ = *fmt++;
         *specptr = *fmt;
         *++specptr = '\0';
 
         switch (*fmt) {
-        case 'd':
-        case 'i':
-            sprintf(tempbuf, spec, va_arg(ap, int));
+        case 'd': case 'i':
+        case 'x': case 'X': case 'u': case 'o':
+        case 'f': case 'e': case 'E': case 'g': case 'G':
+        case 'p':
+            vsprintf(tempbuf, spec, ap);
             Stringcat(buf, tempbuf);
+            /* eat the arguments used by vsprintf() */
+            while (stars--) (void)va_arg(ap, int);
+            switch (*fmt) {
+            case 'd': case 'i':
+                (void)va_arg(ap, int); break;
+            case 'x': case 'X': case 'u': case 'o':
+                (void)va_arg(ap, unsigned int); break;
+            case 'f': case 'e': case 'E': case 'g': case 'G':
+                (void)va_arg(ap, double); break;
+            case 'p':
+                (void)va_arg(ap, void *); break;
+            }
             break;
-        case 'x':
-        case 'X':
-        case 'u':
-        case 'o':
-            sprintf(tempbuf, spec, va_arg(ap, unsigned int));
-            Stringcat(buf, tempbuf);
-            break;
-#if 0   /* not used */
-        case 'f':
-        case 'e':
-        case 'E':
-        case 'g':
-        case 'G':
-            sprintf(tempbuf, spec, va_arg(ap, double));
-            Stringcat(buf, tempbuf);
-            break;
-#endif
         case 'c':
             Stringadd(buf, (char)va_arg(ap, int));
             break;
@@ -512,16 +538,16 @@ void vSprintf(buf, flags, fmt, ap)
             if (*specptr == '*') {
                 ++specptr;
                 min = va_arg(ap, int);
-            } else if (isdigit(*specptr)) {
-                min = strtoint(&specptr);
+            } else if (is_digit(*specptr)) {
+                min = strtoint(specptr, &specptr);
             }
             if (*specptr == '.') {
                 ++specptr;
                 if (*specptr == '*') {
                     ++specptr;
                     max = va_arg(ap, int);
-                } else if (isdigit(*specptr)) {
-                    max = strtoint(&specptr);
+                } else if (is_digit(*specptr)) {
+                    max = strtoint(specptr, &specptr);
                 }
             }
 
@@ -535,7 +561,10 @@ void vSprintf(buf, flags, fmt, ap)
 
             if (max >= 0 && len > max) len = max;
             if (!leftjust && len < min) Stringnadd(buf, ' ', min - len);
-            Stringfncat(buf, Sval ? Sval->s : sval ? sval : "", len);
+            if (Sval)
+                SStringncat(buf, Sval, len);
+            else
+                Stringfncat(buf, sval ? sval : "", len);
             if (leftjust && len < min) Stringnadd(buf, ' ', min - len);
             break;
         case 'q':
@@ -563,23 +592,16 @@ void vSprintf(buf, flags, fmt, ap)
  * A newline will appended.  See vSprintf().
  */
 
-void oprintf VDEF((CONST char *fmt, ...))
+void oprintf(const char *fmt, ...)
 {
     va_list ap;
-#ifndef HAVE_STDARG
-    CONST char *fmt;
-#endif
-    STATIC_BUFFER(buffer);
+    String *buffer;
 
-#ifdef HAVE_STDARG
+    buffer = Stringnew(NULL, 0, 0);
     va_start(ap, fmt);
-#else
-    va_start(ap);
-    fmt = va_arg(ap, char *);
-#endif
     vSprintf(buffer, 0, fmt, ap);
     va_end(ap);
-    oputs(buffer->s);
+    oputline(buffer);
 }
 #endif /* oprintf */
 
@@ -587,54 +609,32 @@ void oprintf VDEF((CONST char *fmt, ...))
  * Print to a TFILE.  A newline will appended.  See vSprintf().
  */
 
-void tfprintf VDEF((TFILE *file, CONST char *fmt, ...))
+void tfprintf(TFILE *file, const char *fmt, ...)
 {
     va_list ap;
-#ifndef HAVE_STDARG
-    char *fmt;
-    TFILE *file;
-#endif
-    STATIC_BUFFER(buffer);
+    String *buffer;
 
-#ifdef HAVE_STDARG
+    buffer = Stringnew(NULL, 0, 0);
     va_start(ap, fmt);
-#else
-    va_start(ap);
-    file = va_arg(ap, TFILE *);
-    fmt = va_arg(ap, char *);
-#endif
     vSprintf(buffer, 0, fmt, ap);
     va_end(ap);
-    tfputs(buffer->s, file);
+    tfputline(buffer, file);
 }
 
 
 /* Sprintf
  * Print into a String.  See vSprintf().
  */
-void Sprintf VDEF((String *buf, int flags, CONST char *fmt, ...))
+void Sprintf(String *buf, int flags, const char *fmt, ...)
 {
     va_list ap;
-#ifndef HAVE_STDARG
-    String *buf;
-    int flags;
-    char *fmt;
-#endif
 
-#ifdef HAVE_STDARG
     va_start(ap, fmt);
-#else
-    va_start(ap);
-    buf = va_arg(ap, String *);
-    flags = va_arg(ap, int);
-    fmt = va_arg(ap, char *);
-#endif
     vSprintf(buf, flags, fmt, ap);
     va_end(ap);
 }
 
-void eprefix(buffer)
-    String *buffer;
+void eprefix(String *buffer)
 {
     Stringcpy(buffer, "% ");
     if (loadfile) {
@@ -645,28 +645,57 @@ void eprefix(buffer)
             Sprintf(buffer, SP_APPEND, "s %d-%d: ", loadstart, loadline);
     }
     if (current_command && *current_command != '\b')
-        Sprintf(buffer, SP_APPEND, "%s: ", current_command);
+#if 0 /* XXX current_opt is not set correctly */
+	Sprintf(buffer, SP_APPEND, current_opt ? "%s -%c: " : "%s: ",
+	    current_command, current_opt);
+#else
+	Sprintf(buffer, SP_APPEND, "%s: ", current_command);
+#endif
 }
 
-void eprintf VDEF((CONST char *fmt, ...))
+static void veprintf(const char *fmt, va_list ap)
 {
-    va_list ap;
-#ifndef HAVE_STDARG
-    CONST char *fmt;
-#endif
-    STATIC_BUFFER(buffer);
-
-#ifdef HAVE_STDARG
-    va_start(ap, fmt);
-#else
-    va_start(ap);
-    fmt = va_arg(ap, char *);
-#endif
-
+    String *buffer;
+    buffer = Stringnew(NULL, 0, 0);
     eprefix(buffer);
     vSprintf(buffer, SP_APPEND, fmt, ap);
+    tfputline(buffer, tferr);
+}
+
+void eprintf(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    veprintf(fmt, ap);
     va_end(ap);
-    eputs(buffer->s);
+}
+
+static void vaprintf(const char *fmt, va_list ap)
+{
+    String *buffer;
+    buffer = Stringnew(NULL, 0, 0);
+    vSprintf(buffer, SP_APPEND, fmt, ap);
+    alert(buffer);
+}
+
+void aprintf(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    vaprintf(fmt, ap);
+    va_end(ap);
+}
+
+void internal_error(const char *file, int line, const char *fmt, ...)
+{
+    va_list ap;
+
+    eprintf("Internal error at %s:%d, %s.  %s", file, line, version,
+        "Please report this to the author, and describe what you did.");
+
+    va_start(ap, fmt);
+    veprintf(fmt, ap);
+    va_end(ap);
 }
 
 
@@ -675,7 +704,7 @@ void eprintf VDEF((CONST char *fmt, ...))
  *********/
 
 /* read one char from keyboard, with blocking */
-char igetchar()
+char igetchar(void)
 {
     char c;
     fd_set readers;
@@ -689,9 +718,7 @@ char igetchar()
 
 
 /* Unlike fgets, tfgetS() does not retain terminating newline. */
-String *tfgetS(str, file)
-    Stringp str;
-    TFILE *file;
+String *tfgetS(String *str, TFILE *file)
 {
     if (!file) {
         return NULL;
@@ -725,18 +752,18 @@ String *tfgetS(str, file)
             return NULL;
 
         SStringcpy(str, keybuf);
-        Stringterm(keybuf, keyboard_pos = 0);
+        Stringtrunc(keybuf, keyboard_pos = 0);
         return str;
 
     } else if (file->type == TF_QUEUE) {
-        Aline *aline;
+        String *line;
         do {
-            if (!(aline = dequeue(file->u.queue))) return NULL;
-            if (!((aline->attrs & F_GAG) && gag)) break;
-            free_aline(aline);
+            if (!(line = dequeue(file->u.queue))) return NULL;
+            if (!((line->attrs & F_GAG) && gag)) break;
+            Stringfree(line);
         } while (1);
-        Stringcpy(str, aline->str);
-        free_aline(aline);
+        SStringcpy(str, line);
+        Stringfree(line);
         return str;
 
     } else {
@@ -744,7 +771,7 @@ String *tfgetS(str, file)
 
         if (file->len < 0) return NULL;  /* eof or error */
 
-        Stringterm(str, 0);
+        Stringtrunc(str, 0);
 
         do {
             while (file->off < file->len) {
@@ -756,8 +783,10 @@ String *tfgetS(str, file)
                     file->off++;
                     Stringnadd(str, ' ', tabsize - str->len % tabsize);
                 }
-                while (is_print(file->buf[next]) && next < file->len) next++;
-                Stringfncat(str, file->buf + file->off, next - file->off);
+                while (is_print(file->buf[next]) && next < file->len)
+                    next++;
+                Stringfncat(str, file->buf + file->off,
+                    next - file->off);
                 file->off = next;
             }
             file->off = 0;
@@ -769,87 +798,17 @@ String *tfgetS(str, file)
     }
 }
 
-/*
- * For each aline in <src>, record it in global history and,
- * if !quiet, put it on the <tfscreen> output queue.
- */
-void flushout_queue(src, quiet)
-    Queue *src;
-    int quiet;
-{
-    ListEntry *node;
-    Queue *dest = tfscreen->u.queue;
-    int count = 0;
-
-    if (!src->head) return;
-    for (node = src->tail; node; node = node->prev) {
-        record_global((Aline *)node->datum);
-        count++;
-    }
-    if (!quiet) {
-        tfscreen_size += count;
-        src->tail->next = dest->head;
-        *(dest->head ? &dest->head->prev : &dest->tail) = src->tail;
-        dest->head = src->head;
-    }
-    src->head = src->tail = NULL;
-    oflush();
-}
-
-Aline *dnew_aline(str, attrs, len, file, line)
-    CONST char *str;
-    CONST char *file;
-    attr_t attrs;
-    int len, line;
-{
-    Aline *aline;
-    void *memory;
-
-    /* Optimization: allocating aline and aline->str in one chunk is faster,
-     * and helps improve locality of reference.  Chars have size 1, so
-     * alignment and arithmetic for the offset of str is not a problem.
-     */
-    memory = xmalloc(sizeof(Aline) + len + 1, file, line);
-    aline = (Aline *)memory;
-    aline->str = strncpy((char*)memory + sizeof(Aline), str, len);
-    aline->str[len] = '\0';
-    aline->len = len;
-    aline->attrs = attrs;
-    aline->partials = NULL;
-    aline->links = 0;
-    aline->tv.tv_sec = -1;  /* this will be set by caller, if caller needs it */
-    aline->tv.tv_usec = 0;
-    return aline;
-}
-
-void dfree_aline(aline, file, line)
-    Aline *aline;
-    CONST char *file;
-    int line;
-{
-    if (aline->links <= 0)
-        tfprintf(tferr, "Internal error: dfree_aline, %s %d: links == %ld",
-            file, line, (long)aline->links);
-    else
-        aline->links--;
-
-    if (aline->links <= 0) {
-        if (aline->partials) FREE(aline->partials);
-        FREE(aline);  /* struct and string */
-    }
-}
-
 
 /**************
  * User level *
  **************/
 
-int handle_tfopen_func(name, mode)
-    CONST char *name, *mode;
+int handle_tfopen_func(const char *name, const char *mode)
 {
     TFILE *file;
 
     if (restriction >= RESTRICT_FILE) {
+	/* RESTRICT_SHELL is checked by tfopen() */
         eprintf("restricted");
         return -1;
     }
@@ -865,25 +824,21 @@ int handle_tfopen_func(name, mode)
     }
 
     file->node = inlist(file, userfilelist, userfilelist->tail);
-    if (!file->node) {
-        eprintf("%s: %s", name, strerror(errno));
-        return -1;
-    }
     file->id = ++max_fileid;
     return file->id;
 }
 
-TFILE *find_tfile(handle)
-    CONST char *handle;
+TFILE *find_tfile(const char *handle)
 {
     ListEntry *node;
     int id;
 
-    if (isalpha(handle[0]) && !handle[1]) {
+    if (is_alpha(handle[0]) && !handle[1]) {
         switch(lcase(handle[0])) {
             case 'i':  return tfin;
             case 'o':  return tfout;
             case 'e':  return tferr;
+            case 'a':  return tfalert;
             default:   break;
         }
     } else {
@@ -897,9 +852,7 @@ TFILE *find_tfile(handle)
     return NULL;
 }
 
-TFILE *find_usable_tfile(handle, mode)
-    CONST char *handle;
-    int mode;
+TFILE *find_usable_tfile(const char *handle, int mode)
 {
     TFILE *tfile;
 
@@ -908,7 +861,7 @@ TFILE *find_usable_tfile(handle, mode)
 
     if (mode) {
         if (!(tfile->mode & mode) ||
-            (mode & S_IRUSR && (tfile == tfout || tfile == tferr)) ||
+            (mode & S_IRUSR && (tfile == tfout || tfile == tferr || tfile == tfalert)) ||
             (mode & S_IWUSR && (tfile == tfin))) {
             eprintf("stream %s is not %sable", handle,
                 mode == S_IRUSR ? "read" : "writ");
@@ -919,8 +872,7 @@ TFILE *find_usable_tfile(handle, mode)
     return tfile;
 }
 
-struct Value *handle_liststreams_command(args)
-    char *args;
+struct Value *handle_liststreams_command(String *args, int offset)
 {
     int count = 0;
     TFILE *file;
@@ -928,14 +880,14 @@ struct Value *handle_liststreams_command(args)
 
     if (!userfilelist->head) {
         oprintf("% No open streams.");
-        return 0;
+        return shareval(val_zero);
     }
     oprintf("HANDLE MODE FLUSH NAME");
     for (node = userfilelist->head; node; node = node->next) {
         file = (TFILE*)node->datum;
         oprintf("%6d   %c   %3s  %s", file->id, file->tfmode,
             (file->tfmode == 'w' || file->tfmode == 'a') ?
-                enum_flag[file->autoflush] : "",
+                enum_flag[file->autoflush].data : "",
             file->name ? file->name : "");
         count++;
     }

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.c,v 35004.60 1999/01/31 00:27:56 hawkeye Exp $ */
+static const char RCSid[] = "$Id: util.c,v 35004.109 2003/05/27 01:09:25 hawkeye Exp $";
 
 
 /*
@@ -17,54 +17,60 @@
  */
 
 #include "config.h"
-#ifdef LOCALE_H
-# include LOCALE_H
+#if HAVE_LOCALE_H
+# include <locale.h>
 #endif
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <limits.h>
 #include "port.h"
-#include "dstring.h"
 #include "tf.h"
 #include "util.h"
+#include "search.h"	/* for tfio.h */
 #include "tfio.h"
 #include "output.h"	/* fix_screen() */
 #include "tty.h"	/* reset_tty() */
 #include "signals.h"	/* core() */
 #include "variable.h"
+#include "parse.h"	/* for expression in nextopt() numeric option */
 
-typedef struct RegInfo {
-    regexp *re;
-    CONST char *str;
-    short temp;
-} RegInfo;
-
-static RegInfo top_reginfo = { NULL, NULL, FALSE };
-static RegInfo *reginfo = &top_reginfo;
+static RegInfo *reginfo = NULL;
+static const unsigned char *re_tables = NULL;
 
 typedef struct mail_info_s {	/* mail file information */
     char *name;			/* file name */
     int flag;			/* new mail? */
     int error;			/* error */
-    TIME_T mtime;		/* file modification time */
+    time_t mtime;		/* file modification time */
     long size;			/* file size */
     struct mail_info_s *next;
 } mail_info_t;
 
-static mail_info_t *maillist = NULL;
+mail_info_t *maillist = NULL;
 
-TIME_T mail_update = 0;		/* next mail update (0==immediately) */
+struct timeval tvzero = { 0, 0 };	/* zero (useful in tvcmp()) */
+struct timeval mail_update = { 0, 0 };	/* next mail update (0==immediately) */
 int mail_count = 0;
 char tf_ctype[0x100];
+int feature_locale = HAVE_SETLOCALE - 0;
+int feature_subsecond = HAVE_GETTIMEOFDAY - 0;
+int feature_ftime = HAVE_STRFTIME - 0;
+int feature_TZ = HAVE_TZSET - 0;
 
-static char *FDECL(cmatch,(CONST char *pat, int ch));
-static void  NDECL(free_maillist);
+static char *cmatch(const char *pat, int ch);
+static void  free_maillist(void);
+static RegInfo *tf_reg_compile_fl(const char *pattern, int optimize,
+    const char *file, int line);
 
-#ifndef CASE_OK
+#define tf_reg_compile(pat, opt) \
+    tf_reg_compile_fl(pat, opt, __FILE__, __LINE__)
+
+#if !STDC_HEADERS
 int lcase(x) char x; { return is_upper(x) ? tolower(x) : x; }
 int ucase(x) char x; { return is_lower(x) ? toupper(x) : x; }
 #endif
 
-void init_util1()
+void init_util1(void)
 {
     int i;
 
@@ -109,13 +115,12 @@ void init_util1()
 
 /* Convert ascii string to printable string with "^X" forms. */
 /* Returns pointer to static area; copy if needed. */
-char *ascii_to_print(str)
-    CONST char *str;
+String *ascii_to_print(const char *str)
 {
     STATIC_BUFFER(buffer);
     char c;
 
-    for (Stringterm(buffer, 0); *str; str++) {
+    for (Stringtrunc(buffer, 0); *str; str++) {
         c = unmapchar(*str);
         if (c == '^' || c == '\\') {
             Stringadd(Stringadd(buffer, '\\'), c);
@@ -127,101 +132,55 @@ char *ascii_to_print(str)
             Sprintf(buffer, 0, "\\0x%2x", c);
         }
     }
-    return buffer->s;
+    return buffer;
 }
 
 /* Convert a printable string containing "^X" and "\nnn" to real ascii. */
 /* "^@" and "\0" are mapped to '\200'. */
 /* Returns pointer to static area; copy if needed. */
-char *print_to_ascii(src)
-    CONST char *src;
+String *print_to_ascii(const char *src)
 {
     STATIC_BUFFER(dest);
 
-    Stringterm(dest, 0);
+    Stringtrunc(dest, 0);
     while (*src) {
         if (*src == '^') {
             Stringadd(dest, *++src ? mapchar(CTRL(*src)) : '^');
             if (*src) src++;
         } else if (*src == '\\' && is_digit(*++src)) {
             char c;
-            c = strtochr((char**)&src);
+            c = strtochr(src, (char**)&src);
             Stringadd(dest, mapchar(c));
         } else Stringadd(dest, *src++);
     }
-    return dest->s;
+    return dest;
 }
 
 /* String handlers
- * Some of these are already present in most C libraries, but go by
- * different names or are not always there.  If tfconfig couldn't
- * find them, we use our own.
  * These are heavily used functions, so speed is favored over simplicity.
  */
 
-#ifndef HAVE_strtol
-char strtochr(sp)
-    char **sp;
-{
-    int c;
-
-    if (**sp != '0') {
-        c = atoi(*sp);
-        while (is_digit(*++(*sp)));
-    } else if (lcase(*++(*sp)) == 'x') {
-        for ((*sp)++, c = 0; is_xdigit(**sp); (*sp)++)
-            c = c * 0x10 + lcase(**sp) - (is_digit(**sp) ? '0' : ('a' - 10));
-    } else {
-        for (c = 0; is_digit(**sp); (*sp)++)
-            c = c * 010 + **sp - '0';
-    }
-    return (char)(c & 0xFF);
-}
-
-int strtoint(sp)
-    char **sp;
+int enum2int(const char *str, long val, String *vec, const char *msg)
 {
     int i;
-    while (is_space(**sp)) ++*sp;
-    i = atoi(*sp);
-    while (is_digit(**sp)) ++*sp;
-    return i;
-}
-
-long strtolong(sp)
-    char **sp;
-{
-    long i;
-    while (is_space(**sp)) ++*sp;
-    i = atol(*sp);
-    while (is_digit(**sp)) ++*sp;
-    return i;
-}
-#endif
-
-int enum2int(str, vec, msg)
-    CONST char *str, **vec, *msg;
-{
-    int i, val;
     STATIC_BUFFER(buf);
 
-    for (i = 0; vec[i]; ++i) {
-        if (cstrcmp(str, vec[i]) == 0) return i;
+    for (i = 0; vec[i].data; ++i) {
+        if (str && cstrcmp(str, vec[i].data) == 0) return i;
     }
-    if (is_digit(*str)) {
-        if ((val = strtoint(&str)) < i && !*str) return val;
+    if (str) {
+        val = is_digit(*str) ? strtoint(str, &str) : -1;
     }
-    Stringcpy(buf, vec[0]);
-    for (i = 1; vec[i]; ++i) Sprintf(buf, SP_APPEND, ", %s", vec[i]);
+    if (val >= 0 && val < i) return val;
+    SStringcpy(buf, &vec[0]);
+    for (i = 1; vec[i].data; ++i) Sprintf(buf, SP_APPEND, ", %S", &vec[i]);
     eprintf("valid values for %s are: %S", msg, buf);
     return -1;
 }
 
 #if 0 /* not used */
 /* case-insensitive strchr() */
-char *cstrchr(s, c)
-    register CONST char *s;
-    register int c;
+char *cstrchr(register const char *s, register int c)
 {
     for (c = lcase(c); *s; s++) if (lcase(*s) == c) return (char *)s;
     return (c) ? NULL : (char *)s;
@@ -229,9 +188,7 @@ char *cstrchr(s, c)
 #endif
 
 /* c may be escaped by preceeding it with e */
-char *estrchr(s, c, e)
-    register CONST char *s;
-    register int c, e;
+char *estrchr(register const char *s, register int c, register int e)
 {
     while (*s) {
         if (*s == c) return (char *)s;
@@ -243,48 +200,29 @@ char *estrchr(s, c, e)
 }
 
 #ifdef sun
-# ifndef HAVE_index
+# if !HAVE_INDEX
 /* Workaround for some buggy Solaris 2.x systems, where libtermcap calls index()
  * and rindex(), but they're not defined in libc.
  */
 #undef index
-char *index(s, c)
-    CONST char *s;
-    char c;
+char *index(const char *s, char c)
 {
     return strchr(s, c);
 }
 
 #undef rindex
-char *rindex(s, c)
-    CONST char *s;
-    char c;
+char *rindex(const char *s, char c)
 {
     return strrchr(s, c);
 }
-# endif /* HAVE_index */
+# endif /* HAVE_INDEX */
 #endif /* sun */
-
-#ifndef HAVE_strstr
-char *strstr(s1, s2) 
-    register CONST char *s1, *s2;
-{
-    int len;
-
-    if ((len = strlen(s2) - 1) < 0) return (char*)s1;
-    while ((s1 = strchr(s1, *s2))) {
-        if (strncmp(s1 + 1, s2 + 1, len) == 0) return (char*)s1;
-    }
-    return NULL;
-}
-#endif
 
 #ifndef cstrcmp
 /* case-insensitive strcmp() */
-int cstrcmp(s, t)
-    register CONST char *s, *t;
+int cstrcmp(register const char *s, register const char *t)
 {
-    register int diff;
+    register int diff = 0;
     while ((*s || *t) && !(diff = lcase(*s) - lcase(*t))) s++, t++;
     return diff;
 }
@@ -292,11 +230,9 @@ int cstrcmp(s, t)
 
 #if 0  /* not used */
 /* case-insensitive strncmp() */
-int cstrncmp(s, t, n)
-    register CONST char *s, *t;
-    int n;
+int cstrncmp(register const char *s, register const char *t, int n)
 {
-    register int diff;
+    register int diff = 0;
     while (n && *s && !(diff = lcase(*s) - lcase(*t))) s++, t++, n--;
     return n ? diff : 0;
 }
@@ -306,12 +242,11 @@ int cstrncmp(s, t, n)
  * Converts argument to a nonnegative integer.  Returns -1 for failure.
  * The *str pointer will be advanced to beginning of next word.
  */
-int numarg(str)
-    char **str;
+int numarg(char **str)
 {
     int result;
     if (is_digit(**str)) {
-        result = strtoint(str);
+        result = strtoint(*str, str);
     } else {
         eprintf("invalid or missing numeric argument");
         result = -1;
@@ -326,9 +261,7 @@ int numarg(str)
  * to next word.  If end != NULL, *end will get pointer to end of first word;
  * otherwise, word will be nul terminated.
  */
-char *stringarg(str, end)
-    char **str;
-    CONST char **end;
+char *stringarg(char **str, const char **end)
 {
     char *start;
     while (is_space(**str)) ++*str;
@@ -340,23 +273,32 @@ char *stringarg(str, end)
     return start;
 }
 
-int stringliteral(dest, str)
-    String *dest;
-    char **str;
+int stringliteral(String *dest, char **str)
 {
     char quote;
 
-    Stringterm(dest, 0);
+    Stringtrunc(dest, 0);
     quote = **str;
     for (++*str; **str && **str != quote; ++*str) {
         if (**str == '\\') {
-            if ((*str)[1] == quote || (*str)[1] == '\\')
+            if ((*str)[1] == quote || (*str)[1] == '\\') {
                 ++*str;
-            else if ((*str)[1] && pedantic)
-                eprintf("warning: the only legal escapes within this quoted string are \\\\ and \\%c.  \\\\%c is the correct way to write a literal \\%c inside a quoted string.", quote, (*str)[1], (*str)[1]);
-
+#if 0
+	    } else if ((*str)[1] == '\n') {
+		/* XXX handle backslash-newline */
+#endif
+            } else if ((*str)[1] && pedantic) {
+                eprintf("warning: the only legal escapes within this quoted "
+		    "string are \\\\ and \\%c.  \\\\%c is the correct way to "
+		    "write a literal \\%c inside a quoted string.",
+		    quote, (*str)[1], (*str)[1]);
+	    }
         }
+#if 0	/* 4.0 alpha (or earlier) - why? */
         Stringadd(dest, is_space(**str) ? ' ' : **str);
+#else	/* 5.0 - wanted to allow ^M, ^J, etc in fake_recv() */
+        Stringadd(dest, **str);
+#endif
     }
     if (!**str) {
         Sprintf(dest, 0, "unmatched %c", quote);
@@ -366,57 +308,43 @@ int stringliteral(dest, str)
     return 1;
 }
 
-int regexec_in_scope(re, str)
-    regexp *re;
-    CONST char *str;
+int regmatch_in_scope(Value *val, const char *pattern, String *str)
 {
-    int result;
-
-    if (reginfo->temp) {
-        if (reginfo->re) free(reginfo->re);
-        if (reginfo->str) FREE(reginfo->str);
+    if (reginfo) tf_reg_free(reginfo);
+    if (!val) {
+	if (!(reginfo = tf_reg_compile(pattern, 0)))
+	    return 0;
+    } else if (val->type & TYPE_REGEX) {
+	/* use precompiled regexp */
+	(reginfo = val->u.ri)->links++;
+    } else {
+	/* compile regexp, and store it on val for future reuse */
+	if (!(reginfo = tf_reg_compile(pattern, 1)))
+	    return 0;
+	if (val->type == TYPE_STR) {
+	    /* not a non-string or an already extended string */
+	    (val->u.ri = reginfo)->links++;
+	    val->type |= TYPE_REGEX;
+	}
     }
 
-    reginfo->re = re;
-    reginfo->str = STRDUP(str);
-    reginfo->temp = TRUE;
-    result = regexec(re, (char *)reginfo->str);
-    if (!result) {
-        FREE(reginfo->str);
-        reginfo->str = NULL;
-    }
-    return result;
+    return tf_reg_exec(reginfo, str, NULL, 0);
 }
 
-void *new_reg_scope(re, str)
-    regexp *re;
-    CONST char *str;
+RegInfo *new_reg_scope(RegInfo *ri, String *Str)
 {
     RegInfo *old;
 
     old = reginfo;
-    reginfo = (RegInfo *)XMALLOC(sizeof(RegInfo));
-
-    if (re) {			/* use new re */
-        reginfo->re = re;
-        reginfo->str = str;
-    } else {			/* inherit old re */
-        reginfo->re = old->re;
-        reginfo->str = old->str;
-    }
-    reginfo->temp = FALSE;
+    reginfo = ri ? ri : reginfo;	/* use new ri or inherit old reginfo */
+    if (reginfo) reginfo->links++;
 
     return old;
 }
 
-void restore_reg_scope(old)
-    void *old;
+void restore_reg_scope(RegInfo *old)
 {
-    if (reginfo->temp) {
-        if (reginfo->re)  free(reginfo->re);
-        if (reginfo->str) FREE(reginfo->str);
-    }
-    FREE(reginfo);
+    if (reginfo) tf_reg_free(reginfo);
     reginfo = (RegInfo *)old;
 }
 
@@ -424,73 +352,168 @@ void restore_reg_scope(old)
 /* n>=0:  nth substring */
 /* n=-1:  left substring */
 /* n=-2:  right substring */
-int regsubstr(dest, n)
-    String *dest;
-    int n;
+int regsubstr(String *dest, int n)
 {
-    CONST regexp *re = reginfo->re;
-    if (!(reginfo->str && n < NSUBEXP && re && re->startp[n >= 0 ? n : 0]))
+    int idx;
+    idx = (n < 0) ? 0 : n * 2;
+
+    if (!(reginfo && reginfo->Str && n < reginfo->ovecsize/3 && reginfo->re &&
+	reginfo->ovector[idx] >= 0))
+    {
         return -1;
-    if (n < -2 || !(re->endp[n >= 0 ? n : 0])) {
-        internal_error(__FILE__, __LINE__);
-        eprintf("invalid subexp %d", n);
+    }
+    if (n < -2 || reginfo->ovector[idx+1] < 0) {
+        internal_error(__FILE__, __LINE__, "invalid subexp %d", n);
         return -1;
     }
     if (n == -1) {
-        Stringfncat(dest, reginfo->str, re->startp[0] - reginfo->str);
-        return re->startp[0] - reginfo->str;
+        SStringncat(dest, reginfo->Str, reginfo->ovector[0]);
+        return reginfo->ovector[0];
     } else if (n == -2) {
-        Stringcat(dest, re->endp[0]);
-        return strlen(re->endp[0]);
+        SStringocat(dest, reginfo->Str, reginfo->ovector[1]);
+        return reginfo->Str->len - reginfo->ovector[1];
     } else {
-        Stringfncat(dest, re->startp[n], re->endp[n] - re->startp[n]);
-        return re->endp[n] - re->startp[n];
+        SStringoncat(dest, reginfo->Str, reginfo->ovector[idx],
+            reginfo->ovector[idx+1] - reginfo->ovector[idx]);
+	return reginfo->ovector[idx+1] - reginfo->ovector[idx];
     }
 }
 
-void regerror(msg)
-    char *msg;
+static RegInfo *tf_reg_compile_fl(const char *pattern, int optimize,
+    const char *file, int line)
 {
-    eprintf("regexp error: %s", msg);
+    RegInfo *ri;
+    const char *emsg, *s;
+    int eoffset, n;
+    /* PCRE_DOTALL optimizes patterns starting with ".*" */
+    int options = PCRE_DOLLAR_ENDONLY | PCRE_DOTALL | PCRE_CASELESS;
+
+    ri = dmalloc(NULL, sizeof(RegInfo), file, line);
+    if (!ri) return NULL;
+    ri->extra = NULL;
+    ri->ovector = NULL;
+    ri->Str = NULL;
+    ri->links = 1;
+
+    if (warn_curly_re && estrchr(pattern, '{', '\\')) {
+	eprintf("%s", "Warning:  "
+	    "regexp contains '{', which has a new meaning in version 5.0.  "
+	    "(This warning can be disabled with '/set warn_curly_re=off'.)");
+    }
+    for (s = pattern; *s; s++) {
+	if (*s == '\\') {
+	    if (s[1]) s++;
+	} else if (is_upper(*s)) {
+	    options &= ~PCRE_CASELESS;
+	    break;
+	}
+    }
+
+    ri->re = pcre_compile((char*)pattern, options, &emsg, &eoffset, re_tables);
+    if (!ri->re) {
+	eprintf("character %d: %s", eoffset, emsg);
+	goto tf_reg_compile_error;
+    }
+    n = pcre_info(ri->re, NULL, NULL);
+    if (n < 0) goto tf_reg_compile_error;
+    ri->ovecsize = 3 * (n + 1);
+    ri->ovector = dmalloc(NULL, sizeof(int) * ri->ovecsize, file, line);
+    if (!ri->ovector) goto tf_reg_compile_error;
+    if (optimize) {
+	ri->extra = pcre_study(ri->re, 0, &emsg);
+	if (emsg) {
+	    eprintf("%s", emsg);
+	    goto tf_reg_compile_error;
+	}
+    }
+    return ri;
+
+tf_reg_compile_error:
+    tf_reg_free(ri);
+    return NULL;
+}
+
+int tf_reg_exec(RegInfo *ri,
+    String *Sstr,	/* String to match.  Will be saved for regsubstr(). */
+    const char *str,	/* Used if Sstr is NULL; not saved. */
+    int startoffset)
+{
+    int result, len;
+
+    /* If ovector was stolen by find_and_run_matches(), make a new one. */
+    if (!ri->ovector) {
+	ri->ovector = MALLOC(sizeof(int) * ri->ovecsize);
+	if (!ri->ovector) return 0;
+    }
+
+    /* Free old saved Str. */
+    if (ri->Str) {
+	Stringfree(ri->Str);
+	ri->Str = NULL;
+    }
+
+    if (Sstr) {
+	str = Sstr->data;
+	len = Sstr->len;
+    } else {
+	len = strlen(str);
+    }
+    result = pcre_exec(ri->re, ri->extra, str, len, startoffset,
+	startoffset ? PCRE_NOTBOL : 0, ri->ovector, ri->ovecsize);
+    if (result < 0) {
+	result = 0;
+    } else {
+	if (result == 0) result = 1; /* shouldn't happen, with ovector */
+	if (Sstr) (ri->Str = Sstr)->links++;	/* save, for regsubstr() */
+    }
+    return result;
+}
+
+void tf_reg_free(RegInfo *ri)
+{
+    if (--ri->links > 0) return;
+    if (ri->ovector) FREE(ri->ovector);
+    if (ri->re) pcre_free(ri->re);
+    if (ri->extra) pcre_free(ri->extra);
+    if (ri->Str) Stringfree(ri->Str);
+    FREE(ri);
 }
 
 /* call with (pat, NULL, -1) to zero-out pat.
  * call with (pat, str, -1) to init pat with some outside string (ie, strdup).
  * call with (pat, str, mflag) to init pat with some outside string.
  */
-int init_pattern(pat, str, mflag)
-    Pattern *pat;
-    CONST char *str;
-    int mflag;
+int init_pattern(Pattern *pat, const char *str, int mflag)
 {
     return init_pattern_str(pat, str) && init_pattern_mflag(pat, mflag);
 }
 
-int init_pattern_str(pat, str)
-    Pattern *pat;
-    CONST char *str;
+int init_pattern_str(Pattern *pat, const char *str)
 {
-    pat->re = NULL;
+    pat->ri = NULL;
     pat->mflag = -1;
     pat->str = (!str) ? NULL : STRDUP(str);
     return 1;
 }
 
-int init_pattern_mflag(pat, mflag)
-    Pattern *pat;
-    int mflag;
+int init_pattern_mflag(Pattern *pat, int mflag)
 {
     if (!pat->str || pat->mflag >= 0) return 1;
     pat->mflag = mflag;
-    if (mflag == MATCH_GLOB) {
+    switch (mflag) {
+    case MATCH_GLOB:
         if (smatch_check(pat->str)) return 1;
-    } else if (mflag == MATCH_REGEXP) {
+	break;
+    case MATCH_REGEXP:
+#if 0
         char *s = pat->str;
         while (*s == '(' || *s == '^') s++;
         if (strncmp(s, ".*", 2) == 0)
-            eprintf("Warning: leading \".*\" in a regexp is very inefficient, and never necessary.");
-        if ((pat->re = regcomp((char*)pat->str))) return 1;
-    } else if (mflag == MATCH_SIMPLE) {
+            eprintf("Warning: leading \".*\" in a regexp is inefficient.");
+#endif
+	if ((pat->ri = tf_reg_compile(pat->str, 1))) return 1;
+	break;
+    default:
         return 1;
     }
     FREE(pat->str);
@@ -498,26 +521,31 @@ int init_pattern_mflag(pat, mflag)
     return 0;
 }
 
-void free_pattern(pat)
-    Pattern *pat;
+void free_pattern(Pattern *pat)
 {
     if (pat->str) FREE(pat->str);
-    if (pat->re) free(pat->re);    /* was allocated by malloc() in regcomp() */
+    if (pat->ri) tf_reg_free(pat->ri);
     pat->str = NULL;
-    pat->re  = NULL;
+    pat->ri  = NULL;
 }
 
-int patmatch(pat, str)
-    CONST Pattern *pat;
-    CONST char *str;
+int patmatch(
+    const Pattern *pat,
+    String *Sstr,	/* String to match.  Will be saved for regsubstr(). */
+    const char *str)	/* Used if Sstr is NULL; not saved. */
 {
+    if (Sstr) str = Sstr->data;
     if (!pat->str) return 1;
+
+    switch (pat->mflag) {
     /* Even a blank regexp must be exec'd, so Pn will work. */
-    if (pat->mflag == MATCH_REGEXP) return regexec(pat->re, (char *)str);
-    if (!*pat->str) return 1;
-    if (pat->mflag == MATCH_GLOB)   return !smatch(pat->str, str);
-    if (pat->mflag == MATCH_SIMPLE) return !strcmp(pat->str, str);
-    eprintf("internal error: pat->mflag == %d", pat->mflag);
+    case MATCH_REGEXP: return !!tf_reg_exec(pat->ri, Sstr, str, 0);
+    case MATCH_GLOB:   return !smatch(pat->str, str);
+    case MATCH_SIMPLE: return !strcmp(pat->str, str);
+    case MATCH_SUBSTR: return !!strstr(str, pat->str);
+    default: eprintf("internal error: pat->mflag == %d", pat->mflag);
+    }
+
     return 0;
 }
 
@@ -526,9 +554,7 @@ int patmatch(pat, str)
  * If ch matches, cmatch() returns a pointer to the char after ']' in class;
  * otherwise, cmatch() returns NULL.
  */
-static char *cmatch(class, ch)
-    CONST char *class;
-    int ch;
+static char *cmatch(const char *class, int ch)
 {
     int not;
 
@@ -554,10 +580,9 @@ static char *cmatch(class, ch)
  */
 /* Based on code by Leo Plotkin. */
 
-int smatch(pat, str)
-    CONST char *pat, *str;
+int smatch(const char *pat, const char *str)
 {
-    CONST char *start = str;
+    const char *start = str;
     static int inword = FALSE;
 
     while (*pat) {
@@ -589,12 +614,10 @@ int smatch(pat, str)
             } else if (!*pat) {
                 return 0;
             } else if (*pat == '{') {
-             /* if (str == start || is_space(*(str - 1))) */
                 if (str == start || is_space(str[-1]))
                     if (!smatch(pat, str)) return 0;
-                while (*++str)
-                  /*if (is_space(*(str - 1)) && !smatch(pat, str)) return 0; */
-                    if (is_space(str[-1]) && !smatch(pat, str)) return 0;
+                for ( ; *str; str++)
+                    if (is_space(*str) && !smatch(pat, str+1)) return 0;
                 return 1;
             } else if (*pat == '[') {
                 while (*str) if (!smatch(pat, str++)) return 0;
@@ -615,7 +638,7 @@ int smatch(pat, str)
         case '{':
             if (str != start && !is_space(*(str - 1))) return 1;
             {
-                CONST char *end;
+                const char *end;
                 int result = 1;
 
                 /* This can't happen if smatch_check is used first. */
@@ -649,8 +672,7 @@ int smatch(pat, str)
 }
 
 /* verify syntax of smatch pattern */
-int smatch_check(pat)
-    CONST char *pat;
+int smatch_check(const char *pat)
 {
     int inword = FALSE;
 
@@ -690,8 +712,7 @@ int smatch_check(pat)
 }
 
 /* remove leading and trailing spaces.  Modifies s and *s */
-char *stripstr(s)
-    char *s;
+char *stripstr(char *s)
 {
     char *end;
 
@@ -706,21 +727,26 @@ char *stripstr(s)
 
 /* General command option parser
 
-   startopt should be called before nextopt.  args is the argument list
-   to be parsed, opts is a string containing valid options.  Options which
-   take string arguments should be followed by a ':'; options which take
-   numeric arguments should be followed by a '#'.  String arguments may be
-   omitted.  The special character '0' expects an integer option of the
-   form "-nn".  The special charcter '@' expects a time option of the
-   form "-hh:mm:ss", "-hh:mm", or "-ss".
+   startopt should be called before nextopt.  args is the argument list to be
+   parsed, opts is a string containing a series of codes describing valid
+   options.  A letter or digit indicates a valid option character.  A '-'
+   indicates that no option is expected; the argument should directly follow
+   the dash.  A punctuation character following an option code indicates that
+   it takes an argument:
+     ':' string
+     '#' integer
+     '@' time of the form "-h:m[:s[.f]]" or "-s[.f]".
+   The '-' option code must always take an argument.  String arguments may be
+   omitted.
 
-   nextopt returns the next option character.  If option takes a string
-   argument, a pointer to it is returned in *arg; an integer argument
-   is returned in *num.  If end of options is reached, nextopt returns
-   '\0', and *arg points to remainder of argument list.  End of options
-   is marked by "\0", "=", "--", or a word not beggining with
-   '-'.  If an invalid option is encountered, an error message is
-   printed and '?' is returned.
+   nextopt returns the next option character.  The new offset is returned in
+   *offp.  If option takes a string argument, a pointer to it is returned in
+   *arg; an integer argument is returned in *num; a time argument is returned
+   in *tvp.  If end of options is reached, nextopt returns '\0'.  " - " or
+   " -- " marks the end of options, and is consumed.  "\0", "=", or a word not
+   beggining with "-" marks the end of options, and is not consumed.  If an
+   invalid option is encountered, an error message is printed and '?' is
+   returned.
 
    Option Syntax Rules:
       All options must be preceded by '-'.
@@ -731,128 +757,136 @@ char *stripstr(s)
       A '--' or '-' with no option may be used to mark the end of the options.
 */
 
-static char *argp;
-static CONST char *options;
+static String *optstr;
+static const char *options;
 static int inword;
 
-void startopt(args, opts)
-    CONST char *args;
-    CONST char *opts;
+void startopt(String *args, const char *opts)
 {
-    argp = (char *)args;
+    optstr = args;
     options = opts;
     inword = 0;
 }
 
-char nextopt(arg, num)
-    char **arg;
-    long *num;
+char nextopt(char **arg, long *ival, struct timeval *tvp, int *offp)
 {
-    char *q, opt;
+    char *q, *end, opt;
     STATIC_BUFFER(buffer);
+    extern char current_opt;
 
     if (!inword) {
-        while (is_space(*argp)) argp++;
-        if (*argp != '-') {
-            *arg = argp;
+        while (is_space(optstr->data[*offp])) (*offp)++;
+        if (optstr->data[*offp] != '-') {
+	    current_opt = '\0';
             return '\0';
         } else {
-            if (*++argp == '-') argp++;
-            if (is_space(*argp) || !*argp) {
-                for (*arg = argp; is_space(**arg); ++*arg);
+            if (optstr->data[++(*offp)] == '-') (*offp)++;
+            if (is_space(optstr->data[*offp]) || !optstr->data[*offp]) {
+                while (is_space(optstr->data[*offp])) ++(*offp);
+		current_opt = '\0';
                 return '\0';
             }
         }
-    } else if (*argp == '=') {        /* '=' marks end, & is part of parms */
-        *arg = argp;                  /*... for stuff like  /def -t"foo"=bar */
+    } else if (optstr->data[*offp] == '=') {
+        /* '=' ends, but isn't consumed, for stuff like: /def -t"foo"=bar */
+	current_opt = '\0';
         return '\0';
     }
 
-    opt = *argp;
+    current_opt = opt = optstr->data[*offp];
 
-    /* time option */
-    if ((is_digit(opt) || opt == ':') && strchr(options, '@')) {
-        *num = parsetime(&argp, NULL);
-        return '@';
-    }
-
-    /* numeric option */
-    if (is_digit(opt) && strchr(options, '0')) {
-        *num = strtoint(&argp);
-        return '0';
-    }
-
-    /* invalid options */
-    if (opt == '@' || opt == ':' || opt == '#' || !(q = strchr(options, opt))) {
+    if ((is_digit(opt) || opt == ':') && (q = strchr(options, '-'))) {
+	/* valid time/number option */
+	opt = '-';
+    } else if ((opt != '@' && opt != ':' && opt != '#') &&
+	(q = strchr(options, opt)))
+    {
+	/* valid letter/punctuation option */
+	++*offp;
+    } else {
+	/* invalid option */
         int dash=1;
-        CONST char *p;
+        const char *p;
         STATIC_BUFFER(helpbuf);
-        Stringterm(helpbuf, 0);
+        Stringtrunc(helpbuf, 0);
         if (opt != '?') eprintf("invalid option: %c", opt);
         for (p = options; *p; p++) {
-            switch (*p) {
-            case '@': Stringcat(helpbuf, " -<time>"); dash=1; break;
-            case '0': Stringcat(helpbuf, " -<number>"); dash=1; break;
-            default:
-                if (dash || p[1]==':' || p[1]=='#') Stringcat(helpbuf, " -");
-                Stringadd(helpbuf, *p);
-                dash=0;
-                if (p[1] == ':') { Stringcat(helpbuf,"<string>"); p++; dash=1; }
-                if (p[1] == '#') { Stringcat(helpbuf,"<number>"); p++; dash=1; }
-            }
+	    if (dash || is_punct(p[1])) Stringcat(helpbuf, " -");
+	    if (*p != '-') Stringadd(helpbuf, *p);
+	    dash=0;
+	    if (p[1] == ':') { Stringcat(helpbuf,"<string>");  p++; dash=1; }
+	    if (p[1] == '#') { Stringcat(helpbuf,"<integer>"); p++; dash=1; }
+	    if (p[1] == '@') { Stringcat(helpbuf,"<time>");    p++; dash=1; }
         }
         eprintf("options:%S", helpbuf);
-        return '?';
+        opt = '?';
+	goto end;
     }
 
     q++;
 
-    /* option takes a string argument */
-    if (*q == ':') {
-        Stringterm(buffer, 0);
-        ++argp;
-        if (is_quote(*argp)) {
-            if (!stringliteral(buffer, &argp)) {
+    /* option takes a string or numeric_expression argument */
+    if (*q == ':' || *q == '#') {
+        Stringtrunc(buffer, 0);
+        if (is_quote(optstr->data[*offp])) {
+            end = optstr->data + *offp;
+            if (!stringliteral(buffer, &end)) {
                 eprintf("%S in %c option", buffer, opt);
-                return '?';
+                opt = '?';
+		goto end;
             }
+            *offp = end - optstr->data;
         } else {
-            while (*argp && !is_space(*argp)) Stringadd(buffer, *argp++);
+            while (optstr->data[*offp] && !is_space(optstr->data[*offp]))
+                Stringadd(buffer, optstr->data[(*offp)++]);
         }
-        *arg = buffer->s;
+	if (arg)
+	    *arg = buffer->data;
 
-    /* option takes a numeric argument */
-    } else if (*q == '#') {
-        argp++;
-        if (!is_digit(*argp)) {
-            eprintf("%c option requires numeric argument", opt);
-            return '?';
+	/* option takes a numeric argument expression */
+	if (*q == '#') {
+	    Value *val = expr_value(buffer->data);
+	    if (!val) {
+		opt = '?';
+		goto end;
+	    }
+	    *ival = valint(val);
+	    freeval(val);
+	}
+
+    /* option takes a time argument */
+    } else if (*q == '@') {
+	Value val[1];
+	if (!parsenumber(optstr->data + *offp, &end, TYPE_TIME, val)) {
+            eprintf("%c option: %s", q[-1], strerror(errno));
+            opt = '?';
+	    goto end;
         }
-        *num = strtoint(&argp);
-        *arg = NULL;
+	*tvp = val->u.tval;
+        *offp = end - optstr->data;
 
     /* option takes no argument */
     } else {
-        argp++;
-        *arg = NULL;
+        if (arg) *arg = NULL;
     }
 
-    inword = (*argp && !is_space(*argp));
+    inword = (optstr->data[*offp] && !is_space(optstr->data[*offp]));
+end:
     return opt;
 }
 
-#ifdef HAVE_tzset
-int ch_timezone()
+#if HAVE_TZSET
+int ch_timezone(void)
 {
     tzset();
     return 1;
 }
 #endif
 
-int ch_locale()
+int ch_locale(void)
 {
-#ifdef HAVE_setlocale
-    CONST char *lang;
+#if HAVE_SETLOCALE
+    const char *lang;
 
 #define tf_setlocale(cat, name, value) \
     do { \
@@ -867,46 +901,54 @@ int ch_locale()
     tf_setlocale(LC_CTYPE, "LC_CTYPE", "");
     tf_setlocale(LC_TIME,  "LC_TIME",  "");
 
+    /* XXX memory leak: old re_tables can't be freed if any compiled regexps
+     * use it.  But we don't expect the user to change locales very often
+     * (typically, locale is set at startup, and then never changed).
+     */
+    re_tables = pcre_maketables();
+
     return 1;
 #else
     eprintf("Locale support is unavailable.");
     return 1;
-#endif /* HAVE_setlocale */
+#endif /* HAVE_SETLOCALE */
 }
 
-int ch_maildelay()
+int ch_maildelay(void)
 {
-    mail_update = 0;
+    mail_update = tvzero;
     return 1;
 }
 
-int ch_mailfile()
+int ch_mailfile(void)
 {
     mail_info_t *info, **oldp, *newlist = NULL;
     char *path, *name;
-    CONST char *end;
+    const char *end;
 
     path = (TFMAILPATH && *TFMAILPATH) ? TFMAILPATH : MAIL;
-    while (*(name = stringarg(&path, &end))) {
-        for (oldp = &maillist; *oldp; oldp = &(*oldp)->next) {
-            if (strncmp(name, (*oldp)->name, end-name) == 0 &&
-                !(*oldp)->name[end-name])
-                    break;
-        }
-        if (*oldp) {
-            info = *oldp;
-            *oldp = (*oldp)->next;
-        } else {
-            info = XMALLOC(sizeof(mail_info_t));
-            info->name = strncpy(XMALLOC(end-name+1), name, end-name);
-	    info->name[end-name] = '\0';
-            info->mtime = -2;
-            info->size = -2;
-            info->flag = 0;
-            info->error = 0;
-        }
-        info->next = newlist;
-        newlist = info;
+    if (path) {
+	while (*(name = stringarg(&path, &end))) {
+	    for (oldp = &maillist; *oldp; oldp = &(*oldp)->next) {
+		if (strncmp(name, (*oldp)->name, end-name) == 0 &&
+		    !(*oldp)->name[end-name])
+			break;
+	    }
+	    if (*oldp) {
+		info = *oldp;
+		*oldp = (*oldp)->next;
+	    } else {
+		info = XMALLOC(sizeof(mail_info_t));
+		info->name = strncpy(XMALLOC(end-name+1), name, end-name);
+		info->name[end-name] = '\0';
+		info->mtime = -2;
+		info->size = -2;
+		info->flag = 0;
+		info->error = 0;
+	    }
+	    info->next = newlist;
+	    newlist = info;
+	}
     }
     free_maillist();
     maillist = newlist;
@@ -914,7 +956,7 @@ int ch_mailfile()
     return 1;
 }
 
-static void free_maillist()
+static void free_maillist(void)
 {
     mail_info_t *info;
     while (maillist) {
@@ -925,10 +967,10 @@ static void free_maillist()
     }
 }
 
-void init_util2()
+void init_util2(void)
 {
-    Stringp path;
-    CONST char *name;
+    String *path;
+    const char *name;
 
     ch_locale();
 
@@ -936,8 +978,9 @@ void init_util2()
         ch_mailfile();
 #ifdef MAILDIR
     } else if ((name = getvar("LOGNAME")) || (name = getvar("USER"))) {
-        Sprintf(Stringinit(path), 0, "%s/%s", MAILDIR, name);
-        set_var_by_id(VAR_MAIL, 0, path->s);
+        (path = Stringnew(NULL, 0, 0))->links++;
+        Sprintf(path, 0, "%s/%s", MAILDIR, name);
+        set_var_by_name("MAIL", path, 0);
         Stringfree(path);
 #endif
     } else {
@@ -945,12 +988,14 @@ void init_util2()
     }
 }
 
-#ifdef DMALLOC
-void free_util()
+#if USE_DMALLOC
+void free_util(void)
 {
     free_maillist();
-    if (reginfo->str) FREE(reginfo->str);
-    if (reginfo->re) free(reginfo->re);      /* malloc()ed in regcomp() */
+    if (reginfo) {
+	tf_reg_free(reginfo);
+	reginfo = NULL;
+    }
 }
 #endif
 
@@ -983,7 +1028,7 @@ void free_util()
  * Note that mail readers can write to the mail file, causing a change 
  * in size, a change in mtime, and mtime==atime.
  */
-void check_mail()
+void check_mail(void)
 {
     struct stat buf;
     static int depth = 0;
@@ -993,8 +1038,11 @@ void check_mail()
     if (depth) return;                         /* don't allow recursion */
     depth++;
 
-    if (!maillist || maildelay <= 0) {
-        if (mail_count) { mail_count = 0; update_status_field(NULL,STAT_MAIL); }
+    if (!maillist || tvcmp(&maildelay, &tvzero) <= 0) {
+        if (mail_count) {
+	    mail_count = 0;
+	    update_status_field(NULL, STAT_MAIL);
+	}
         depth--;
         return;
     }
@@ -1053,111 +1101,293 @@ void check_mail()
 }
 
 
-/* Converts a string of the form "hh:mm:ss", "hh:mm", or "ss" to seconds.
- * Return value in <istime> is true string must be a time; otherwise,
- * the string could be interpreted as a plain integer.  <strp> is
- * advanced to the first character past the time string.  Return
- * value is -1 for an invalid string, a nonnegative integer otherwise.
+/* Converts a string to a numeric Value.
+ * <typeset> is a bitmap of the types that are allowed.
+ * *<endp> will get a pointer to the first character past the number.
+ * If val is NULL, parsenumver() will allocate a Value.
+ * Returns pointer to value for success, NULL for error.
+ * Format	Type
+ * ------	----
+ * h:m[:s[.f]]	TIME
+ * i[.f]Ee	FLOAT
+ * i[.f]	TIME or FLOAT (depending on what's allowed and length of <f>).
+ * i		INT
  */
-long parsetime(strp, istime)
-    char **strp;
-    int *istime;     /* return true if ':' found (i.e., can't be an int) */
+Value *parsenumber(const char *str, char **caller_endp, int typeset, Value *val)
 {
-    static long t;
+    int neg = 0, allocated;
+    char *endp;
 
-    if (!is_digit(**strp) && **strp != ':') {
-        eprintf("invalid or missing integer or time value");
-        return -1;
-    }
-    t = strtolong(strp);
-    if (**strp == ':') {
-        if (istime) *istime = TRUE;
-        t *= 3600;
-        ++*strp;
-        if (is_digit(**strp)) {
-            t += strtolong(strp) * 60;
-            if (**strp == ':') {
-                ++*strp;
-                if (is_digit(**strp))
-                    t += strtolong(strp);
-            }
-        }
-    } else {
-        if (istime) *istime = FALSE;
-    }
-    return t;
-}
+    if ((allocated = !val))
+	val = newval();
 
-/* Converts an hms value (from parsetime()) to an absolute clock time
- * within the last 24h.
- * Ideally, we'd use mktime() to find midnight, but not all systems
- * have it.  So we use ctime() to get <now> in a string, convert the
- * HH:MM:SS fields to an integer, and subtract from <now> to get the
- * time_t for midnight.  This function isn't heavily used anyway.
- * BUG: doesn't handle switches to/from daylight savings time.
- */
-TIME_T abstime(hms)
-    long hms;
-{
-    TIME_T result, now;
-    char *ptr;
-
-    now = time(NULL);
-    ptr = ctime(&now) + 11;                  /* find HH:MM:SS part of string */
-    result = now - parsetime(&ptr, NULL);    /* convert, subtract -> midnight */
-    if ((result += hms) > now) result -= 24 * 60 * 60;
-    return result;
-}
-
-/* appends a formatted time string to dest, returns length of new part */
-int tftime(dest, fmt, sec, usec)
-    String *dest;
-    CONST char *fmt;
-    long sec, usec;
-{
-    int oldlen = dest->len;
-
-    if (!fmt || strcmp(fmt, "@") == 0) {
-        Sprintf(dest, SP_APPEND, "%ld", (long)sec);
-    } else {
-#ifdef HAVE_strftime
-        CONST char *s;
-        static char fmtbuf[3] = "%?";  /* static to allow init in K&R C */
-        struct tm *local = NULL;
-        if (!*fmt) fmt = "%c";
-        for (s = fmt; *s; s++) {
-            if (*s != '%') {
-                Stringadd(dest, *s);
-            } else if (*++s == '@') {
-                Sprintf(dest, SP_APPEND, "%ld", sec);
-            } else if (*s == '.') {
-                Sprintf(dest, SP_APPEND, "%02ld", (usec + 5000) / 10000);
-            } else {
-                if (!local) local = localtime(&sec);
-                fmtbuf[1] = *s;
-                Stringterm(dest, dest->len + 32);
-                dest->len += strftime(dest->s + dest->len, 32, fmtbuf, local);
-            }
-        }
-#else
-        char *str = ctime(&t);
-        Stringncat(dest, str, strlen(str) - 1);   /* remove ctime()'s '\n' */
+#if NO_FLOAT
+    typeset &= ~TYPE_FLOAT;
 #endif
+
+    for ( ; *str == '+' || *str == '-'; str++) {
+        if (*str == '-') neg = !neg;
     }
-    return dest->len - oldlen;
+
+    if (typeset & TYPE_INT) {
+	val->type = TYPE_INT;
+	errno = 0;
+        val->u.ival = strtolong(str, &endp);
+	if ((typeset & TYPE_TIME) && (*endp == '.' || *endp == ':'))
+	    goto parse_time;
+	if (typeset & TYPE_FLOAT && (*endp == '.' || lcase(*endp) == 'e'))
+	    goto parse_float;
+	if (val->u.ival == LONG_MAX && errno) {
+	    if (typeset & TYPE_FLOAT) goto parse_float;
+	    eprintf("integer value too large");
+	    goto fail;
+	}
+	if (neg) val->u.ival = -val->u.ival;
+	goto success;
+    }
+
+parse_time:
+    if (typeset & TYPE_TIME) {
+	val->type = TYPE_TIME;
+	errno = 0;
+        val->u.tval.tv_usec = 0;
+        val->u.tval.tv_sec = strtolong(str, &endp);
+	if (*endp == ':') {
+	    val->type |= TYPE_HMS;
+	    if (val->u.tval.tv_sec > 596523) /* will wrap when *3600 */
+		goto time_overflow;
+	    val->u.tval.tv_sec *= 3600;
+	    endp++;
+	    if (is_digit(*endp)) {
+		long fieldval;
+		fieldval = strtolong(endp, &endp);
+		if (fieldval > 35791394) /* will wrap when *60 */
+		    goto time_overflow;
+		fieldval *= 60;
+		val->u.tval.tv_sec += fieldval;
+		if (val->u.tval.tv_sec < 0) /* wrapped */
+		    goto time_overflow;
+		if (*endp == ':') {
+		    ++endp;
+		    if (is_digit(*endp)) {
+			fieldval = strtolong(endp, &endp);
+			if (fieldval == LONG_MAX && errno) /* wrapped */
+			    goto time_overflow;
+			val->u.tval.tv_sec += fieldval;
+			if (val->u.tval.tv_sec < 0) /* wrapped */
+			    goto time_overflow;
+		    }
+		}
+	    }
+	} else if (*endp == '.') {
+	    int digits;
+	    if (val->u.tval.tv_sec == LONG_MAX && errno) {
+		if (typeset & TYPE_FLOAT) goto parse_float;
+		goto time_overflow;
+	    }
+	    endp++;
+	    for (digits = 0; digits < 6 && is_digit(*endp); digits++, endp++)
+		val->u.tval.tv_usec = 10 * val->u.tval.tv_usec + (*endp - '0');
+	    if ((is_digit(*endp) || lcase(*endp) == 'e') &&
+		(typeset & TYPE_FLOAT))
+		    goto parse_float;
+	    while (digits++ < 6)
+		val->u.tval.tv_usec *= 10;
+	    while (is_digit(*endp))
+		endp++;
+	} else {
+	    if (val->u.tval.tv_sec == LONG_MAX && errno) {
+		if (typeset & TYPE_FLOAT) goto parse_float;
+		goto time_overflow;
+	    }
+	}
+	if (neg) {
+	    val->u.tval.tv_sec = -val->u.tval.tv_sec;
+	    val->u.tval.tv_usec = -val->u.tval.tv_usec;
+	}
+	goto success;
+
+time_overflow:
+	errno = ERANGE;
+	eprintf("time value too large");
+	goto fail;
+    }
+
+parse_float:
+    val->type = TYPE_FLOAT;
+#if NO_FLOAT
+    eprintf("floating point numeric values are not enabled.");
+    goto fail;
+#else
+    val->u.fval = strtod(str, &endp);
+    if (val->u.fval == HUGE_VAL && errno == ERANGE) {
+        eprintf("numeric value too large");
+        goto fail;
+    }
+    if (neg) val->u.fval = -val->u.fval;
+    goto success;
+#endif
+
+success:
+    if (caller_endp) *caller_endp = endp;
+    val->count = 1;
+    val->name = NULL;
+    val->sval = NULL;
+    return val;
+
+fail:
+    if (allocated)
+	freeval(val);
+    return NULL;
 }
 
-void internal_error(file, line)
-    CONST char *file;
-    int line;
+#if 0
+int strtotime(struct timeval *tvp, const char *str, char **endp)
 {
-    eprintf("Internal error at %s:%d, %s.  %s", file, line, version,
-        "Please report this to the author, and describe what you did.");
+    Value val[1];
+
+    if (!parsenumber(str, endp, TYPE_TIME | TYPE_INT, val))
+	return -1;
+    if (val->type & TYPE_TIME) {
+	*tvp = val->u.tval;
+	return 1;
+    } else {
+	tvp->tv_sec = val->u.ival;
+	tvp->tv_usec;
+	return 0;
+    }
+}
+#endif
+
+
+/* Converts a time-of-day to an absolute time within the last 24h.
+ * BUG: doesn't handle switches to/from daylight savings time. (?)
+ */
+void abstime(struct timeval *tvp)
+{
+    struct tm *tm;
+    time_t now;
+
+    time(&now);
+    tm = localtime(&now);
+    tm->tm_hour = tvp->tv_sec / 3600;
+    tm->tm_min = (tvp->tv_sec / 60) % 60;
+    tm->tm_sec = tvp->tv_sec % 60;
+    tm->tm_isdst = -1;
+    tvp->tv_sec = mktime(tm);
+    if (tvp->tv_sec > now)
+        tvp->tv_sec -= 24 * 60 * 60;
+    /* don't touch tvp->tv_usec */
 }
 
-void die(why, err)
-    CONST char *why;
-    int err;
+void normalize_time(struct timeval *tvp)
+{
+    while (tvp->tv_usec < (tvp->tv_sec > 0 ? 0 : -999999)) {
+        tvp->tv_sec--;
+        tvp->tv_usec += 1000000;
+    }
+    while (tvp->tv_usec > (tvp->tv_sec < 0 ? 0 : 999999)) {
+        tvp->tv_sec++;
+        tvp->tv_usec -= 1000000;
+    }
+}
+
+/* a = b - c */
+void tvsub(struct timeval *a, struct timeval *b, struct timeval *c)
+{
+    a->tv_sec = b->tv_sec - c->tv_sec;
+    a->tv_usec = b->tv_usec - c->tv_usec;
+    normalize_time(a);
+}
+
+/* a = b + c */
+void tvadd(struct timeval *a, struct timeval *b, struct timeval *c)
+{
+    a->tv_sec = b->tv_sec + c->tv_sec;
+    a->tv_usec = b->tv_usec + c->tv_usec;
+    normalize_time(a);
+}
+
+/* appends a formatted time string to buf.
+ * If fmt is NULL, trailing zeros are omitted.
+ */
+void tftime(String *buf, String *fmt, struct timeval *intv)
+{
+    STATIC_STRING(defaultfmt, "%c", 0);
+    STATIC_STRING(Ffmt, "%Y-%m-%d", 0);
+    STATIC_STRING(Tfmt, "%H:%M:%S", 0);
+    struct timeval tv = *intv;
+
+    if (!fmt || strcmp(fmt->data, "@") == 0) {
+        if (tv.tv_sec < 0 || tv.tv_usec < 0) {
+	    tv.tv_usec = -tv.tv_usec;
+	    if (tv.tv_sec == 0) Stringadd(buf, '-');
+	    /* if (sec < 0), Sprintf will take care of the '-'.
+	     * We shouldn't, because negating sec could cause overflow. */
+	}
+        Sprintf(buf, SP_APPEND, "%ld", tv.tv_sec);
+#if HAVE_GETTIMEOFDAY
+        Sprintf(buf, SP_APPEND, ".%06ld", tv.tv_usec);
+        if (!fmt) {
+            int i;
+            for (i = 1; i < 6; i++)
+                if (buf->data[buf->len - i] != '0') break;
+            Stringtrunc(buf, buf->len - i + 1);
+        }
+#endif /* HAVE_GETTIMEOFDAY */
+    } else {
+#if HAVE_STRFTIME
+	int i, start, oldlen;
+        static char fmtbuf[4] = "%?";
+        time_t adj_sec, adj_usec;
+
+        if (!*fmt->data) fmt = defaultfmt;
+        adj_sec = tv.tv_sec;
+        adj_usec = tv.tv_usec;
+        if (tv.tv_usec < 0) { adj_sec -= 1; adj_usec += 1000000; }
+	for (start = i = 0; i < fmt->len; i++) {
+            if (fmt->data[i] != '%') {
+                /* do nothing */
+	    } else {
+		SStringoncat(buf, fmt, start, i - start);
+		oldlen = buf->len;
+		++i;
+		if (fmt->data[i] == '@') {
+		    tftime(buf, NULL, &tv);
+		} else if (fmt->data[i] == '.') {
+		    Sprintf(buf, SP_APPEND, "%06ld", adj_usec);
+		} else if (fmt->data[i] == 's') {
+		    Sprintf(buf, SP_APPEND, "%ld", adj_sec);
+		} else if (fmt->data[i] == 'F') {
+		    tftime(buf, Ffmt, &tv);
+		} else if (fmt->data[i] == 'T') {
+		    tftime(buf, Tfmt, &tv);
+		} else {
+		    struct tm *tm;
+		    int j = 1;
+		    tm = localtime(&adj_sec);
+		    fmtbuf[j] = fmt->data[i];
+		    if (fmtbuf[j] == 'E' || fmtbuf[j] == 'O')
+			fmtbuf[++j] = fmt->data[++i];
+		    fmtbuf[++j] = '\0';
+		    Stringtrunc(buf, buf->len + 32);
+		    buf->len += strftime(buf->data + buf->len, 32, fmtbuf, tm);
+		}
+		if (buf->charattrs || fmt->charattrs)
+		    extend_charattrs(buf, oldlen,
+			fmt->charattrs ? fmt->charattrs[i] : 0);
+		start = i+1;
+	    }
+        }
+	SStringoncat(buf, fmt, start, i - start);
+#else
+        char *str = ctime(&tv.tv_sec);
+        Stringcat(buf, str, strlen(str)-1);  /* -1 removes ctime()'s '\n' */
+#endif /* HAVE_STRFTIME */
+    }
+}
+
+void die(const char *why, int err)
 {
     fix_screen();
     reset_tty();

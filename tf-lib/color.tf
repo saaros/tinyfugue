@@ -82,7 +82,7 @@
     /set status_fields=%status_fields
 
 /def -i color_off = \
-    /quote -S /unset `/listvar -s start_color_*%; \
+    /quote -S /unset `/@listvar -s start_color_*%; \
     /unset end_color%; \
     /set status_fields=%status_fields
 

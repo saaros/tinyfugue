@@ -1,24 +1,22 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: process.c,v 35004.30 1999/01/31 00:27:50 hawkeye Exp $ */
+static const char RCSid[] = "$Id: process.c,v 35004.53 2003/05/27 01:09:24 hawkeye Exp $";
 
 /************************
  * Fugue processes.     *
  ************************/
 
-#ifndef NO_PROCESS
-
 #include "config.h"
 #include <sys/types.h>
 #include "port.h"
-#include "dstring.h"
 #include "tf.h"
 #include "util.h"
+#include "search.h"	/* for tfio.h */
 #include "tfio.h"
 #include "history.h"
 #include "world.h"
@@ -26,7 +24,11 @@
 #include "socket.h"
 #include "expand.h"
 #include "commands.h"
-#include "output.h"  /* oflush() */
+#include "output.h"	/* oflush() */
+#include "signals.h"	/* interrupted() */
+
+int feature_process = !(NO_PROCESS - 0);
+#if !NO_PROCESS
 
 #define P_REPEAT     'R'
 #define P_QFILE      '\''
@@ -37,170 +39,222 @@
 #define PROC_DEAD     0
 #define PROC_RUNNING  1
 
-CONST char *enum_disp[] = { "echo", "send", "exec", NULL };
+String enum_disp[] = {
+    STRING_LITERAL("echo"), STRING_LITERAL("send"), STRING_LITERAL("exec"),
+    STRING_NULL };
 enum { DISP_ECHO, DISP_SEND, DISP_EXEC };
+
+#define PTIME_VAR	-1
+#define PTIME_SYNC	-2
+#define PTIME_PROMPT	-3
 
 typedef struct Proc {
     int pid;
     char type;
     char state;
-    int disp;           /* disposition: what to do with the generated text */
+    int disp;           	/* disposition: what to do w/ generated text */
     int count;
-    int FDECL((*func),(struct Proc *proc));
-    TIME_T ptime;	/* delay.  -1 == global %ptime, -2 == synchrounous */
-    TIME_T timer;	/* time of next execution */
-    char *pre;		/* prefix string */
-    char *suf;		/* suffix string */
-    TFILE *input;	/* source of quote input */
-    struct World *world;/* where to send output */
-    char *cmd;		/* command or file name */
-    Stringp buffer;     /* buffer for prefix+cmd+suffix */
+    int (*func)(struct Proc *proc);
+    struct timeval ptime;	/* delay */
+    struct timeval timer;	/* time of next execution */
+    char *pre;			/* prefix string */
+    char *suf;			/* suffix string */
+    TFILE *input;		/* source of quote input */
+    struct World *world;	/* where to send output */
+    String *cmd;		/* command or file name */
+    Stringp buffer;		/* buffer for prefix+cmd+suffix */
+    struct Program *prog;	/* compiled repeat command */
     struct Proc *next, *prev;
 } Proc;
 
-static struct Value *FDECL(newproc,(int type, int FDECL((*func),(Proc *proc)),
-                 int count, CONST char *pre, CONST char *suf, TFILE *input,
-                 struct World *world, CONST char *cmd, TIME_T ptime, int disp));
-static struct Value *FDECL(killproc,(Proc *proc, int needresult));
+static struct Value *killproc(Proc *proc, int needresult);
 
-static void FDECL(nukeproc,(Proc *proc));
-static int  FDECL(runproc,(Proc *proc));
-static int  FDECL(do_repeat,(Proc *proc));
-static int  FDECL(do_quote,(Proc *proc));
-static void FDECL(strip_escapes,(char *src));
-static int  FDECL(procopt,(CONST char *opts, char **argp, TIME_T *ptime,
-    struct World **world, int *disp, int *subflag));
+static void format_approx_interval(char *buf, struct timeval *tv);
+static void nukeproc(Proc *proc);
+static int  runproc(Proc *proc);
+static int  do_repeat(Proc *proc);
+static int  do_quote(Proc *proc);
+static void strip_escapes(char *src);
 
-TIME_T proctime = 0;              /* when next process should be run */
+struct timeval proctime = { 0, 0 };	/* when next process should be run */
 
 static int runall_depth = 0;
-static Proc *proclist = NULL;     /* procedures to execute */
+static Proc *proclist = NULL;		/* head of process list */
+static Proc *proctail = NULL;		/* tail of process list */
 
-struct Value *handle_ps_command(args)
-    char *args;
+
+static void format_approx_interval(char *buf, struct timeval *tvp)
+{
+    if (tvp->tv_sec >= 60)
+        sprintf(buf, "%2ld:%02ld:%02ld", (long)tvp->tv_sec/3600,
+            (long)(tvp->tv_sec/60) % 60, (long)tvp->tv_sec % 60);
+    else
+        sprintf(buf, "%4ld.%03ld",
+            (long)tvp->tv_sec, (long)tvp->tv_usec / 1000);
+}
+
+struct Value *handle_ps_command(String *args, int offset)
 {
     Proc *p;
-    char obuf[18], nbuf[10];
-    TIME_T now, next;
-    int opt, shortflag = FALSE, repeatflag = FALSE, quoteflag = FALSE;
+    char obuf[18], nbuf[10], *ptr;
+    struct timeval now, next;
+    int opt, pid = 0, shortflag = FALSE, repeatflag = FALSE, quoteflag = FALSE;
     struct World *world = NULL;
 
     startopt(args, "srqw:");
-    while ((opt = nextopt(&args, NULL))) {
+    while ((opt = nextopt(&ptr, NULL, NULL, &offset))) {
         switch(opt) {
         case 's': shortflag = TRUE; break;
         case 'r': repeatflag = TRUE; break;
         case 'q': quoteflag = TRUE; break;
         case 'w':
-            if (!(world = (*args) ? find_world(args) : xworld())) {
-                eprintf("No world %s", args);
-                return newint(0);
-            }
+            if (!(world = named_or_current_world(ptr)))
+                return shareval(val_zero);
             break;
-        default:  return newint(0);
+        default:  return shareval(val_zero);
         }
     }
 
-    now = time(NULL);
+    ptr = args->data + offset;
+    if (*ptr)
+        pid = numarg(&ptr);
+
+    gettime(&now);
     if (!repeatflag && !quoteflag)
         repeatflag = quoteflag = TRUE;
     if (!shortflag)
-        oprintf("  PID     NEXT TYPE   DISP WORLD       PTIME COUNT COMMAND");
+        oprintf("  PID     NEXT T D WORLD       PTIME COUNT COMMAND");
 
     for (p = proclist; p; p = p->next) {
         if (p->state == PROC_DEAD) continue;
         if (!repeatflag && p->type == P_REPEAT) continue;
         if (!quoteflag && p->type != P_REPEAT) continue;
         if (world && p->world != world) continue;
+        if (pid && pid != p->pid) continue;
 
         if (shortflag) {
             oprintf("%d", p->pid);
             continue;
         }
 
-        if (p->ptime == -2) {
-            strcpy(nbuf, "     0");
-        } else if (lpquote) {
-            strcpy(nbuf, "     ?");
+        if (p->ptime.tv_sec == PTIME_SYNC) {
+            strcpy(nbuf, "       S");
+        } else if (lpquote || p->ptime.tv_sec == PTIME_PROMPT) {
+            strcpy(nbuf, "       P");
         } else {
-            next = p->timer - now;
-            if (next >= 0)
-                sprintf(nbuf, "%2ld:%02ld:%02ld",
-                    (long)next/3600, (long)(next/60) % 60, (long)next % 60);
-            else
+            tvsub(&next, &p->timer, &now);
+            if (next.tv_sec < 0 || next.tv_usec < 0)
                 sprintf(nbuf, "%8s", "pending");
+            else if (next.tv_sec >= 0)
+                format_approx_interval(nbuf, &next);
         }
-        sprintf(obuf, "%-8s ", p->world ? p->world->name : "");
-        if (p->ptime >= 0) {
-            sprintf(obuf+9, "%2ld:%02ld:%02ld", (long)p->ptime/3600,
-                (long)(p->ptime/60) % 60, (long)p->ptime % 60);
+        sprintf(obuf, "%-8.8s ", p->world ? p->world->name : "");
+        if (p->ptime.tv_sec == PTIME_SYNC) {
+            strcpy(obuf+9, "       S");
+        } else if (p->ptime.tv_sec == PTIME_PROMPT) {
+            strcpy(obuf+9, "       P");
+        } else if (p->ptime.tv_sec < 0) {
+            strcpy(obuf+9, "        ");
         } else {
-            strcpy(obuf+9, p->ptime == -2 ? "S       " : "        ");
+            format_approx_interval(obuf+9, &p->ptime);
         }
         if (p->type == P_REPEAT) {
-            oprintf("%5d %s repeat      %s %5d %s",
-                p->pid, nbuf, obuf, p->count, p->cmd);
+            char cbuf[32];
+            if (p->count < 0)
+                sprintf(cbuf, "%5s", "i");
+            else
+                sprintf(cbuf, "%5d", p->count);
+            oprintf("%5d %s r   %s %5s %S",
+                p->pid, nbuf, obuf, cbuf, p->cmd);
         } else {
-            oprintf("%5d %s quote  %s %s       %s%c\"%s\"%s",
-                p->pid, nbuf, enum_disp[p->disp], obuf, p->pre, p->type,
+	    char disp;
+	    switch (p->disp) {
+	    case DISP_ECHO: disp = 'e'; break;
+	    case DISP_SEND: disp = 's'; break;
+	    case DISP_EXEC: disp = 'x'; break;
+	    }
+            oprintf("%5d %s q %c %s       %s%c\"%S\"%s",
+                p->pid, nbuf, disp, obuf, p->pre, p->type,
                 p->cmd, p->suf);
         }
     }
-    return newint(1);
+    return shareval(val_one);
 }
 
-static struct Value *newproc(type, func, count, pre, suf, input, world, cmd, ptime, disp)
-    int type, count, disp;
-    TIME_T ptime;
-    int FDECL((*func),(Proc *proc));
-    CONST char *pre, *suf, *cmd;
-    TFILE *input;
-    struct World *world;
+static struct Value *newproc(int type, int (*func)(Proc *proc), int count,
+    const char *pre, const char *suf, TFILE *input, struct World *world,
+    String *cmd, struct timeval *ptime, int disp, int delay)
 {
     Proc *proc;
     static int hipid = 0;
 
+    cmd->links++;
+
     if (!(proc = (Proc *) MALLOC(sizeof(Proc)))) {
-        eprintf("newproc: not enough memory");
-        return newint(0);
+        eprintf("not enough memory for new process");
+        Stringfree(cmd);
+        return shareval(val_zero);
+    }
+
+    if (type == P_REPEAT) {
+	if (!(proc->prog = compile_tf(cmd, 0, SUB_MACRO, 0, 0))) {
+	    Stringfree(cmd);
+	    return shareval(val_zero);
+	}
+    } else {
+	proc->prog = NULL;
     }
 
     proc->disp = disp;
     proc->count = count;
     proc->func = func;
-    proc->ptime = ptime;
     proc->type = type;
-    proc->timer = time(NULL) + ((ptime < 0) ? process_time : ptime);
+    proc->ptime = *ptime;
+
+    if (ptime->tv_sec == PTIME_VAR) {
+        gettime(&proc->timer);
+	if (delay) tvadd(&proc->timer, &proc->timer, &process_time);
+    } else if (ptime->tv_sec >= 0) {
+        gettime(&proc->timer);
+        if (delay) tvadd(&proc->timer, &proc->timer, &proc->ptime);
+    }
+
     proc->pre = STRDUP(pre);
     proc->suf = suf ? STRDUP(suf) : NULL;
-    proc->cmd = STRDUP(cmd);
+    proc->cmd = cmd;  /* already did links++ */
     proc->pid = ++hipid;
     proc->input = input;
     proc->world = world;
     Stringzero(proc->buffer);
 
-    if (proclist) proclist->prev = proc;
-    proc->next = proclist;
-    proc->prev = NULL;
-    proclist = proc;
+    *(proctail ? &proctail->next : &proclist) = proc;
+    proc->prev = proctail;
+    proc->next = NULL;
+    proctail = proc;
+
     proc->state = PROC_RUNNING;
     do_hook(H_PROCESS, NULL, "%d", proc->pid);
-    if (ptime == -2) {  /* synch */
+    if (ptime->tv_sec == PTIME_SYNC) {  /* synch */
         oflush();  /* flush now, process might take a while */
-        while (runproc(proc));
+        while (runproc(proc)) {
+	    if (interrupted()) {
+		eprintf("synchronous process interrupted.");
+		break;
+	    }
+	}
         return killproc(proc, 1);  /* no nuke! */
     }
-    if (lpquote) {
-        proctime = time(NULL);
-    } else if (proctime == 0 || proc->timer < proctime) {
+    if (lpquote || proc->ptime.tv_sec == PTIME_PROMPT) {
+	runproc(proc);	/* XXX should do this asynchronously, in main loop */
+    } else if (tvcmp(&proctime, &tvzero) == 0 ||
+	tvcmp(&proc->timer, &proctime) < 0)
+    {
         proctime = proc->timer;
     }
     return newint(proc->pid);
 }
 
-static struct Value *killproc(proc, needresult)
-    Proc *proc;
-    int needresult;
+static struct Value *killproc(Proc *proc, int needresult)
 {
     int result = 1;
 
@@ -217,21 +271,21 @@ static struct Value *killproc(proc, needresult)
     else return newint(result);
 }
 
-static void nukeproc(proc)
-    Proc *proc;
+static void nukeproc(Proc *proc)
 {
-    if (proc->next) proc->next->prev = proc->prev;
-    if (proc->prev) proc->prev->next = proc->next;
-    else proclist = proc->next;
+    *(proc->next ? &proc->next->prev : &proctail) = proc->prev;
+    *(proc->prev ? &proc->prev->next : &proclist) = proc->next;
 
+    if (proc->prog)
+	prog_free(proc->prog);
     FREE(proc->pre);
-    FREE(proc->cmd);
+    Stringfree(proc->cmd);
     if (proc->suf) FREE(proc->suf);
     Stringfree(proc->buffer);
     FREE(proc);
 }
 
-void nuke_dead_procs()
+void nuke_dead_procs(void)
 {
     Proc *proc, *next;
 
@@ -242,7 +296,7 @@ void nuke_dead_procs()
     }
 }
 
-void kill_procs()
+void kill_procs(void)
 {
     while (proclist) {
         if (proclist->state != PROC_DEAD) {
@@ -254,11 +308,10 @@ void kill_procs()
         nukeproc(proclist);
     }
 
-    proctime = 0;
+    proctime = tvzero;
 }
 
-void kill_procs_by_world(world)
-    struct World *world;
+void kill_procs_by_world(struct World *world)
 {
     Proc *proc;
 
@@ -267,14 +320,14 @@ void kill_procs_by_world(world)
     }
 }
 
-struct Value *handle_kill_command(args)
-    char *args;
+struct Value *handle_kill_command(String *args, int offset)
 {
     Proc *proc;
     int pid, error = 0;
+    char *ptr = args->data + offset;
 
-    while (*args) {
-        if ((pid = numarg(&args)) < 0) return 0;
+    while (*ptr) {
+        if ((pid = numarg(&ptr)) < 0) return shareval(val_zero);
         for (proc = proclist; proc && (proc->pid != pid); proc=proc->next);
         if (!proc || proc->state == PROC_DEAD) {
             eprintf("no process %d", pid);
@@ -286,52 +339,88 @@ struct Value *handle_kill_command(args)
     return newint(!error);
 }
 
-/* Run all processes that should be run, and set proctime to the time
- * of the next earliest process.
+int ch_lpquote(void)
+{
+    runall(lpquote, NULL);
+    return 1;
+}
+
+/* Run all processes that should be run.
+ * If prompted, run promptable procs;
+ * if !prompted, run timed procs;
+ * and, always run procs that were already marked runnable pending a shell
+ * line if that shell line has become available.
+ * If !prompted, set proctime to the time of the next earliest process.
  */
-int runall()
+void runall(int prompted, World *world)
 {
     Proc *proc;
-    TIME_T now = time(NULL);
+    struct timeval now;
     int resched;	/* consider this process in proctime calculation? */
+    int promptable;	/* proc should be run iff prompted */
 
+    gettime(&now);
     runall_depth++;
-    proctime = 0;
+    if (!prompted)
+	proctime = tvzero;
     for (proc = proclist; proc; proc = proc->next) {
         if (proc->state == PROC_DEAD) continue;
+	promptable = (lpquote || proc->ptime.tv_sec == PTIME_PROMPT);
         if (proc->type == P_QSHELL) {
             if (is_active(fileno(proc->input->u.fp))) {
                 if (!(resched = runproc(proc)))
                     killproc(proc, 0);  /* no nuke! */
-            } else if (lpquote || (proc->timer <= now)) {
+	    } else if (promptable != prompted) {
+		continue;
+	    } else if (prompted && proc->world && world && proc->world != world)
+	    {
+		/* prompt wasn't from the right world */
+		continue;
+            } else if (promptable || tvcmp(&proc->timer, &now) <= 0) {
                 resched = FALSE;
                 readers_set(fileno(proc->input->u.fp));
-            } else resched = TRUE;
-        } else if (lpquote || (proc->timer <= now)) {
+            } else {
+		resched = TRUE;
+	    }
+	} else if (promptable != prompted) {
+	    continue;
+	} else if (promptable || tvcmp(&proc->timer, &now) <= 0) {
             if (!(resched = runproc(proc)))
                 killproc(proc, 0);  /* no nuke! */
         } else resched = TRUE;
 
-        if (resched && !lpquote && (!proctime || (proc->timer < proctime))) {
+        if (resched && !prompted &&
+           (tvcmp(&proctime,&tvzero) == 0 || tvcmp(&proc->timer,&proctime) < 0))
+        {
             proctime = proc->timer;
         }
     }
     runall_depth--;
-    return 1;  /* for setvar() call */
 }
 
-static int runproc(p)
-    Proc *p;
+static int runproc(Proc *p)
 {
     int done;
     struct Sock *oldsock;
+    struct timeval now;
 
     oldsock = xsock;
     if (p->world) xsock = p->world->sock;
     done = !(*p->func)(p);
     xsock = oldsock;
-    if (!done && p->ptime != -2) {   /* not synch */
-        p->timer = time(NULL) + ((p->ptime < 0) ? process_time : p->ptime);
+    if (!done && p->ptime.tv_sec >= PTIME_VAR) {   /* timed */
+        tvadd(&p->timer, &p->timer,
+            (p->ptime.tv_sec < 0) ? &process_time : &p->ptime);
+        gettime(&now);
+        if (tvcmp(&p->timer, &now) < 0) {
+            /* We missed 2 or more appointments, presumably because tf was
+             * suspended or blocked.  To prevent multiple execution,
+             * schedule based on now instead of previous schedule.
+             */
+            p->timer = now;
+            tvadd(&p->timer, &p->timer,
+                (p->ptime.tv_sec < 0) ? &process_time : &p->ptime);
+        }
     }
     return !done;
 }
@@ -339,18 +428,17 @@ static int runproc(p)
 /* do_repeat
  * Returns 0 if proc is done, nonzero otherwise.
  */
-static int do_repeat(proc)
-    Proc *proc;
+static int do_repeat(Proc *proc)
 {
-    process_macro(proc->cmd, NULL, SUB_MACRO, "\bREPEAT");
-    return --proc->count;
+    prog_run(proc->prog, NULL, 0, "\bREPEAT", NULL);
+    if (proc->count > 0) --proc->count;
+    return proc->count;
 }
 
 /* do_quote
  * Returns 0 if proc is done, nonzero otherwise.
  */
-static int do_quote(proc)
-    Proc *proc;
+static int do_quote(Proc *proc)
 {
     STATIC_BUFFER(line);
 
@@ -360,20 +448,19 @@ static int do_quote(proc)
     if (qecho) tfprintf(tferr, "%s%S", qprefix ? qprefix : "", proc->buffer);
     switch (proc->disp) {
     case DISP_ECHO:
-        oputs(proc->buffer->s);
+        oputs(proc->buffer->data);
         break;
     case DISP_SEND:
-        process_macro(proc->buffer->s, NULL, SUB_LITERAL, "\bQUOTE");
+        macro_run(proc->buffer, 0, NULL, 0, SUB_LITERAL, "\bQUOTE");
         break;
     case DISP_EXEC:
-        process_macro(proc->buffer->s, NULL, SUB_KEYWORD, "\bQUOTE");
+        macro_run(proc->buffer, 0, NULL, 0, SUB_KEYWORD, "\bQUOTE");
         break;
     }
     return TRUE;
 }
 
-static void strip_escapes(src)
-    char *src;
+static void strip_escapes(char *src)
 {
     char *dest;
 
@@ -384,103 +471,101 @@ static void strip_escapes(src)
     *dest = '\0';
 }
 
-static int procopt(opts, argp, ptime, world, disp, subflag)
-    CONST char *opts;
-    char **argp;
-    TIME_T *ptime;
-    struct World **world;
-    int *disp, *subflag;
+static int procopt(const char *opts, String *args, int *offsetp,
+    struct timeval *ptime, struct World **world, int *disp, int *subflag,
+    int *delay)
 {
     char opt, *ptr;
-    long num;
+    struct timeval tv;
 
+    if (!(args->len - *offsetp)) return 0;
     *world = NULL;
-    *ptime = -1;
-    startopt(*argp, opts);
-    while ((opt = nextopt(&ptr, &num))) {
+    ptime->tv_sec = PTIME_VAR;
+    startopt(args, opts);
+    while ((opt = nextopt(&ptr, NULL, &tv, offsetp))) {
         switch(opt) {
         case 'w':
-            if (!(*world = (*ptr) ? find_world(ptr) : xworld())) {
-                eprintf("No world %s", ptr);
+            if (!(*world = named_or_current_world(ptr)))
                 return FALSE;
-            }
             break;
         case 's':
-            if ((*subflag = enum2int(ptr, enum_sub, "-s")) < 0)
+            if ((*subflag = enum2int(ptr, 0, enum_sub, "-s")) < 0)
                 return FALSE;
             break;
         case 'S':
-            *ptime = -2; /* synch */
+            ptime->tv_sec = PTIME_SYNC;
+            break;
+        case 'P':
+            ptime->tv_sec = PTIME_PROMPT;
             break;
         case 'd':
-            if ((*disp = enum2int(ptr, enum_disp, "-d")) < 0)
+            if ((*disp = enum2int(ptr, 0, enum_disp, "-d")) < 0)
                 return FALSE;
             break;
-        case '@':
-            *ptime = num;
+        case 'n':
+            *delay = FALSE;
+            break;
+        case '-':
+            *ptime = tv;
             break;
         default:  return FALSE;
         }
     }
-    *argp = ptr;
     return TRUE;
 }
 
-struct Value *handle_quote_command(args)
-    char *args;
+struct Value *handle_quote_command(String *args, int offset)
 {
-    char *pre, *cmd, *suf = NULL;
+    char *ptr, *pre, *cmd, *suf = NULL;
     STATIC_BUFFER(newcmd);
     TFILE *input, *oldout, *olderr;
     int type, result;
-    TIME_T ptime;
+    struct timeval ptime;
     int disp = -1, subflag = SUB_MACRO;
     struct World *world;
 
-    if (!*args || !procopt("@Sw:d:s:", &args, &ptime, &world, &disp, &subflag))
-        return newint(0);
+    if (!procopt("-@PSw:d:s:", args, &offset, &ptime, &world, &disp, &subflag,
+	NULL))
+	    return shareval(val_zero);
 
-    pre = args;
-    while (*args != '\'' && *args != '!' && *args != '#' && *args != '`') {
-        if (*args == '\\') args++;
-        if (!*args) {
+    ptr = args->data + offset;
+    pre = ptr;
+    while (*ptr != '\'' && *ptr != '!' && *ptr != '#' && *ptr != '`') {
+        if (*ptr == '\\') ptr++;
+        if (!*ptr) {
             eprintf("missing command character");
-            return newint(0);
+            return shareval(val_zero);
         }
-        args++;
+        ptr++;
     }
-    type = *args;
-    *args = '\0';
+    type = *ptr;
+    *ptr = '\0';
     strip_escapes(pre);
-    if (*++args == '"') {
-        cmd = ++args;
-        if ((args = estrchr(args, '"', '\\'))) {
-            *args = '\0';
-            suf = args + 1;
+    if (*++ptr == '"') {
+        cmd = ++ptr;
+        if ((ptr = estrchr(ptr, '"', '\\'))) {
+            *ptr = '\0';
+            suf = ptr + 1;
             strip_escapes(suf);
         }
         strip_escapes(cmd);
     } else {
-        cmd = args;
+        cmd = ptr;
     }
 
     switch (type) {
     case P_QFILE:
         if (restriction >= RESTRICT_FILE) {
             eprintf("files restricted");
-            return newint(0);
+            return shareval(val_zero);
         }
         cmd = expand_filename(cmd);
         if ((input = tfopen(cmd, "r")) == NULL) {
             operror(cmd);
-            return newint(0);
+            return shareval(val_zero);
         }
         break;
     case P_QSHELL:
-        if (restriction >= RESTRICT_SHELL) {
-            eprintf("shell restricted");
-            return newint(0);
-        }
         /* null input, and capture stderr */
 #ifdef PLATFORM_UNIX
         Sprintf(newcmd, 0, "{ %s; } </dev/null 2>&1", cmd);
@@ -488,23 +573,24 @@ struct Value *handle_quote_command(args)
 #ifdef PLATFORM_OS2
         Sprintf(newcmd, 0, "( %s ) <nul 2>&1", cmd);
 #endif
-        if ((input = tfopen(newcmd->s, "p")) == NULL) {
+	/* RESTRICT_SHELL is checked by tfopen() */
+        if ((input = tfopen(newcmd->data, "p")) == NULL) {
             operror(cmd);
-            return newint(0);
+            return shareval(val_zero);
         }
         break;
-#ifndef NO_HISTORY
+#if !NO_HISTORY
     case P_QRECALL:
         oldout = tfout;
         olderr = tferr;
         tfout = input = tfopen(NULL, "q");
         /* tferr = input; */
-        result = do_recall(cmd);
+        result = do_recall(args, cmd - args->data);
         tferr = olderr;
         tfout = oldout;
         if (!result) {
             tfclose(input);
-            return newint(0);
+            return shareval(val_zero);
         }
         break;
 #endif
@@ -513,28 +599,37 @@ struct Value *handle_quote_command(args)
         olderr = tferr;
         tfout = input = tfopen(NULL, "q");
         /* tferr = input; */
-        process_macro(cmd, NULL, subflag, "\bQUOTE");
+        macro_run(args, cmd - args->data, NULL, 0, subflag, "\bQUOTE");
         tferr = olderr;
         tfout = oldout;
         break;
     default:    /* impossible */
-        return newint(0);
+        return shareval(val_zero);
     }
-    return newproc(type, do_quote, -1, pre, suf, input, world, cmd,
-        ptime, (disp >= 0) ? disp : (*pre ? DISP_EXEC : DISP_SEND));
+    return newproc(type, do_quote, -1, pre, suf, input, world,
+        Stringnew(cmd, -1, 0), &ptime,
+	(disp >= 0) ? disp : (*pre ? DISP_EXEC : DISP_SEND),
+	TRUE);
 }
 
-struct Value *handle_repeat_command(args)
-    char *args;
+struct Value *handle_repeat_command(String *args, int offset)
 {
-    int count;
-    TIME_T ptime;
+    int count, delay = TRUE;
+    struct timeval ptime;
     struct World *world;
+    char *ptr;
 
-    if (!*args || !procopt("@Sw:", &args, &ptime, &world, NULL, NULL)) return 0;
-    if ((count = numarg(&args)) <= 0) return 0;
-    return newproc(P_REPEAT, do_repeat, count, "", "", NULL, world, args,
-        ptime, DISP_ECHO);
+    if (!procopt("-@PSw:n", args, &offset, &ptime, &world, NULL, NULL, &delay))
+        return shareval(val_zero);
+    ptr = args->data + offset;
+    if (tolower(*ptr) == 'i') {
+        count = -1;
+        for (++ptr; is_space(*ptr); ptr++);
+    } else if ((count = numarg(&ptr)) <= 0) {
+        return shareval(val_zero);
+    }
+    return newproc(P_REPEAT, do_repeat, count, "", "", NULL, world,
+        Stringnew(ptr, -1, 0), &ptime, DISP_ECHO, delay);
 }
 
 #endif /* NO_PROCESS */

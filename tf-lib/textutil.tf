@@ -4,7 +4,7 @@
 /loaded __TFLIB__/textutil.tf
 
 ; Note: users should not rely on %_loaded_libs like this.  I can get away
-; with this here only because this and /loaded are internal to TF.
+; with this here only because this and /loaded are both internal to TF.
 /if (_loaded_libs =/ "*{__TFLIB__/grep.tf}*") \
     /echo -e %% Warning: textutil.tf and grep.tf have conflicting defintions.%;\
 /endif
@@ -63,7 +63,8 @@
 ; /readfile <file> %| ...
 /def -i readfile = \
     /let _handle=%; \
-    /test ((_handle := tfopen({1}, "r")) >= 0) & \ (copyio(_handle, "o"), tfclose(_handle))
+    /test ((_handle := tfopen({1}, "r")) >= 0) & \
+        (copyio(_handle, "o"), tfclose(_handle))
 
 ; ... %| /writefile <file>
 /def -i writefile = \
@@ -139,4 +140,16 @@
             /test echo(_line), _prev:=_line%; \
         /endif%; \
     /done
+
+; ... %| /randline [<handle>]
+; reads lines from <handle> or tfin, and copies one at random to tfout.
+/def -i randline = \
+    /let _in=%{1-i}%; \
+    /let _line=%; \
+    /let _selection=%; \
+    /let _lines=0%; \
+    /while (tfread(_in, _line) >= 0) \
+        /test rand(++_lines) | (_selection := {*})%; \
+    /done%; \
+    /result _selection
 

@@ -1,0 +1,155 @@
+<title>TinyFugue: /connect</title>
+<!--"@/connect"-->
+<h1>/connect</h1>
+
+<p>
+  Usage:
+
+<p>
+  <a href="../commands/connect.html">/CONNECT</a> [-lq] [<i>world</i>]<br>
+  <a href="../commands/connect.html">/CONNECT</a> <i>host</i> <i>port</i><br>
+<hr>
+
+<p>
+  Attempts to open a <a href="../topics/sockets.html">socket</a> connected to
+  <i>world</i>.  <i>World</i> must be defined by the
+  <a href="../commands/addworld.html">/addworld</a> command and not already
+  connected.  If <i>world</i> is omitted, the first defined world will be
+  used.
+  If <i>world</i> does not have a host and port,
+  <a href="../commands/connect.html">/connect</a> will
+  create a "connectionless" <a href="../topics/sockets.html">socket</a>.
+  In the form
+  "<a href="../commands/connect.html">/connect</a> <i>host</i>
+  <i>port</i>", it will define a temporary world named
+  "<code>(unnamed<i>N</i>)</code>" with the given address, and try
+  to connect to it.  <i>Host</i> may be an internet hostname, an IPv4
+  address, or (if your platform supports it) an IPv6 address.
+  A temporary world will be undefined when it is no longer in use.
+
+<p>
+  <a href="../topics/options.html">Options:</a>
+  <dl compact>
+  <dt>-l
+          <dd>No <a href="../topics/login.html">automatic login</a>
+          (i.e., don't call the <a href="../topics/login.html">LOGIN</a>
+          <a href="../topics/hooks.html">hook</a>).
+  <dt>-q
+          <dd>Quiet login (overrides
+          <a href="../topics/special_variables.html#quiet">%{quiet}</a>
+          flag).
+  <dt>-x
+          <dd>Connect using SSL (not necessary if
+          <a href="../topics/worlds.html">world</a> was defined with the
+	  "x" flag).
+  </dl>
+  When a new <a href="../topics/sockets.html">socket</a> is created and
+  (unless it is connectionless) its network connection is successfully made,
+  these events occur:
+<ul>
+  <li>If the <a href="../topics/worlds.html">world</a> was defined with an
+    <i>mfile</i>, that file will be loaded
+    (and the LOAD <a href="../topics/hooks.html">hook</a> will be called);
+  <li>The CONNECT <a href="../topics/hooks.html">hook</a> is called
+    (unless the socket is connectionless).  The
+    default CONNECT <a href="../topics/hooks.html">hook</a> calls
+    <a href="../commands/fg.html">/fg</a> to bring the new
+    <a href="../topics/sockets.html">socket</a> into the
+    <a href="../topics/sockets.html#foreground">foreground</a>.
+  <li>If <a href="../topics/special_variables.html#login">%{login}</a> is on,
+    and a character and password is defined for the
+    <a href="../topics/worlds.html">world</a>, the LOGIN
+    <a href="../topics/hooks.html">hook</a> is called
+    (unless the socket is connectionless).
+    The default LOGIN
+    <a href="../topics/hooks.html">hooks</a> sends the character name and
+    password in a format corresponding to the world type.  To automatically
+    login to a world that expects a different login format, define your own
+    LOGIN <a href="../topics/hooks.html">hook</a>.
+</ul>
+
+<p>
+  When a hostname is given, TF must resolve it to an IP address.  If
+  <a href="../topics/special_variables.html#gethostbyname">%{gethostbyname}</a>
+  is "nonblocking" (the default), and this process takes too long,
+  TF will print "Hostname resolution for <i>world</i> in progress" (the PENDING
+  <a href="../topics/hooks.html">hook</a>) and continue to work in the
+  background, leaving you free to do other things.  If the resolution
+  succeeds, TF will try to connect; if it fails, you will be notified.
+
+<p>
+  On most platforms, if 
+  <a href="../topics/special_variables.html#connect">%{connect}</a> is
+  "nonblocking" (the default) and the connection takes too long,
+  TF will print "Connection to <i>world</i> in progress" (the PENDING
+  <a href="../topics/hooks.html">hook</a>) and continue to try to connect in
+  the background, leaving you free to do other things.  If the connection
+  eventually succeeds, you will be switched to that
+  <a href="../topics/sockets.html">socket</a> (but see note below); if it
+  fails, you will be notified.
+
+<p>
+  Even if 
+  <a href="../topics/special_variables.html#gethostbyname">%{gethostbyname}</a>
+  and/or <a href="../topics/special_variables.html#connect">%{connect}</a> are
+  "blocking", they can be interrupted with the SIGINT
+  <a href="../topics/signals.html">signal</a> (^C).
+
+<p>
+  When a pending <a href="../commands/connect.html">/connect</a> succeeds,
+  the <a href="../topics/sockets.html#foreground">foregrounding</a> is done by
+  a CONNECT <a href="../topics/hooks.html">hook</a>
+  defined by the standard library.
+  If you don't want to switch automatically, you can either delete the default
+  <a href="../topics/hooks.html">hook</a>
+  (<code><a href="../commands/undef.html">/undef</a>
+  ~connect_switch_hook</code>)
+  or define your own
+  (with a <a href="../topics/priority.html">priority</a> higher than 0).
+  If you define your own but you still want
+  the switch to occur, you must either make it a
+  <a href="../topics/priority.html">fall-thru</a>,
+  or explicitly call
+  "<code><a href="../commands/fg.html">/fg</a>
+  <a href="../topics/substitution.html#%n">%1</a></code>" from your
+  <a href="../topics/hooks.html">hook</a>.
+
+<p>
+  If you have trouble connecting (especially if you use SOCKS),
+  try setting
+  <a href="../topics/special_variables.html#connect">connect</a>=blocking.
+
+<p>
+  If your host has multiple network interfaces, the OS will choose one of
+  them for the client end of the connection according to its own rules.
+  To override the system's choice, set the
+  <a href="../topics/special_variables.html#tfhost">tfhost</a> variable
+  or define the <a href="../topics/worlds.html">world</a> with a
+  <i>srchost</i> parameter to
+  <a href="../commands/addworld.html">addworld</a>.
+
+<p>
+  <a href="../commands/connect.html">/connect</a> returns 0 on error or
+  failure, 1 on success, or 2 if the connection is pending.
+
+<p>
+  See: <a href="../topics/worlds.html">worlds</a>,
+  <a href="../topics/sockets.html">sockets</a>,
+  <a href="../topics/proxy.html">proxy</a>,
+  <a href="../commands/world.html">/world</a>,
+  <a href="../commands/addworld.html">/addworld</a>,
+  <a href="../commands/fg.html">/fg</a>,
+  <a href="../topics/library.html#retry">/retry</a>,
+  <a href="../topics/special_variables.html#login">%login</a>,
+  <a href="../topics/special_variables.html#gethostbyname">%gethostbyname</a>,
+  <a href="../topics/special_variables.html#connect">%connect</a>,
+  <a href="../topics/hooks.html">hooks</a>
+  <a href="../topics/procotols.html">procotols</a>
+
+<p>
+<!-- END -->
+<hr>
+  <a href="./">Back to index</a><br>
+  <a href="http://tf.tcp.com/~hawkeye/tf/">Back to tf home page</a>
+<hr>
+  <a href="../topics/copyright.html">Copyright</a> &copy; 1995, 1996, 1997, 1998, 1999, 2002, 2003 <a href="http://tf.tcp.com/~hawkeye/">Ken Keys</a>

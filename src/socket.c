@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: socket.c,v 35004.120 1999/01/31 00:27:53 hawkeye Exp $ */
+static const char RCSid[] = "$Id: socket.c,v 35004.180 2003/05/27 01:09:24 hawkeye Exp $";
 
 
 /***************************************************************
@@ -20,13 +20,20 @@
 
 #include "config.h"
 #include <sys/types.h>
-#ifdef SYS_SELECT_H
-# include SYS_SELECT_H
+#if HAVE_SYS_SELECT_H
+# include <sys/select.h>
 #endif
 /* #include <sys/time.h> */
 #include <fcntl.h>
 #include <sys/file.h>	/* for FNONBLOCK on SVR4, hpux, ... */
 #include <sys/socket.h>
+#include <signal.h>	/* for killing resolver child process */
+
+#if HAVE_LIBSSL
+# include <openssl/ssl.h>
+# include <openssl/err.h>
+    SSL_CTX *ssl_ctx;
+#endif
 
 #ifdef NETINET_IN_H
 # include NETINET_IN_H
@@ -48,10 +55,14 @@ struct sockaddr_in {
 # include ARPA_INET_H
 #endif
 
+#if HAVE_LIBZ
+# include <zlib.h>
+#endif
+
 #include "port.h"
-#include "dstring.h"
 #include "tf.h"
 #include "util.h"
+#include "search.h"
 #include "tfio.h"
 #include "tfselect.h"
 #include "history.h"
@@ -64,16 +75,48 @@ struct sockaddr_in {
 #include "commands.h"
 #include "command.h"
 #include "signals.h"
-#include "search.h"
 #include "variable.h"	/* set_var_by_*() */
 
 #ifdef _POSIX_VERSION
 # include <sys/wait.h>
 #endif
 
+#if !defined(AF_INET6) || !defined(IN6_ADDR) || !HAVE_INET_PTON
+# undef ENABLE_INET6
+# define ENABLE_INET6 0
+#endif
+
+#if ENABLE_INET6
+# include <resolv.h>
+# define TF_AF_INET AF_INET6
+# define TF_PF_INET PF_INET6
+# define tf_in_addr IN6_ADDR
+#  define tf_s_addr s6_addr
+# define tf_sockaddr_in sockaddr_in6
+#  define tf_sin_family sin6_family
+#  define tf_sin_port sin6_port
+#  define tf_sin_addr sin6_addr
+#else
+# define TF_AF_INET AF_INET
+# define TF_PF_INET PF_INET
+# define tf_in_addr in_addr
+#  define tf_s_addr s_addr
+# define tf_sockaddr_in sockaddr_in
+#  define tf_sin_family sin_family
+#  define tf_sin_port sin_port
+#  define tf_sin_addr sin_addr
+#endif
+
+#ifndef INET_ADDRSTRLEN
+#define INET_ADDRSTRLEN 16
+#endif
+#ifndef INET6_ADDRSTRLEN
+#define INET6_ADDRSTRLEN 46
+#endif
+
 #define in_connect(s,addr) connect(s, (struct sockaddr*)(addr), sizeof(*(addr)))
 
-#ifndef NO_NETDB
+#ifdef NETDB_H
 
 # ifdef PLATFORM_OS2
 #  define NONBLOCKING_GETHOST
@@ -81,7 +124,7 @@ struct sockaddr_in {
 
 # ifdef PLATFORM_UNIX
 #  ifndef __CYGWIN32__
-#   ifdef HAVE_waitpid
+#   if HAVE_WAITPID
 #    define NONBLOCKING_GETHOST
 #   endif
 #  endif
@@ -89,30 +132,30 @@ struct sockaddr_in {
 
 # include NETDB_H
 # ifdef NONBLOCKING_GETHOST
-   static void FDECL(waitforhostname,(int fd, CONST char *name));
-   static int FDECL(nonblocking_gethost,(CONST char *name,
-       struct in_addr *sin_addr, long *pidp, CONST char **what));
+   static void waitforhostname(int fd, const char *name);
+   static int nonblocking_gethost(const char *name,
+       struct tf_in_addr *sin_addr, long *pidp, const char **what);
 # endif
-  static int FDECL(blocking_gethost,(CONST char *name,
-       struct in_addr *sin_addr, int *errp));
+  static int blocking_gethost(const char *name,
+       struct tf_in_addr *sin_addr, int *errp);
 
-#else /* NO_NETDB */
+#else /* no NETDB_H */
 # define nonblocking_gethost(name, sin_addr, pidp, what) (-1)
 # define blocking_gethost(name, sin_addr, errp) (-1)
-#endif /* NO_NETDB */
+#endif /* no NETDB_H */
 
 #ifndef INADDR_NONE
 # define INADDR_NONE 0xffffffff     /* should be in <netinet/in.h> */
 #endif
 
-#ifdef HAVE_h_errno
-  extern int h_errno;
+#if HAVE_H_ERRNO
+  /* extern int h_errno; */ /* this could conflict */
 #else
 # define h_errno 1
 #endif
 
-#ifndef HAVE_hstrerror
-static CONST char *h_errlist[] = {
+#if !HAVE_HSTRERROR
+static const char *h_errlist[] = {
     "Error 0",
     "Unknown host",
     "Host name lookup failure",
@@ -170,69 +213,99 @@ static CONST char *h_errlist[] = {
 
 
 #ifdef TF_AIX_DECLS
-extern int FDECL(connect,(int, struct sockaddr *, int));
+extern int connect(int, struct sockaddr *, int);
 #endif
 
-#ifdef SOCKS
+#if SOCKS
 # ifndef SOCKS_NONBLOCK
 #  define TF_NONBLOCK 0
 # endif
 #endif
 
-#define SOCKDEAD	00001	/* connection dead */
-#define SOCKRESOLVING	00002	/* hostname not yet resolved */
-#define SOCKPENDING	00004	/* connection not yet established */
-#define SOCKLOGIN	00010	/* autologin requested by user */
-#define SOCKPROMPT	00040	/* last prompt was definitely a prompt */
-#define SOCKTELNET	00100	/* server supports telnet protocol */
-#define SOCKPROXY	00200	/* indirect connection through proxy server */
+/* connection states */
+typedef enum {
+    SS_NEW,		/* brand spanking new */
+    SS_RESOLVING,	/* hostname resolution is pending */
+    SS_RESOLVED,	/* hostname resolution is complete */
+    SS_CONNECTING,	/* connection is pending */
+    SS_CONNECTED,	/* connection is established */
+    SS_WINDOWED,	/* open, without a connection */
+    SS_ZOMBIE,		/* connection dead, but some text may be unseen */
+    SS_DEAD		/* connection dead, and all text has been seen */
+} constate_t;
+
+/* flags */
+#define SOCKLOGIN	001	/* autologin requested by user */
+#define SOCKPROMPT	002	/* last prompt was definitely a prompt */
+#define SOCKPROXY	004	/* indirect connection through proxy server */
+#define SOCKTELNET	010	/* server supports telnet protocol */
+#define SOCKMAYTELNET	020	/* server might support telnet protocol */
+#define SOCKCOMPRESS2	040	/* server has enabled MCCP v2 */
 
 VEC_TYPEDEF(telnet_opts, 256);
 
 typedef struct Sock {		/* an open connection to a server */
     int fd;			/* socket to server, or pipe to name resolver */
-    CONST char *host, *port;	/* server address, human readable */
-    struct sockaddr_in addr;	/* server address, internal */
-    telnet_opts tn_do, tn_will;	/* telnet DO and WILL options */
-    short flags;		/* SOCK* flags */
+    const char *host, *port;	/* server address, human readable */
+    struct tf_sockaddr_in addr;	/* server address, internal */
+    const char *myhost;		/* client address, human readable */
+    struct tf_sockaddr_in myaddr;	/* client address, internal */
+    telnet_opts tn_us;		/* our telnet options */
+    telnet_opts tn_us_tog;	/* our telnet options we want changed */
+    telnet_opts tn_them;	/* server's telnet options */
+    telnet_opts tn_them_tog;	/* server's telnet options we want changed */
+    constate_t constate;	/* connection state */
+    unsigned char flags;	/* SOCK* flags */
     short numquiet;		/* # of lines to gag after connecting */
     struct World *world;	/* world to which socket is connected */
     struct Sock *next, *prev;	/* next/prev sockets in linked list */
-    Aline *prompt;		/* prompt from server */
+    String *prompt;		/* prompt from server */
     Stringp buffer;		/* buffer for incoming characters */
-    struct Queue *queue;	/* buffer for undisplayed lines */
-    int activity;		/* number of undisplayed lines */
+    Stringp subbuffer;		/* buffer for incoming characters */
+    Queue queue;		/* queue of incoming lines */
+    int ttype;			/* index into enum_ttype[] */
     attr_t attrs;		/* current text attributes */
-    TIME_T time[2];		/* time of last receive/send */
-    char state;			/* state of parser finite state automaton */
+    struct timeval time[2];	/* time of last receive/send */
+    char fsastate;		/* parser finite state automaton state */
+    char substate;		/* parser fsa state for telnet subnegotiation */
     long pid;			/* pid of name resolution process */
+#if HAVE_LIBZ
+    z_stream *zstream;		/* state of compressed stream */
+#endif
+#if HAVE_LIBSSL
+    SSL *ssl;			/* SSL state */
+#endif
 } Sock;
 
 
-static Sock *FDECL(find_sock,(CONST char *name));
-static void  FDECL(wload,(World *w));
-static int   FDECL(fg_sock,(Sock *sock, int quiet));
-static int   FDECL(get_host_address,(CONST char *name, struct in_addr *sin_addr, long *pidp, CONST char **what, int *errp));
-static int   FDECL(openconn,(Sock *new));
-static int   FDECL(establish,(Sock *new));
-static void  NDECL(fg_live_sock);
-static void  NDECL(nuke_dead_socks);
-static void  FDECL(nukesock,(Sock *sock));
-static void  FDECL(handle_prompt,(CONST char *str, int confirmed));
-static void  FDECL(unprompt,(Sock *sock, int update));
-static void  NDECL(handle_socket_line);
-static int   NDECL(handle_socket_input);
-static int   FDECL(transmit,(CONST char *s, unsigned int len));
-static void  FDECL(telnet_send,(String *cmd));
-static void  FDECL(f_telnet_recv,(int cmd, int opt));
-static int   FDECL(is_quiet,(CONST char *str));
-static int   FDECL(is_bamf,(CONST char *str));
-static void  FDECL(do_naws,(Sock *sock));
-static void  FDECL(telnet_debug,(CONST char *dir, CONST char *str, int len));
-static void  NDECL(preferred_telnet_options);
+static Sock *find_sock(const char *name);
+static void  wload(World *w);
+static int   fg_sock(Sock *sock, int quiet);
+static int   get_host_address(const char *name, struct tf_in_addr *sin_addr, long *pidp, const char **what, int *errp);
+static int   opensock(World *world, int flags);
+static int   openconn(Sock *new);
+static int   establish(Sock *new);
+static void  fg_live_sock(void);
+static void  nuke_dead_socks(void);
+static void  nukesock(Sock *sock);
+static void  handle_prompt(String *str, int offset, int confirmed);
+static void  unprompt(Sock *sock, int update);
+static void  handle_socket_lines(void);
+static int   handle_socket_input(const char *simbuffer, int simlen);
+static int   transmit(const char *s, unsigned int len);
+static void  telnet_send(String *cmd);
+static void  telnet_subnegotiation(void);
+static void  f_telnet_recv(int cmd, int opt);
+static int   is_quiet(const char *str);
+static int   is_bamf(const char *str);
+static void  do_naws(Sock *sock);
+static void  telnet_debug(const char *dir, const char *str, int len);
+static void  preferred_telnet_options(void);
+static void  killsock(Sock *sock);
+
+#define zombiesock(sock)	killsock(sock)
 
 #define telnet_recv(cmd, opt)	f_telnet_recv((UCHAR)cmd, (UCHAR)opt);
-#define killsock(s)		(((s)->flags |= SOCKDEAD), dead_socks++)
 
 #ifndef CONN_WAIT
 #define CONN_WAIT 400000
@@ -248,81 +321,163 @@ static fd_set readers;		/* input file descriptors */
 static fd_set active;		/* active file descriptors */
 static fd_set writers;		/* pending connections */
 static fd_set connected;	/* completed connections */
-static int nfds;		/* max # of readers/writers */
+static unsigned int nfds;	/* max # of readers/writers */
 static Sock *hsock = NULL;	/* head of socket list */
 static Sock *tsock = NULL;	/* tail of socket list */
 static Sock *fsock = NULL;	/* foreground socket */
 static int dead_socks = 0;	/* Number of unnuked dead sockets */
-static CONST char *telnet_label[0x100];
+static int socks_with_lines = 0;/* Number of socks with queued received lines */
+static const char *telnet_label[0x100];
 STATIC_BUFFER(telbuf);
+STATIC_STRING(no_tn_reply, " [no reply (option was already agreed on)]", 0);
 
 #define MAXQUIET        25	/* max # of lines to suppress during login */
 
-/* TELNET options (RFC 855) */
-#define TN_BINARY	'\000'	/* RFC  856 - transmit binary */
-#define TN_ECHO		'\001'	/* RFC  857 - echo */
-#define TN_SGA		'\003'	/* RFC  858 - suppress GOAHEAD option */
-#define TN_STATUS	'\005'	/* RFC  859 - not used */
-#define TN_TIMING_MARK	'\006'	/* RFC  860 - not used */
-#define TN_TTYPE	'\030'	/* RFC 1091 - not used */
-#define TN_SEND_EOR	'\031'	/* RFC  885 - transmit EOR */
-#define TN_NAWS		'\037'	/* RFC 1073 - negotiate about window size */
-#define TN_TSPEED	'\040'	/* RFC 1079 - not used */
-#define TN_LINEMODE	'\042'	/* RFC 1184 - not used */
-/* Note: many telnet servers (incorrectly?) send DO ECHO and DO SGA together
- * to mean character-at-a-time mode.
+/* Note: many telnet servers send DO ECHO and DO SGA together to mean
+ * character-at-a-time mode.
  */
 
 /* TELNET special characters (RFC 854) */
-#define TN_EOR		'\357'	/* End-Of-Record */
-#define TN_SE		'\360'	/* not used */
-#define TN_NOP		'\361'	/* not used */
-#define TN_DATA_MARK	'\362'	/* not used */
-#define TN_BRK		'\363'	/* not used */
-#define TN_IP		'\364'	/* not used */
-#define TN_AO		'\365'	/* not used */
-#define TN_AYT		'\366'	/* not used */
-#define TN_EC		'\367'	/* not used */
-#define TN_EL		'\370'	/* not used */
-#define TN_GA		'\371'	/* Go Ahead */
-#define TN_SB		'\372'	/* not used */
-#define TN_WILL		'\373'	/* I offer to ~, or ack for DO */
-#define TN_WONT		'\374'	/* I will stop ~ing, or nack for DO */
-#define TN_DO		'\375'	/* Please do ~?, or ack for WILL */
-#define TN_DONT		'\376'	/* Stop ~ing!, or nack for WILL */
-#define TN_IAC		'\377'	/* telnet Is A Command character */
+#define TN_EOR		((char)239)	/* end of record (RFC 885) */
+#define TN_SE		((char)240)	/* subnegotiation end */
+#define TN_NOP		((char)241)	/* no operation */
+#define TN_DATA_MARK	((char)242)	/* (not used) */
+#define TN_BRK		((char)243)	/* break (not used) */
+#define TN_IP		((char)244)	/* interrupt process (not used) */
+#define TN_AO		((char)245)	/* abort output (not used) */
+#define TN_AYT		((char)246)	/* are you there? (not used) */
+#define TN_EC		((char)247)	/* erase character (not used) */
+#define TN_EL		((char)248)	/* erase line (not used) */
+#define TN_GA		((char)249)	/* go ahead */
+#define TN_SB		((char)250)	/* subnegotiation begin */
+#define TN_WILL		((char)251)	/* I offer to ~, or ack for DO */
+#define TN_WONT		((char)252)	/* I will stop ~ing, or nack for DO */
+#define TN_DO		((char)253)	/* Please do ~?, or ack for WILL */
+#define TN_DONT		((char)254)	/* Stop ~ing!, or nack for WILL */
+#define TN_IAC		((char)255)	/* telnet Is A Command character */
+
+/* TELNET options (RFC 855) */		/* RFC# - description */
+#define TN_BINARY	((char)0)	/*  856 - transmit binary */
+#define TN_ECHO		((char)1)	/*  857 - echo */
+#define TN_SGA		((char)3)	/*  858 - suppress GA (not used) */
+#define TN_STATUS	((char)5)	/*  859 - (not used) */
+#define TN_TIMING_MARK	((char)6)	/*  860 - (not used) */
+#define TN_TTYPE	((char)24)	/* 1091 - terminal type */
+#define TN_SEND_EOR	((char)25)	/*  885 - transmit EOR */
+#define TN_NAWS		((char)31)	/* 1073 - negotiate about window size */
+#define TN_TSPEED	((char)32)	/* 1079 - terminal speed (not used) */
+#define TN_FLOWCTRL	((char)33)	/* 1372 - (not used) */
+#define TN_LINEMODE	((char)34)	/* 1184 - (not used) */
+#define TN_XDISPLOC	((char)35)	/* 1096 - (not used) */
+#define TN_ENVIRON	((char)36)	/* 1408 - (not used) */
+#define TN_AUTH		((char)37)	/* 1416 - (not used) */
+#define TN_NEW_ENVIRON	((char)39)	/* 1572 - (not used) */
+#define TN_CHARSET	((char)42)	/* 2066 - (not used) */
+/* 86 is not standard.  See http://www.abandoned.org/nemon/compress/. */
+#define TN_COMPRESS2	((char)86)	/* MCCP v2 */
 
 #define UCHAR		unsigned char
-
-#define IS_DO(sock, opt)	VEC_ISSET((UCHAR)(opt), &(sock)->tn_do)
-#define IS_WILL(sock, opt)	VEC_ISSET((UCHAR)(opt), &(sock)->tn_will)
 
 #define tn_send_opt(cmd, opt) \
     ( Sprintf(telbuf, 0, "%c%c%c", TN_IAC, (cmd), (opt)), telnet_send(telbuf) )
 
-#define set_DO(opt)	( VEC_SET((UCHAR)(opt), &xsock->tn_do) )
-#define set_DONT(opt)	( VEC_CLR((UCHAR)(opt), &xsock->tn_do) )
-#define set_WILL(opt)	( VEC_SET((UCHAR)(opt), &xsock->tn_will) )
-#define set_WONT(opt)	( VEC_CLR((UCHAR)(opt), &xsock->tn_will) )
+#define TELOPT(sock, field, opt) \
+	VEC_ISSET((UCHAR)(opt), &(sock)->tn_ ## field)
+#define SET_TELOPT(sock, field, opt) \
+	VEC_SET((UCHAR)(opt), &(sock)->tn_ ## field)
+#define CLR_TELOPT(sock, field, opt) \
+	VEC_CLR((UCHAR)(opt), &(sock)->tn_ ## field)
 
-#define DO(opt)		( set_DO(opt),   tn_send_opt(TN_DO,   (opt)) )
-#define DONT(opt)	( set_DONT(opt), tn_send_opt(TN_DONT, (opt)) )
-#define WILL(opt)	( set_WILL(opt), tn_send_opt(TN_WILL, (opt)) )
-#define WONT(opt)	( set_WONT(opt), tn_send_opt(TN_WONT, (opt)) )
+#define DO(opt)		( tn_send_opt(TN_DO,   (opt)) )
+#define DONT(opt)	( tn_send_opt(TN_DONT, (opt)) )
+#define WILL(opt)	( tn_send_opt(TN_WILL, (opt)) )
+#define WONT(opt)	( tn_send_opt(TN_WONT, (opt)) )
 
 #define ANSI_CSI	'\233'	/* ANSI terminal Command Sequence Intro */
 
 Sock *xsock = NULL;		/* current (transmission) socket */
 int quit_flag = FALSE;		/* Are we all done? */
 int active_count = 0;		/* # of (non-current) active sockets */
-Aline *incoming_text = NULL;
+String *incoming_text = NULL;
+int feature_IPv6 = ENABLE_INET6;
+int feature_MCCPv2 = HAVE_LIBZ;
+int feature_ssl = HAVE_LIBSSL;
+int feature_SOCKS = SOCKS;
 
 #define CONFAIL(where, what, why) \
-        do_hook(H_CONFAIL, "%% Connection to %s failed: %s: %s", "%s %s: %s", \
+    do_hook(H_CONFAIL, "%% Connection to %s failed: %s: %s", "%s %s: %s", \
         (where), (what), (why))
+#define DISCON(where, what, why) \
+    do_hook(H_DISCONNECT, "%% Connection to %s closed: %s: %s", "%s %s %s", \
+	where, what, why);
+
+#if HAVE_LIBSSL
+static void ssl_err(const char *str)
+{
+    unsigned long e;
+    while ((e = ERR_get_error()))
+	eprintf("%s: %s", str, ERR_error_string(e, NULL));
+}
+
+static void ssl_io_err(Sock *sock, int ret, int hook)
+{
+    int err;
+    const char *fmt;
+
+    switch (hook) {
+    case H_CONFAIL: fmt = "%% Connection to %s failed: %s: %s"; break;
+    case H_DISCONNECT: fmt = "%% Connection to %s closed: %s: %s"; break;
+    }
+
+#define ssl_io_err_hook(what, why) \
+    do_hook(hook, fmt, "%s %s %s", xsock->world->name, what, why);
+
+    err = SSL_get_error(sock->ssl, ret);
+    switch (err) {
+    case SSL_ERROR_NONE:
+	break;
+    case SSL_ERROR_ZERO_RETURN:
+	ssl_io_err_hook("SSL", "SSL_ERROR_ZERO_RETURN");
+	break;
+    case SSL_ERROR_WANT_READ:
+	ssl_io_err_hook("SSL", "SSL_ERROR_WANT_READ");
+	break;
+    case SSL_ERROR_WANT_WRITE:
+	ssl_io_err_hook("SSL", "SSL_ERROR_WANT_WRITE");
+	break;
+    case SSL_ERROR_WANT_CONNECT:
+	ssl_io_err_hook("SSL", "SSL_ERROR_WANT_CONNECT");
+	break;
+    case SSL_ERROR_SYSCALL:
+	ssl_io_err_hook("SSL/system", strerror(errno));
+	break;
+    case SSL_ERROR_SSL:
+	while ((err = ERR_get_error())) {
+	    ssl_io_err_hook("SSL/lib", ERR_error_string(err, NULL));
+	}
+	break;
+    }
+}
+
+static void init_ssl(void)
+{
+    SSL_load_error_strings();
+    SSL_library_init();
+    /* XXX seed PRNG */
+    ssl_ctx = SSL_CTX_new(SSLv23_client_method());
+    if (!ssl_ctx) {
+	ssl_err("SSL_CTX_new");
+	return;
+    }
+    if (!SSL_CTX_set_cipher_list(ssl_ctx, "ALL")) {
+	ssl_err("SSL_CTX_set_cipher_list");
+	return;
+    }
+}
+#endif
 
 /* initialize socket.c data */
-void init_sock()
+void init_sock(void)
 {
     int i;
 
@@ -333,24 +488,31 @@ void init_sock()
     FD_SET(STDIN_FILENO, &readers);
     nfds = 1;
 
-    set_var_by_id(VAR_async_conn, !!TF_NONBLOCK, NULL);
+    set_var_by_id(VAR_async_conn, !!TF_NONBLOCK);
 
     for (i = 0; i < 0x100; i++) telnet_label[i] = NULL;
 
     telnet_label[(UCHAR)TN_BINARY]	= "BINARY";
     telnet_label[(UCHAR)TN_ECHO]	= "ECHO";
-    telnet_label[(UCHAR)TN_SGA]		= "SGA";
+    telnet_label[(UCHAR)TN_SGA]		= "SUPPRESS-GO-AHEAD";
     telnet_label[(UCHAR)TN_STATUS]	= "STATUS";
-    telnet_label[(UCHAR)TN_TIMING_MARK]	= "TIMING_MARK";
-    telnet_label[(UCHAR)TN_TTYPE]	= "TTYPE";
-    telnet_label[(UCHAR)TN_SEND_EOR]	= "SEND_EOR";
+    telnet_label[(UCHAR)TN_TIMING_MARK]	= "TIMING-MARK";
+    telnet_label[(UCHAR)TN_TTYPE]	= "TERMINAL-TYPE";
+    telnet_label[(UCHAR)TN_SEND_EOR]	= "SEND-EOR";
     telnet_label[(UCHAR)TN_NAWS]	= "NAWS";
     telnet_label[(UCHAR)TN_TSPEED]	= "TSPEED";
+    telnet_label[(UCHAR)TN_FLOWCTRL]	= "TOGGLE-FLOW-CONTROL";
     telnet_label[(UCHAR)TN_LINEMODE]	= "LINEMODE";
+    telnet_label[(UCHAR)TN_XDISPLOC]	= "XDISPLOC";
+    telnet_label[(UCHAR)TN_ENVIRON]	= "ENVIRON";
+    telnet_label[(UCHAR)TN_AUTH]	= "AUTHENTICATION";
+    telnet_label[(UCHAR)TN_NEW_ENVIRON]	= "NEW-ENVIRON";
+    telnet_label[(UCHAR)TN_CHARSET]	= "CHARSET";
+    telnet_label[(UCHAR)TN_COMPRESS2]	= "COMPRESS2";
     telnet_label[(UCHAR)TN_EOR]		= "EOR";
     telnet_label[(UCHAR)TN_SE]		= "SE";
     telnet_label[(UCHAR)TN_NOP]		= "NOP";
-    telnet_label[(UCHAR)TN_DATA_MARK]	= "DATA_MARK";
+    telnet_label[(UCHAR)TN_DATA_MARK]	= "DATA-MARK";
     telnet_label[(UCHAR)TN_BRK]		= "BRK";
     telnet_label[(UCHAR)TN_IP]		= "IP";
     telnet_label[(UCHAR)TN_AO]		= "AO";
@@ -364,6 +526,17 @@ void init_sock()
     telnet_label[(UCHAR)TN_DO]		= "DO";
     telnet_label[(UCHAR)TN_DONT]	= "DONT";
     telnet_label[(UCHAR)TN_IAC]		= "IAC";
+
+#if 0
+#ifdef RES_USE_INET6
+    res_init();
+    _res.options |= RES_USE_INET6;
+#endif
+#endif
+
+#if HAVE_LIBSSL
+    init_ssl();
+#endif
 }
 
 /* main_loop
@@ -372,16 +545,17 @@ void init_sock()
  * or refresh event.  Signal processing and garbage collection is
  * done at the beginning of each loop, where we're in a "clean" state.
  */
-void main_loop()
+void main_loop(void)
 {
-    static struct timeval now;    /* static, for recursion */
-    static TIME_T earliest;       /* static, for recursion */
+    static struct timeval now, earliest;    /* static, for recursion */
     Sock *sock = NULL;            /* loop index */
     int count, received;
     Sock *stopsock;
     static int depth = 0;
     struct timeval tv, *tvp;
     struct timeval refresh_tv;
+    STATIC_STRING(low_memory_msg,
+	"% WARNING: memory is low.  Try reducing history sizes.", 0);
 
     depth++;
     while (!quit_flag) {
@@ -394,11 +568,12 @@ void main_loop()
         /* run processes */
         /* at loop beginning in case of processes before main_loop() */ 
         gettime(&now);
-        if (proctime && proctime <= now.tv_sec) runall();
+        if (proctime.tv_sec && tvcmp(&proctime, &now) <= 0)
+	    runall(0, NULL); /* run timed processes */
 
         if (low_memory_warning) {
             low_memory_warning = 0;
-            oputs("% WARNING: memory is low.  Try reducing history sizes.");
+	    tfputline(low_memory_msg, tferr);
         }
 
         if (quit_flag) break;
@@ -406,43 +581,73 @@ void main_loop()
         /* figure out when next event is so select() can timeout then */
         gettime(&now);
         earliest = proctime;
-        if (maildelay > 0) {
-            if (now.tv_sec >= mail_update) {
+#if 1 /* XXX debugging */
+	{
+	    Sock *s;
+	    int n = 0;
+	    for (s = hsock; s; s = s->next)
+		if (s->queue.list.head) n++;
+	    if (n != socks_with_lines) {
+		internal_error(__FILE__, __LINE__,
+		    "socks_with_lines (%d) is not correct (%d)!",
+		    socks_with_lines, n);
+		socks_with_lines = n;
+	    }
+	}
+#endif
+	if (socks_with_lines)
+	    earliest = now;
+        if (maillist && tvcmp(&maildelay, &tvzero) > 0) {
+            if (tvcmp(&now, &mail_update) >= 0) {
                 check_mail();
-                mail_update = now.tv_sec + maildelay;
+                tvadd(&mail_update, &now, &maildelay);
             }
-            if (!earliest || (mail_update < earliest))
+            if (tvcmp(&earliest, &tvzero) == 0 ||
+                (tvcmp(&mail_update, &earliest) < 0))
+            {
                 earliest = mail_update;
+            }
         }
+        if (visual && alert_timeout.tv_sec > 0) {
+            if (tvcmp(&now, &alert_timeout) >= 0) {
+		clear_alert();
+	    } else if (tvcmp(&earliest, &tvzero) == 0 ||
+                (tvcmp(&alert_timeout, &earliest) < 0))
+            {
+                earliest = alert_timeout;
+            }
+	}
         if (visual && clock_update >= 0) {
             if (now.tv_sec >= clock_update)
                 update_status_field(NULL, STAT_CLOCK);
-            if (!earliest || (clock_update < earliest))
-                earliest = clock_update;
+            if (!(earliest.tv_sec || earliest.tv_usec) ||
+                (clock_update < earliest.tv_sec))
+            {
+                earliest.tv_sec = clock_update;
+                earliest.tv_usec = 0;
+            }
         }
 
-        /* flush pending tfscreen output */
+        /* flush pending display_screen output */
         /* must be after all possible output and before select() */
         oflush();
 
         if (pending_input || pending_line) {
             tvp = &tv;
-            tv.tv_sec = 0;
-            tv.tv_usec = 0;
-        } else if (earliest) {
+            tv = tvzero;
+        } else if (earliest.tv_sec || earliest.tv_usec) {
             tvp = &tv;
-            tv.tv_sec = earliest - now.tv_sec;
-            tv.tv_usec = 0 - now.tv_usec;
-            if (tv.tv_usec < 0) {
-                tv.tv_usec += 1000000;
-                tv.tv_sec -= 1;
-            }
-            if (tv.tv_sec <= 0) {
-                tv.tv_sec = 0;
-#ifndef HAVE_gettimeofday
-            } else if (proctime) {
-                if ((--tv.tv_sec) == 0)
-                    tv.tv_usec = PROC_WAIT;
+            if (tvcmp(&earliest, &now) <= 0) {
+                tv = tvzero;
+            } else {
+                tvsub(&tv, &earliest, &now);
+#if !HAVE_GETTIMEOFDAY
+                /* We can't read microseconds, so we get within the right
+                 * second and then start polling. */
+                if (proctime.tv_sec) {
+                    if ((--tv.tv_sec) == 0)
+                        tv.tv_usec = PROC_WAIT;
+                }
 #endif
             }
         } else tvp = NULL;
@@ -452,7 +657,7 @@ void main_loop()
                 refresh_tv.tv_sec = refreshtime / 1000000;
                 refresh_tv.tv_usec = refreshtime % 1000000;
             } else {
-                refresh_tv.tv_sec = refresh_tv.tv_usec = 0;
+                refresh_tv = tvzero;
             }
 
             if (!tvp || refresh_tv.tv_sec < tvp->tv_sec ||
@@ -480,17 +685,20 @@ void main_loop()
          * Note: if the same descriptor appears in more than one fd_set, some
          * systems count it only once, some count it once for each occurance.
          */
-        structcpy(active, readers);
-        structcpy(connected, writers);
+        active = readers;
+        connected = writers;
         count = tfselect(nfds, &active, &connected, NULL, tvp);
 
         if (count < 0) {
             /* select() must have exited due to error or interrupt. */
-            if (errno != EINTR)
-                core(strerror(errno), __FILE__, __LINE__, 0);
+            if (errno != EINTR) core(strerror(errno), __FILE__, __LINE__, 0);
             /* In case we're in a kb tfgetS(), clear things for parent loop. */
             FD_ZERO(&active);
             FD_ZERO(&connected);
+	    /* In case the dreaded solaris select bug caused tf to remove stdin
+	     * from readers, user will probably panic and hit ^C, so we add
+	     * stdin back to readers, and recover. */
+	    FD_SET(STDIN_FILENO, &readers);
 
         } else {
             if (count == 0) {
@@ -520,23 +728,25 @@ void main_loop()
                 stopsock = sock;
                 do /* while (count && sock != stopsock && received < SPAM) */ {
                     xsock = sock;
-                    if (sock->flags & SOCKDEAD) {
+                    if (sock->constate >= SS_WINDOWED) {
                         /* do nothing */
                     } else if (FD_ISSET(xsock->fd, &connected)) {
                         count--;
                         establish(xsock);
                     } else if (FD_ISSET(xsock->fd, &active)) {
                         count--;
-                        if (xsock->flags & SOCKRESOLVING) {
+                        if (xsock->constate == SS_RESOLVING) {
                             openconn(xsock);
-                        } else if (xsock->flags & SOCKPENDING) {
+                        } else if (xsock->constate == SS_CONNECTING) {
                             establish(xsock);
                         } else if (xsock == fsock || background) {
-                            received += handle_socket_input();
+                            received += handle_socket_input(NULL, 0);
                         } else {
                             FD_CLR(xsock->fd, &readers);
                         }
                     }
+		    if (xsock->queue.list.head)
+			handle_socket_lines();
                     sock = sock->next ? sock->next : hsock;
                 } while (count && sock != stopsock && received < SPAM);
 
@@ -544,8 +754,10 @@ void main_loop()
                 xsock = fsock;
             }
 
+#if !NO_PROCESS
             /* other active fds must be from command /quotes. */
-            if (count) proctime = time(NULL);
+            if (count) gettime(&proctime);
+#endif
         }
 
         if (pending_line && read_depth) {    /* end of tf read() */
@@ -553,13 +765,13 @@ void main_loop()
             break;
         }
 
-        if (dead_socks && (!fsock || fsock->flags & SOCKDEAD)) {
+        if (fsock && fsock->constate == SS_DEAD) {
             if (auto_fg) fg_live_sock();
             else fg_sock(NULL, FALSE);
         }
         /* garbage collection */
         if (depth == 1) {
-            if (sock && sock->flags & SOCKDEAD) sock = NULL;
+            if (sock && sock->constate == SS_DEAD) sock = NULL;
             if (dead_socks) nuke_dead_socks(); /* at end in case of quitdone */
             nuke_dead_macros();
             nuke_dead_procs();
@@ -567,61 +779,96 @@ void main_loop()
     }
 
     /* end of loop */
-    if (!--depth)
+    if (!--depth) {
+	fsock = NULL;
+	xsock = NULL;
         while (hsock) nukesock(hsock);
+#if HAVE_LIBSSL
+	SSL_CTX_free(ssl_ctx);
+#endif
+    }
 }
 
-int is_active(fd)
-    int fd;
+int sockecho(void)
+{
+    return !xsock || (xsock && !TELOPT(xsock, them, TN_ECHO));
+}
+
+void close_all(void)
+{
+    while (nfds > 3)
+	close(--nfds);
+}
+
+int is_active(int fd)
 {
     return FD_ISSET(fd, &active);
 }
 
-void readers_clear(fd)
-    int fd;
+void readers_clear(int fd)
 {
     FD_CLR(fd, &readers);
 }
 
-void readers_set(fd)
-    int fd;
+void readers_set(int fd)
 {
     FD_SET(fd, &readers);
     if (fd >= nfds) nfds = fd + 1;
 }
 
-int tog_bg()
+int tog_bg(void)
 {
     Sock *sock;
     if (background)
         for (sock = hsock; sock; sock = sock->next)
-            if (!(sock->flags & (SOCKDEAD | SOCKPENDING)))
+            if (sock->constate == SS_CONNECTED)
                 FD_SET(sock->fd, &readers);
     return 1;
 }
 
+int tog_keepalive(void)
+{
+    Sock *sock;
+    int flags;
+
+    flags = keepalive;
+    for (sock = hsock; sock; sock = sock->next) {
+	if (sock->constate != SS_CONNECTED) continue;
+	if (setsockopt(sock->fd, SOL_SOCKET, SO_KEEPALIVE, (void*)&flags,
+	    sizeof(flags)) < 0)
+	{
+	    eprintf("warning: setsockopt KEEPALIVE: %s", strerror(errno));
+	}
+    }
+    return 1;
+}
+
 /* get name of foreground world */
-CONST char *fgname()
+const char *fgname(void)
 {
     return fsock ? fsock->world->name : NULL;
 }
 
 /* get current operational world */
-World *xworld()
+World *xworld(void)
 {
     return xsock ? xsock->world : NULL;
 }
 
-TIME_T sockidle(name, dir)
-    CONST char *name;
+int xsock_is_fg(void)
+{
+    return xsock == fsock;
+}
+
+struct timeval *socktime(const char *name, int dir)
 {
     Sock *sock;
     sock = *name ? find_sock(name) : xsock;
-    return sock ? time(NULL) - sock->time[dir] : -1;
+    if (!sock) return NULL;
+    return &sock->time[dir];
 }
 
-static Sock *find_sock(name)
-    CONST char *name;
+static Sock *find_sock(const char *name)
 {
     Sock *sock;
 
@@ -636,23 +883,23 @@ static Sock *find_sock(name)
 }
 
 /* load macro file for a world */
-static void wload(w)
-    World *w;
+static void wload(World *w)
 {
-    CONST char *mfile;
+    const char *mfile;
     if (restriction >= RESTRICT_FILE) return;
     if ((mfile = world_mfile(w)))
         do_file_load(mfile, FALSE);
 }
 
+int world_hook(const char *fmt, const char *name)
+{
+    return do_hook(H_WORLD, virtscreen ? NULL : fmt, "%s",
+	name ? name : "");
+}
 
 /* bring a socket into the foreground */
-static int fg_sock(sock, quiet)
-    Sock *sock;
-    int quiet;
+static int fg_sock(Sock *sock, int quiet)
 {
-    int oldecho = sockecho;
-    int activity;
     static int depth = 0;
 
     if (depth) {
@@ -660,80 +907,94 @@ static int fg_sock(sock, quiet)
         return 0;
     }
 
-    sockecho = sock ? !IS_DO(sock, TN_ECHO) : TRUE;
-    if (oldecho != sockecho)
+    if (sockecho() != (!sock || !TELOPT(sock, them, TN_ECHO)))
         set_refresh_pending(REF_LOGICAL);
 
     xsock = sock;
     if (sock == fsock) return 2;  /* already there */
+
+    if (fsock) {                          /* the socket being backgrounded... */
+	/* ...has new text */
+        if (fsock->world->screen->nnew || fsock->queue.list.head) {
+            ++active_count;
+            update_status_field(NULL, STAT_ACTIVE);
+	/* ...is dead, with all text seen */
+        } else if (fsock->constate == SS_ZOMBIE) {
+            fsock->constate = SS_DEAD;
+	    dead_socks++;
+	}
+    }
     fsock = sock;
     depth++;
 
-    if ((activity = sock && sock->activity)) {
-        /* this must be done before calling any user code (hooks, %status_*) */
-        sock->activity = 0;
-        --active_count;
-    }
-
-    update_status_field(NULL, STAT_WORLD);
+    if (!virtscreen) update_status_field(NULL, STAT_WORLD);
 
     if (sock) {
-        FD_SET(sock->fd, &readers);
-        if (activity)
+	if (sock->constate == SS_CONNECTED)
+	    FD_SET(sock->fd, &readers);
+        if (sock->world->screen->nnew) {
+            --active_count;
             update_status_field(NULL, STAT_ACTIVE);
-        do_hook(H_WORLD, (sock->flags & SOCKDEAD) ?
+        }
+        fg_screen = sock->world->screen;
+        world_hook((sock->constate >= SS_ZOMBIE) ?
             "---- World %s (dead) ----" : "---- World %s ----",
-           "%s", sock->world->name);
-        if (activity)
-            flushout_queue(sock->queue, quiet);
+           sock->world->name);
+	switch_screen(quiet || !bg_output);
         tog_lp();
         update_prompt(sock->prompt, 1);
         if (sockmload) wload(sock->world);
     } else {
-        do_hook(H_WORLD, "---- No world ----", "");
+        fg_screen = default_screen;
+        world_hook("---- No world ----", NULL);
+	switch_screen(quiet || !bg_output);
         update_prompt(NULL, 1);
     }
     depth--;
     return 1;
 }
 
-struct Value *handle_fg_command(args)
-    char *args;
+struct Value *handle_fg_command(String *args, int offset)
 {
-    int opt, nosock = FALSE, noerr = FALSE, dir = 0, quiet = FALSE;
+    int opt, nosock = FALSE, noerr = FALSE, quiet = FALSE;
+    long num = 0;
     Sock *sock;
 
-    startopt(args, "nlqs<>");
-    while ((opt = nextopt(&args, NULL))) {
+    startopt(args, "nlqs<>c#");
+    while ((opt = nextopt(NULL, &num, NULL, &offset))) {
         switch (opt) {
         case 'n':  nosock = TRUE;  break;
         case 's':  noerr = TRUE;  break;
         case 'l':  break;  /* accepted and ignored */
         case 'q':  quiet = TRUE; break;
-        case '<':  dir = -1;  break;
-        case '>':  dir =  1;  break;
-        default:   return newint(0);
+        case '<':  num = -1;  break;
+        case '>':  num =  1;  break;
+        case 'c':  break;
+        default:   return shareval(val_zero);
         }
     }
 
     if (nosock) {
         return newint(fg_sock(NULL, quiet));
 
-    } else if (dir) {
+    } else if (num) {
         Sock *stop;
-        if (!hsock) return 0;
+        if (!hsock) return shareval(val_zero);
         stop = sock = (fsock ? fsock : hsock);
         do {
-            sock = (dir > 0) ? (sock->next ? sock->next : hsock) :
-                               (sock->prev ? sock->prev : tsock);
-        } while ((sock->flags & SOCKPENDING) && sock != stop);
+	    sock = (num > 0) ?
+		(sock->next ? sock->next : hsock) :
+		(sock->prev ? sock->prev : tsock);
+	    if (sock->constate >= SS_CONNECTED)
+		num += (num<0) ? 1 : -1;
+        } while (num && sock != stop);
         return newint(fg_sock(sock, quiet));
     }
 
-    sock = (!*args) ? hsock : find_sock(args);
-    if (!sock || sock->flags & SOCKPENDING) {
-        if (!noerr) eprintf("not connected to '%s'", args);
-        return newint(0);
+    sock = (!(args->len - offset)) ? hsock : find_sock(args->data + offset);
+    if (!sock || sock->constate < SS_CONNECTED) {
+        if (!noerr) eprintf("not connected to '%s'", args->data + offset);
+        return shareval(val_zero);
     }
     return newint(fg_sock(sock, quiet));
 }
@@ -745,55 +1006,47 @@ struct Value *handle_fg_command(args)
  * the initial automatic connection, an empty name should be used for any
  * other unspecified connection.
  */
-int openworld(name, port, autologin, quietlogin)
-    CONST char *name, *port;
-    int autologin, quietlogin;
+int openworld(const char *name, const char *port, int flags)
 {
     World *world = NULL;
 
     xsock = NULL;
     if (!port) {
         world = find_world(name);
-        if (!world)
-            if (name)
+        if (!world) {
+            if (name) {
                 do_hook(H_CONFAIL, "%% Connection to %s failed: %s", "%s %s",
                     *name ? name : "default world", "no such world");
-            else
-                do_hook(H_WORLD, "---- No world ----", "");
+            } else {
+                world_hook("---- No world ----", NULL);
+	    }
+	}
     } else {
         if (restriction >= RESTRICT_WORLD)
             eprintf("arbitrary connections restricted");
         else {
-            world = new_world(NULL, "", "", name, port, "", "", WORLD_TEMP);
+            world = new_world(NULL, "", name, port, "", "", "",
+		WORLD_TEMP | ((flags & CONN_SSL) ? WORLD_SSL : 0), "");
         }
     }
 
-    return world ? opensock(world, autologin, quietlogin) : 0;
+    return world ? opensock(world, flags) : 0;
 }
 
-int opensock(world, autologin, quietlogin)
-    World *world;
-    int autologin, quietlogin;
+static int opensock(World *world, int flags)
 {
     struct servent *service;
     int herr;
-    CONST char *what;
+    const char *what;
 
     if (world->sock) {
-        if (!(world->sock->flags & SOCKDEAD)) {
+        if (world->sock->constate < SS_ZOMBIE) {
             eprintf("socket to %s already exists", world->name);
             return 0;
         }
         /* recycle existing Sock */
         dead_socks--;
         xsock = world->sock;
-        if (xsock->fd >= 0) {
-            close(xsock->fd);
-            FD_CLR(xsock->fd, &readers);
-            FD_CLR(xsock->fd, &writers);
-        }
-        if (xsock->host) FREE(xsock->host);
-        if (xsock->port) FREE(xsock->port);
 
     } else {
         /* create and initialize new Sock */
@@ -801,56 +1054,122 @@ int opensock(world, autologin, quietlogin)
             eprintf("opensock: not enough memory");
             return 0;
         }
+        if (!world->screen)
+            world->screen = new_screen(hist_getsize(world->history));
         xsock->world = world;
         xsock->prev = tsock;
         tsock = *(tsock ? &tsock->next : &hsock) = xsock;
-        xsock->activity = 0;
-        Stringinit(xsock->buffer);
         xsock->prompt = NULL;
-        init_queue(xsock->queue = (Queue *)XMALLOC(sizeof(Queue)));
         xsock->next = NULL;
+	xsock->myhost = NULL;
+#if HAVE_LIBSSL
+	xsock->ssl = NULL;
+#endif
     }
+    Stringninit(xsock->buffer, 80);  /* data must be allocated */
+    Stringninit(xsock->subbuffer, 1);
+    init_queue(&xsock->queue);
+    xsock->host = NULL;
+    xsock->port = NULL;
+    xsock->ttype = -1;
     xsock->fd = -1;
     xsock->pid = -1;
-    xsock->state = '\0';
+    xsock->fsastate = '\0';
+    xsock->substate = '\0';
     xsock->attrs = 0;
-    VEC_ZERO(&xsock->tn_do);
-    VEC_ZERO(&xsock->tn_will);
-    xsock->flags = (autologin ? SOCKLOGIN : 0);
-    xsock->time[SOCK_RECV] = xsock->time[SOCK_SEND] = time(NULL);
-    quietlogin = quietlogin && autologin && world_character(world);
-    xsock->numquiet = quietlogin ? MAXQUIET : 0;
+#if HAVE_LIBZ
+    xsock->zstream = NULL;
+#endif
+    VEC_ZERO(&xsock->tn_them);
+    VEC_ZERO(&xsock->tn_them_tog);
+    VEC_ZERO(&xsock->tn_us);
+    VEC_ZERO(&xsock->tn_us_tog);
+    xsock->constate = SS_NEW;
+    xsock->flags = 0;
+    gettime(&xsock->time[SOCK_SEND]);
+    xsock->time[SOCK_RECV] = xsock->time[SOCK_SEND];
 
-    xsock->addr.sin_family = AF_INET;
+    if ((flags & CONN_QUIETLOGIN) && (flags & CONN_AUTOLOGIN) &&
+	world_character(world))
+    {
+	xsock->numquiet = MAXQUIET;
+    } else {
+	xsock->numquiet = 0;
+    }
 
-    if (!(world->flags & WORLD_NOPROXY) && proxy_host && *proxy_host) {
+    if (flags & CONN_AUTOLOGIN) xsock->flags |= SOCKLOGIN;
+    if ((flags & CONN_SSL) || (world->flags & WORLD_SSL)) {
+#if HAVE_LIBSSL
+	xsock->ssl = SSL_new(ssl_ctx);
+#else
+        CONFAIL(world->name, "ssl", "not supported");
+#endif
+    }
+
+    if (!world->host) {
+	/* opening a window */
+        xsock->constate = SS_WINDOWED;
+        return establish(xsock);
+    } else if (!(world->flags & WORLD_NOPROXY) && proxy_host && *proxy_host) {
+	/* open a connection through a proxy */
         xsock->flags |= SOCKPROXY;
         xsock->host = STRDUP(proxy_host);
         xsock->port = (proxy_port && *proxy_port) ? proxy_port : "23";
         xsock->port = STRDUP(xsock->port);
     } else {
+	/* open a connection directly */
         xsock->host = STRDUP(world->host);
         xsock->port = STRDUP(world->port);
     }
 
+    xsock->addr.tf_sin_family = TF_AF_INET;
+
     if (is_digit(*xsock->port)) {
-        xsock->addr.sin_port = htons(atoi(xsock->port));
-#ifndef NO_NETDB
+        xsock->addr.tf_sin_port = htons(atoi(xsock->port));
+#ifdef NETDB_H
     } else if ((service = getservbyname(xsock->port, "tcp"))) {
-        xsock->addr.sin_port = service->s_port;
+        xsock->addr.tf_sin_port = service->s_port;
 #endif
     } else {
         CONFAIL(world->name, xsock->port, "no such service");
-        killsock(xsock);  /* can't nukesock(), this may be a recycled Sock. */
+        killsock(xsock);  /* can't nukesock(), this Sock may be recycled. */
         return 0;
     }
 
-    xsock->flags |= SOCKRESOLVING;
-    xsock->fd = get_host_address(xsock->host, &xsock->addr.sin_addr,
+    if (ntohs(xsock->addr.tf_sin_port) == 23)
+        xsock->flags |= SOCKTELNET;
+    else
+        xsock->flags |= SOCKMAYTELNET;
+
+    if (world->myhost && *world->myhost)
+	xsock->myhost = STRDUP(world->myhost);
+    else if (tfhost)
+	xsock->myhost = STRDUP(tfhost);
+    else
+	xsock->myhost = NULL;
+
+    if (xsock->myhost) {
+	xsock->myaddr.tf_sin_family = TF_AF_INET;
+	if (blocking_gethost(xsock->myhost, &xsock->myaddr.tf_sin_addr,
+	    &herr) < 0)
+	{
+	    /* The name lookup failed */
+	    /* Note, some compilers can't handle (herr ? hsterror : literal) */
+	    if (herr)
+		CONFAIL(world->name, xsock->myhost, hstrerror(herr));
+	    else
+		CONFAIL(world->name, xsock->myhost, "name resolution failed");
+	    killsock(xsock);  /* can't nukesock(), this Sock may be recycled. */
+	    return 0;
+	}
+    }
+
+    xsock->constate = SS_RESOLVING;
+    xsock->fd = get_host_address(xsock->host, &xsock->addr.tf_sin_addr,
         &xsock->pid, &what, &herr);
     if (xsock->fd == 0) {
         /* The name lookup succeeded */
-        xsock->flags &= ~SOCKRESOLVING;
+        xsock->constate = SS_RESOLVED;
         return openconn(xsock);
     } else if (xsock->fd < 0) {
         /* The name lookup failed */
@@ -888,15 +1207,13 @@ int opensock(world, autologin, quietlogin)
     }
 }
 
-static int openconn(sock)
-    Sock *sock;
+static int openconn(Sock *sock)
 {
     int flags, err = 0;
 
     xsock = sock;
 #ifdef NONBLOCKING_GETHOST
-    if (xsock->flags & SOCKRESOLVING) {
-        xsock->flags &= ~SOCKRESOLVING;
+    if (xsock->constate == SS_RESOLVING) {
         FD_CLR(xsock->fd, &readers);
         if (read(xsock->fd, &err, sizeof(err)) < 0 || err != 0) {
             if (!err)
@@ -914,16 +1231,26 @@ static int openconn(sock)
             killsock(xsock);
             return 0;
         }
-        read(xsock->fd, (char*)&xsock->addr.sin_addr, sizeof(struct in_addr));
+        read(xsock->fd, (char*)&xsock->addr.tf_sin_addr, sizeof(struct tf_in_addr));
         close(xsock->fd);
 # ifdef PLATFORM_UNIX
         if (xsock->pid >= 0)
             if (waitpid(xsock->pid, NULL, 0) < 0)
-                tfprintf(tferr, "waitpid %ld: %s", xsock->pid, strerror(errno));
+               tfprintf(tferr, "waitpid: %ld: %s", xsock->pid, strerror(errno));
         xsock->pid = -1;
 # endif /* PLATFORM_UNIX */
+        xsock->constate = SS_RESOLVED;
     }
 #endif /* NONBLOCKING_GETHOST */
+#if 0
+#if ENABLE_INET6 /* XXX debugging */
+    {
+	char buf[INET6_ADDRSTRLEN+1];
+	inet_ntop(TF_AF_INET, &sock->addr.tf_sin_addr, buf, sizeof(buf));
+	eprintf("connecting to %s at %s", xsock->world->name, buf);
+    }
+#endif
+#endif
 
 #if 0
     /* Jump back here if we start a nonblocking connect and then discover
@@ -932,30 +1259,57 @@ static int openconn(sock)
     retry:
 #endif
 
-    if ((xsock->fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    if ((xsock->fd = socket(TF_PF_INET, SOCK_STREAM, 0)) < 0) {
         CONFAIL(xsock->world->name, "socket", strerror(errno));
         killsock(xsock);
         return 0;
     }
+
+    if (xsock->myhost && bind(xsock->fd, (struct sockaddr*)&xsock->myaddr,
+	sizeof(xsock->myaddr)) < 0)
+    {
+        CONFAIL(xsock->world->name, "bind", strerror(errno));
+        killsock(xsock);
+        return 0;
+    }
+
+#if HAVE_LIBSSL
+    if (xsock->ssl && SSL_set_fd(xsock->ssl, xsock->fd) <= 0) {
+        CONFAIL(xsock->world->name, "SSL",
+	    ERR_error_string(ERR_get_error(), NULL));
+        killsock(xsock);
+        return 0;
+    }
+#endif
+
     if (xsock->fd >= nfds) nfds = xsock->fd + 1;
 
     if (!TF_NONBLOCK) {
-        set_var_by_id(VAR_async_conn, 0, NULL);
+        set_var_by_id(VAR_async_conn, 0);
     } else if (async_conn) {
         /* note: 3rd arg to fcntl() is optional on Unix, but required by OS/2 */
         if ((flags = fcntl(xsock->fd, F_GETFL, 0)) < 0) {
             operror("Can't make socket nonblocking: F_GETFL fcntl");
-            set_var_by_id(VAR_async_conn, 0, NULL);
+            set_var_by_id(VAR_async_conn, 0);
         } else if ((fcntl(xsock->fd, F_SETFL, flags | TF_NONBLOCK)) < 0) {
             operror("Can't make socket nonblocking: F_SETFL fcntl");
-            set_var_by_id(VAR_async_conn, 0, NULL);
+            set_var_by_id(VAR_async_conn, 0);
         }
     }
 
-    xsock->flags |= SOCKPENDING;
+    if (keepalive) {
+	flags = 1;
+	if (setsockopt(xsock->fd, SOL_SOCKET, SO_KEEPALIVE, (void*)&flags,
+	    sizeof(flags)) < 0)
+	{
+	    eprintf("warning: setsockopt KEEPALIVE: %s", strerror(errno));
+	}
+    }
+
+    xsock->constate = SS_CONNECTING;
     if (in_connect(xsock->fd, &xsock->addr) == 0) {
         /* The connection completed successfully. */
-        xsock->flags &= ~SOCKPENDING;
+        xsock->constate = SS_CONNECTED;
         return establish(xsock);
 
 #ifdef EINPROGRESS
@@ -1007,26 +1361,30 @@ static int openconn(sock)
     return 0;
 }
 
-/* Convert name or ip number string to an in_addr.
+/* Convert name or ip number string to an tf_in_addr.
  * Returns -1 for failure, 0 for success, or a positive file descriptor
  * connected to a pending name lookup process or thread.
  */
-static int get_host_address(name, sin_addr, pidp, what, errp)
-    CONST char *name;
-    struct in_addr *sin_addr;
-    long *pidp;
-    CONST char **what;
-    int *errp;
+static int get_host_address(const char *name, struct tf_in_addr *sin_addr,
+    long *pidp, const char **what, int *errp)
 {
-#ifndef dgux
-    /* Most versions of inet_addr() return a long. */
-    sin_addr->s_addr = inet_addr(name);
+#if ENABLE_INET6
+    /* XXX should handle INET6 *and* INET4.  Use getaddrinfo(). */
+    if (inet_pton(TF_AF_INET, name, sin_addr))
+        return 0;  /* success */
+#elif HAVE_INET_ATON
+    if (inet_aton(name, sin_addr))
+        return 0;  /* success */
 #else
-    /* DGUX's inet_addr() returns a struct in_addr, which actually makes more
-     * sense, but isn't compatible with anyone else. */
-    sin_addr->s_addr = inet_addr(name).s_addr;
-#endif
-    if (sin_addr->s_addr != INADDR_NONE) return 0;  /* success */
+# ifndef dgux
+    /* Most versions of inet_addr() return a long. */
+    sin_addr->tf_s_addr = inet_addr(name);
+# else
+    /* DGUX's inet_addr() returns a struct in_addr. */
+    sin_addr->tf_s_addr = inet_addr(name).s_addr;
+# endif /* dgux */
+    if (sin_addr->tf_s_addr != INADDR_NONE) return 0;  /* success */
+#endif /* HAVE_INET_ATON */
 
     /* Numeric format failed.  Try name format. */
     *errp = 0;
@@ -1038,38 +1396,55 @@ static int get_host_address(name, sin_addr, pidp, what, errp)
         blocking_gethost(name, sin_addr, errp);
 }
 
-#ifndef NO_NETDB
+#ifdef NETDB_H
 
-static int blocking_gethost(name, sin_addr, errp)
-    CONST char *name;
-    struct in_addr *sin_addr;
-    int *errp;
+static struct hostent *tf_getipnodebyname(const char *name, int *errp)
+{
+#if HAVE_GETIPNODEBYNAME  /* RFC 2553 */
+    /* threadsafe */
+    return getipnodebyname(name, TF_AF_INET, AI_DEFAULT, errp);
+#else
+    /* not threadsafe */
+    struct hostent *result;
+# if HAVE_GETHOSTBYNAME2 /* RFC 2133 (obsolete) */
+    result = gethostbyname2(name, TF_AF_INET);
+# else
+    result = gethostbyname(name);
+# endif
+    *errp = result ? 0 : h_errno;
+    return result;
+#endif
+}
+
+#if !HAVE_GETIPNODEBYNAME
+# define freehostent(host)	/* do nothing */
+#endif
+
+static int blocking_gethost(const char *name, struct tf_in_addr *sin_addr,
+    int *errp)
 {
     struct hostent *host;
 
-    if ((host = gethostbyname(name))) {
-        *errp = 0;
-        memcpy((GENERIC *)sin_addr, (GENERIC *)host->h_addr, sizeof(*sin_addr));
+    if ((host = tf_getipnodebyname(name, errp))) {
+        memcpy((void *)sin_addr, (void *)host->h_addr, sizeof(*sin_addr));
+	freehostent(host);
         return 0;
     }
-    *errp = h_errno;
     return -1;
 }
 
 #ifdef NONBLOCKING_GETHOST
-static void waitforhostname(fd, name)
-    int fd;
-    CONST char *name;
+static void waitforhostname(int fd, const char *name)
 {
     struct hostent *host;
     int err;
 
-    if ((host = gethostbyname(name))) {
+    if ((host = tf_getipnodebyname(name, &err))) {
         err = 0;
         write(fd, &err, sizeof(err));
-        write(fd, (GENERIC *)host->h_addr, sizeof(struct in_addr));
+        write(fd, (void *)host->h_addr, sizeof(struct tf_in_addr));
+	freehostent(host);
     } else {
-        err = h_errno;
         write(fd, &err, sizeof(err));
     }
     close(fd);
@@ -1077,12 +1452,11 @@ static void waitforhostname(fd, name)
 
 # ifdef PLATFORM_OS2
 typedef struct _threadpara {
-    CONST char *hostname;
+    const char *hostname;
     int   fd;
 } threadpara;
 
-void os2waitforhostname(targs)
-    threadpara *targs;
+void os2waitforhostname(threadpara *targs)
 {
     waitforhostname(targs->fd, targs->hostname);
     FREE(targs->hostname);
@@ -1090,11 +1464,8 @@ void os2waitforhostname(targs)
 }
 # endif /* PLATFORM_OS2 */
 
-static int nonblocking_gethost(name, sin_addr, pidp, what)
-    CONST char *name;
-    struct in_addr *sin_addr;
-    long *pidp;
-    CONST char **what;
+static int nonblocking_gethost(const char *name, struct tf_in_addr *sin_addr,
+    long *pidp, const char **what)
 {
     int fds[2];
     int err;
@@ -1143,18 +1514,18 @@ static int nonblocking_gethost(name, sin_addr, pidp, what)
 }
 #endif /* NONBLOCKING_GETHOST */
 
-#endif /* NO_NETDB */
+#endif /* NETDB_H */
 
 
 /* Establish a sock for which connect() has completed. */
-static int establish(sock)
-    Sock *sock;
+static int establish(Sock *sock)
 {
     xsock = sock;
 #if TF_NONBLOCK
-    if (xsock->flags & SOCKPENDING) {
-        CONST char *errmsg = "nonblocking connect";
-        int err = 0, len = sizeof(err), flags;
+    if (xsock->constate == SS_CONNECTING) {
+        const char *errmsg = "nonblocking connect";
+        int err = 0, flags;
+        socklen_t len = sizeof(err);
 
         /* Old Method 1: If read(fd, buf, 0) fails, the connect() failed, and
          * errno will explain why.  Problem: on some systems, a read() of
@@ -1187,14 +1558,14 @@ static int establish(sock)
          */
 
 #ifdef SO_ERROR
-# ifndef SOCKS
+# if !SOCKS
 #  define USE_SO_ERROR
 # endif
 #endif
 
 #ifdef USE_SO_ERROR
         if (getsockopt(xsock->fd, SOL_SOCKET, SO_ERROR,
-            (GENERIC*)&err, &len) < 0)
+            (void*)&err, &len) < 0)
         {
             errmsg = "getsockopt";
             err = errno;
@@ -1222,7 +1593,7 @@ static int establish(sock)
         }
 
         /* connect() worked.  Clear the pending stuff, and get on with it. */
-        xsock->flags &= ~SOCKPENDING;
+        xsock->constate = SS_CONNECTED;
         FD_CLR(xsock->fd, &writers);
 
         /* Turn off nonblocking (this should help on buggy systems). */
@@ -1232,9 +1603,28 @@ static int establish(sock)
     }
 #endif /* TF_NONBLOCK */
 
-    FD_SET(xsock->fd, &readers);
+    if (xsock->constate == SS_CONNECTED)
+	FD_SET(xsock->fd, &readers);
+
+#if HAVE_LIBSSL
+    if (xsock->ssl) {
+	int sslret;
+	sslret = SSL_connect(xsock->ssl);
+	if (sslret <= 0) {
+	    ssl_io_err(xsock, sslret, H_CONFAIL);
+	    killsock(xsock);
+	    return 0;
+	}
+    }
+#endif
 
     /* atomicness ends here */
+
+    if (xsock == fsock)   /* possible for a recycled zombie */
+        update_status_field(NULL, STAT_WORLD);
+
+    if (xsock->flags & SOCKTELNET)
+        preferred_telnet_options();
 
     if (sock->flags & SOCKPROXY) {
         FREE(sock->host);
@@ -1261,120 +1651,173 @@ static int establish(sock)
     return 1;
 }
 
+/* clear most of sock's fields, but leave it consistent and extant */
+static void killsock(Sock *sock)
+{
+    if (sock->constate >= SS_ZOMBIE) return;
+    if (sock == fsock || sock->queue.list.head || sock->world->screen->nnew) {
+	sock->constate = SS_ZOMBIE;
+    } else {
+	sock->constate = SS_DEAD;
+	dead_socks++;
+    }
+    sock->fsastate = '\0';
+    sock->attrs = 0;
+    VEC_ZERO(&sock->tn_them);
+    VEC_ZERO(&sock->tn_them_tog);
+    VEC_ZERO(&sock->tn_us);
+    VEC_ZERO(&sock->tn_us_tog);
+    Stringfree(sock->buffer);
+    Stringfree(sock->subbuffer);
+    if (sock->prompt) Stringfree(sock->prompt);
+    if (sock->host) FREE(sock->host);
+    if (sock->port) FREE(sock->port);
+    if (sock->myhost) FREE(sock->myhost);
+#if HAVE_LIBSSL
+    if (sock->ssl) {
+	SSL_shutdown(sock->ssl);
+	SSL_free(sock->ssl);
+	sock->ssl = NULL;
+    }
+#endif
+    if (sock->fd >= 0) {
+        FD_CLR(sock->fd, &readers);
+        FD_CLR(sock->fd, &writers);
+        close(sock->fd);
+        sock->fd = -1;
+    }
+    sock->host = sock->port = sock->myhost = NULL;
+#if HAVE_LIBZ
+    if (sock->zstream) {
+	inflateEnd(sock->zstream);
+	FREE(sock->zstream);
+    }
+#endif
+#ifdef NONBLOCKING_GETHOST
+# ifdef PLATFORM_UNIX
+    if (sock->pid >= 0) {
+        kill(sock->pid, SIGTERM);
+        if (waitpid(sock->pid, NULL, 0) < 0)
+            tfprintf(tferr, "waitpid: %ld: %s", sock->pid, strerror(errno));
+        sock->pid = -1;
+    }
+# endif /* PLATFORM_UNIX */
+#endif /* NONBLOCKING_GETHOST */
+    if (sock == fsock)
+	update_status_field(NULL, STAT_WORLD);
+}
+
 /* nukesock
  * Remove socket from list and free memory.  Should only be called on a
  * Sock which is known to have no references other than the socket list.
  */
-static void nukesock(sock)
-    Sock *sock;
+static void nukesock(Sock *sock)
 {
+    if (sock->queue.list.head) {
+	internal_error(__FILE__, __LINE__, "socket %s has unprocessed lines",
+	    !sock ? "!sock" :
+	    !sock->world ? "!sock->world" :
+	    sock->world->name);
+	socks_with_lines--;
+    }
     if (sock == xsock) xsock = NULL;
-    if (sock->world->sock == sock) {
-        /* false if /connect follows close() in same interation of main loop */
-        sock->world->sock = NULL;
+    sock->world->sock = NULL;
+    killsock(sock);
+    *((sock == hsock) ? &hsock : &sock->prev->next) = sock->next;
+    *((sock == tsock) ? &tsock : &sock->next->prev) = sock->prev;
+    if (sock->world->screen->nnew) {
+        --active_count;
+        update_status_field(NULL, STAT_ACTIVE);
     }
     if (sock->world->flags & WORLD_TEMP) {
         nuke_world(sock->world);
         sock->world = NULL;
     }
-    *((sock == hsock) ? &hsock : &sock->prev->next) = sock->next;
-    *((sock == tsock) ? &tsock : &sock->next->prev) = sock->prev;
-    if (sock->activity) {
-	--active_count;
-	update_status_field(NULL, STAT_ACTIVE);
-    }
-    if (sock->fd >= 0) {
-        FD_CLR(sock->fd, &readers);
-        FD_CLR(sock->fd, &writers);
-        close(sock->fd);
-#ifdef NONBLOCKING_GETHOST
-# ifdef PLATFORM_UNIX
-        if (sock->pid >= 0)
-            if (waitpid(sock->pid, NULL, 0) < 0)
-                tfprintf(tferr, "waitpid %ld: %s", sock->pid, strerror(errno));
-        sock->pid = -1;
-# endif /* PLATFORM_UNIX */
-#endif /* NONBLOCKING_GETHOST */
-    }
-    Stringfree(sock->buffer);
-    if (sock->prompt) free_aline(sock->prompt);
-    while(sock->queue->head)
-        free_aline((Aline*)unlist(sock->queue->head, sock->queue));
-    FREE(sock->host);
-    FREE(sock->port);
-    FREE(sock->queue);
     FREE(sock);
 }
 
-static void fg_live_sock()
+static void fg_live_sock(void)
 {
     /* If the fg sock is dead, find another sock to put in fg.  Since this
      * is called from main_loop(), xsock must be the same as fsock.  We must
      * keep it that way.  Note that a user hook in fg_sock() could kill the
      * new fg sock, so we must loop until the new fg sock stays alive.
      */
-    while (fsock && (fsock->flags & SOCKDEAD)) {
+    while (fsock && (fsock->constate == SS_DEAD)) {
         for (xsock = hsock; xsock; xsock = xsock->next) {
-            if (!(xsock->flags & (SOCKDEAD | SOCKPENDING))) break;
+            if (xsock->constate >= SS_CONNECTED && xsock->constate < SS_ZOMBIE)
+		break;
         }
         fg_sock(xsock, FALSE);
     }
 }
 
 /* delete all dead sockets */
-static void nuke_dead_socks()
+static void nuke_dead_socks(void)
 {
     Sock *sock, *next;
 
     for (sock = hsock; sock; sock = next) {
         next = sock->next;
-        if (sock->flags & SOCKDEAD) {
-            if (sock->activity) {
-                if (sock->fd >= 0)
-		    FD_CLR(sock->fd, &readers);
-            } else {
-                nukesock(sock);
-                dead_socks--;
-            }
+        if (sock->constate == SS_ZOMBIE) {
+	    if (sock->fd >= 0)
+		FD_CLR(sock->fd, &readers);
+        } else if (sock->constate == SS_DEAD) {
+            nukesock(sock);
+            dead_socks--;
         }
     }
     if (quitdone && !hsock) quit_flag = 1;
 }
 
+static void queue_socket_line(Sock *sock, String *line)
+{
+    String *new;
+    /* XXX fix: this allocation method prevents new and new->data from being
+     * allocated in one chunk */
+    new = StringnewM(NULL, line->len, 0, sock->world->md);
+    new->links++;
+    SStringcpy(new, line);
+    gettime(&new->time);
+    sock->time[SOCK_RECV] = new->time;
+    new->attrs &= ~F_GAG; /* in case gagged line was passed via fake_recv() */
+    if (!sock->queue.list.head)
+	socks_with_lines++;
+    enqueue(&sock->queue, new);
+}
+
 /* disconnect a socket */
-struct Value *handle_dc_command(args)
-    char *args;
+struct Value *handle_dc_command(String *args, int offset)
 {
     Sock *s;
 
-    if (!*args) {
+    if (!(args->len - offset)) {
         if (!xsock) {
             eprintf("no current socket");
-            return newint(0);
+            return shareval(val_zero);
         }
-        killsock(xsock);
+        zombiesock(xsock);
         oprintf ("%% Connection to %s closed.", xsock->world->name);
-    } else if (cstrcmp(args, "-all") == 0) {
-        for (s = hsock; s; s = s->next) killsock(s);
+    } else if (cstrcmp(args->data + offset, "-all") == 0) {
+        for (s = hsock; s; s = s->next) zombiesock(s);
     } else {
-        if ((s = find_sock(args)) && !(s->flags & SOCKDEAD)) {
-            killsock(s);
+        if ((s = find_sock(args->data + offset)) && (s->constate < SS_DEAD)) {
+	    zombiesock(s);
             oprintf ("%% Connection to %s closed.", s->world->name);
         } else {
-            eprintf("Not connected to %s", args);
-            return newint(0);
+            eprintf("Not connected to %s", args->data + offset);
+            return shareval(val_zero);
         }
     }
-    return newint(1);
+    return shareval(val_one);
 }
 
 /* display list of open sockets and their state. */
-struct Value *handle_listsockets_command(args)
-    char *args;
+struct Value *handle_listsockets_command(String *args, int offset)
 {
     Sock *sock;
-    char idlebuf[16], linebuf[16];
-    TIME_T now;
+    char idlebuf[16], linebuf[16], *ptr;
+    time_t now;
     int t, opt;
     int count = 0, error = 0, shortflag = FALSE, mflag = matching;
     Pattern pat_name, pat_type;
@@ -1383,10 +1826,10 @@ struct Value *handle_listsockets_command(args)
     init_pattern_str(&pat_type, NULL);
 
     startopt(args, "m:sT:");
-    while ((opt = nextopt(&args, NULL))) {
+    while ((opt = nextopt(&ptr, NULL, NULL, &offset))) {
         switch(opt) {
         case 'm':
-            if ((mflag = enum2int(args, enum_match, "-m")) < 0)
+            if ((mflag = enum2int(ptr, 0, enum_match, "-m")) < 0)
                 goto listsocket_error;
             break;
         case 's':
@@ -1394,7 +1837,7 @@ struct Value *handle_listsockets_command(args)
             break;
         case 'T':
             free_pattern(&pat_type);
-            error += !init_pattern_str(&pat_type, args);
+            error += !init_pattern_str(&pat_type, ptr);
             break;
         default:
             goto listsocket_error;
@@ -1402,7 +1845,8 @@ struct Value *handle_listsockets_command(args)
     }
     if (error) goto listsocket_error;
     init_pattern_mflag(&pat_type, mflag);
-    if (*args) error += !init_pattern(&pat_name, args, mflag);
+    if (args->len - offset)
+        error += !init_pattern(&pat_name, args->data + offset, mflag);
     if (error) goto listsocket_error;
 
     if (!hsock) {
@@ -1413,22 +1857,41 @@ struct Value *handle_listsockets_command(args)
     now = time(NULL);
 
     if (!shortflag)
-        oputs("     LINES IDLE TYPE      NAME            HOST                       PORT");
+        oputs("       LINES IDLE TYPE        NAME            HOST                       PORT");
     for (sock = hsock; sock; sock = sock->next) {
+        int nnew = sock->world->screen->nnew;
+        int nold = sock->world->screen->nback - nnew;
         if (pat_type.str &&
-            !patmatch(&pat_type, sock->world->type ? sock->world->type : ""))
+            !patmatch(&pat_type, NULL,
+		sock->world->type ? sock->world->type : ""))
             continue;
-        if (*args && !patmatch(&pat_name, sock->world->name)) continue;
+        if (args->len - offset && !patmatch(&pat_name, NULL, sock->world->name))
+            continue;
         count++;
         if (shortflag) {
             oputs(sock->world->name);
             continue;
         }
         if (sock == fsock)
-            sprintf(linebuf, "%7s", "foregnd");
-        else
-            sprintf(linebuf, "%7d", sock->activity);
-        t = now - sock->time[SOCK_RECV];
+            sprintf(linebuf, "%8s", "fg");
+        else {
+	    if (nold) {
+		if (nold > 999)
+		    sprintf(linebuf, "%2dk", nold / 1000);
+		else
+		    sprintf(linebuf, "%3d", nold);
+		if (nnew > 9999)
+		    sprintf(linebuf+3, "+%3dk", nnew / 1000);
+		else
+		    sprintf(linebuf+3, "+%4d", nnew);
+	    } else {
+		if (nnew > 99999)
+		    sprintf(linebuf, "%7dk", nnew / 1000);
+		else
+		    sprintf(linebuf, "%8d", nnew);
+	    }
+	}
+        t = now - sock->time[SOCK_RECV].tv_sec;
         if (t < (60))
             sprintf(idlebuf, "%3ds", t);
         else if ((t /= 60) < 60)
@@ -1440,11 +1903,20 @@ struct Value *handle_listsockets_command(args)
         else
             sprintf(idlebuf, "long");
 
-        oprintf("%c%c %s %s %-9.9s %-15.15s %-26.26s %.6s",
-            ((sock == xsock) ? '*' : ' '),
-            ((sock->flags & SOCKDEAD) ? '!' :
-                (sock->flags & (SOCKPENDING | SOCKRESOLVING)) ? '?' :
-                (sock->flags & (SOCKPROXY)) ? '@' : ' '),
+        oprintf("%c%c%c"
+	    " %s %s %-11.11s %-15.15s %-26.26s %.6s",
+            (sock == xsock ? '*' : ' '),
+	    (sock->constate < SS_CONNECTED ? '?' :
+             sock->constate >= SS_ZOMBIE ? '!' :
+	     sock->constate == SS_CONNECTED ?
+#if HAVE_LIBSSL
+		(sock->ssl ? 'X' : 'C')
+#else
+		'C'
+#endif
+		:
+	     sock->constate == SS_WINDOWED ? 'O' : ' '),
+	    (sock->flags & SOCKPROXY ? 'P' : ' '),
             linebuf, idlebuf,
             sock->world->type, sock->world->name, sock->host, sock->port);
     }
@@ -1456,59 +1928,104 @@ listsocket_error:
     return newint(count);
 }
 
-int handle_send_function(text, world, eol_flag)
-    CONST char *text, *world;
-    int eol_flag;
+int handle_send_function(String *string, const char *world, const char *flags)
 {
-    Sock *save, *sock;
+    const char *p;
+    int result = 0, eol_flag = 1, hook_flag = 0;
+    Sock *old_xsock = xsock;
 
-    save = xsock;
-    sock = (!world || !*world) ? xsock : find_sock(world);
-    if (!sock || sock->flags & (SOCKDEAD | SOCKPENDING)) {
-        eprintf("Not connected.");
-        return 0;
+    for (p = flags; *p; p++) {
+	switch (*p) {
+	case 'o': /* for backward compatability */
+	    break;
+	case '1': case 'n': /* for backward compatability */
+	    eol_flag = 1; break;
+	case 'u': /* fall through */
+	case '0': case 'f': /* for backward compatability */
+	    eol_flag = 0; break;
+	case 'h':
+	    hook_flag = 1; break;
+	default:
+	    eprintf("invalid flag %c", *p);
+	    return 0;
+	}
     }
-    xsock = sock;
-    send_line(text, strlen(text), eol_flag);
-    xsock = save;
+
+    xsock = (!world || !*world) ? xsock : find_sock(world);
+    if (!hook_flag || !do_hook(H_SEND, NULL, "%S", string))
+	result = send_line(string->data, string->len, eol_flag);
+    xsock = old_xsock;
+    return result;
+}
+
+int handle_fake_recv_function(String *string, const char *world,
+    const char *flags)
+{
+    Sock *sock;
+    int raw = 0;
+    const char *p;
+
+    for (p = flags; *p; p++) {
+	switch (*p) {
+	case 'r': raw = 1; break;
+	default:
+	    eprintf("invalid flag %c", *p);
+	    return 0;
+	}
+    }
+
+    sock = (!world || !*world) ? xsock : find_sock(world);
+    if (!sock) {
+        eprintf("No current socket.");
+	return 0;
+    }
+    if (raw)
+	handle_socket_input(string->data, string->len);
+    else
+	queue_socket_line(sock, string);
     return 1;
 }
 
 
 /* tramsmit text to current socket */
-static int transmit(str, numtowrite)
-    CONST char *str;
-    unsigned int numtowrite;
+static int transmit(const char *str, unsigned int numtowrite)
 {
     int numwritten, err;
 
-    if (!xsock || xsock->flags & (SOCKDEAD | SOCKPENDING)) return 0;
+    if (!xsock || xsock->constate != SS_CONNECTED)
+        return 0;
     while (numtowrite) {
-        numwritten = send(xsock->fd, str, numtowrite, 0);
-        if (numwritten < 0) {
-            err = errno;
-            if (err == EAGAIN
-#ifdef EWOULDBLOCK
-                                || err == EWOULDBLOCK
-#endif
-                                                       ) {
-                fd_set writefds;
-                numwritten = 0;
-                FD_ZERO(&writefds);
-                FD_SET(xsock->fd, &writefds);
-                if (select(xsock->fd + 1, NULL, &writefds, NULL, NULL) < 0)
-                    if (err == EINTR) break;
-            } else {
-                killsock(xsock);
-                do_hook(H_DISCONNECT,
-                    "%% Connection to %s closed: %s: %s", "%s %s %s",
-                    xsock->world->name, "send", strerror(err));
-                return 0;
-            }
-        }
+#if HAVE_LIBSSL
+	if (xsock->ssl) {
+	    numwritten = SSL_write(xsock->ssl, str, numtowrite);
+	    if (numwritten <= 0) {
+		ssl_io_err(xsock, numwritten, H_DISCONNECT);
+		zombiesock(xsock);
+		return 0;
+	    }
+	} else
+#endif /* HAVE_LIBSSL */
+	{
+	    numwritten = send(xsock->fd, str, numtowrite, 0);
+	    if (numwritten < 0) {
+		err = errno;
+		/* Socket is blocking; EAGAIN and EWOULDBLOCK are impossible. */
+		if (err == EINTR) {
+		    return 0;
+		} else if (err == EHOSTUNREACH || err == ENETUNREACH) {
+		    /* XXX there should be an UNREACHABLE hook here */
+		    eprintf("%s: send: %s", xsock->world->name, strerror(err));
+		    return 0;
+		} else {
+		    zombiesock(xsock);
+		    DISCON(xsock->world->name, "send", strerror(err));
+		    return 0;
+		}
+	    }
+	}
         numtowrite -= numwritten;
         str += numwritten;
-        xsock->time[SOCK_SEND] = time(NULL);
+        gettime(&xsock->time[SOCK_SEND]);
     }
     return 1;
 }
@@ -1517,31 +2034,38 @@ static int transmit(str, numtowrite)
  * Send a line to the server on the current socket.  If there is a prompt
  * associated with the current socket, clear it.
  * RFCs 854 and 1123 technically forbid sending 8-bit data in non-BINARY mode;
- * but if the user types it, we send it regardless of BINARY mode.  Some
- * servers accept it, some strip the high bit, some ignore the characters.
+ * but if the user types it, we send it regardless of BINARY mode, and trust
+ * the user to know what he's doing.  Some servers accept it, some strip the
+ * high bit, some ignore the characters.
  */
-int send_line(src, len, eol_flag)
-    CONST char *src;
-    unsigned int len;
-    int eol_flag;
+int send_line(const char *src, unsigned int len, int eol_flag)
 {
-    int result;
+    int max;
     int i = 0, j = 0;
-    char *buf;
+    static char *buf = NULL;
+    static int buflen = 0;
 
-    if (!xsock || xsock->flags & (SOCKDEAD | SOCKPENDING)) return 0;
+    if (!xsock ||
+	(xsock->constate != SS_CONNECTED && xsock->constate != SS_WINDOWED))
+    {
+        eprintf("Not connected.");
+        return 0;
+    }
 
     if (xsock && xsock->prompt) {
         /* Not the same as unprompt(): we keep attrs, and delete buffer. */
-        Stringterm(xsock->buffer, 0);
-        free_aline(xsock->prompt);
+        Stringtrunc(xsock->buffer, 0);
+        Stringfree(xsock->prompt);
         xsock->prompt = NULL;
         if (xsock == fsock) update_prompt(xsock->prompt, 1);
     }
 
-    buf = XMALLOC(2 * len + 3);
+    max = 2 * len + 3;
+    if (buflen < max) {
+        buf = XREALLOC(buf, buflen = max);
+    }
     while (j < len) {
-        if (src[j] == TN_IAC)
+        if (xsock->flags & SOCKTELNET && src[j] == TN_IAC)
             buf[i++] = TN_IAC;    /* double IAC */
         buf[i] = unmapchar(src[j]);
         i++, j++;
@@ -1551,71 +2075,87 @@ int send_line(src, len, eol_flag)
         /* In telnet NVT mode, append CR LF; in telnet BINARY mode,
          * append LF, CR, or CR LF, according to variable.
          */
-        if (!IS_WILL(xsock, TN_BINARY) || binary_eol != EOL_LF)
+        if (!TELOPT(xsock, us, TN_BINARY) || binary_eol != EOL_LF)
             buf[i++] = '\r';
-        if (!IS_WILL(xsock, TN_BINARY) || binary_eol != EOL_CR)
+        if (!TELOPT(xsock, us, TN_BINARY) || binary_eol != EOL_CR)
             buf[i++] = '\n';
     }
 
-    result = transmit(buf, i);
-
-    FREE(buf);
-    return result;
+    if (xsock->constate == SS_WINDOWED) {
+	handle_socket_input(buf, i);
+	return 1;
+    } else {
+	return transmit(buf, i);
+    }
 }
 
-static void handle_socket_line()
+static void handle_socket_lines(void)
 {
-    /* xsock->flags |= SOCKPROMPT; */
-    incoming_text = new_alinen(xsock->buffer->s, 0, xsock->buffer->len);
-    incoming_text->links = 1;
-    gettime(&incoming_text->tv);
-    xsock->time[SOCK_RECV] = incoming_text->tv.tv_sec;
-    Stringterm(xsock->buffer, 0);
+    static int depth = 0;
 
-    xsock->attrs = (emulation == EMUL_ANSI_ATTR) ?
-        handle_ansi_attr(incoming_text, xsock->attrs) : 0;
+    if (depth) return;	/* don't recurse */
+    if (!(incoming_text = dequeue(&xsock->queue)))
+	return;
+    depth++;
+    do {
+	if (!xsock->queue.list.head) /* just dequeued the last line */
+	    socks_with_lines--;
+	/* xsock->flags |= SOCKPROMPT; */
+#if USE_MMALLOC && !NO_HISTORY
+	extern caddr_t mmalloc_base;
+	if (!xsock->world->md) {
+	    eprintf("mmalloc_attach: trying %08p", mmalloc_base);
+	    xsock->world->md = mmalloc_attach(-1, mmalloc_base);
+	    eprintf("mmalloc_attach: got %08p", xsock->world->md);
+#if 0
+	    if (xsock->world->md) {
+		if (!mmalloc_base) mmalloc_base = xsock->world->md;
+		mmalloc_base += 0x02000000;
+	    }
+#endif
+	}
+#endif
 
-    if (borg || hilite || gag) {
-        if (find_and_run_matches(incoming_text->str, 0, &incoming_text,
-            xworld(), TRUE))
-        {
-            if (xsock != fsock)
-                do_hook(H_BACKGROUND, "%% Trigger in world %s", "%s %S",
-                    xsock->world->name, incoming_text);
-        }
-    }
+	xsock->attrs = handle_ansi_attr(incoming_text, xsock->attrs, emulation);
 
-    if (is_bamf(incoming_text->str) || is_quiet(incoming_text->str) ||
-        is_watchdog(xsock->world->history, incoming_text) ||
-        is_watchname(xsock->world->history, incoming_text))
-    {
-        incoming_text->attrs |= F_GAG;
-    }
+	if (borg || hilite || gag) {
+	    if (find_and_run_matches(NULL, 0, &incoming_text, xworld(), TRUE,
+		0))
+	    {
+		if (xsock != fsock)
+		    do_hook(H_BACKGROUND, "%% Trigger in world %s", "%s %S",
+			xsock->world->name, incoming_text);
+	    }
+	}
 
-    world_output(xsock->world, incoming_text);
-    free_aline(incoming_text);
-    incoming_text = NULL;
+	if (is_bamf(incoming_text->data) || is_quiet(incoming_text->data) ||
+	    is_watchdog(xsock->world->history, incoming_text) ||
+	    is_watchname(xsock->world->history, incoming_text))
+	{
+	    incoming_text->attrs |= F_GAG;
+	}
+
+	world_output(xsock->world, incoming_text);
+	Stringfree(incoming_text);
+    } while ((incoming_text = dequeue(&xsock->queue)));
+    depth--;
 }
 
-/* log, record, and display aline as if it came from sock */
-void world_output(world, aline)
-    World *world;
-    Aline *aline;
+/* log, record, and display line as if it came from sock */
+void world_output(World *world, String *line)
 {
-    aline->links++;
-    recordline(world->history, aline);
-    if (world->sock && !(world->sock->flags & SOCKDEAD) &&
-        !(gag && (aline->attrs & F_GAG)))
+    line->links++;
+    recordline(world->history, line);
+    record_global(line);
+    if (world->sock && (world->sock->constate >= SS_CONNECTED) &&
+	(world->sock->constate < SS_DEAD) && !(gag && (line->attrs & F_GAG)))
     {
         if (world->sock == fsock) {
-            record_global(aline);
-            screenout(aline);
+            screenout(line);
         } else {
-            if (bg_output) {
-                aline->links++;
-                enqueue(world->sock->queue, aline);
-            }
-            if (!world->sock->activity++) {
+            int was_inactive = !world->screen->nnew;
+            enscreen(world->screen, line);
+            if (was_inactive && world->screen->nnew) {
                 ++active_count;
                 update_status_field(NULL, STAT_ACTIVE);
                 do_hook(H_ACTIVITY, "%% Activity in world %s", "%s",
@@ -1623,26 +2163,25 @@ void world_output(world, aline)
             }
         }
     }
-    free_aline(aline);
+    Stringfree(line);
 }
 
 /* get the prompt for the fg sock */
-Aline *fgprompt()
+String *fgprompt(void)
 {
     return (fsock) ? fsock->prompt : NULL;
 }
 
-int tog_lp()
+int tog_lp(void)
 {
     if (!fsock) {
         /* do nothing */
     } else if (lpflag) {
         if (fsock->buffer->len) {
-            (fsock->prompt = new_aline(fsock->buffer->s, 0))->links++;
-            if (emulation == EMUL_ANSI_ATTR)
-                xsock->attrs = handle_ansi_attr(fsock->prompt, xsock->attrs);
-            else
-                xsock->attrs = 0;
+            fsock->prompt = Stringnew(fsock->buffer->data, fsock->buffer->len, 0);
+            fsock->prompt->links++;
+            xsock->attrs = handle_ansi_attr(fsock->prompt, xsock->attrs,
+                emulation);
             set_refresh_pending(REF_PHYSICAL);
         }
     } else {
@@ -1654,26 +2193,21 @@ int tog_lp()
     return 1;
 }
 
-struct Value *handle_prompt_command(args)
-    char *args;
+struct Value *handle_prompt_command(String *args, int offset)
 {
-    if (xsock) handle_prompt(args, TRUE);
+    if (xsock) handle_prompt(args, offset, TRUE);
     return newint(!!xsock);
 }
 
-static void handle_prompt(str, confirmed)
-    CONST char *str;
-    int confirmed;
+static void handle_prompt(String *str, int offset, int confirmed)
 {
-    if (lpquote) proctime = time(NULL);
+    runall(1, xsock->world);	/* run prompted processes */
     if (xsock->prompt) {
         unprompt(xsock, 0);
     }
-    (xsock->prompt = new_aline(str, xsock->attrs))->links++;
-    if (emulation == EMUL_ANSI_ATTR)
-        xsock->attrs = handle_ansi_attr(xsock->prompt, xsock->attrs);
-    else
-        xsock->attrs = 0;
+    (xsock->prompt = Stringnew(NULL, -1, xsock->attrs))->links++;
+    SStringocat(xsock->prompt, str, offset);
+    xsock->attrs = handle_ansi_attr(xsock->prompt, xsock->attrs, emulation);
     /* Old versions did trigger checking here.  Removing it breaks
      * compatibility, but I doubt many users will care.  Leaving
      * it in would not be right for /prompt.
@@ -1685,19 +2219,51 @@ static void handle_prompt(str, confirmed)
 }
 
 /* undo the effects of a false prompt */
-static void unprompt(sock, update)
-    Sock *sock;
-    int update;
+static void unprompt(Sock *sock, int update)
 {
     if (!sock || !sock->prompt) return;
     sock->attrs = sock->prompt->attrs;  /* restore original attrs */
-    free_aline(sock->prompt);
+    Stringfree(sock->prompt);
     sock->prompt = NULL;
     if (update) update_prompt(sock->prompt, 1);
 }
 
-static void f_telnet_recv(cmd, opt)
-    int cmd, opt;
+static void telnet_subnegotiation(void)
+{
+    char *p;
+    int ttype;
+    static String enum_ttype[] = {
+        STRING_LITERAL("TINYFUGUE"),
+        STRING_LITERAL("ANSI-ATTR"),
+        STRING_LITERAL("ANSI"), /* a lie, but probably has the desired effect */
+        STRING_LITERAL("UNKNOWN"),
+        STRING_NULL };
+
+    Sprintf(xsock->subbuffer, SP_APPEND, "%c%c", TN_IAC, TN_SE);
+    telnet_debug("recv", xsock->subbuffer->data, xsock->subbuffer->len);
+    Stringtrunc(xsock->subbuffer, xsock->subbuffer->len - 2);
+    p = xsock->subbuffer->data + 2;
+    switch (*p) {
+    case TN_TTYPE:
+        if (*++p != '\01') break;
+        if (xsock->subbuffer->len != 4) break;
+        Sprintf(telbuf, 0, "%c%c%c%c", TN_IAC, TN_SB, TN_TTYPE, '\0');
+        ttype = ++xsock->ttype;
+        if (!enum_ttype[ttype].data) { ttype--; xsock->ttype = -1; }
+        SStringcat(telbuf, &enum_ttype[ttype]);
+        Sprintf(telbuf, SP_APPEND, "%c%c", TN_IAC, TN_SE);
+        telnet_send(telbuf);
+        break;
+    case TN_COMPRESS2:
+	xsock->flags |= SOCKCOMPRESS2;
+	break;
+    default:
+        break;
+    }
+    Stringtrunc(xsock->subbuffer, 0);
+}
+
+static void f_telnet_recv(int cmd, int opt)
 {
     if (telopt) {
         char buf[4];
@@ -1709,10 +2275,32 @@ static void f_telnet_recv(cmd, opt)
     }
 }
 
-/* handle input from current socket */
-static int handle_socket_input()
+#if HAVE_LIBZ
+static z_stream *new_zstream(void)
 {
-    char *place, localchar, buffer[4096];
+    z_stream *zstream;
+    if (!(zstream = MALLOC(sizeof(z_stream))))
+	return NULL;
+    zstream->zalloc = Z_NULL;
+    zstream->zfree = Z_NULL;
+    zstream->opaque = Z_NULL;
+    if (inflateInit(zstream) == Z_OK)
+	return zstream;
+    if (zstream->msg)
+	eprintf("unable to start compressed stream: %s", zstream->msg);
+    FREE(zstream);
+    return NULL;
+}
+#endif /* HAVE_LIBZ */
+
+/* handle input from current socket */
+static int handle_socket_input(const char *simbuffer, int simlen)
+{
+    char rawchar, localchar, inbuffer[4096];
+    const char *buffer, *place;
+#if HAVE_LIBZ
+    char outbuffer[4096];
+#endif
     fd_set readfds;
     int count, n, received = 0;
     struct timeval tv;
@@ -1727,39 +2315,83 @@ static int handle_socket_input()
         unprompt(xsock, xsock==fsock);
     }
 
-    do {  /* while (n > 0 && !interrupted() && (received += count) < SPAM) */
-        do count = recv(xsock->fd, buffer, sizeof(buffer), 0);
-            while (count < 0 && errno == EINTR);
-        if (count <= 0) {
-            int err = errno;
-#ifdef SUNOS_5_4
-            if (err == EAGAIN || err == EINVAL) {
-                /* workaround for bug in (unpatched) Solaris 2.4 */
-                static int warned = FALSE;
-                if (!warned)
-                    tfprintf(tferr, "%% %s%s%s",
-                        "There is a socket bug in your Solaris 2.4 system.  "
-                        "You should install the recommended Sun patches from "
-                        "ftp://sunsite.unc.edu/pub/patches.");
-                warned = TRUE;
-                return;
-            }
+    do {  /* while there are more data to be processed */
+	if (simbuffer) {
+	    buffer = simbuffer;
+	    count = simlen;
+	} else {
+#if HAVE_LIBZ
+	    if (xsock->zstream && xsock->zstream->avail_in) {
+		count = 0;  /* no reading */
+	    } else
 #endif
-            if (xsock->buffer->len) handle_socket_line();
-            killsock(xsock);
-            /* On some systems, a socket that failed nonblocking connect selects
-             * readable (not writable like most systems).  If SOCKPENDING,
-             * that's what happened, so we hook CONFAIL instead of DISCONNECT.
-             */
-            if (xsock->flags & SOCKPENDING)
-                CONFAIL(xsock->world->name, "recv", strerror(err));
-            else do_hook(H_DISCONNECT, (count < 0) ?
-                    "%% Connection to %s closed: %s: %s" :
-                    "%% Connection to %s closed by foreign host.",
-                    (count < 0) ? "%s %s %s" : "%s",
-                    xsock->world->name, "recv", strerror(err));
-            return received;
-        }
+#if HAVE_LIBSSL
+	    if (xsock->ssl) {
+		count = SSL_read(xsock->ssl, inbuffer, sizeof(inbuffer));
+		if (count <= 0) {
+		    ssl_io_err(xsock, count, H_DISCONNECT);
+		    zombiesock(xsock);
+		    return received;
+		}
+	    } else
+#endif
+	    {
+		do count = recv(xsock->fd, inbuffer, sizeof(inbuffer), 0);
+		    while (count < 0 && errno == EINTR);
+		if (count <= 0) {
+		    int err = errno;
+		    /* Socket is blocking; EAGAIN and EWOULDBLOCK impossible. */
+		    if (xsock->buffer->len) {
+			queue_socket_line(xsock, xsock->buffer);
+			Stringtrunc(xsock->buffer, 0);
+		    }
+		    zombiesock(xsock);
+		    /* On some systems, a socket that failed nonblocking connect
+		     * selects readable instead of writable.  If SS_CONNECTING,
+		     * that's what happened, so we do CONFAIL, not DISCONNECT.
+		     */
+		    if (xsock->constate == SS_CONNECTING)
+			CONFAIL(xsock->world->name, "recv", strerror(err));
+		    else do_hook(H_DISCONNECT, (count < 0) ?
+			"%% Connection to %s closed: %s: %s" :
+			"%% Connection to %s closed by foreign host.",
+			(count < 0) ? "%s %s %s" : "%s",
+			xsock->world->name, "recv", strerror(err));
+		    return received;
+		}
+	    }
+#if HAVE_LIBZ
+	    if (xsock->zstream) {
+		int zret;
+		if (count) {
+		    xsock->zstream->next_in = (Bytef*)inbuffer;
+		    xsock->zstream->avail_in = count;
+		}
+		xsock->zstream->next_out = (Bytef*)(buffer = outbuffer);
+		xsock->zstream->avail_out = sizeof(outbuffer);
+		zret = inflate(xsock->zstream, Z_PARTIAL_FLUSH);
+		switch (zret) {
+		case Z_OK:
+		    count = (char*)xsock->zstream->next_out - outbuffer;
+		    break;
+		case Z_STREAM_END:
+		    place = (buffer = (char*)xsock->zstream->next_in) - 1;
+		    count = xsock->zstream->avail_in;
+		    inflateEnd(xsock->zstream);
+		    FREE(xsock->zstream);
+		    xsock->zstream = NULL;
+		    xsock->flags &= ~SOCKCOMPRESS2;
+		    break;
+		default:
+		    DISCON(xsock->world->name, "inflate",
+			xsock->zstream->msg ? xsock->zstream->msg : "unknown");
+		    zombiesock(xsock);
+		    return received;
+		}
+	    } else
+#endif
+		buffer = inbuffer;
+	}
 
         for (place = buffer; place - buffer < count; place++) {
 
@@ -1767,128 +2399,211 @@ static int handle_socket_input()
              * say server shouldn't transmit it unless in BINARY mode.  What
              * we do with it depends on the locale.
              */
-            localchar = localize(*place);
+            rawchar = *place;
+            localchar = localize(rawchar);
 
-            if (xsock->state == TN_IAC) {
-                switch (xsock->state = *place) {
+            /* Telnet processing
+             * If we're not sure yet whether server speaks telnet protocol,
+             * we still accept it, but if an invalid telnet command arrives,
+             * we leave it alone and disable telnet processing.
+             */
+            if (xsock->fsastate == TN_IAC &&
+                xsock->flags & (SOCKTELNET | SOCKMAYTELNET))
+            {
+                int valid = 0;
+                switch (xsock->fsastate = rawchar) {
                 case TN_GA: case TN_EOR:
                     /* This is definitely a prompt. */
-                    telnet_recv(*place, 0);
+                    telnet_recv(rawchar, 0);
                     if (do_hook(H_PROMPT, NULL, "%S", xsock->buffer)) {
-                        Stringterm(xsock->buffer, 0);
+                        Stringtrunc(xsock->buffer, 0);
                     } else {
-                        handle_prompt(xsock->buffer->s, TRUE);
-                        Stringterm(xsock->buffer, 0);
+                        handle_prompt(xsock->buffer, 0, TRUE);
+                        Stringtrunc(xsock->buffer, 0);
                     }
                     break;
-#if 0
                 case TN_SB:
-                    if (!xsock->subbuffer) {
-                        allocate xsock->subbuffer
-                    }
-                    xsock->state = '\0';
+                    Sprintf(xsock->subbuffer, 0, "%c%c", TN_IAC, TN_SB);
+                    xsock->substate = '\0';
                     break;
-                case TN_SE:
-                    if (xsock->subbuffer) {
-                        telnet_debug("recv", xsock->subbuffer, n);
-                        process subbuffer
-                        free subbuffer
-                        xsock->subbuffer = NULL;
-                    }
-                    break;
-#endif
                 case TN_WILL: case TN_WONT:
                 case TN_DO:   case TN_DONT:
                     /* just change state */
                     break;
                 case TN_IAC:
                     Stringadd(xsock->buffer, localchar);  /* literal IAC */
-                    xsock->state = '\0';
+                    xsock->fsastate = '\0';
                     break;
+
+                case TN_NOP:
+                case TN_DATA_MARK:
+                case TN_BRK:
+                case TN_IP:
+                case TN_AO:
+                case TN_AYT:
+                case TN_EC:
+                case TN_EL:
+                    valid = 1;
+		    /* Unsupported.  Fall through to default case. */
                 default:
-                    /* shouldn't happen; ignore it. */
-                    telnet_recv(*place, 0);
-                    xsock->state = '\0';
-                    break;
+                    if (xsock->flags & SOCKTELNET ||
+                        (xsock->flags & SOCKMAYTELNET && valid))
+                    {
+                        /* unsupported or invalid telnet command */
+                        telnet_recv(rawchar, 0);
+                        xsock->fsastate = '\0';
+                        break;
+                    }
+                    /* Invalid telnet command, and telnet protocol hasn't been
+                     * established, so treat the IAC and rawchar as non-telnet,
+                     * and disable telnet. */
+                    xsock->flags &= ~SOCKMAYTELNET;
+                    place--;
+                    rawchar = xsock->fsastate;
+                    goto non_telnet;
                 }
 
-            } else if (xsock->state == TN_WILL) {
-                telnet_recv(TN_WILL, *place);
-                if (IS_DO(xsock, *place)) {
-                    /* we're already in the DO state; ignore WILL */
-                } else if (*place == TN_ECHO) {
-                    /* stop local echo, tell server to DO ECHO */
-                    DO(TN_ECHO);
-                    sockecho = FALSE;
-                } else if (*place == TN_SEND_EOR) {
-                    DO(TN_SEND_EOR);
-                } else if (*place == TN_BINARY) {
-                    DO(TN_BINARY);
-#if 0  /* many servers think DO SGA means character-at-a-time mode */
-                } else if (*place == TN_SGA) {
-                    DO(TN_SGA);
-#endif
-                } else {
-                    /* don't accept other WILL offers */
-                    DONT(*place);
-                }
-                xsock->state = '\0';
-
-            } else if (xsock->state == TN_WONT) {
-                telnet_recv(TN_WONT, *place);
-                if (!IS_DO(xsock, *place)) {
-                    /* already in the DONT state; ignore WONT */
-                } else if (*place == TN_ECHO) {
-                    /* server WONT ECHO, so we must resume local echo */
-                    DONT(TN_ECHO);
-                    sockecho = TRUE;
-                } else {
-                    /* no special handling, just acknowledge. */
-                    DONT(*place);
-                }
-                xsock->state = '\0';
-
-            } else if (xsock->state == TN_DO) {
-                telnet_recv(TN_DO, *place);
-                if (IS_WILL(xsock, *place)) {
-                    /* we're already in the WILL state; ignore DO */
-                } else if (*place == TN_NAWS) {
-                    /* handle and acknowledge */
-                    WILL(TN_NAWS);
-                    do_naws(xsock);
-                } else if (*place == TN_BINARY) {
-                    WILL(TN_BINARY);
-                } else {
-                    /* refuse other DO requests */
-                    WONT(*place);
-                }
-                xsock->state = '\0';
-
-            } else if (xsock->state == TN_DONT) {
-                telnet_recv(TN_DONT, *place);
-                if (!IS_WILL(xsock, *place)) {
-                    /* already in the WONT state; ignore DONT */
-                } else {
-                    /* no special handling, just acknowledge. */
-                    WONT(*place);
-                }
-                xsock->state = '\0';
-
-            } else if (*place == TN_IAC) {
                 if (!(xsock->flags & SOCKTELNET)) {
                     /* We now know server groks TELNET */
                     xsock->flags |= SOCKTELNET;
                     preferred_telnet_options();
                 }
-                xsock->state = *place;
+                continue;  /* avoid non-telnet processing */
 
-            } else if (*place == '\n') {
-                /* Complete line received.  Process it. */
-                handle_socket_line();
-                xsock->state = *place;
+            } else if (xsock->fsastate == TN_SB) {
+		if (xsock->subbuffer->len > 255) {
+		    /* It shouldn't take this long; server is broken.  Abort. */
+		    SStringcat(xsock->buffer, xsock->subbuffer);
+		    Stringtrunc(xsock->subbuffer, 0);
+		} else if (xsock->substate == TN_IAC) {
+                    if (rawchar == TN_SE) {
+                        xsock->fsastate = '\0';
+                        telnet_subnegotiation();
+                    } else {
+                        Stringadd(xsock->subbuffer, rawchar);
+                        xsock->substate = '\0';
+                    }
+                } else if (rawchar == TN_IAC) {
+                    xsock->substate = TN_IAC;
+                } else {
+                    Stringadd(xsock->subbuffer, rawchar);
+                    xsock->substate = '\0';
+                }
+#if HAVE_LIBZ
+		if (xsock->flags & SOCKCOMPRESS2 && !xsock->zstream) {
+		    /* compression was just enabled. */
+		    xsock->zstream = new_zstream();
+		    if (!xsock->zstream) {
+			zombiesock(xsock);
+		    } else {
+			xsock->zstream->next_in = (Bytef*)++place;
+			xsock->zstream->avail_in = count - (place - buffer);
+		    }
+		    count = 0; /* abort the buffer scan */
+		}
+#endif
+                continue;  /* avoid non-telnet processing */
+
+            } else if (xsock->fsastate == TN_WILL) {
+                xsock->fsastate = '\0';
+                telnet_recv(TN_WILL, rawchar);
+                if (TELOPT(xsock, them, rawchar)) { /* already there, ignore */
+		    telnet_debug("sent", no_tn_reply->data, no_tn_reply->len);
+                    CLR_TELOPT(xsock, them_tog, rawchar);
+                } else if (
+#if 0  /* many servers think DO SGA means character-at-a-time mode */
+                    rawchar == TN_SGA ||
+#endif
+#if HAVE_LIBZ
+		    rawchar == TN_COMPRESS2 ||
+#endif
+                    rawchar == TN_ECHO ||
+                    rawchar == TN_SEND_EOR ||
+                    rawchar == TN_BINARY)              /* accept any of these */
+                {
+                    SET_TELOPT(xsock, them, rawchar);  /* set state */
+                    if (TELOPT(xsock, them_tog, rawchar)) {/* we requested it */
+                        CLR_TELOPT(xsock, them_tog, rawchar);  /* done */
+                    } else {
+                        DO(rawchar);  /* acknowledge their request */
+                    }
+                } else {
+                    DONT(rawchar);    /* refuse their request */
+                }
+                continue;  /* avoid non-telnet processing */
+
+            } else if (xsock->fsastate == TN_WONT) {
+                xsock->fsastate = '\0';
+                telnet_recv(TN_WONT, rawchar);
+                if (!TELOPT(xsock, them, rawchar)) { /* already there, ignore */
+		    telnet_debug("sent", no_tn_reply->data, no_tn_reply->len);
+                    CLR_TELOPT(xsock, them_tog, rawchar);
+                } else {
+                    CLR_TELOPT(xsock, them, rawchar);  /* set state */
+                    if (TELOPT(xsock, them_tog, rawchar)) { /* we requested */
+                        CLR_TELOPT(xsock, them_tog, rawchar);  /* done */
+                    } else {
+                        DONT(rawchar);  /* acknowledge their request */
+                    }
+                }
+                continue;  /* avoid non-telnet processing */
+
+            } else if (xsock->fsastate == TN_DO) {
+                xsock->fsastate = '\0';
+                telnet_recv(TN_DO, rawchar);
+                if (TELOPT(xsock, us, rawchar)) { /* already there, ignore */
+		    telnet_debug("sent", no_tn_reply->data, no_tn_reply->len);
+                    CLR_TELOPT(xsock, them_tog, rawchar);
+                } else if (
+                    rawchar == TN_NAWS ||
+                    rawchar == TN_TTYPE ||
+                    rawchar == TN_BINARY)
+                {
+                    SET_TELOPT(xsock, us, rawchar);  /* set state */
+                    if (TELOPT(xsock, us_tog, rawchar)) { /* we requested it */
+                        CLR_TELOPT(xsock, us_tog, rawchar);  /* done */
+                    } else {
+                        WILL(rawchar);  /* acknowledge their request */
+                    }
+                    if (rawchar == TN_NAWS) do_naws(xsock);
+                } else {
+                    WONT(rawchar);      /* refuse their request */
+                }
+                continue;  /* avoid non-telnet processing */
+
+            } else if (xsock->fsastate == TN_DONT) {
+                xsock->fsastate = '\0';
+                telnet_recv(TN_DONT, rawchar);
+                if (!TELOPT(xsock, us, rawchar)) { /* already there, ignore */
+		    telnet_debug("sent", no_tn_reply->data, no_tn_reply->len);
+                    CLR_TELOPT(xsock, us_tog, rawchar);
+                } else {
+                    CLR_TELOPT(xsock, us, rawchar);  /* set state */
+                    if (TELOPT(xsock, us_tog, rawchar)) { /* we requested */
+                        CLR_TELOPT(xsock, us_tog, rawchar);  /* done */
+                    } else {
+                        WONT(rawchar);  /* acknowledge their request */
+                    }
+                }
+                continue;  /* avoid non-telnet processing */
+
+            } else if (rawchar == TN_IAC &&
+                xsock->flags & (SOCKTELNET | SOCKMAYTELNET))
+            {
+                xsock->fsastate = rawchar;
+                continue;  /* avoid non-telnet processing */
+            }
+
+            /* non-telnet processing*/
+non_telnet:
+            if (rawchar == '\n') {
+                /* Complete line received.  Queue it. */
+                queue_socket_line(xsock, xsock->buffer);
+		Stringtrunc(xsock->buffer, 0);
+                xsock->fsastate = rawchar;
 
             } else if (emulation == EMUL_DEBUG) {
-                if (localchar != *place)
+                if (localchar != rawchar)
                     Stringcat(xsock->buffer, "M-");
                 if (is_print(localchar))
                     Stringadd(xsock->buffer, localchar);
@@ -1896,101 +2611,95 @@ static int handle_socket_input()
                     Stringadd(xsock->buffer, '^');
                     Stringadd(xsock->buffer, CTRL(localchar));
                 }
-                xsock->state = *place;
+                xsock->fsastate = '\0';
 
-            } else if (*place == '\r' || *place == '\0') {
+            } else if (rawchar == '\r' || rawchar == '\0') {
                 /* Ignore CR and NUL. */
-                xsock->state = *place;
+                xsock->fsastate = rawchar;
 
-            } else if (*place == '\b' && emulation >= EMUL_PRINT) {
-                if (xsock->state == '*') {
+            } else if (rawchar == '\b' && emulation >= EMUL_PRINT) {
+                if (xsock->fsastate == '*') {
                     /* "*\b" is an LP editor prompt. */
                     if (do_hook(H_PROMPT, NULL, "%S", xsock->buffer)) {
-                        Stringterm(xsock->buffer, 0);
+                        Stringtrunc(xsock->buffer, 0);
                     } else {
-                        handle_prompt(xsock->buffer->s, TRUE);
-                        Stringterm(xsock->buffer, 0);
+                        handle_prompt(xsock->buffer, 0, TRUE);
+                        Stringtrunc(xsock->buffer, 0);
                     }
                 } else if (xsock->buffer->len && emulation >= EMUL_PRINT) {
-                    Stringterm(xsock->buffer, xsock->buffer->len - 1);
+                    Stringtrunc(xsock->buffer, xsock->buffer->len - 1);
                 }
-                xsock->state = *place;
+                xsock->fsastate = '\0';
 
-            } else if (*place == '\t' && emulation >= EMUL_PRINT) {
+#if 0
+            } else if (rawchar == '\t' && emulation >= EMUL_PRINT) {
                 Stringnadd(xsock->buffer, ' ',
                     tabsize - xsock->buffer->len % tabsize);
-                xsock->state = *place;
-
-            } else if (emulation == EMUL_ANSI_STRIP &&
-              ((xsock->state=='\033' && *place=='[') || *place==ANSI_CSI))  {
-                /* CSI is either a single character, or "ESC [". */
-                xsock->state = ANSI_CSI;
-
-            } else if (emulation == EMUL_ANSI_STRIP &&
-              xsock->state == ANSI_CSI &&
-              (*place == '?' || *place == ';' || is_alnum(*place))) {
-                /* ANSI terminal sequences contain: CSI, an optional '?',
-                 * any number of digits and ';'s, and a letter.
-                 */
-                if (is_alpha(*place)) xsock->state = *place;
-
-            } else if (*place == '\07' && emulation == EMUL_ANSI_ATTR) {
-                Stringadd(xsock->buffer, *place);
-                xsock->state = *place;
-
-            } else if (!is_print(localchar) &&
-              (emulation == EMUL_PRINT || emulation == EMUL_ANSI_STRIP)) {
-                /* not printable */
-                xsock->state = *place;
+                xsock->fsastate = '\0';
+#endif
 
             } else {
-                /* Normal character.  The is_print() loop is a fast heuristic
-                 * to find next potentially interesting character. */
-                char *end;
+                /* Normal character. */
+                const char *end;
                 Stringadd(xsock->buffer, localchar);
-                end=++place;
+                end = ++place;
+                /* Quickly skip characters that can't possibly be special. */
                 while (is_print(*end) && *end != TN_IAC && end - buffer < count)
                     end++;
                 Stringfncat(xsock->buffer, (char*)place, end - place);
                 place = end - 1;
-                xsock->state = *place;
+                xsock->fsastate = *place;
             }
         }
 
         /* See if anything arrived while we were parsing */
 
-        FD_ZERO(&readfds);
-        FD_SET(xsock->fd, &readfds);
-        tv.tv_sec = tv.tv_usec = 0;
+        tv = tvzero;
 
         if (xsock->buffer->len && do_hook(H_PROMPT,NULL,"%S",xsock->buffer)) {
             /* The hook took care of the unterminated line. */
-            Stringterm(xsock->buffer, 0);
+            Stringtrunc(xsock->buffer, 0);
         } else if (lpflag && xsock->buffer->len && xsock == fsock) {
             /* Wait a little to see if the line gets completed. */
-            tv.tv_sec = prompt_sec;
-            tv.tv_usec = prompt_usec;
+            tv = prompt_wait;
         }
 
+	received += count;
+
+	if (simbuffer || received > SPAM) break;
+
+#if HAVE_LIBZ
+	/* If there's still un-inflated stuff, we must process it before we
+	 * exit this loop.
+	 */
+	if (xsock->zstream && xsock->zstream->avail_in) {
+	    n = xsock->zstream->avail_in;
+	    continue;
+	}
+#endif
+
+        FD_ZERO(&readfds);
+        FD_SET(xsock->fd, &readfds);
         if ((n = select(xsock->fd + 1, &readfds, NULL, NULL, &tv)) < 0) {
             if (errno != EINTR) die("handle_socket_input: select", errno);
         }
 
-    } while (n > 0 && !interrupted() && (received += count) < SPAM);
+	if (interrupted()) break;
+
+    } while (n > 0);
 
     /* If lpflag is on and we got a partial line from the fg world,
      * assume the line is a prompt.
      */
     if (lpflag && xsock == fsock && xsock->buffer->len) {
-        handle_prompt(xsock->buffer->s, FALSE);
+        handle_prompt(xsock->buffer, 0, FALSE);
     }
 
     return received;
 }
 
 
-static int is_quiet(str)
-    CONST char *str;
+static int is_quiet(const char *str)
 {
     if (!xsock->numquiet) return 0;
     if (!--xsock->numquiet) return 1;
@@ -2001,8 +2710,7 @@ static int is_quiet(str)
     return 1;
 }
 
-static int is_bamf(str)
-    CONST char *str;
+static int is_bamf(const char *str)
 {
     smallstr name, host, port;
     STATIC_BUFFER(buffer);
@@ -2017,36 +2725,36 @@ static int is_bamf(str)
         name, host, port) != 3)
             return 0;
 
-    Stringterm(buffer, 0);
+    Stringtrunc(buffer, 0);
     if (bamf == BAMF_UNTER) Stringadd(buffer, '@');
     Stringcat(buffer, name);
-    if (!(world = find_world(buffer->s))) {
+    if (!(world = find_world(buffer->data))) {
         if (bamf == BAMF_UNTER && xsock) {
-            world = new_world(buffer->s, xsock->world->character,
-                xsock->world->pass, host, port, xsock->world->mfile,
-                xsock->world->type, WORLD_TEMP);
+            world = new_world(buffer->data, xsock->world->type,
+		host, port, xsock->world->character, xsock->world->pass,
+		xsock->world->mfile, WORLD_TEMP, xsock->world->myhost);
         } else {
-            world = new_world(buffer->s,"","",host,port,"","",WORLD_TEMP);
+            world = new_world(buffer->data,"",host,port,"","","",WORLD_TEMP,"");
         }
     }
 
     do_hook(H_BAMF, "%% Bamfing to %s", "%s", name);
     if (bamf == BAMF_UNTER && xsock) killsock(xsock);
-    if (!opensock(world, TRUE, FALSE))
+    if (!opensock(world, CONN_AUTOLOGIN))
         eputs("% Connection through portal failed.");
     xsock = callingsock;
     return 1;
 }
 
-static void do_naws(sock)
-    Sock *sock;
+static void do_naws(Sock *sock)
 {
     unsigned int width, height, i;
     UCHAR octet[4];
     Sock *old_xsock;
 
-    width = columns;
-    height = lines - (visual ? isize+1 : 0);
+    width = (emulation != EMUL_RAW && wrapflag && wrapsize) ?
+	wrapsize : columns;
+    height = winlines() + !visual;
 
     Sprintf(telbuf, 0, "%c%c%c", TN_IAC, TN_SB, TN_NAWS);
     octet[0] = (width >> 8);
@@ -2065,91 +2773,114 @@ static void do_naws(sock)
     xsock = old_xsock;
 }
 
-static void telnet_debug(dir, str, len)
-    CONST char *dir, *str;
-    int len;
+static void telnet_debug(const char *dir, const char *str, int len)
 {
-    STATIC_BUFFER(buffer);
-    int i;
-    char state;
+    String *buffer;
+    int state;
 
     if (telopt) {
-        Sprintf(buffer, 0, "%s %s:", dir, xsock->world->name);
-        for (i = 0, state = 0; i < len; i++) {
-            if (str[i] == TN_IAC || state == TN_IAC || state == TN_SB ||
+        buffer = Stringnew(NULL, 0, 0);
+        Sprintf(buffer, 0, "%% %s:", dir);
+        for (state = 0x100; len; len--, str++) {
+            if (*str == TN_IAC || state == TN_IAC || state == TN_SB ||
                 state == TN_WILL || state == TN_WONT ||
                 state == TN_DO || state == TN_DONT)
             {
-                if (telnet_label[(UCHAR)str[i]])
+                if (telnet_label[(UCHAR)*str])
                     Sprintf(buffer, SP_APPEND, " %s",
-                        telnet_label[(UCHAR)str[i]]);
+                        telnet_label[(UCHAR)*str]);
                 else
-                    Sprintf(buffer, SP_APPEND, " %d", (unsigned int)str[i]);
-                state = str[i];
+                    Sprintf(buffer, SP_APPEND, " %d", (unsigned int)*str);
+                state = *str;
+            } else if (state == TN_TTYPE) {
+                if (*str == (char)0) {
+                    Stringcat(buffer, " IS \"");
+                    while (len--, str++, is_print(*str) && !(*str & 0x80))
+                        Stringadd(buffer, *str);
+                    Stringadd(buffer, '\"');
+                    len++, str--;
+                } else if (*str == (char)1) {
+                    Stringcat(buffer, " SEND");
+                }
+                state = 0;
+            } else if (state == 0x100) {
+                Stringadd(buffer, *str);
             } else {
-                Sprintf(buffer, SP_APPEND, " %d", (unsigned int)str[i]);
+                Sprintf(buffer, SP_APPEND, " %d", (unsigned int)*str);
                 state = 0;
             }
         }
         nolog++;
-        norecord++;
-        world_output(xsock->world, new_aline(buffer->s, 0));
-        norecord--;
+        /* norecord++; */
+        world_output(xsock->world, buffer);
+        /* norecord--; */
         nolog--;
     }
 }
 
-static void telnet_send(cmd)
-    String *cmd;
+static void telnet_send(String *cmd)
 {
-    transmit(cmd->s, cmd->len);
-    telnet_debug("sent", cmd->s, cmd->len);
+    transmit(cmd->data, cmd->len);
+    telnet_debug("sent", cmd->data, cmd->len);
 }
 
-int local_echo(flag)
-    int flag;
+int local_echo(int flag)
 {
     if (flag < 0)
-        return xsock ? !IS_DO(xsock, TN_ECHO) : 1;
-    if (!xsock || !(xsock->flags & SOCKTELNET)) return 0;
-    if (flag != !IS_DO(xsock, TN_ECHO)) {
+        return sockecho();
+    if (!xsock || !(xsock->flags & SOCKTELNET))
+        return 0;
+
+    if (flag != sockecho()) {
+        /* request a change */
+        SET_TELOPT(xsock, them_tog, TN_ECHO);
         if (flag)
             DONT(TN_ECHO);
         else
             DO(TN_ECHO);
-        sockecho = flag;
     }
     return 1;
 }
 
 
-void transmit_window_size()
+void transmit_window_size(void)
 {
     Sock *sock;
 
     for (sock = hsock; sock; sock = sock->next)
-        if (IS_WILL(sock, TN_NAWS))
+        if (TELOPT(sock, us, TN_NAWS))
             do_naws(sock);
 }
 
-static void preferred_telnet_options()
+static void preferred_telnet_options(void)
 {
+    SET_TELOPT(xsock, us_tog, TN_NAWS);
     WILL(TN_NAWS);
-    set_WONT(TN_NAWS);		/* so when we receive DO, we'll really do it */
 #if 0
+    SET_TELOPT(xsock, us_tog, TN_BINARY);
     WILL(TN_BINARY);		/* allow us to send 8-bit data */
+    SET_TELOPT(xsock, them_tog, TN_BINARY);
     DO(TN_BINARY);		/* allow server to send 8-bit data */
 #endif
 }
 
-CONST char *world_info(worldname, fieldname)
-    CONST char *worldname, *fieldname;
+/* Find the named world (current world if name is blank) or print an error */
+World *named_or_current_world(const char *name)
 {
     World *world;
-    CONST char *result;
+    if (!(world = (*name) ? find_world(name) : xworld())) {
+	eprintf("No world %s", name);
+    }
+    return world;
+}
+
+const char *world_info(const char *worldname, const char *fieldname)
+{
+    World *world;
+    const char *result;
  
     world = worldname ? find_world(worldname) : xworld();
-    if (!world) return "";
+    if (!world) return ""; /* not an error */
  
     if (!fieldname || strcmp("name", fieldname) == 0) {
         result = world->name;
@@ -2169,19 +2900,54 @@ CONST char *world_info(worldname, fieldname)
         result = world->sock && world->sock->flags & SOCKLOGIN ? "1" : "0";
     } else if (strcmp("proxy", fieldname) == 0) {
         result = world->sock && world->sock->flags & SOCKPROXY ? "1" : "0";
+    } else if (strcmp("src", fieldname) == 0) {
+        result = worldname ? world->myhost : world->sock->myhost;
+    } else if (strcmp("cipher", fieldname) == 0) {
+	result =
+#if HAVE_LIBSSL
+	    (world->sock && world->sock->ssl) ?
+	    SSL_get_cipher_name(world->sock->ssl) :
+#endif
+	    "";
     } else return NULL;
     return result ? result : "";
 }
 
-int nactive(worldname)
-    CONST char *worldname;
+int is_open(const char *worldname)
 {
     World *w;
 
-    if (!worldname)
+    if (!worldname || !*worldname) {
+        if (!xsock) return 0;
+        w = xsock->world;
+    } else if (!(w = find_world(worldname))) {
+        return 0;
+    }
+    return (w->sock && (w->sock->constate >= SS_CONNECTED) &&
+	(w->sock->constate < SS_ZOMBIE));
+}
+
+int is_connected(const char *worldname)
+{
+    World *w;
+
+    if (!worldname || !*worldname) {
+        if (!xsock) return 0;
+        w = xsock->world;
+    } else if (!(w = find_world(worldname))) {
+        return 0;
+    }
+    return (w->sock && (w->sock->constate == SS_CONNECTED));
+}
+
+int nactive(const char *worldname)
+{
+    World *w;
+
+    if (!worldname || !*worldname)
         return active_count;
     if (!(w = find_world(worldname)) || !w->sock)
         return 0;
-    return w->sock->activity;
+    return w->screen->nnew;
 }
 

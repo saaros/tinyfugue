@@ -16,12 +16,12 @@
 ;; This site is current as of November 1993, but is subject to change.
 /addworld rwho riemann.math.okstate.edu 6889
 
-/eval /def -ag -ip%{maxpri} -msimple -h'WORLD rwho' ~world_rwho
+/eval /def -ag -i -p%{maxpri} -msimple -h'WORLD rwho' ~world_rwho
 
 /def -i rwho = \
-    /def -iF1 -msimple -h'CONNECT rwho' ~connect_rwho = \
+    /def -iF -1 -msimple -h'CONNECT rwho' ~connect_rwho = \
         /send -wrwho - %*%%; \
-        /def -ag -iF1 -msimple -h'DISCONNECT rwho' ~disconnect_rwho = \
-            /def -ag -i1p%{maxpri} -msimple -h'WORLD ${world_name}'%%%;\
+        /def -ag -iF -1 -msimple -h'DISCONNECT rwho' ~disconnect_rwho = \
+            /def -ag -i -1 -p%{maxpri} -msimple -h'WORLD ${world_name}'%%%;\
             /fg -s ${world_name}%; \
     /connect rwho

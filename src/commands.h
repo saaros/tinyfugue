@@ -1,27 +1,19 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: commands.h,v 35004.19 1999/01/31 00:27:39 hawkeye Exp $ */
+/* $Id: commands.h,v 35004.27 2003/05/27 01:09:21 hawkeye Exp $ */
 
 #ifndef COMMANDS_H
 #define COMMANDS_H
 
-extern struct Value *FDECL(newint_fl,(long i, CONST char *file, int line));
-extern struct Value *FDECL(newstrid,(CONST char *str, int len, int type,
-              CONST char *file, int line));
 
-#define newint(i)         newint_fl(i, __FILE__, __LINE__)
-#define newid(s,l)        newstrid(s, l, TYPE_ID, __FILE__, __LINE__)
-#define newstr(s,l)       newstrid(s, l, TYPE_STR, __FILE__, __LINE__)
-#define newstrliteral(s)  newstr(s, sizeof(s))
+#define HANDLER(name) struct Value *name(String *args, int offset)
 
-
-#define HANDLER(name) struct Value *FDECL(name,(char *args))
-
+extern HANDLER (handle_break_command);
 extern HANDLER (handle_dc_command);
 extern HANDLER (handle_def_command);
 extern HANDLER (handle_dokey_command);
@@ -47,7 +39,7 @@ extern HANDLER (handle_test_command);
 extern HANDLER (handle_undefn_command);
 extern HANDLER (handle_unset_command);
 extern HANDLER (handle_unworld_command);
-#ifndef NO_PROCESS
+#if !NO_PROCESS
 extern HANDLER (handle_kill_command);
 extern HANDLER (handle_ps_command);
 extern HANDLER (handle_quote_command);
@@ -58,7 +50,7 @@ extern HANDLER (handle_repeat_command);
 # define handle_quote_command        NULL
 # define handle_repeat_command       NULL
 #endif
-#ifndef NO_HISTORY
+#if !NO_HISTORY
 extern HANDLER (handle_histsize_command);
 extern HANDLER (handle_log_command);
 extern HANDLER (handle_recall_command);

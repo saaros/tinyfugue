@@ -238,24 +238,24 @@ RREEVVIIEEWWSS
 
 
 CCOOPPYYRRIIGGHHTT
-       Copyright (C) 1993, 1994 Ken Keys
+       Copyright  (C)  1993,  1994, 1995, 1996, 1997, 1998, 1999,
+       2002 Ken Keys
 
-       _T_i_n_y_F_u_g_u_e  (aka  "_t_f") is protected under the terms of the
-       GNU General Public License.  See the  file  "COPYING"  for
+       _T_i_n_y_F_u_g_u_e (aka "_t_f") is protected under the terms  of  the
+       GNU  General  Public  License.  See the file "COPYING" for
        details.
 
-       _T_F  is  currently  supported  by Ken Keys, who may be con-
+       _T_F is currently supported by Ken Keys,  who  may  be  con-
        tacted by e-mail at kkeys@ucsd.edu or hawkeye@tcp.com.
 
 
 BBAACCKKWWAARRDD IINNCCOOMMPPAATTIIBBIILLTTIIEESS
        VERSION 3.2
 
-       /rand has been replaced with rand().  Color names  can  no
-       longer  be  user defined (but color codes still can).  The
+       /rand  has  been replaced with rand().  Color names can no
+       longer be user defined (but color codes still  can).   The
        "=" operator does comparison, not assignment.
 
-       VERSION 3.1
 
 
 
@@ -268,31 +268,33 @@ BBAACCKKWWAARRDD IINNCCOOMMPPAATTIIBBIILLTTIIEESS
 TF(1)                                                       TF(1)
 
 
+       VERSION 3.1
+
        Added type argument to WORLD and LOGIN hooks.
 
        VERSION 3.0
 
        Backslashes in macros are interpreted slightly differently
-       than  in  previous  versions.   Turning on the "backslash"
+       than in previous versions.   Turning  on  the  "backslash"
        flag will enable the old behavior.
 
        VERSION 2.1
 
-       The CONNECT hook is now called before the LOGIN hook.   In
+       The  CONNECT hook is now called before the LOGIN hook.  In
        2.0, CONNECT was called after autologin.
 
        VERSION 2.0
 
-       In  versions  prior to 2.0, <space> was used to scroll the
-       pager; 2.0 uses <tab> as the default, to allow  the  pager
+       In versions prior to 2.0, <space> was used to  scroll  the
+       pager;  2.0  uses <tab> as the default, to allow the pager
        to be nonblocking.
 
-       _T_i_n_y_t_a_l_k  style  name  gags and hilites are no longer sup-
-       ported.  You must use the '*' wildcard explicitly,  as  in
+       _T_i_n_y_t_a_l_k style name gags and hilites are  no  longer  sup-
+       ported.   You  must use the '*' wildcard explicitly, as in
        '/hilite hawkeye*'.
 
        _T_i_n_y_t_a_l_k style page and whisper hilites are no longer sup-
-       ported.  However, /hilite_page and /hilite_whisper  macros
+       ported.   However, /hilite_page and /hilite_whisper macros
        are provided in the default macro library.
 
        The .tinytalk file may not be supported in the future; use
@@ -306,16 +308,14 @@ BBUUGGSS
        When unterbamfing, the old connection should not be closed
        until the new connection succeeds.
 
-       If a shell quote (/quote !) reads a partial line from  the
-       pipe,  the  read  will block until the rest of the line is
+       If  a shell quote (/quote !) reads a partial line from the
+       pipe, the read will block until the rest of  the  line  is
        read.
 
 
 WWAARRNNIINNGGSS
-       The Surgeon General has determined  that  MUDding  can  be
+       The  Surgeon  General  has  determined that MUDding can be
        detrimental to your GPA.
-
-
 
 
 

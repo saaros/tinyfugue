@@ -47,10 +47,6 @@ INSTALL
         /loadworld
         ;; macros can be redefined
         /redef on
-        ;; no core dump when ctrl-\ pressed
-        /set ignore_sigquit 1
-        ;; strip bad ansi-attributes (like clear-screen)
-        /set emulation ansi_attr
         ;; german-redefining for easier acces of /-key
         ;;; #-key is now /
         /def -ib'#' = /input /

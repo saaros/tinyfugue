@@ -1,0 +1,77 @@
+<title>TinyFugue: completion</title>
+<!--"@/complete"-->
+<!--"@%completion_list"-->
+<!--"@completion"-->
+<h1>completion</h1>
+
+<p>
+  Usage:
+
+<p>
+  <a href="../commands/load.html">/REQUIRE</a> complete.tf<br>
+
+<p>
+  <a href="../topics/completion.html">/complete</a>
+<hr>
+
+<p>
+  Loading complete.tf will define the following keybindings:
+  <dl>
+  <dt>ESC TAB
+          <dd>complete from context, input
+          <a href="../topics/history.html">history</a>, or
+          <a href="../topics/completion.html">%{completion_list}</a>.
+  <dt>ESC ;
+          <dd>complete from
+          <a href="../topics/completion.html">%{completion_list}</a>.
+  <dt>ESC i
+          <dd>complete from input
+          <a href="../topics/history.html">history</a>.
+  <dt>ESC /
+          <dd>filename completion.
+  <dt>ESC @
+          <dd>hostname completion.
+  <dt>ESC %
+          <dd><a href="../topics/variables.html">variable</a> name completion.
+  <dt>ESC $
+          <dd><a href="../topics/macros.html">macro</a> name completion.
+  <dt>ESC ^W
+          <dd>world name completion.
+  </dl>
+
+<p>
+  To use them, type part of a word, type one of the keybindings, and the rest
+  of the word will be filled in for you automatically.  ESC TAB attempts to
+  figure out from context what kind of completion you want; the other
+  bindings do more explicit completions.
+
+<p>
+  By "from context", I mean it will look for patterns and decide which type
+  of completion to use.  For example, if the line begins with
+  "<a href="../commands/load.html">/load</a>", it will use filename
+  completion; if the word begins with "%" or "%{", it will use
+  <a href="../topics/variables.html">variable</a> name
+  completion; etc.
+
+<p>
+  The "ESC TAB" and "ESC ;" bindings will use the
+  <a href="../topics/completion.html">%{completion_list}</a>
+  <a href="../topics/variables.html">variable</a>, in which you can store a
+  list of any words you want to be able to complete.
+
+<p>
+  You can also define your own types of completion.  See the
+  <a href="../topics/special_variables.html#TFLIBDIR">%{TFLIBDIR}</a>/complete.tf
+  file for more information.
+
+<p>
+  See: <a href="../commands/bind.html">/bind</a>,
+  <a href="../topics/tfrc.html">tfrc</a>
+
+<p>
+<!-- END -->
+<hr>
+  <a href="./">Back to index</a><br>
+  <a href="http://tf.tcp.com/~hawkeye/tf/">Back to tf home page</a>
+<hr>
+  <a href="../topics/copyright.html">Copyright</a> &copy; 1995, 1996, 1997, 1998, 1999, 2002, 2003 <a href="http://tf.tcp.com/~hawkeye/">Ken Keys</a>

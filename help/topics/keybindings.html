@@ -1,0 +1,323 @@
+<title>TinyFugue: keybindings</title>
+<!--"@keys"-->
+<!--"@kbbind"-->
+<!--"@kbfunc"-->
+<!--"@kbfunc.tf"-->
+<!--"@kbbind.tf"-->
+<!--"@keybindings"-->
+<h1>keybindings</h1>
+
+<p>
+<h2>Default keybindings</h2>
+  TF's default command line editing keys are similar to those in emacs and
+  bash.  In addition, several features may be invoked by more than one
+  keybinding, and TF has keybindings for unique features like switching
+  the <a href="../topics/sockets.html#foreground">foreground</a>
+  <a href="../topics/sockets.html">socket</a>.
+  Keys with "*" in the "Meaning" column make use of
+  <a href="../topics/keybindings.html#kbnum">kbnum</a>
+  (see <a href="../topics/keybindings.html#kbnum">below</a>).
+
+<p>
+<h3>Named keys</h3>
+<pre>
+Key	Command			Meaning
+---	-------			-------
+Up	<a href="../commands/dokey.html">/dokey</a> UP		*cursor up
+Down	<a href="../commands/dokey.html">/dokey</a> DOWN		*cursor down
+Right	<a href="../commands/dokey.html">/dokey</a> RIGHT		*cursor right
+Left	<a href="../commands/dokey.html">/dokey</a> LEFT		*cursor left
+Delete	<a href="../commands/dokey.html">/dokey</a> dch		*delete character
+F1	<a href="../commands/help.html">/help</a>			&nbsp;help
+Home	<a href="../commands/dokey.html">/dokey_home</a>		&nbsp;cursor to beginning of line
+Insert	<a href="../commands/test.html">/test</a> <a href="../topics/special_variables.html#insert">insert</a>:=!<a href="../topics/special_variables.html#insert">insert</a>	&nbsp;toggle <a href="../topics/special_variables.html#insert">insert</a> mode
+PgDn	<a href="../topics/keybindings.html#pgdn">/dokey_pgdn</a>		*scroll forward a half screenful
+PgUp	<a href="../topics/keybindings.html#pgup">/dokey_pgup</a>		*scroll back a half screenful
+<br>
+Esc Left	<a href="../commands/fg.html">/fg</a> -&lt;		*<a href="../topics/sockets.html#foreground">foreground</a> previous <a href="../topics/sockets.html">socket</a>
+Esc Right	<a href="../commands/fg.html">/fg</a> -&gt;		*<a href="../topics/sockets.html#foreground">foreground</a> next <a href="../topics/sockets.html">socket</a>
+</pre>
+If you prefer PgUp and PgDn to scroll a full screen instead of a half,
+you should not redefine the bindings.  Instead, you should redefine
+"<code>/def dokey_pgdn = /dokey_page</code>" and
+"<code>/def dokey_pgup = /dokey_pageback</code>".
+<p>
+Note: some emulators (NiftyTelnet, TeraTerm) incorrectly send ^[[3~ when PgUp
+is pressed, but the correct meaning of ^[[3~ is Delete (in vt220 emulation).
+The PgUp key in these emulators will not work correctly in tf unless you
+(preferred) fix your emulator, or (easier)
+"<code>/bind ^[[3~ = /dokey_pgup</code>"
+(warning: may break your Delete key).
+
+<p>
+<h3>Unnamed key sequences</h3>
+<pre>
+String	Command			Meaning
+------	-------			-------
+"^A"	<a href="../commands/dokey.html">/dokey_home</a>		&nbsp;cursor to beginning of line
+"^B"	<a href="../commands/dokey.html">/dokey</a> LEFT		*cursor left
+"^D"	<a href="../commands/dokey.html">/dokey_dch</a>		*delete character to the right
+"^E"	<a href="../commands/dokey.html">/dokey_end</a>		&nbsp;cursor to end of line
+"^F"	<a href="../commands/dokey.html">/dokey</a> RIGHT		*cursor right
+"^G"	<a href="../commands/beep.html">/beep</a> 1			&nbsp;beep
+"^H"	(internal)		*backspace
+"^I"	<a href="../commands/dokey.html">/dokey</a> page		*scroll forward 1 screenful
+"^J"	(internal)		&nbsp;execute current line
+"^K"	<a href="../commands/dokey.html">/dokey_deol</a>		&nbsp;delete to end of line
+"^L"	<a href="../commands/dokey.html">/dokey</a> redraw		&nbsp;redraw (not clear) screen
+"^M"	(internal)		&nbsp;execute current line
+"^N"	<a href="../commands/dokey.html">/dokey</a> recallf		*recall forward input <a href="../topics/history.html">history</a>
+"^P"	<a href="../commands/dokey.html">/dokey</a> recallb		*recall backward input <a href="../topics/history.html">history</a>
+"^Q"	<a href="../commands/dokey.html">/dokey</a> LNEXT		&nbsp;input next key literally (may be overridden
+				&nbsp;by <a href="../topics/keybindings.html#terminal">terminal</a>)
+"^R"	<a href="../commands/dokey.html">/dokey</a> REFRESH		&nbsp;refresh line
+"^S"	<a href="../commands/dokey.html">/dokey</a> PAUSE		&nbsp;pause screen
+"^T"	<a href="../topics/keybindings.html">/kb_transpose_chars</a>	*transpose characters
+"^U"	<a href="../topics/keybindings.html">/kb_backward_kill_line</a>	&nbsp;delete to beginning of line
+"^V"	<a href="../commands/dokey.html">/dokey</a> LNEXT		&nbsp;input next key literally
+"^W"	<a href="../commands/dokey.html">/dokey</a> BWORD		*delete backward word (space-delimited)
+"^?"	(internal)		*backspace
+"^X^R"	<a href="../commands/load.html">/load</a> <a href="../topics/tfrc.html">~/.tfrc</a>		&nbsp;reload personal config file
+"^X^V"	<a href="../commands/version.html">/version</a>		&nbsp;display version information
+"^X^?"	<a href="../topics/keybindings.html">/kb_backward_kill_word</a>	*delete backward word (punctuation-delimited)
+"^X["	<a href="../commands/dokey.html">/dokey</a>_hpageback	*scroll back a half screenful
+"^X]"	<a href="../commands/dokey.html">/dokey</a>_hpage		*scroll forward a half screenful
+"^X{"	<a href="../commands/dokey.html">/dokey</a>_pageback		*scroll back a screenful
+"^X}"	<a href="../commands/dokey.html">/dokey</a>_page		*scroll forward a screenful
+"^[^E"	<a href="../topics/keybindings.html">/kb_expand_line</a>		&nbsp;<a href="../topics/evaluation.html">expand</a> current line in place
+"^[^H"	<a href="../topics/keybindings.html">/kb_backward_kill_word</a>	*delete backward word (punctuation-delimited)
+"^[^L"	<a href="../commands/dokey.html">/dokey</a> clear		&nbsp;clear screen
+"^[^N"	<a href="../commands/dokey.html">/dokey</a> line		*scroll forward one line
+"^[^P"	<a href="../commands/dokey.html">/dokey</a> lineback		*scroll back one line
+"^[ "	<a href="../topics/keybindings.html">/kb_collapse_space</a>	&nbsp;change multiple spaces to a single space
+"^[-"	                        &nbsp;start <a href="../topics/keybindings.html#kbnum">kbnum</a> entry with -
+"^[0"	                        &nbsp;start <a href="../topics/keybindings.html#kbnum">kbnum</a> entry with 0
+...
+"^[9"	                        &nbsp;start <a href="../topics/keybindings.html#kbnum">kbnum</a> entry with 9
+"^[="	<a href="../topics/keybindings.html">/kb_goto_match</a>		&nbsp;move cursor to matching parenthesis/bracket
+"^[."	<a href="../topics/keybindings.html">/kb_last_argument</a>	&nbsp;input last word of previous line
+"^[&lt;"	<a href="../topics/dokey.html">/dokey</a> recallbeg	&nbsp;go to beginning of input history
+"^[&gt;"	<a href="../topics/dokey.html">/dokey</a> recallend	&nbsp;go to end of input history
+"^[J"	<a href="../commands/dokey.html">/dokey</a> selflush		&nbsp;selective flush (similar to "<a href="../commands/dokey.html">/dokey</a> flush"
+				&nbsp;followed by "<a href="../commands/dokey.html">/limit</a> -a")
+"^[L"	<a href="../commands/limit.html">/kb_toggle_limit</a>	&nbsp;toggle between <a href="../commands/limit.html">/unlimit</a> and <a href="../commands/limit.html">/relimit</a>
+"^[_"	<a href="../topics/keybindings.html">/kb_last_argument</a>	&nbsp;input last word of previous line
+"^[b"	<a href="../commands/dokey.html">/dokey_wleft</a>		*cursor to beginning of word
+"^[c"	<a href="../topics/keybindings.html">/kb_capitalize_word</a>	*capitalize word
+"^[d"	<a href="../commands/dokey.html">/kb_kill_word</a>		*delete forward word
+"^[f"	<a href="../commands/dokey.html">/dokey_wright</a>		*cursor to end of word
+"^[h"	<a href="../commands/dokey.html">/dokey</a>_hpage		*scroll forward a half screenful
+"^[j"	<a href="../commands/dokey.html">/dokey</a> flush		&nbsp;jump to last screenful of text
+"^[l"	<a href="../topics/keybindings.html">/kb_downcase_word</a>	*convert word to lower case
+"^[n"	<a href="../commands/dokey.html">/dokey</a> searchf		*search forward input <a href="../topics/history.html">history</a>
+"^[p"	<a href="../commands/dokey.html">/dokey</a> searchb		*search backward input <a href="../topics/history.html">history</a>
+"^[u"	<a href="../topics/keybindings.html">/kb_upcase_word</a>		*convert word to upper case
+"^[v"	<a href="../commands/test.html">/@test</a> insert:=!insert	&nbsp;toggle insert mode
+"^[{"	<a href="../commands/fg.html">/fg</a> -&lt;			*<a href="../topics/sockets.html#foreground">foreground</a> previous <a href="../topics/sockets.html">socket</a>
+"^[}"	<a href="../commands/fg.html">/fg</a> -&gt;			*<a href="../topics/sockets.html#foreground">foreground</a> next <a href="../topics/sockets.html">socket</a>
+"^[^?"	<a href="../topics/keybindings.html">/kb_backward_kill_word</a>	*delete backward word (punctuation-delimited)
+</pre>
+
+<p>
+<a name="terminal">
+<a name="tty">
+<a name="stty">
+<h2>Terminal keys</h2>
+  Some keys are interpeted by the terminal, not TF, so if you want to change
+  them, you must do so outside of TF (e.g. with <code>stty</code> in unix).
+  Typical unix terminal keys include:
+<dl compact>
+  <dt>^C	<dd>"int" - generates a SIGINT
+		<a href="../topics/signals.html">signal</a>.
+  <dt>^\	<dd>"quit" - generates a SIGQUIT
+		<a href="../topics/signals.html">signal</a>.
+  <dt>^Z	<dd>"susp" - suspends the process
+</dl>
+When tf starts, it disables the terminal driver's "stop" and "start" keys
+(typically ^S and ^Q), so they are available for binding within tf.
+
+<p>
+<a name="kbnum"></a>
+<h2>"Kbnum" argument</h2>
+With the default keybindings,
+ESC followed by an optional "-" and any number of digits sets the global
+variable <a href="../topics/special_variables.html#kbnum">%kbnum</a>.
+By default, the current
+<a href="../topics/special_variables.html#kbnum">%kbnum</a>
+value is displayed near the right end of the 
+<a href="../topics/status_line.html">status line</a>.
+Then, when any other keybinding is typed, 
+that keybinding may use the value of
+<a href="../topics/special_variables.html#kbnum">%kbnum</a>.
+Whether the keybinding uses the value or not, 
+<a href="../topics/special_variables.html#kbnum">%kbnum</a> is cleared after
+the keybinding has run.
+Most keybindings that use 
+<a href="../topics/special_variables.html#kbnum">%kbnum</a>
+use it as a repeat count.
+For example, typing "<code>ESC 1 2 x</code>" is the same as typing
+"<code>x</code>" 12 times.
+For keybindings that have a sense of direction, negative values of
+<a href="../topics/special_variables.html#kbnum">%kbnum</a> reverse that
+direction:  for example, typing "<code>ESC - 4 PgDn</code>" is like typing
+"<code>PgUp</code>" 4 times.
+The "<code>^G</code>" (<a href="../commands/beep.html">/beep</a>) keybinding
+does not honor <a href="../topics/special_variables.html#kbnum">%kbnum</a>,
+so it can be used to cancel it with no effect.
+The variable
+<a href="../topics/special_variables.html#max_kbnum">%max_kbnum</a>
+sets an upper limit on the value of
+<a href="../topics/special_variables.html#kbnum">%kbnum</a>
+that can be entered by the ESC and digit keys, to prevent
+typos from sending tf into very long loops.
+
+<p>
+To set <a href="../topics/special_variables.html#kbnum">%kbnum</a>
+by means other than the default keybindings above, simply 
+<a href="../commands/set.html">/set</a> it as you would any other variable.
+Once it is set, all typed digits are appended to it.  When any non-digit
+key is typed, that key will be executed, and 
+<a href="../topics/special_variables.html#kbnum">%kbnum</a> will be cleared.
+
+<p>
+<h2>Other key bindings</h2>
+
+<a name="kbstack.tf">
+<a name="kb-bash.tf">
+<a name="kb-emacs.tf">
+<a name="kbregion.tf">
+<a name="cut">
+<a name="paste">
+<a name="cut and paste">
+<a name="bash">
+<a name="emacs">
+<a name="extra keybindings">
+  Some additional keyboard operations can be defined by
+  <a href="../commands/load.html">/load</a>ing these library files:
+  <dl compact>
+  <dt>kb-old.tf		<dd>keybindings like those in tf 4.0 and earlier
+  <dt>kb-emacs.tf	<dd>additional emacs-like keybindings
+  <dt>kbregion.tf	<dd>cut-and-paste operations
+  <dt>kbstack.tf	<dd>save the current line with ESC-DOWN and recall
+                        it later with ESC-UP.
+  </dl>
+  See the comments at the top of each file for further documentation.
+<a name="">
+
+
+<h2>Binding keys</h2>
+
+  <a href="../commands/def.html">/Def</a>
+  <a href="../commands/def.html#-b">-b</a>
+  allows you to bind a character string to a
+  <a href="../topics/macro.html">macro</a>.
+  Typing that string at the keyboard (which may mean pressing a single key
+  that generates the string) will then call the
+  <a href="../topics/macro.html">macro</a>.
+
+<p>
+  <a href="../commands/def.html">/Def</a>
+  <a href="../commands/def.html#-B">-B</a>
+  allows you to bind a symbolic keyname to a
+  <a href="../topics/macro.html">macro</a>.
+  There are several advantages in using symbolic key names over key code
+  strings.
+  First, you don't have to know what string is generated by the special
+  keys on your keyboard.
+  They will work on multiple terminals, based on the value of
+  <a href="../topics/special_variables.html#TERM">%TERM</a>
+  (assuming the keys are defined in the termcap database).
+  Changing <a href="../topics/special_variables.html#TERM">%TERM</a>
+  at any time will rebind the
+  <a href="../topics/macro.html">macros</a> to the new codes.
+
+<p>
+  The keynames recognized by tf are:
+  <ul>
+  <li>Function keys:  F0, F1,... F19
+  <li>Keypad keys:  KP1 (upper left), KP2 (upper right), KP3 (center),
+      KP4 (lower left), KP5 (lower right).  (It may be necessary to
+      turn Num Lock off to enable these.)
+  <li>Arrow keys:  Up, Down, Right, Left
+  <li>others:
+    Backspace, Clear EOL, Clear EOS, Clear Screen,
+    Delete, Delete Line,
+    Home, Home Down,
+    Insert, Insert Line,
+    PgDn, PgUp,
+    Scroll Down, Scroll Up
+  </ul>
+
+<p>
+  Unfortunately, even if your terminal has a particular key, your termcap
+  entries may not define it, so you may not be able to use it by name.
+  The arrow and function are pretty reliably defined, but many of the other
+  keys are not.  Also, some terminal emulators do not match all the
+  key definitions.
+
+<p>
+  They must be spelled as shown, but capitalization is ignored.
+  The function <a href="../topics/functions.html#keycode">keycode()</a>
+  can be used to find the string generated by a key (as defined in
+  the termcap entry for
+  <a href="../topics/special_variables.html#TERM">%TERM</a>).
+
+<p>
+  Because <b>TF</b> runs in a terminal and not in a windowing system, it
+  does not see actual keystrokes, but only the characters generated by a
+  keystroke.  If two different keys generate the same characters, <b>TF</b>
+  can not tell them apart.
+  In earlier versions, this meant that on many terminals <b>TF</b> could not
+  distinguish the numeric keypad keys from arrow or digit keys, because they
+  generated the same character sequences.  Starting in 4.0 alpha 11,
+  <b>TF</b> tries to put the keypad in "application mode", which on
+  many terminals will make the keypad keys generate unique character
+  sequences if Num Lock is on.  Application mode can be disabled by setting
+  <a href="../topics/special_variables.html#keypad">%keypad</a> to "off".
+
+<p>
+  Note that before version 3.5 alpha 21 or beta 1, it was usually harmless to 
+  "<a href="../commands/set.html">/set</a>
+  <a href="../topics/special_variables.html#TERM">TERM</a>=vt100"
+  on terminals that accepted a superset of vt100 display codes.
+  However, the termcap key definitions are often different for terminals
+  that are otherwise similar (e.g., vt100 and xterm share many display
+  codes, but the key definitions are different), so setting
+  <a href="../topics/special_variables.html#TERM">%TERM</a> incorrectly
+  will interfere with the operation of named keys.
+  Xterm users should also note that since 3.5 alpha 17, tf ignores xterm's
+  ti and te capabilities that sometimes interfered with the operation of
+  the scrollbar, so tricking tf with
+  <a href="../topics/special_variables.html#TERM">TERM</a>=vt100
+  is no longer necessary.
+
+<p>
+<h2>Special keys</h2>
+
+  TF's input handler recognizes ^H and ^? as backspace and ^J and ^M
+  as newline, even when they are not bound to
+  <a href="../topics/macro.html">macros</a>.
+  However, if a keybinding is defined for any of these keys,
+  it will override the internal handling of that key.
+
+<p>
+  At <a href="../topics/tf.html">startup</a>, tf also examines the
+  terminal driver settings for keys corresponding to the
+  <a href="../commands/dokey.html">/dokey</a> functions
+  BWORD, DLINE, REFRESH, and LNEXT, and binds them
+  accordingly if different than the default bindings listed above.
+
+<p>
+  See: <a href="../commands/dokey.html">/dokey</a>,
+  <a href="../commands/bind.html">/bind</a>,
+  <a href="../topics/completion.html">completion</a>,
+  <a href="../topics/special_variables.html#wordpunct">%wordpunct</a>,
+  <a href="../topics/signals.html">signals</a>.
+
+<p>
+<!-- END -->
+<hr>
+  <a href="./">Back to index</a><br>
+  <a href="http://tf.tcp.com/~hawkeye/tf/">Back to tf home page</a>
+<hr>
+  <a href="../topics/copyright.html">Copyright</a> &copy; 1995, 1996, 1997, 1998, 1999, 2002, 2003 <a href="http://tf.tcp.com/~hawkeye/">Ken Keys</a>

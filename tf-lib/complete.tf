@@ -149,7 +149,7 @@
         /let _part=$[substr(_part, 1)]%;\
         /let _completion_suffix=}%;\
     /endif%;\
-    /_complete_from_list %_part $(/listvar -s)
+    /_complete_from_list %_part $(/@listvar -s)
 
 
 /def -i complete_macroname = \
@@ -164,14 +164,14 @@
     /elseif (strncmp(_word, '/', 1) == 0) \
         /let _word=$[substr(_word, 1)]%;\
     /endif%;\
-    /_complete_from_list %{_word} $(/quote -S /last `/list -s -i - %{_word}*)
+    /_complete_from_list %{_word} $(/quote -S /last `/@list -s -i - %{_word}*)
 
 
 /def -i complete_worldname = \
-    /_complete_from_list %1 $(/listworlds -s %{1}*)
+    /_complete_from_list %1 $(/@listworlds -s %{1}*)
 
 /def -i complete_sockname = \
-    /_complete_from_list %1 $(/listsockets -s %{1}*)
+    /_complete_from_list %1 $(/@listsockets -s %{1}*)
 
 
 ;; /complete_context <word>

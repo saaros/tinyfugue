@@ -47,14 +47,16 @@
 
 /def -i savepath= /def -i %1 = /dopath %path
 
-/def -i dopath	= \
-    /if ( {1} =/ '[0-9]*' & {#} >= 2 ) \
-        /for i 1 %1 %2%;\
-        /dopath %-2%;\
-    /elseif ({#}) \
-        %1%;\
-        /dopath %-1%;\
-    /endif
+/def -i dopath = \
+    /while ({#}) \
+	/if ( {1} =/ '[0-9]*' & {#} >= 2 ) \
+	    /for i 1 %1 %2%; \
+	    /shift 2%; \
+	/else \
+	    %1%; \
+	    /shift%; \
+	/endif%; \
+    /done
 
 /def -i unpath	= /set path=$(/all_but_last %path)
 
@@ -62,16 +64,16 @@
 	/let _dir=$(/last %path)%;\
 	/unpath%;\
 ;       These directions must be listed in complementary pairs.
-	/_revert_aux n s e w ne sw nw se u d%;
+	/_revert_aux  n s  e w  ne sw  nw se  u d%;
 
 /def -i _revert_aux = \
-	/if ( {#} == 0 ) \
-		/echo -e %% Don't know how to revert from "%_dir".%;\
-		/set path=%path %_dir%;\
-	/elseif ( _dir =~ {1} ) /send - %2%;\
-	/elseif ( _dir =~ {2} ) /send - %1%;\
-	/else   /_revert_aux %-2%;\
-	/endif
-
+    /while ({#}) \
+        /if ( _dir =~ {1} ) /send - %2%; /return%; \
+        /elseif ( _dir =~ {2} ) /send - %1%; /return%; \
+        /else   /shift 2%;\
+        /endif%; \
+    /done%; \
+    /echo -e %% Don't know how to revert from "%_dir".%;\
+    /set path=%path %_dir
 
 /def -i all_but_last = /echo - %-L

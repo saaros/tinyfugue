@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996 - 1999 Ken Keys
+ *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: enumlist.h,v 35000.8 1999/01/31 00:27:40 hawkeye Exp $ */
+/* $Id: enumlist.h,v 35000.16 2003/05/27 01:09:21 hawkeye Exp $ */
 
 /* It may not be easy to read, but it keeps the constants and the array in the
  * same place, so they can't get out of sync.
@@ -15,53 +15,65 @@
 # define ENUMEXTERN
 #endif
 
-bicode(enum,       static CONST char *enum_bamf[] = )
+bicode(enum,		static String enum_bamf[] = )
 {
-bicode(BAMF_OFF,   "off"),
-bicode(BAMF_UNTER, "on"),
-bicode(BAMF_OLD,   "old"),
-bicode(BAMF_COUNT, NULL)
+bicode(BAMF_OFF,	STRING_LITERAL("off")),
+bicode(BAMF_UNTER,	STRING_LITERAL("on")),
+bicode(BAMF_OLD,	STRING_LITERAL("old")),
+bicode(BAMF_COUNT,	STRING_NULL)
 };
 
-bicode(enum,            static CONST char *enum_emul[] = )
+bicode(enum,		static String enum_meta[] = )
 {
-bicode(EMUL_RAW,        "raw"),
-bicode(EMUL_PRINT,      "print"),
-bicode(EMUL_ANSI_STRIP, "ansi_strip"),
-bicode(EMUL_ANSI_ATTR,  "ansi_attr"),
-bicode(EMUL_DEBUG,      "debug"),
-bicode(EMUL_COUNT,      NULL)
+bicode(META_OFF,	STRING_LITERAL("off")),
+bicode(META_ON,		STRING_LITERAL("on")),
+bicode(META_NONPRINT,	STRING_LITERAL("nonprint")),
+bicode(META_COUNT,	STRING_NULL)
 };
 
-ENUMEXTERN CONST char *enum_match[]
+bicode(enum,		static String enum_emul[] = )
+{
+bicode(EMUL_RAW,	STRING_LITERAL("raw")),
+bicode(EMUL_PRINT,	STRING_LITERAL("print")),
+bicode(EMUL_ANSI_STRIP,	STRING_LITERAL("ansi_strip")),
+bicode(EMUL_ANSI_ATTR,	STRING_LITERAL("ansi_attr")),
+bicode(EMUL_DEBUG,	STRING_LITERAL("debug")),
+bicode(EMUL_COUNT,	STRING_NULL)
+};
+
+ENUMEXTERN String enum_match[]
 bicode(; enum,       = )
 {
-bicode(MATCH_SIMPLE, "simple"),
-bicode(MATCH_GLOB,   "glob"),
-bicode(MATCH_REGEXP, "regexp"),
-bicode(MATCH_COUNT,  NULL)
+/* do not reorder these, it would break macros that use the number */
+bicode(MATCH_SIMPLE,	STRING_LITERAL("simple")),
+bicode(MATCH_GLOB,	STRING_LITERAL("glob")),
+bicode(MATCH_REGEXP,	STRING_LITERAL("regexp")),
+bicode(MATCH_SUBSTR,	STRING_LITERAL("substr")),
+bicode(MATCH_COUNT,	STRING_NULL)
 };
 
-ENUMEXTERN CONST char *enum_status[]
-bicode(; enum,       = )
+ENUMEXTERN String enum_status[]
+bicode(; typedef enum,       = )
 {
-bicode(STAT_MORE,    "more"),
-bicode(STAT_WORLD,   "world"),
-bicode(STAT_READ,    "read"),
-bicode(STAT_ACTIVE,  "active"),
-bicode(STAT_LOGGING, "log"),
-bicode(STAT_MAIL,    "mail"),
-bicode(STAT_CLOCK,   "clock"),
-bicode(STAT_COUNT,   NULL)
-};
+bicode(STAT_MORE,	STRING_LITERAL("more")),
+bicode(STAT_WORLD,	STRING_LITERAL("world")),
+bicode(STAT_READ,	STRING_LITERAL("read")),
+bicode(STAT_ACTIVE,	STRING_LITERAL("active")),
+bicode(STAT_LOGGING,	STRING_LITERAL("log")),
+bicode(STAT_MAIL,	STRING_LITERAL("mail")),
+bicode(STAT_CLOCK,	STRING_LITERAL("clock")),
+bicode(STAT_COUNT,	STRING_NULL),
+bicode(STAT_NONE = -1,	STRING_NULL)
+}
+bicode( stat_id_t;, ; )
 
-ENUMEXTERN CONST char *enum_eol[]
+ENUMEXTERN String enum_eol[]
 bicode(; enum,    = )
 {
-bicode(EOL_LF,    "LF"),
-bicode(EOL_CR,    "CR"),
-bicode(EOL_CRLF,  "CRLF"),
-bicode(EOL_COUNT, NULL)
+bicode(EOL_LF,		STRING_LITERAL("LF")),
+bicode(EOL_CR,		STRING_LITERAL("CR")),
+bicode(EOL_CRLF,	STRING_LITERAL("CRLF")),
+bicode(EOL_COUNT,	STRING_NULL)
 };
 
 #undef ENUMEXTERN

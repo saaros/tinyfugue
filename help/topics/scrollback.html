@@ -1,0 +1,106 @@
+<title>TinyFugue: virtual windows</title>
+<!--"@scrolling"-->
+<!--"@scrollback"-->
+<!--"@windows"-->
+<!--"@window"-->
+<!--"@virtual window"-->
+<!--"@virtual windows"-->
+<h1>virtual windows</h1>
+
+<p>
+Starting in version 5.0, TF maintains a separate virtual window for each
+open <a href="../topics/socket.html">socket</a>, including the "(no world)"
+pseudo-socket.
+Normally, a window scrolls when text is written to it.
+If the <a href="../commands/more.html">more</a> flag is set, automatic
+scrolling will stop when the window becomes full.
+You can manually scroll forwards and backwards in each 
+<a href="../topics/socket.html">socket</a>'s window
+using the keys in the table below.
+
+<p>
+Per-socket windows make it unnecessary to finish reading the
+text on one <a href="../topics/socket.html">socket</a> before switching
+to another.
+When you bring a new <a href="../topics/socket.html">socket</a> into the
+<a href="../topics/socket.html#foreground">foreground</a>, the old
+<a href="../topics/socket.html">socket</a>'s window
+is hidden, but remembers all of its text and current position; when
+you return that old <a href="../topics/socket.html">socket</a> to the
+<a href="../topics/socket.html#foreground">foreground</a>, the text is
+redrawn at the remembered position, and you can resume
+reading where you left off.  The same is true when a
+<a href="../topics/socket.html">socket</a>'s window
+is hidden by <a href="../commands/suspend.html">/suspend</a>
+or <a href="../commands/sh.html">/sh</a>, and even when the terminal's
+size changes.
+
+<p>
+In the table below, the 
+"<a href="../commands/dokey.html">/dokey</a>" columns indicate the argument to
+the <a href="../commands/dokey.html">/dokey</a> command that performs the
+scrolling, and the "keys" column indicates the default keystrokes that perform
+the scrolling.
+<pre>
+scroll       ....forward....   ...backward....
+amount       <a href="../commands/dokey.html">/dokey</a>  keys      <a href="../commands/dokey.html">/dokey</a>     keys
+-----------  ------- -------   ---------- ----
+normal       <a href="../commands/dokey.html#pgdn">PgDn</a>    PgDn      <a href="../commands/dokey.html#pgup">PgUp</a>       PgUp
+1/2 screen   <a href="../commands/dokey.html#hpage">hpage</a>   ^X] ^[h   <a href="../commands/dokey.html#hpageback">hpageback</a>  ^X[
+1 screen     <a href="../commands/dokey.html#page">page</a>    ^X} TAB   <a href="../commands/dokey.html#pageback">pageback</a>   ^X{
+1 line       <a href="../commands/dokey.html#line">line</a>    ^[^N      <a href="../commands/dokey.html#lineback">lineback</a>   ^[^P
+</pre>
+Note that the line-scrolling keys may be typable as meta-ctrl-n and meta-ctrl-p
+(depending on your
+<a href="../topics/special_variables.html#meta_esc">%meta_esc</a> and
+<a href="../topics/locale.html">locale</a>).
+"Normal" scrolling is 1/2 screenful by default.
+If you prefer PgUp and PgDn to scroll a full screen instead of a half,
+you should not redefine the bindings; instead, you should redefine
+"<code>/def dokey_pgdn = /dokey_page</code>" and
+"<code>/def dokey_pgup = /dokey_pageback</code>".
+
+<p>
+Some <a href="../topics/hooks.html">hooks</a> need to print messages that 
+do not make sense at the bottom of the
+<a href="../topics/socket.html#foreground">foreground</a>
+window (as they did before
+version 5.0).  For example, if you have world Foo in the
+<a href="../topics/socket.html#foreground">foreground</a>,
+and get activity in world Bar, it would not make sense for the
+<a href="../topics/hooks.html#ACTIVITY">ACTIVITY hook</a> to print
+"<code>% Activity in world Bar</code>" to Foo's window.
+Firstly, you might want to know about the activity even if you are not
+at the end of Foo's window buffer.
+Secondly, after you read the text in Bar and returned to Foo,
+the message would still be at the bottom of Foo's window buffer,
+misleadingly.
+Many messages of this type are now delivered as
+"<a href="../topics/tfio.html">alerts</a>".
+An <a href="../topics/tfio.html">alert</a> appears temporarily on the
+<a href="../topics/status_line.html">status line</a>, where you can
+see it immediately and it will not outlive its usefulness.
+Also, because text from different worlds is not mixed in 5.0,
+the <a href="../topics/hooks.html#WORLD">WORLD hook</a>
+no longer prints "<code>--- World <i>name</i> ---</code>".
+
+<p>
+The <a href="../commands/limit.html">/limit</a> command will filter the text
+displayed in a window.  The counters in the 
+<a href="../commands/more.html">more</a>
+prompt will count only the lines that match the
+<a href="../commands/limit.html">limit</a>.
+
+<p>
+See also:
+<a href="../topics/interface.html">interface</a>,
+<a href="../topics/mode.html">visual</a>,
+<a href="../commands/limit.html">/limit</a>,
+<a href="../topics/keybindings.html">keybindings</a>.
+
+<!-- END -->
+<hr>
+  <a href="./">Back to index</a><br>
+  <a href="http://tf.tcp.com/~hawkeye/tf/">Back to tf home page</a>
+<hr>
+  <a href="../topics/copyright.html">Copyright</a> &copy; 2002, 2003 <a href="http://tf.tcp.com/~hawkeye/">Ken Keys</a>

@@ -1,31 +1,40 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: world.h,v 35004.13 1999/01/31 00:27:59 hawkeye Exp $ */
+/* $Id: world.h,v 35004.26 2003/05/27 01:09:26 hawkeye Exp $ */
 
 #ifndef WORLD_H
 #define WORLD_H
 
-#define WORLD_TEMP     001
-#define WORLD_NOPROXY  002
+#define WORLD_TEMP	001
+#define WORLD_NOPROXY	002
+#define WORLD_SSL	004
 
-typedef struct World {         /* World structure */
+typedef struct World {		/* World structure */
     int flags;
     struct World *next;
-    char *name;                /* name of world */
-    char *character;           /* login name */
-    char *pass;                /* password */
-    char *host;                /* host name */
-    char *port;                /* port number or service name */
-    char *mfile;               /* macro file */
-    char *type;                /* user-defined server type (tiny, lp...) */
-    struct Sock *sock;         /* open socket, if any */
-#ifndef NO_HISTORY
-    struct History *history;   /* history and logging info */
+    char *name;			/* name of world */
+    char *character;		/* login name */
+    char *pass;			/* password */
+    char *host;			/* server host name */
+    char *port;			/* server port number or service name */
+    char *myhost;		/* client host name */
+    char *mfile;		/* macro file */
+    char *type;			/* user-defined server type (tiny, lp...) */
+    struct Sock *sock;		/* open socket, if any */
+    List triglist[1];		/* trigger macros for this world */
+    List hooklist[1];		/* hook macros for this world */
+    Screen *screen;		/* displayed and undisplayed text */
+    void *md;			/* mmalloc descriptor */
+#if !NO_HISTORY
+    struct History *history;	/* history and logging info */
+#endif
+#ifdef WORLD_VARS
+    Var *special_vars[NUM_VARS];
 #endif
 } World;
 
@@ -42,15 +51,17 @@ extern World *defaultworld;
    (w->mfile ? w->mfile : defaultworld ? defaultworld->mfile : NULL)
 
 
-extern World *FDECL(new_world,(CONST char *name, CONST char *character,
-                    CONST char *pass, CONST char *host, CONST char *port,
-                    CONST char *mfile, CONST char *type, int flags));
-extern int    FDECL(nuke_world,(World *w));
-extern World *FDECL(find_world,(CONST char *name));
-extern void   FDECL(mapworld,(void FDECL((*func),(struct World *world))));
+extern World *new_world(const char *name, const char *type,
+    const char *host, const char *port,
+    const char *character, const char *pass,
+    const char *mfile, int flags,
+    const char *myhost);
+extern int    nuke_world(World *w);
+extern World *find_world(const char *name);
+extern void   mapworld(void (*func)(struct World *world));
 
-#ifdef DMALLOC
-extern void   NDECL(free_worlds);
+#if USE_DMALLOC
+extern void   free_worlds(void);
 #endif
 
 #endif /* WORLD_H */

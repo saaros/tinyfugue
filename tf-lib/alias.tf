@@ -13,22 +13,25 @@
 
 /def -i alias = \
     /if ( {#} < 2 ) \
-        /quote -S /~listalias `/list -s -i -mglob alias_body_%{1-*}%; \
+        /quote -S /~listalias `/@list -s -I -mglob ~alias_body_%{1-*}%; \
     /else \
-        /def -i alias_body_%1 = %-1%;\
-;       The alias_call_* macro /shifts unless [alias=~"old"] at runtime.
-        /def -i -ag -mglob -h"send {%1}*" alias_call_%1 = \
+        /def -i ~alias_body_%1 = %-1%;\
+;       The ~alias_call_* macro /shifts unless [alias=~"old"] at runtime.
+        /def -i -ag -mglob -h"send {%1}*" ~alias_call_%1 = \
             /shift $$[alias !~ "old"]%%; \
-            /alias_body_%1 %%*%; \
+            /~alias_body_%1 %%*%; \
     /endif
 
-/def -i ~listalias = /echo /alias $[substr({L}, 11)] ${%{L}}
+/def -i ~listalias = /echo /alias $[substr({L}, 12)] ${%{L}}
 
 /def -i unalias = \
-    /if /ismacro alias_call_%1%; /then \
-        /undef alias_call_%1%; \
-        /undef alias_body_%1%; \
+    /if /ismacro ~alias_call_%1%; /then \
+        /undef ~alias_call_%1%; \
+        /undef ~alias_body_%1%; \
     /else \
         /echo -e - %% %0: "%1": no such alias%; \
     /endif
 
+/def -i purgealias = \
+    /purge -I ~alias_call_*%; \
+    /purge -I ~alias_body_*

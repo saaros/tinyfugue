@@ -1,0 +1,115 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN"
+   "http://www.w3.org/TR/REC-html40">
+<HTML>
+<HEAD>
+<META http-equiv="Content-Style-Type" content="text/css">
+</HEAD>
+<BODY>
+
+<title>TinyFugue: colors</title>
+<!--"@/color_on"-->
+<!--"@/color_off"-->
+<!--"@color"-->
+<!--"@colour"-->
+<!--"@colours"-->
+<!--"@colors"-->
+<h1>colors</h1>
+
+<p>
+  Color is enabled by default.  To disable it, use "/color_off"; to re-enable
+  color using ANSI codes, use "/color_on".
+  
+<p>
+  The color <a href="../topics/attributes.html">attribute</a>
+  ("C<i>name</i>") allows you to specify any one of:
+  <font color="black">black</font> (black),
+  <font color="red">red</font>,
+  <font color="green">green</font>,
+  <font color="yellow">yellow</font>,
+  <font color="blue">blue</font>,
+  <font color="magenta">magenta</font>,
+  <font color="cyan">cyan</font>,
+  <font color="white">white</font> (white),
+  8 through 15,
+  <span style="background: black">bgblack</span> (bgblack),
+  <span style="background: red">bgred</span>,
+  <span style="background: green">bggreen</span>,
+  <span style="background: yellow">bgyellow</span>,
+  <span style="background: blue">bgblue</span>,
+  <span style="background: magenta">bgmagenta</span>,
+  <span style="background: cyan">bgcyan</span>, or
+  <span style="background: white">bgwhite</span> (bgwhite).
+  (If you are reading this in tf, and the previous sentence did not contain
+  colored words, you do not have working color support.
+  If it contained strange codes, you should do
+  "/color_off" or redefine the codes as described below.)
+  The first eight are defined in stdlib.tf as ANSI foreground colors.
+  The bg* colors are defined in stdlib.tf as ANSI background colors.
+  The numbered colors are defined in stdlib.tf to work with the
+  corresponding color xterm colors.
+  They can all be redefined as described below.
+
+<p>
+  You can use a defined color in any
+  <a href="../topics/attributes.html">attribute</a> string.  For example, to
+  make <a href="../commands/hilite.html">/hilite</a>'d text appear blue, you
+  can <code><a href="../commands/set.html">/set</a>
+  <a href="../topics/special_variables.html#hiliteattr">hiliteattr</a>=Cblue</code>.
+
+<p>
+  On some terminals, lighter versions of ANSI colors can be produced by
+  combining bold with a color; for example, light red is BCred.
+
+<p>
+  Note: color will not work if you are running tf under older versions of
+  iscreen, since they do not understand the color codes.  Also, some
+  versions of xterm don't support color; some variants that do
+  include dtterm, cxterm, color_xterm, rxvt, nxterm.
+
+<p>
+  To define your own codes for terminals that don't accept the ANSI codes,
+  you will need to edit the color
+  <a href="../topics/variables.html">variables</a>.
+  The code to enable color <i>name</i> is stored in a 
+  <a href="../topics/variables.html">variable</a> called
+  <a href="../topics/special_variables.html#start_color_name">%{start_color_<i>name</i>}</a>.
+  The code to turn it off is stored in
+  <a href="../topics/special_variables.html#end_color">%{end_color}</a>.
+  These <a href="../topics/variables.html">variables</a> may contain carat
+  notation and backslashed ascii codes in
+  decimal, octal, or hexadecimal (e.g., ESC is ^[, \27, \033, or \0x1B).
+
+<p>
+  The default definition of
+  <a href="../topics/special_variables.html#end_color">%end_color</a>
+  is <code>"\033[37;40;0m</code>", which should work on most ANSI-like
+  terminals.  If you find that all text is reversed after displaying some
+  colored text, then try
+  "<code><a href="../commands/set.html">/set</a>
+  <a href="../topics/special_variables.html#end_color">end_color</a>
+  \033[30;47;0m</code>".
+
+<p>
+  If <a href="../topics/special_variables.html#emulation">%{emulation}</a> is
+  set to "ansi_attr", ANSI codes sent by the server will be interpreted by
+  tf.  As a result, if the
+  <a href="../topics/special_variables.html#start_color_name">%{start_color_<i>name</i>}</a>
+  <a href="../topics/variables.html">variables</a> are set correctly for
+  your terminal, tf will translate ANSI
+  color codes from the server into codes for your terminal, even if your
+  terminal does not use ANSI codes.  See:
+  <a href="../topics/special_variables.html#emulation">%emulation</a>.
+
+<p>
+  See: <a href="../topics/attributes.html">attributes</a>
+
+<p>
+<!-- END -->
+<hr>
+  <a href="./">Back to index</a><br>
+  <a href="http://tf.tcp.com/~hawkeye/tf/">Back to tf home page</a>
+<hr>
+  <a href="../topics/copyright.html">Copyright</a> &copy; 1995, 1996, 1997, 1998, 1999, 2002, 2003 <a href="http://tf.tcp.com/~hawkeye/">Ken Keys</a>
+
+</BODY>
+</HTML>

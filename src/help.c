@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: help.c,v 35004.16 1999/01/31 00:27:43 hawkeye Exp $ */
+static const char RCSid[] = "$Id: help.c,v 35004.27 2003/05/27 01:09:22 hawkeye Exp $";
 
 /*
  * Fugue help handling
@@ -19,8 +19,9 @@
 #include "config.h"
 #include <stdio.h>
 #include "port.h"
-#include "dstring.h"
 #include "tf.h"
+#include "search.h"	/* for tfio.h */
+#include "util.h"	/* for tfio.h */
 #include "tfio.h"
 #include "commands.h"
 #include "variable.h"
@@ -29,33 +30,32 @@ STATIC_BUFFER(indexfname);
 
 #define HELPLEN  (240+1)	/* maximum length of lines in help file */
 
-struct Value *handle_help_command(args) 
-    char *args;
+struct Value *handle_help_command(String *args, int offset)
 {
     char buf0[HELPLEN], buf1[HELPLEN], buf2[HELPLEN];
     char *input, *major_buffer, *minor_buffer, *spare;
     char *major_topic, *minor_topic, *place;
-    CONST char *name;
+    const char *name;
     TFILE *helpfile, *indexfile;
-    long offset = -1;
+    long location = -1;
     attr_t attrs;  /* for carrying attributes to next line */
 
-    Stringterm(indexfname, 0);
+    Stringtrunc(indexfname, 0);
 
     name = expand_filename(getvar("TFHELP"));
     if ((helpfile = tfopen(name, "r")) == NULL) {
         operror(name);
-        return newint(0);
+        return shareval(val_zero);
     }
 
 #ifndef __CYGWIN32__
     if (helpfile->type == TF_FILE) {
         /* regular file: use index */
         Sprintf(indexfname, 0, "%s.idx", name);
-        if ((indexfile = tfopen(indexfname->s, "r")) == NULL) {
-            operror(indexfname->s);
+        if ((indexfile = tfopen(indexfname->data, "r")) == NULL) {
+            operror(indexfname->data);
             tfclose(helpfile);
-            return newint(0);
+            return shareval(val_zero);
         }
     } else
 #endif
@@ -64,13 +64,13 @@ struct Value *handle_help_command(args)
         indexfile = helpfile;
     }
 
-    name = (*args) ? args : "summary";
+    name = (args->len - offset) ? args->data + offset : "summary";
 
     input = buf0;
     major_buffer = buf1;
     minor_buffer = buf2;
 
-    while (offset < 0 && fgets(input, HELPLEN, indexfile->u.fp) != NULL) {
+    while (location < 0 && fgets(input, HELPLEN, indexfile->u.fp) != NULL) {
         minor_buffer[0] = '\0';
         for (place = input; is_digit(*place); place++);
         if (*place == '&') {
@@ -90,7 +90,7 @@ struct Value *handle_help_command(args)
         if (strcmp(place, name) == 0 ||
             (is_punct(*place) && strcmp(place + 1, name) == 0))
         {
-            offset = atol(input);
+            location = atol(input);
         }
         input = spare;
     }
@@ -98,16 +98,16 @@ struct Value *handle_help_command(args)
     if (indexfile != helpfile)
         tfclose(indexfile);
 
-    if (offset < 0) {
+    if (location < 0) {
         oprintf("%% Help on subject %s not found.", name);
         tfclose(helpfile);
-        return newint(0);
+        return shareval(val_zero);
     }
 
     if (indexfile != helpfile)
-        fseek(helpfile->u.fp, offset, SEEK_SET);
+        fseek(helpfile->u.fp, location, SEEK_SET);
 
-    /* find offset, skip lines matching ^[&#], and remember last topic */
+    /* find location, skip lines matching ^[&#], and remember last topic */
 
     while (fgets(input, HELPLEN, helpfile->u.fp) != NULL) {
         if (*input) input[strlen(input)-1] = '\0';
@@ -148,11 +148,11 @@ struct Value *handle_help_command(args)
             major_topic);
 
     tfclose(helpfile);
-    return newint(1);
+    return shareval(val_one);
 }
 
-#ifdef DMALLOC
-void free_help()
+#if USE_DMALLOC
+void free_help(void)
 {
     Stringfree(indexfname);
 }

@@ -1,20 +1,20 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: signals.c,v 35004.29 1999/01/31 00:27:52 hawkeye Exp $ */
+static const char RCSid[] = "$Id: signals.c,v 35004.44 2003/05/27 01:09:24 hawkeye Exp $";
 
 /* Signal handling, core dumps, job control, and interactive shells */
 
 #include "config.h"
 #include <signal.h>
 #include "port.h"
-#include "dstring.h"
 #include "tf.h"
 #include "util.h"
+#include "search.h"	/* for tfio.h */
 #include "tfio.h"
 #include "world.h" /* for process.h */
 #include "process.h"
@@ -37,8 +37,8 @@ union wait *dummy_union_wait;
  * is to change "#ifdef _POSIX_VERSION" to "#if 0" below.
  */
 
-#ifdef _POSIX_VERSION
-# include <sys/types.h>
+#include <sys/types.h>
+#if HAVE_SYS_WAIT_H
 # include <sys/wait.h>
 #else
 # undef WIFEXITED
@@ -61,10 +61,10 @@ union wait *dummy_union_wait;
 # define WEXITSTATUS(w)  (((*(int *)&(w)) >> 8) & 0xFF) /* works most places */
 #endif
 
-typedef RETSIG FDECL((SigHandler),(int sig));
+typedef RETSIGTYPE (SigHandler)(int sig);
 
-#ifndef HAVE_raise
-# ifdef HAVE_kill
+#if !HAVE_RAISE
+# if HAVE_KILL
 #  define raise(sig) kill(getpid(), sig)
 # endif
 #endif
@@ -120,21 +120,22 @@ VEC_TYPEDEF(sig_set, (NSIG-1));
 
 
 static sig_set pending_signals;
-static RETSIG FDECL((*parent_tstp_handler),(int sig));
+static RETSIGTYPE (*parent_tstp_handler)(int sig);
 
-static void   NDECL(handle_interrupt);
-static void   FDECL(terminate,(int sig));
-static void   NDECL(coremsg);
-static RETSIG FDECL(core_handler,(int sig));
-static RETSIG FDECL(signal_scheduler,(int sig));
+static void   handle_interrupt(void);
+static void   terminate(int sig);
+static void   coremsg(void);
+static RETSIGTYPE core_handler(int sig);
+static RETSIGTYPE signal_scheduler(int sig);
 #ifndef SIG_IGN
-static RETSIG FDECL(SIG_IGN,(int sig));
+static RETSIGTYPE SIG_IGN(int sig);
 #endif
 
 
-static SigHandler *FDECL(setsighandler,(int sig, SigHandler *func));
+static SigHandler *old_sighup_handler;
+static SigHandler *setsighandler(int sig, SigHandler *func);
 
-/* HAVE_sigaction doesn't mean we NEED_sigaction.  On some systems that have
+/* HAVE_SIGACTION doesn't mean we NEED_sigaction.  On some systems that have
  * it, struct sigaction will not get defined unless _POSIX_SOURCE or similar
  * is defined, so it's best to avoid it if we don't need it.
  */
@@ -145,9 +146,7 @@ static SigHandler *FDECL(setsighandler,(int sig, SigHandler *func));
 # define NEED_sigaction
 #endif
 
-static SigHandler *setsighandler(sig, func)
-    int sig;
-    SigHandler *func;
+static SigHandler *setsighandler(int sig, SigHandler *func)
 {
     if (!sig) return NULL;
 #ifndef NEED_sigaction
@@ -171,15 +170,15 @@ static SigHandler *setsighandler(sig, func)
         sigaction(sig, &act, NULL);
         return oldfunc;
     }
-#endif /* HAVE_sigaction */
+#endif /* HAVE_SIGACTION */
 }
 
 
-void init_signals()
+void init_signals(void)
 {
     VEC_ZERO(&pending_signals);
 
-    setsighandler(SIGHUP  , signal_scheduler);
+    old_sighup_handler = setsighandler(SIGHUP  , signal_scheduler);
     setsighandler(SIGINT  , signal_scheduler);
     setsighandler(SIGQUIT , core_handler);
     setsighandler(SIGILL  , core_handler);
@@ -194,40 +193,39 @@ void init_signals()
     setsighandler(SIGUSR2 , signal_scheduler);
     parent_tstp_handler = setsighandler(SIGTSTP , signal_scheduler);
     setsighandler(SIGWINCH, signal_scheduler);
-
 }
 
 #ifndef SIG_IGN
-static RETSIG SIG_IGN(sig)
-    int sig;
+static RETSIGTYPE SIG_IGN(int sig)
 {
     setsighandler(sig, SIG_IGN);  /* restore handler (POSIX) */
 }
 #endif
 
-static void handle_interrupt()
+static void handle_interrupt(void)
 {
     int c;
 
     if (no_tty)
         die("Interrupt, exiting.", 0);
+    reset_kbnum();
     fix_screen();
     puts("C) continue tf; X) exit; T) disable triggers; P) kill processes\r");
     fflush(stdout);
     c = igetchar();
     if (ucase(c) == 'X')
         die("Interrupt, exiting.", 0);
-    setup_screen(0);
+    setup_screen();
     if (ucase(c) == 'T') {
-        set_var_by_id(VAR_borg, 0, NULL);
+        set_var_by_id(VAR_borg, 0);
         oputs("% Cyborg triggers disabled.");
     } else if (ucase(c) == 'P') {
         kill_procs();
+        oputs("% All processes killed.");
     }
-    oputs("% Resuming TinyFugue.");
 }
 
-int suspend()
+int suspend(void)
 {
 #if SIGTSTP
     if (parent_tstp_handler == SIG_DFL) {      /* true for job-control shells */
@@ -237,8 +235,7 @@ int suspend()
         raise(SIGSTOP);
         cbreak_noecho_mode();
         get_window_size();
-        setup_screen(-1);
-        oputs("% Resuming TinyFugue.");
+        redraw();
         check_mail();
         return 1;
     }
@@ -248,8 +245,7 @@ int suspend()
 }
 
 
-static RETSIG core_handler(sig)
-    int sig;
+static RETSIGTYPE core_handler(int sig)
 {
     setsighandler(sig, core_handler);  /* restore handler (POSIX) */
 
@@ -258,15 +254,14 @@ static RETSIG core_handler(sig)
         puts("SIGQUIT received.  Dump core and exit?  (y/n)\r");
         fflush(stdout);
         if (no_tty || igetchar() != 'y') {
-            setup_screen(0);
-            oputs("% Resuming TinyFugue.");
+            setup_screen();
             return;
         }
         fputs("Abnormal termination - SIGQUIT\r\n", stderr);
     }
     setsighandler(sig, SIG_DFL);
     if (sig != SIGQUIT) {
-        panic_fix_screen();
+        minimal_fix_screen();
         coremsg();
         fprintf(stderr, "> Abnormal termination - signal %d\r\n\n", sig);
         fputs("If you can, get a stack trace and send it to the author.\r\n",
@@ -300,6 +295,7 @@ static RETSIG core_handler(sig)
     }
 
     if (!no_tty) {
+	close_all();
         fputs("\nPress any key.\r\n", stderr);
         fflush(stderr);
         igetchar();
@@ -309,13 +305,10 @@ static RETSIG core_handler(sig)
     raise(sig);
 }
 
-void crash(internal, fmt, file, line, n)
-    CONST char *fmt, *file;
-    int internal, line;
-    long n;
+void crash(int internal, const char *fmt, const char *file, int line, long n)
 {
     setsighandler(SIGQUIT, SIG_DFL);
-    panic_fix_screen();
+    minimal_fix_screen();
     reset_tty();
     if (internal) coremsg();
     fprintf(stderr, "> %s:  %s, line %d\r\n",
@@ -326,7 +319,7 @@ void crash(internal, fmt, file, line, n)
     raise(SIGQUIT);
 }
 
-static void coremsg()
+static void coremsg(void)
 {
     fputs("\r\n\nPlease report the following message verbatim to hawkeye@tf.tcp.com.\n", stderr);
     fputs("Also describe what you were doing in tf when this\r\n", stderr);
@@ -335,14 +328,13 @@ static void coremsg()
     if (*sysname) fprintf(stderr, "> %s\r\n", sysname);
     fprintf(stderr,"> visual=%ld, emulation=%ld, lp=%ld, sub=%ld\r\n",
         visual, emulation, lpflag, sub);
-#ifdef SOCKS
+#if SOCKS
     fprintf(stderr,"> SOCKS %d\r\n", SOCKS);
 #endif
     fprintf(stderr,"> TERM=%.32s\r\n", TERM ? TERM : "(NULL)");
 }
 
-static void terminate(sig)
-    int sig;
+static void terminate(int sig)
 {
     setsighandler(sig, SIG_DFL);
     fix_screen();
@@ -351,14 +343,13 @@ static void terminate(sig)
     raise(sig);
 }
 
-static RETSIG signal_scheduler(sig)
-    int sig;
+static RETSIGTYPE signal_scheduler(int sig)
 {
     setsighandler(sig, signal_scheduler);  /* restore handler (POSIX) */
     VEC_SET(sig, &pending_signals);        /* set flag to deal with it later */
 }
 
-void process_signals()
+void process_signals(void)
 {
     if (VEC_ISSET(SIGINT, &pending_signals))   handle_interrupt();
     if (VEC_ISSET(SIGTSTP, &pending_signals))  suspend();
@@ -369,19 +360,20 @@ void process_signals()
     if (VEC_ISSET(SIGUSR1, &pending_signals))  do_hook(H_SIGUSR1, NULL, "");
     if (VEC_ISSET(SIGUSR2, &pending_signals))  do_hook(H_SIGUSR2, NULL, "");
 
-    if (VEC_ISSET(SIGHUP, &pending_signals))   terminate(SIGHUP);
-    if (VEC_ISSET(SIGTERM, &pending_signals))  terminate(SIGTERM);
+    if (VEC_ISSET(SIGHUP, &pending_signals) && old_sighup_handler == SIG_DFL)
+	terminate(SIGHUP);
+    if (VEC_ISSET(SIGTERM, &pending_signals))
+	terminate(SIGTERM);
 
     VEC_ZERO(&pending_signals);
 }
 
-int interrupted()
+int interrupted(void)
 {
     return VEC_ISSET(SIGINT, &pending_signals);
 }
 
-int shell_status(result)
-    int result;
+int shell_status(int result)
 {
     /* If the next line causes errors like "request for member `w_S' in
      * something not a structure or union", then <sys/wait.h> must have
@@ -392,8 +384,7 @@ int shell_status(result)
     return (WIFEXITED(result)) ? WEXITSTATUS(result) : -1;
 }
 
-int shell(cmd)
-    CONST char *cmd;
+int shell(const char *cmd)
 {
     int result;
 
@@ -407,14 +398,12 @@ int shell(cmd)
     if (result == -1) {
         eprintf("%s", strerror(errno));
     } else if (shpause && !no_tty) {
-        oputs("% Press any key to continue.");
-        oflush();
+        puts("\r\n% Press any key to continue tf.\r");
         igetchar();
     }
     get_window_size();
-    setup_screen(-1);
+    redraw();
     if (result == -1) return result;
-    do_hook(H_RESUME, "%% Resuming TinyFugue.", "");
     check_mail();
 #ifdef PLATFORM_OS2
     return result;

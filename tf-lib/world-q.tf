@@ -19,15 +19,23 @@
 
 /def -ib'^[w' = /to_active_or_prev_world
 
+; Use %1 instead of $world_name so this can be called by name
 /def -iFp1 -h"ACTIVITY" activity_queue_hook = \
-    /enqueue %1 active_worlds
+;   world may already be in active_worlds because of scrollback
+    /if /test active_worlds !/ "*{%1}*"%; /then \
+	/enqueue %1 active_worlds%; \
+    /endif
 
 ; don't queue world "rwho".
 /def -ip2 -msimple -h"ACTIVITY rwho" activity_rwho_hook
 
 /def -iFp1 -h"WORLD" prev_world_hook =\
     /if (fg_world !~ "") \
-        /set prev_worlds=%fg_world $(/remove %fg_world %prev_worlds)%;\
+        /if (nactive(fg_world)) \
+            /set active_worlds=%{active_worlds} %{fg_world}%; \
+        /else \
+            /set prev_worlds=%fg_world $(/remove %fg_world %prev_worlds)%;\
+        /endif%; \
     /endif%;\
     /set fg_world=${world_name}%;\
     /if (fg_world !~ "") \

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: history.c,v 35004.61 1999/01/31 00:27:44 hawkeye Exp $ */
+static const char RCSid[] = "$Id: history.c,v 35004.91 2003/05/27 01:09:22 hawkeye Exp $";
 
 
 /****************************************************************
@@ -15,13 +15,12 @@
  * Handles text queuing and file I/O for logs.                  *
  ****************************************************************/
 
-#ifndef NO_HISTORY
-
+#include <limits.h>
 #include "config.h"
 #include "port.h"
-#include "dstring.h"
 #include "tf.h"
 #include "util.h"
+#include "search.h"		/* CQueue; List in recall_history() */
 #include "tfio.h"
 #include "history.h"
 #include "socket.h"		/* xworld() */
@@ -29,40 +28,33 @@
 #include "output.h"		/* update_status_field(), etc */
 #include "macro.h"		/* add_macro(), new_macro() */
 #include "commands.h"
-#include "search.h"		/* List in recall_history() */
 #include "keyboard.h"		/* keybuf */
 #include "variable.h"		/* set_var_by_*() */
 #include "signals.h"		/* interrupted() */
+
+int feature_history = !(NO_HISTORY - 0);
+#if !NO_HISTORY
 
 #define GLOBALSIZE    1000	/* global history size */
 #define LOCALSIZE      100	/* local history size */
 #define INPUTSIZE      100	/* command history buffer size */
 
-typedef struct History {	/* circular list of Alines, and logfile */
-    struct Aline **alines;
-    int size;			/* actual number of lines currently saved */
-    int maxsize;		/* maximum number of lines that can be saved */
-    int first;			/* position of first line in circular array */
-    int last;			/* position of last line in circular array */
-    int index;			/* current recall position */
-    int total;			/* total number of lines ever saved */
+typedef struct History {	/* circular list of lines, and logfile */
+    CQueue cq;
     TFILE *logfile;
-    CONST char *logname;
+    const char *logname;
 } History;
 
-#define empty(hist) (!(hist)->alines || !(hist)->size)
-
-static void     FDECL(alloc_history,(History *hist, int maxsize));
-static int      FDECL(next_hist_opt,(char **argp, History **histp, long *nump));
-static void     FDECL(save_to_hist,(History *hist, Aline *aline));
-static void     FDECL(save_to_log,(History *hist, CONST char *str));
-static void     FDECL(hold_input,(CONST char *str, struct timeval *tv));
-static void     FDECL(listlog,(World *world));
-static void     FDECL(stoplog,(World *world));
-static int      FDECL(do_watch,(char *args, int id, int *wlines, int *wmatch));
+static int      next_hist_opt(char **ptr, int *offsetp, History **histp,
+		    struct timeval *timep, long *ival);
+static void     save_to_hist(History *hist, String *line);
+static void     save_to_log(History *hist, const String *str);
+static void     hold_input(const String *str);
+static void     listlog(World *world);
+static void     stoplog(World *world);
+static int      do_watch(char *args, int id, int *wlines, int *wmatch);
 
 
-static Aline blankline[1] = { BLANK_ALINE };
 static struct History input[1];
 static int wnmatch = 4, wnlines = 5, wdmatch = 2, wdlines = 5;
 
@@ -71,47 +63,38 @@ int log_count = 0;
 int norecord = 0;	/* supress history (but not log) recording */
 int nolog = 0;		/* supress log (but not history) recording */
 
-struct History *init_history(hist, maxsize)
-    History *hist;
-    int maxsize;
+#define histline(hist, i) \
+    ((String*)(hist)->cq.data[nmod(i, (hist)->cq.maxsize)])
+
+static void free_hist_datum(void *datum, const char *file, int line)
+{
+    Stringfree_fl(datum, file, line);
+}
+
+struct History *init_history(History *hist, int maxsize)
 {
     if (!hist) hist = (History*)XMALLOC(sizeof(History));
     hist->logfile = NULL;
-    hist->last = hist->index = -1;
-    hist->first = hist->size = hist->total = 0;
-    alloc_history(hist, maxsize);
+    init_cqueue(&hist->cq, maxsize, free_hist_datum);
     return hist;
 }
 
-static void alloc_history(hist, maxsize)
-    History *hist;
-    int maxsize;
+inline void sync_input_hist(void)
 {
-    hist->maxsize = maxsize;
-    if (maxsize) {
-        hist->alines =
-            (Aline**)dmalloc(maxsize * sizeof(Aline *), __FILE__, __LINE__);
-        if (!hist->alines) {
-            eprintf("not enough memory for %d lines of history.", maxsize);
-            hist->maxsize = 1;
-            hist->alines = (Aline**)XMALLOC(1 * sizeof(Aline *));
-        }
-    } else {
-        hist->alines = NULL;
-    }
+    input->cq.index = input->cq.last;
 }
 
-void init_histories()
+void init_histories(void)
 {
     init_history(input, INPUTSIZE);
     init_history(globalhist, GLOBALSIZE);
     init_history(localhist, LOCALSIZE);
     save_to_hist(input, blankline);
-    input->index = input->last;
+    sync_input_hist();
 }
 
-#ifdef DMALLOC
-void free_histories()
+#if USE_DMALLOC
+void free_histories(void)
 {
     free_history(input);
     free_history(globalhist);
@@ -119,114 +102,83 @@ void free_histories()
 }
 #endif
 
-void free_history(hist)
-    History *hist;
+void free_history(History *hist)
 {
-    if (hist->alines) {
-        for ( ; hist->size; hist->size--) {
-            free_aline(hist->alines[hist->first]);
-            hist->first = nmod(hist->first + 1, hist->maxsize);
-        }
-        hist->first = 0;
-        hist->last = -1;
-        FREE(hist->alines);
-        if (hist->logfile) {
-            tfclose(hist->logfile);
-            --log_count;
-            update_status_field(NULL, STAT_LOGGING);
-        }
+    free_cqueue(&hist->cq);
+    if (hist->logfile) {
+	tfclose(hist->logfile);
+	--log_count;
+	update_status_field(NULL, STAT_LOGGING);
     }
 }
 
-static void save_to_hist(hist, aline)
-    History *hist;
-    Aline *aline;
+static void save_to_hist(History *hist, String *line)
 {
-    if (aline->tv.tv_sec < 0) gettime(&aline->tv);
-    if (!hist->alines)
-        alloc_history(hist, hist->maxsize ? hist->maxsize : histsize);
-    if (hist->size == hist->maxsize) {
-        free_aline(hist->alines[hist->first]);
-        hist->first = nmod(hist->first + 1, hist->maxsize);
-    } else {
-        hist->size++;
-    }
-    hist->last = nmod(hist->last + 1, hist->maxsize);
-    (hist->alines[hist->last] = aline)->links++;
-    hist->total++;
+    if (line->time.tv_sec < 0) gettime(&line->time);
+    if (!hist->cq.data)
+	hist->cq.maxsize = histsize;
+    encqueue(&hist->cq, line);
+    line->links++;
 }
 
-static void save_to_log(hist, str)
-    History *hist;
-    CONST char *str;
+static void save_to_log(History *hist, const String *str)
 {
     if (wraplog) {
         /* ugly, but some people want it */
         STATIC_BUFFER(buf);
+	char *p = str->data;
         int i = 0, first = TRUE, len, remaining;
-        for (remaining = strlen(str); remaining; str += len, remaining -= len) {
+        for (remaining = str->len; remaining; p += len, remaining -= len) {
             if (!first && wrapflag)
                 for (i = wrapspace; i; i--) tfputc(' ', hist->logfile);
-            len = wraplen(str, remaining, !first);
-            if (str[len]) {
+            len = wraplen(p, remaining, !first);
+            if (p[len]) {
                 /* stupid copy, just to give right length string to tfputs().
                  * (We can't just write a '\0' into str: it could be const).
                  */
-                Stringncpy(buf, str, len);
-                tfputs(buf->s, hist->logfile);
+                Stringncpy(buf, p, len);
+                tfputline(buf, hist->logfile);
             } else {
-                tfputs(str, hist->logfile);
+                tfputs(p, hist->logfile);
             }
             first = FALSE;
         }
     } else {
-        tfputs(str, hist->logfile);
+        tfputs(str->data, hist->logfile);
     }
     tfflush(hist->logfile);
 }
 
-void recordline(hist, aline)
-    History *hist;
-    Aline *aline;
+void recordline(History *hist, String *line)
 {
-    if (!(aline->attrs & F_NOHISTORY) && !norecord) save_to_hist(hist, aline);
-    if (hist->logfile && !nolog) save_to_log(hist, aline->str);
+    if (!(line->attrs & F_NOHISTORY) && !norecord) save_to_hist(hist, line);
+    if (hist->logfile && !nolog) save_to_log(hist, line);
 }
 
-static void hold_input(str, tv)
-    CONST char *str;
-    struct timeval *tv;
+static void hold_input(const String *instr)
 {
-    free_aline(input->alines[input->last]);
-    input->alines[input->last] = new_aline(str, sockecho ? 0 : F_GAG);
-    input->alines[input->last]->links++;
-    if (tv) {
-        input->alines[input->last]->tv.tv_sec = tv->tv_sec;
-        input->alines[input->last]->tv.tv_usec = tv->tv_usec;
-    } else {
-        gettime(&input->alines[input->last]->tv);
-    }
+    String *str = Stringnew(instr->data, -1, sockecho() ? 0 : F_GAG);
+    str->links++;
+    gettime(&str->time);
+    cqueue_replace(&input->cq, str, input->cq.last);
 }
 
-void record_input(str, tv)
-    CONST char *str;
-    struct timeval *tv;
+void record_input(const String *str)
 {
-    char *prev_line;
-    int duplicate = 0;
+    int is_duplicate = 0;
 
-    input->index = input->last;
+    sync_input_hist();
 
-    if (!*str) return;
-    if (input->size > 1) {
-        prev_line = input->alines[nmod(input->last-1, input->maxsize)]->str;
-        duplicate = (strcmp(str, prev_line) == 0);
+    if (!str->data) return;
+    if (input->cq.size > 1) {
+        const String *prev_line = histline(input, input->cq.last-1);
+        is_duplicate = (strcmp(str->data, prev_line->data) == 0);
     }
 
-    if (!duplicate) {
-        hold_input(str, tv);
+    if (!is_duplicate) {
+        hold_input(str);
         save_to_hist(input, blankline);
-        input->index = input->last;
+        sync_input_hist();
     }
 
     if (input->logfile && !nolog) save_to_log(input, str);
@@ -234,94 +186,91 @@ void record_input(str, tv)
 
 /* recall_input() parameter combinations:
  *
- *    dir    searchflag meaning
- *  -------- ---------- -------
- *  -1 or 1     0       single step backward or forward
- *  -1 or 1     1       search backward or forward
- *  -2 or 2   ignored   go to beginning or end
+ * mode=0: step n times
+ * mode=1: search n times
+ * mode=2: go to end with sign(n)
  */
 
-Aline *recall_input(dir, searchflag)
-    int dir;
-    int searchflag;
+String *recall_input(int n, int mode)
 {
-    int i;
-    Aline *pat = NULL;
+    int i, stop, dir;
+    String *str, *pat = NULL;
+    CQueue *cq = &input->cq;
 
-    if (input->index == input->last) hold_input(keybuf->s, NULL);
+    if (cq->index == cq->last) hold_input(keybuf);
 
-    if (dir < -1 || dir > 1) {
-        i = (dir < 0) ? input->first : input->last;
-        if (input->index == i) return NULL;
-        dir = (dir < 0) ? 1 : -1;
+    stop = (n < 0) ? cq->first : cq->last;
+    if (cq->index == stop) return NULL;
+    dir = (n < 0) ? -1 : 1;
+    if (mode == 2) {
+	i = stop;
     } else {
-        pat = searchflag ? input->alines[input->last] : NULL;
-        i = input->index;
-        if (i == ((dir < 0) ? input->first : input->last)) return NULL;
-        i = nmod(i + dir, input->maxsize);
+        i = nmod(cq->index + dir, cq->maxsize);
+        pat = (mode==1) ? cq->data[cq->last] : NULL;
     }
+    if (n < 0) n = -n;
 
-    /* Keep looking while lines are gagged.
-     * If pat, also keep looking while lines are too short or don't match.
-     */
-    while ((input->alines[i]->attrs & F_GAG) || (pat &&
-        (input->alines[i]->len <= pat->len ||
-        strncmp(input->alines[i]->str, pat->str, pat->len) != 0)))
-    {
-        if (i == ((dir < 0) ? input->first : input->last)) return NULL;
-        i = nmod(i + dir, input->maxsize);
+    /* Search until we find a non-gagged match. */
+#define match(s, p) (s->len > p->len && strncmp(s->data, p->data, p->len) == 0)
+    while (1) {
+	str = (String*)cq->data[i];
+	if ((!(str->attrs & F_GAG) && (!pat || match(str, pat))))
+	    if (!--n) break;
+	if (i == stop) return NULL;
+	i = nmod(i + dir, cq->maxsize);
     }
+#undef match
 
-    input->index = i;
-    return input->alines[i];
+    cq->index = i;
+    return str;
 }
 
-struct Value *handle_recall_command(args)
-    char *args;
+struct Value *handle_recall_command(String *args, int offset)
 {
-    return newint(do_recall(args));
+    return newint(do_recall(args, offset));
 }
 
-int do_recall(args)
-    char *args;
+int do_recall(String *args, int offset)
 {
-    int n0, n1, istime, i, ii, want;
-    int count = 0, mflag = matching, quiet = 0, truth = !0;
-    long n_or_t = 0;
-    TIME_T t0, t1;
-    int numbers;
-    CONST char *recall_time_format = NULL;
+    int hist_start, n0, n1, i, j, want, numbers;
+    int count = 0, mflag = matching, quiet = 0, truth = !0, jump = 256;
+    long ival;
+    int before = 0, after = 0, out_of_range = 0;
+    int lastprinted, incontext;
+    Value val[1];
+    struct timeval tv0, tv1, *tvp0, *tvp1;
+    char *ptr;
+    AUTO_BUFFER(recall_time_format);
     attr_t attrs = 0;
-    short *partials = NULL;
     char opt;
     Pattern pat;
     World *world = xworld();
     History *hist = NULL;
-    Aline *aline;
+    String *line;
     static List stack[1] = {{ NULL, NULL }};
-    STATIC_BUFFER(buffer);
-    static Aline startmsg = LITERAL_ALINE("---- Recall start ----");
-    static Aline endmsg = LITERAL_ALINE("---- Recall end ----");
-#ifdef LOCALITY
+    String *buffer = NULL;
+    STATIC_STRING(startmsg, "================ Recall start ================",0);
+    STATIC_STRING(endmsg,   "================= Recall end =================",0);
+    STATIC_STRING(divider, "--", 0);
+#if DEVELOPMENT
     int locality;
-    Aline *nextaline = NULL;
+    String *nextline = NULL;
 #endif
 
     init_pattern_str(&pat, NULL);
-    startopt(args, "ligw:a:f:t:m:vq");
-    while ((opt = next_hist_opt(&args, &hist, NULL))) {
+    startopt(args, "ligw:a:f:t:m:vqA#B#C#");
+    while ((opt = next_hist_opt(&ptr, &offset, &hist, NULL, &ival))) {
         switch (opt) {
         case 'a': case 'f':
-            if ((i = parse_attrs(&args)) < 0)
+            if ((i = parse_attrs(&ptr)) < 0)
                 goto do_recall_exit;
             attrs |= i;
             break;
         case 't':
-            if (recall_time_format) FREE(recall_time_format);
-            recall_time_format = STRDUP(args);
+	    Stringcpy(recall_time_format, ptr);
             break;
         case 'm':
-            if ((mflag = enum2int(args, enum_match, "-m")) < 0)
+            if ((mflag = enum2int(ptr, 0, enum_match, "-m")) < 0)
                 goto do_recall_exit;
             break;
         case 'v':
@@ -330,183 +279,256 @@ int do_recall(args)
         case 'q':
             quiet = 1;
             break;
+        case 'A':
+	    after = ival;
+            break;
+        case 'B':
+	    before = ival;
+            break;
+        case 'C':
+	    before = after = ival;
+            break;
         default: goto do_recall_exit;
         }
     }
     if (!hist) hist = world ? world->history : globalhist;
-#ifdef LOCALITY
-    if ((locality = (args && *args == '?'))) args++;
+    ptr = args->data + offset;
+#if DEVELOPMENT
+    if ((locality = (ptr && *ptr == '?'))) ptr++;
 #endif
-    if ((numbers = (args && *args == '#'))) args++;
-    while(is_space(*args)) args++;
+    if ((numbers = (ptr && *ptr == '#'))) ptr++;
+    while (is_space(*ptr)) ptr++;
 
-    t0 = 0;
-    t1 = -1;
+    tvp0 = tvp1 = NULL;
     n0 = 0;
-    n1 = hist->total - 1;
-    want = hist->size;
+    n1 = hist->cq.total - 1;
+    want = hist->cq.size;
 
-    if (!args || !*args) {
-        n_or_t = -1;  /* flag syntax error */
+    if (!ptr || !*ptr) {
         eprintf("missing arguments");
         goto do_recall_exit;
-    } else if (*args == '-') {                                 /*  -y */
-        ++args;
-        if ((n_or_t = parsetime(&args, &istime)) < 0) {
+
+    } else if (*ptr == '-') {                                 /*  -y */
+        ++ptr;
+	if (!parsenumber(ptr, &ptr, TYPE_TIME | TYPE_INT, val)) {
             eprintf("syntax error in recall range");
             goto do_recall_exit;
         }
-        if (istime) t1 = abstime(n_or_t);
-        else n0 = n1 = hist->total - n_or_t;
-    } else if (*args == '/') {                                 /*  /x */
-        ++args;
-        want = strtoint(&args);
-    } else if (is_digit(*args)) {
-        if ((n_or_t = parsetime(&args, &istime)) < 0) {
+        if (val->type & TYPE_TIME) {
+	    tvp1 = &tv1;
+	    tv1 = val->u.tval;
+	    if (val->type & TYPE_HMS)
+		abstime(&tv1);
+        } else /* if (val->type & TYPE_INT) */ {
+            n0 = n1 = hist->cq.total - val->u.ival;
+        }
+
+    } else if (*ptr == '/') {                                 /*  /x */
+        ++ptr;
+        want = strtoint(ptr, &ptr);
+
+    } else if (is_digit(*ptr)) {                              /* x... */
+	if (!parsenumber(ptr, &ptr, TYPE_TIME | TYPE_INT, val)) {
             eprintf("syntax error in recall range");
             goto do_recall_exit;
-        } else if (*args != '-') {                             /* x   */
-            if (istime) t0 = time(NULL) - n_or_t;
-            else n0 = hist->total - n_or_t;
-        } else if (is_digit(*++args)) {                        /* x-y */
-            if (istime) t0 = abstime(n_or_t);
-            else n0 = n_or_t - 1;
-            if ((n_or_t = parsetime(&args, &istime)) < 0) {
-                eprintf("syntax error in recall range");
-                goto do_recall_exit;
+        }
+        if (val->type & TYPE_TIME) {
+            tvp0 = &tv0;
+	    tv0 = val->u.tval;
+        } else /* if (val->type & TYPE_INT) */ {
+            n0 = val->u.ival;
+        }
+        if (*ptr != '-') {                                    /* x   */
+            if (val->type & TYPE_TIME) {
+                struct timeval now;
+                gettime(&now);
+                tvsub(&tv0, &now, &tv0);
+            } else {
+                n0 = hist->cq.total - n0;
             }
-            if (istime) t1 = abstime(n_or_t);
-            else n1 = n_or_t - 1;
+        } else if (is_digit(*++ptr)) {                        /* x-y */
+            if (val->type & TYPE_INT) n0 = n0 - 1;
+            else if (val->type & TYPE_HMS) abstime(&tv0);
+
+	    if (!parsenumber(ptr, &ptr, TYPE_TIME | TYPE_INT, val)) {
+		eprintf("syntax error in recall range");
+		goto do_recall_exit;
+	    }
+            if (val->type & TYPE_TIME) {
+		tvp1 = &tv1;
+		tv1 = val->u.tval;
+                if (val->type & TYPE_HMS)
+                    abstime(&tv1);
+            } else /* if (type & TYPE_INT) */ {
+                n1 = val->u.ival - 1;
+            }
         } else {                                               /* x-  */
-            if (istime) t0 = abstime(n_or_t);
-            else n0 = n_or_t - 1;
+            if (val->type & TYPE_INT) n0 = n0 - 1;
+            else if (val->type & TYPE_HMS) abstime(&tv0);
         }
     }
-    if (*args && !is_space(*args)) {
-        eprintf("extra characters after recall range: %s", args);
+    if (*ptr && !is_space(*ptr)) {
+        eprintf("extra characters after recall range: %s", ptr);
         goto do_recall_exit;
     }
-    while (is_space(*args)) ++args;
-    if (*args && !init_pattern(&pat, args, mflag))
+    while (is_space(*ptr)) ++ptr;
+    if (*ptr && !init_pattern(&pat, ptr, mflag))
         goto do_recall_exit;
 
-    if (empty(hist))
+    if (hist->cq.size == 0)
         goto do_recall_exit;            /* (after parsing, before searching) */
 
     if (!quiet && tfout == tfscreen) {
         norecord++;                     /* don't save this output in history */
-        oputa(&startmsg);
+        oputline(startmsg);
         oflush();			/* in case this takes a while */
     }
 
-    if (n0 < hist->total - hist->size) n0 = hist->total - hist->size;
-    if (n1 >= hist->total) n1 = hist->total - 1;
-    if (n0 <= n1 && (t0 <= t1 || t1 < 0)) {
-        n0 = nmod(n0, hist->maxsize);
-        n1 = nmod(n1, hist->maxsize);
+    hist_start = hist->cq.total - hist->cq.size;
+    if (n0 < hist_start) n0 = hist_start;
+    if (n1 >= hist->cq.total) n1 = hist->cq.total - 1;
+    if (n0 <= n1 && (!tvp0 || !tvp1 || tvcmp(tvp0, tvp1) <= 0)) {
         attrs = ~attrs;
 
-        if (hist == input) hold_input(keybuf->s, NULL);
-        for (i = n1; want > 0; i = nmod(i - 1, hist->maxsize)) {
+	lastprinted = n1 + 1;
+	incontext = 0;
+        if (hist == input) hold_input(keybuf);
+        for (i = n1; i >= hist_start; i--) {
+	    if (i < n0 || want <= 0) {
+		if (incontext) out_of_range = 1;
+		else break;
+	    }
+
+            line = histline(hist, i);
             if (interrupted()) {
-                eprintf("history scan interrupted at #%d",
-                    hist->total - nmod(hist->last - i, hist->maxsize));
+		(buffer = Stringnew(NULL, 32, 0))->links++;
+		tftime(buffer, blankline, &line->time);
+                eprintf("history scan interrupted at #%d, %S", i, buffer);
+		Stringfree(buffer);
+		buffer = NULL;
                 break;
             }
-            if (i == n0) want = 0;
-            aline = hist->alines[i];
-            /* globalhist isn't chronological, but we can optimize others. */
-            if (aline->tv.tv_sec < t0) {
-                if (hist == globalhist) continue;
-                else break;
-            }
-            if (t1 >=0 && aline->tv.tv_sec > t1) continue;
-            if (gag && (aline->attrs & F_GAG & attrs)) continue;
-            if (!patmatch(&pat, aline->str) == truth) continue;
-            want--;
-            Stringterm(buffer, 0);
-            if (numbers)
-                Sprintf(buffer, SP_APPEND, "%d: ",
-                    hist->total - nmod(hist->last - i, hist->maxsize));
-            if (recall_time_format) {
-                if (!*recall_time_format) {
-                    Stringadd(buffer, '[');
-                    tftime(buffer, time_format,
-                        aline->tv.tv_sec, aline->tv.tv_usec);
-                    Stringadd(buffer, ']');
-                } else {
-                    tftime(buffer, recall_time_format,
-                        aline->tv.tv_sec, aline->tv.tv_usec);
-                }
-                Stringadd(buffer, ' ');
-            }
 
-            /* share aline if possible: copy only if different */
-            partials = NULL;
-            if (aline->partials &&
-                (buffer->len || (aline->attrs & ~attrs & F_ATTR)))
-            {
-                partials = XMALLOC(sizeof(short) * (buffer->len+aline->len));
-                for (ii = 0; ii < buffer->len; ii++)
-                    partials[ii] = 0;
-                memcpy(partials + buffer->len, aline->partials,
-                    sizeof(short) * aline->len);
-            }
-#ifdef LOCALITY
-            if (locality) {
-                char sign = '+';
-                long diff = (char*)nextaline - (char*)aline;
-                if (nextaline > aline) diff -= sizeof(Aline) + aline->len;
-                else diff += nextaline ? (sizeof(Aline) + nextaline->len) : 0;
-                if (diff < 0) { sign = '-', diff = -diff; }
-                Sprintf(buffer, 0, "%d (%08lx): %c%lx",
-                    hist->total - nmod(hist->last - i, hist->maxsize), aline,
-                    sign, diff);
-                nextaline = aline;
-                aline = new_aline(buffer->s, 0);
-            } else
+            if (tvp1 && tvcmp(&line->time, tvp1) > 0) {
+		/* globalhist isn't chronological, but we can optimize others */
+		if (hist == globalhist || !jump)
+		    continue;
+
+		/* take large steps backward searching for something < tv1 */
+		for (i -= jump; i >= n0; i -= jump) {
+		    line = histline(hist, i);
+		    if (tvcmp(&line->time, tvp1) <= 0)
+			break;
+		}
+		i += jump;
+		jump = 0;	/* don't do this again */
+		continue;
+	    }
+            /* globalhist isn't chronological, but we can optimize others */
+            if (tvp0 && tvcmp(&line->time, tvp0) < 0) {
+		if (incontext) {
+		    out_of_range = 1;
+		} else {
+		    if (hist == globalhist) continue;
+		    break;
+		}
+	    }
+
+            if (gag && (line->attrs & F_GAG & attrs)) continue;
+
+            if (!out_of_range && !!patmatch(&pat, line, NULL) == truth) {
+		want--;
+		j = i + after;
+		if (j >= lastprinted - 1) {
+		    j = lastprinted - 1;
+		} else if ((before || after) && stack->head) {
+		    inlist((void*)divider, stack, NULL);
+		}
+		incontext = before;
+	    } else if (incontext) {
+		incontext--;
+		j = i;
+	    } else {
+		continue;
+	    }
+
+	    for ( ; j >= i; j--) {
+		line = histline(hist, j);
+		if (numbers) {
+		    if (!buffer)
+			buffer= Stringnew(NULL, line->len + 8, 0);
+		    Sprintf(buffer, SP_APPEND, "%d: ", j+1);
+		}
+		if (recall_time_format->data) {
+		    if (!buffer)
+			buffer= Stringnew(NULL, line->len + 20, 0);
+		    if (!*recall_time_format->data) {
+			Stringadd(buffer, '[');
+			tftime(buffer, time_format, &line->time);
+			Stringadd(buffer, ']');
+		    } else {
+			tftime(buffer, recall_time_format, &line->time);
+		    }
+		    Stringadd(buffer, ' ');
+		}
+
+#if DEVELOPMENT
+		if (locality) {
+		    char sign = '+';
+		    long diff = (char*)nextline - (char*)line;
+		    if (nextline > line) diff -= sizeof(String) + line->size;
+		    else diff += nextline ? (sizeof(String)+nextline->size) : 0;
+		    if (diff < 0) { sign = '-'; diff = -diff; }
+		    if (!buffer)
+			buffer = Stringnew(NULL, 40, 0);
+		    Sprintf(buffer, 0, "%d (%010p): %c%lx", j, line, sign, diff);
+		    nextline = line;
+		    line = buffer;
+		    buffer = NULL;
+		} else
 #endif
-            if (buffer->len) {
-                Stringfncat(buffer, aline->str, aline->len);
-                aline = new_aline(buffer->s, aline->attrs & attrs);
-                if (partials) aline->partials = partials;
-            } else if (aline->attrs & ~attrs & F_ATTR) {
-                aline = new_aline(aline->str, aline->attrs & attrs);
-                if (partials) aline->partials = partials;
-            }
+		/* share line if possible: copy only if different */
+		if (buffer) {
+		    line = SStringcat(buffer, line);
+		    line->attrs &= attrs & F_ATTR;
+		    buffer = NULL;
+		} else if (line->attrs & ~attrs & F_ATTR) {
+		    line = Stringnew(line->data, line->len, line->attrs & attrs);
+		}
 
-            inlist((GENERIC*)aline, stack, NULL);
+		inlist((void*)line, stack, NULL);
+		lastprinted = j;
+		count++;
+	    }
         }
     }
 
-    for (count = 0; stack->head; count++)
-        oputa((Aline *)unlist(stack->head, stack));
+    while (stack->head)
+        oputline((String *)unlist(stack->head, stack));
 
     if (!quiet && tfout == tfscreen) {
-        oputa(&endmsg);
+        oputline(endmsg);
         norecord--;
     }
 
 do_recall_exit:
     free_pattern(&pat);
-    if (recall_time_format) FREE(recall_time_format);
+    Stringfree(recall_time_format);
 
     return count;
 }
 
-static int do_watch(args, id, wlines, wmatch)
-    char *args;
-    int id, *wlines, *wmatch;
+static int do_watch(char *args, int id, int *wlines, int *wmatch)
 {
     int out_of, match;
 
     if (!*args) {
-        oprintf("%% %s %sabled.", special_var[id].name,
-            special_var[id].ival ? "en" : "dis");
+        oprintf("%% %s %sabled.", special_var[id].val.name,
+            getintvar(id) ? "en" : "dis");
         return 1;
     } else if (cstrcmp(args, "off") == 0) {
-        set_var_by_id(id, 0, NULL);
-        oprintf("%% %s disabled.", special_var[id].name);
+        set_var_by_id(id, 0);
+        oprintf("%% %s disabled.", special_var[id].val.name);
         return 1;
     } else if (cstrcmp(args, "on") == 0) {
         /* do nothing */
@@ -516,96 +538,95 @@ static int do_watch(args, id, wlines, wmatch)
         *wmatch = match;
         *wlines = out_of;
     }
-    set_var_by_id(id, 1, NULL);
+    set_var_by_id(id, 1);
     oprintf("%% %s enabled, searching for %d out of %d lines",
-        special_var[id].name, *wmatch, *wlines);
+        special_var[id].val.name, *wmatch, *wlines);
     return 1;
 }
 
-struct Value *handle_watchdog_command(args)
-    char *args;
+struct Value *handle_watchdog_command(String *args, int offset)
 {
-    return newint(do_watch(args, VAR_watchdog, &wdlines, &wdmatch));
+    return newint(do_watch(args->data + offset, VAR_watchdog,
+        &wdlines, &wdmatch));
 }
 
-struct Value *handle_watchname_command(args)
-    char *args;
+struct Value *handle_watchname_command(String *args, int offset)
 {
-    return newint(do_watch(args, VAR_watchname, &wnlines, &wnmatch));
+    return newint(do_watch(args->data + offset, VAR_watchname,
+        &wnlines, &wnmatch));
 }
 
-int is_watchname(hist, aline)
-    History *hist;
-    Aline *aline;
+int is_watchname(History *hist, String *line)
 {
     int nmatches = 1, i;
-    CONST char *line, *end;
+    const char *old, *end;
     STATIC_BUFFER(buf);
 
-    if (!watchname || !gag || aline->attrs & F_GAG) return 0;
-    if (is_space(*aline->str)) return 0;
-    for (end = aline->str; *end && !is_space(*end); ++end);
-    for (i = ((wnlines >= hist->size) ? hist->size - 1 : wnlines); i > 0; i--) {
-        line = hist->alines[nmod(hist->last - i, hist->maxsize)]->str;
-        if (strncmp(line, aline->str, end - aline->str) != 0) continue;
+    if (!watchname || !gag || line->attrs & F_GAG) return 0;
+    if (is_space(*line->data)) return 0;
+    for (end = line->data; *end && !is_space(*end); ++end);
+    for (i = ((wnlines >= hist->cq.size) ? hist->cq.size - 1 : wnlines);
+	i > 0; i--)
+    {
+        old = histline(hist, hist->cq.last - i)->data;
+        if (strncmp(old, line->data, end - line->data) != 0) continue;
         if (++nmatches == wnmatch) break;
     }
     if (nmatches < wnmatch) return 0;
-    Sprintf(buf, 0, "{%.*s}*", end - aline->str, aline->str);
+    Sprintf(buf, 0, "{%.*s}*", end - line->data, line->data);
     oprintf("%% Watchname: gagging \"%S\"", buf);
-    return add_macro(new_macro(buf->s, "", 0, NULL, "", gpri, 100, F_GAG, 0,
+    return add_macro(new_macro(buf->data, "", 0, NULL, "", gpri, 100, F_GAG, 0,
         MATCH_GLOB));
 }
 
-int is_watchdog(hist, aline)
-    History *hist;
-    Aline *aline;
+int is_watchdog(History *hist, String *line)
 {
     int nmatches = 0, i;
-    CONST char *line;
+    const char *old;
 
-    if (!watchdog || !gag || aline->attrs & F_GAG) return 0;
-    for (i = ((wdlines >= hist->size) ? hist->size - 1 : wdlines); i > 0; i--) {
-        line = hist->alines[nmod(hist->last - i, hist->maxsize)]->str;
-        if (cstrcmp(line, aline->str) == 0 && (++nmatches == wdmatch)) return 1;
+    if (!watchdog || !gag || line->attrs & F_GAG) return 0;
+    for (i = ((wdlines >= hist->cq.size) ? hist->cq.size - 1 : wdlines);
+	i > 0; i--)
+    {
+        old = histline(hist, hist->cq.last - i)->data;
+        if (cstrcmp(old, line->data) == 0 && (++nmatches == wdmatch)) return 1;
     }
     return 0;
 }
 
-String *history_sub(pattern)
-    CONST char *pattern;
+String *history_sub(String *line)
 {
-    int i;
-    Aline **L = input->alines;
-    char *replace, *loc = NULL;
+    STATIC_BUFFER(pattern);
     STATIC_BUFFER(buffer);
+    char *replacement, *loc;
+    String *src;
+    int i;
 
-    if (empty(input) || !*pattern) return NULL;
-    if ((replace = strchr(pattern, '^')) == NULL) return NULL;
-    *replace = '\0';
-    for (i = 1; i < input->size; i++) {
-        loc = strstr(L[nmod(input->last - i, input->maxsize)]->str, pattern);
-        if (loc) break;
+    pattern->data = line->data + 1;
+    if (!(replacement = strchr(pattern->data, '^'))) return NULL;
+    *replacement = '\0';
+    pattern->len = replacement - pattern->data;
+    for (i = 1; i < input->cq.size; i++) {
+	src = histline(input, input->cq.last - i);
+	loc = strstr(src->data, pattern->data);
+	if (loc) break;
     }
-    *replace++ = '^';
+    *(replacement++) = '^';
     if (!loc) return NULL;
-    i = nmod(input->last - i, input->maxsize);
-    Stringterm(buffer, 0);
-    Stringfncat(buffer, L[i]->str, loc - L[i]->str);
-    Stringcat(buffer, replace);
-    Stringcat(buffer, loc + ((replace - 1) - pattern));
+    Stringtrunc(buffer, 0);
+    SStringncat(buffer, src, loc - src->data);
+    SStringocat(buffer, line, replacement - line->data);
+    SStringocat(buffer, src, loc - src->data + pattern->len);
     return buffer;
 }
 
-static void stoplog(world)
-    World *world;
+static void stoplog(World *world)
 {
     if (world->history->logfile) tfclose(world->history->logfile);
     world->history->logfile = NULL;
 }
 
-static void listlog(world)
-    World *world;
+static void listlog(World *world)
 {
     if (world->history->logfile)
         oprintf("%% Logging world %s output to %s",
@@ -618,89 +639,90 @@ static void listlog(world)
  * selected by the "ligw:" options.  *histp will be unchanged if no relavant
  * options are given; the caller should assign a default before calling.
  */
-static int next_hist_opt(argp, histp, nump)
-    char **argp;
-    History **histp;
-    long *nump;
+static int next_hist_opt(char **ptr, int *offsetp, History **histp,
+    struct timeval *timep, long *ival)
 {
     World *world;
-    char c;
+    char c, *p;
+    int selected = 0;
 
-    while ((c = nextopt(argp, nump))) {
+    if (!ptr) ptr = &p;
+    while ((c = nextopt(ptr, ival, timep, offsetp))) {
         switch (c) {
         case 'l':
+	    if (selected++) goto multiple_error;
             *histp = localhist;
             break;
         case 'i':
+	    if (selected++) goto multiple_error;
             *histp = input;
             break;
         case 'g':
+	    if (selected++) goto multiple_error;
             *histp = globalhist;
             break;
         case 'w':
-            if (!(world = (**argp) ? find_world(*argp) : xworld())) {
-                eprintf("No world %s", *argp);
+	    if (selected++) goto multiple_error;
+            if (!(world = named_or_current_world(*ptr)))
                 return '?';
-            } else *histp = world->history;
+	    *histp = world->history;
             break;
         default:
-            return c;
+            return c;                /* let caller handle it */
         }
     }
     return c;
+
+multiple_error:
+    eprintf("only one of the -ligw options may be used.");
+    return '?';
 }
 
-struct Value *handle_recordline_command(args)
-    char *args;
+struct Value *handle_recordline_command(String *args, int offset)
 {
     History *history = globalhist;
     char opt;
-    struct timeval timestamp;
-    long sec;
-    Aline *aline;
+    struct timeval tv, *tvp = NULL;
+    String *line;
 
-    timestamp.tv_sec = sec = -1;
-    timestamp.tv_usec = 0;
-
-    startopt(args, "lgiw:t#");
-    while ((opt = next_hist_opt(&args, &history, &sec))) {
-        if (opt != 't') return newint(0);
+    startopt(args, "lgiw:t@");
+    while ((opt = next_hist_opt(NULL, &offset, &history, &tv, NULL))) {
+        if (opt == 't') tvp = &tv;
+        else return shareval(val_zero);
     }
-    timestamp.tv_sec = sec;
 
     nolog++;
-    if (history == input) {
-        record_input(args, timestamp.tv_sec >= 0 ? &timestamp : NULL);
-    } else {
-        aline = new_aline(args, 0);
-        if (timestamp.tv_sec >= 0) {
-            aline->tv.tv_sec = timestamp.tv_sec;
-            aline->tv.tv_usec = timestamp.tv_usec;
-        }
-        recordline(history, aline);
-    }
+    (line = Stringodup(args, offset))->links++;
+    if (tvp)
+	line->time = tv;
+    if (history == input)
+	record_input(line);
+    else
+	recordline(history, line);
+    Stringfree(line);
     nolog--;
-    return newint(1);
+    return shareval(val_one);
 }
 
-struct Value *handle_log_command(args)
-    char *args;
+struct Value *handle_log_command(String *args, int offset)
 {
     History *history;
     History dummy;
     TFILE *logfile = NULL;
+    const char *name;
 
     if (restriction >= RESTRICT_FILE) {
         eprintf("restricted");
-        return newint(0);
+        return shareval(val_zero);
     }
 
     history = &dummy;
     startopt(args, "lgiw:");
-    if (next_hist_opt(&args, &history, NULL))
-        return newint(0);
+    if (next_hist_opt(NULL, &offset, &history, NULL, NULL))
+        return shareval(val_zero);
 
-    if (history == &dummy && !*args) {
+    if (history == &dummy && !(args->len - offset)) {
+	/* "/log" */
         if (log_count) {
             if (input->logfile)
                 oprintf("%% Logging input to %s", input->logfile->name);
@@ -714,8 +736,9 @@ struct Value *handle_log_command(args)
         } else {
             oputs("% Logging disabled.");
         }
-        return newint(1);
-    } else if (cstrcmp(args, "OFF") == 0) {
+        return shareval(val_one);
+    } else if (cstrcmp(args->data + offset, "OFF") == 0) {
+	/* "/log [options] OFF" */
         if (history == &dummy) {
             if (log_count) {
                 if (input->logfile) tfclose(input->logfile);
@@ -734,17 +757,20 @@ struct Value *handle_log_command(args)
             --log_count;
             update_status_field(NULL, STAT_LOGGING);
         }
-        return newint(1);
-    } else if (cstrcmp(args, "ON") == 0 || !*args) {
-        if (!(args = tfname(NULL, "LOGFILE")))
-            return newint(0);
-        logfile = tfopen(args, "a");
+        return shareval(val_one);
+    } else if (cstrcmp(args->data+offset, "ON") == 0 || !(args->len - offset)) {
+	/* "/log [options] [ON]" */
+        if (!(name = tfname(NULL, "LOGFILE")))
+            return shareval(val_zero);
+        logfile = tfopen(name, "a");
     } else {
-        logfile = tfopen(expand_filename(args), "a");
+	/* "/log [options] <filename>" */
+        name = expand_filename(args->data + offset);
+        logfile = tfopen(name, "a");
     }
     if (!logfile) {
-        operror(args);
-        return newint(0);
+        operror(name);
+        return shareval(val_zero);
     }
     if (history == &dummy) history = globalhist;
     if (history->logfile) {
@@ -756,65 +782,47 @@ struct Value *handle_log_command(args)
     history->logfile = logfile;
     log_count++;
     update_status_field(NULL, STAT_LOGGING);
-    return newint(1);
+    return shareval(val_one);
 }
 
 #define histname(hist) \
         (hist == globalhist ? "global" : (hist == localhist ? "local" : \
         (hist == input ? "input" : "world")))
 
-struct Value *handle_histsize_command(args)
-    char *args;
+struct Value *handle_histsize_command(String *args, int offset)
 {
     History *hist;
-    int first, last, size, maxsize = 0;
-    Aline **alines;
+    int maxsize = 0, size;
+    char *ptr;
 
     hist = globalhist;
     startopt(args, "lgiw:");
-    if (next_hist_opt(&args, &hist, NULL))
-        return newint(0);
-    if (*args) {
-        if ((maxsize = numarg(&args)) <= 0) return newint(0);
+    if (next_hist_opt(NULL, &offset, &hist, NULL, NULL))
+        return shareval(val_zero);
+    if (args->len - offset) {
+        ptr = args->data + offset;
+        if ((maxsize = numarg(&ptr)) <= 0) return shareval(val_zero);
         if (maxsize > 100000) {
             eprintf("%d lines?  Don't be ridiculous.", maxsize);
-            return newint(0);
+            return shareval(val_zero);
         }
-        alines =
-            (Aline**)dmalloc(maxsize * sizeof(Aline *), __FILE__, __LINE__);
-        if (!alines) {
-            eprintf("not enough memory for %d lines.", maxsize);
-            return newint(0);
-        }
-        first = nmod(hist->total, maxsize);
-        last = nmod(hist->total - 1, maxsize);
-        for (size = 0; hist->size; hist->size--) {
-            if (size < maxsize) {
-                first = nmod(first - 1, maxsize);
-                alines[first] = hist->alines[hist->last];
-                size++;
-            } else {
-                free_aline(hist->alines[hist->last]);
-            }
-            hist->last = nmod(hist->last - 1, hist->maxsize);
-        }
-        if (hist->alines) FREE(hist->alines);
-        hist->alines = alines;
-        hist->first = first;
-        hist->last = last;
-        hist->size = size;
-        hist->maxsize = maxsize;
+	if (!resize_cqueue(&hist->cq, maxsize)) {
+	    eprintf("not enough memory for %d lines.", maxsize);
+	    maxsize = 0;
+	}
+	/* XXX resize corresponding screen */
     }
+    size = hist->cq.maxsize ? hist->cq.maxsize : histsize;
     oprintf("%% %s history capacity %s %ld lines.",
         histname(hist), maxsize ? "changed to" : "is",
-        hist->maxsize ? hist->maxsize : histsize);
-    hist->index = hist->last;
-    return newint(hist->maxsize);
+        size);
+    hist->cq.index = hist->cq.last;
+    return newint(size);
 }
 
-void sync_input_hist()
+long hist_getsize(const struct History *hist)
 {
-    input->index = input->last;
+    return (hist && hist->cq.maxsize) ? hist->cq.maxsize : histsize;
 }
 
 #endif /* NO_HISTORY */

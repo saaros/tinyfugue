@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expr.c,v 35004.40 1999/01/31 00:27:42 hawkeye Exp $ */
+static const char RCSid[] = "$Id: expr.c,v 35004.110 2003/05/27 01:09:21 hawkeye Exp $";
 
 
 /********************************************************************
@@ -17,15 +17,15 @@
 
 #include "config.h"
 #include <math.h>
+#include <limits.h>
 #include "port.h"
-#include "dstring.h"
 #include "tf.h"
 #include "util.h"
+#include "search.h"
 #include "tfio.h"
 #include "macro.h"
 #include "signals.h"	/* interrupted() */
-#include "socket.h"	/* sockidle() */
-#include "search.h"
+#include "socket.h"	/* socktime() */
 #include "output.h"	/* igoto() */
 #include "keyboard.h"	/* do_kb*() */
 #include "parse.h"
@@ -39,90 +39,67 @@
 #include "world.h"	/* new_world() */
 
 
-/* note: all 2-char operators must have high bit set */
-#define OP_EQUAL    '\300'   /*  ==  */
-#define OP_NOTEQ    '\301'   /*  !=  */
-#define OP_GTE      '\302'   /*  >=  */
-#define OP_LTE      '\303'   /*  <=  */
-#define OP_STREQ    '\304'   /*  =~  */
-#define OP_STRNEQ   '\305'   /*  !~  */
-#define OP_MATCH    '\306'   /*  =/  */
-#define OP_NMATCH   '\307'   /*  !/  */
-#define OP_ASSIGN   '\310'   /*  :=  */
-#define OP_PREINC   '\311'   /*  ++  */
-#define OP_PREDEC   '\312'   /*  --  */
-#define OP_FUNC     '\313'   /*  name(...)  */
-
-#define STACKSIZE 128
+#define STACKSIZE 512
 
 int stacktop = 0;
 Value *stack[STACKSIZE];
+int feature_float = !NO_FLOAT;
 
 static Value *valpool = NULL;		/* freelist */
 
 
-#ifndef NO_FLOAT
-# define newfloat(f)  newfloat_fl(f, __FILE__, __LINE__)
-static Value *FDECL(newfloat_fl,(double f, CONST char *file, int line));
-static double FDECL(valfloat,(Value *val));
-static int    FDECL(mathtype,(Value *val));
-#endif /* NO_FLOAT */
-static int    FDECL(vallen,(Value *val));
-static long   FDECL(valint,(Value *val));
-static int    NDECL(comma_expr);
-static int    NDECL(assignment_expr);
-static int    NDECL(conditional_expr);
-static int    NDECL(or_expr);
-static int    NDECL(and_expr);
-static int    NDECL(relational_expr);
-static int    NDECL(additive_expr);
-static int    NDECL(multiplicative_expr);
-static int    NDECL(unary_expr);
-static int    NDECL(primary_expr);
-static int    FDECL(reduce,(int op, int n));
-static Value *FDECL(function_switch,(int symbol, int n, CONST char *parent));
-static Value *FDECL(do_function,(int n));
+static int    comma_expr(Program *prog);
+static int    assignment_expr(Program *prog);
+static int    conditional_expr(Program *prog);
+static int    or_expr(Program *prog);
+static int    and_expr(Program *prog);
+static int    relational_expr(Program *prog);
+static int    additive_expr(Program *prog);
+static int    multiplicative_expr(Program *prog);
+static int    unary_expr(Program *prog);
+static int    primary_expr(Program *prog);
+static Value *reduce_arithmetic(opcode_t op, int n);
+static Value *function_switch(int symbol, int n, const char *parent);
+static Value *do_function(int n);
 
 
-/* get Nth operand from stack (counting backwards from top) */
-#define opd(N)      (stack[stacktop-(N)])
-#define opdfloat(N) valfloat(opd(N))
-#define opdint(N)   valint(opd(N))
-#define opdbool(N)  valbool(opd(N))
-#define opdstr(N)   valstr(opd(N))
-#define opdlen(N)   vallen(opd(N))
+/* dup string operand */
+#define opdstrdup(N) Stringdup(opdstr(N))
 
 typedef struct ExprFunc {
-    CONST char *name;		/* name invoked by user */
+    const char *name;		/* name invoked by user */
     unsigned min, max;		/* allowable argument counts */
 } ExprFunc;
 
 static ExprFunc functab[] = {
-#define funccode(id, name, min, max)  { name, min, max }
+#define funccode(id, name, pure, min, max)  { name, min, max }
 #include "funclist.h"
 #undef funccode
 };
 
 enum func_id {
-#define funccode(id, name, min, max)  id
+#define funccode(id, name, pure, min, max)  id
 #include "funclist.h"
 #undef funccode
 };
 
-
-int expr()
+int expr(Program *prog)
 {
     int ok;
+#if 0
     int stackbot = stacktop;
     int old_eflag = evalflag;
     int old_condition = condition;
     int old_breaking = breaking;
+#endif
 
-    ok = comma_expr();
+    ok = comma_expr(prog);
+
+#if 0
     if (ok && stacktop != stackbot + 1) {
-        internal_error(__FILE__, __LINE__);
-        eputs((stacktop < stackbot + 1) ?
-            "% expression stack underflow" : "% dirty expression stack");
+        internal_error(__FILE__, __LINE__,
+	    (stacktop < stackbot + 1) ?
+            "expression stack underflow" : "dirty expression stack");
         ok = 0;
     }
     while (stacktop > stackbot + ok) freeval(stack[--stacktop]);
@@ -131,224 +108,389 @@ int expr()
     evalflag = old_eflag;
     condition = old_condition;
     breaking = exiting ? -1 : old_breaking;
+#endif
 
     return ok;
 }
 
 /* Returns the value of expression.  Caller must freeval() the value. */
-Value *expr_value(expression)
-    CONST char *expression;
+Value *expr_value(const char *expression)
 {
-    Value *result = NULL;
-    CONST char *saved_ip = ip;
+    Program *prog;
+    Value *result;
+    String *str;
 
-    ip = expression;
-    if (expr()) {
-        if (*ip) parse_error("expression", "operator");
-        result = stack[--stacktop];
-    }
-    ip = saved_ip;
+    str = Stringnew(expression, -1, 0); /* XXX String should be a parameter */
+    if (!(prog = compile_tf(str, 0, -1, 1, 0))) return NULL;
+    result = prog_interpret(prog, 1);
+    prog_free(prog);
     return result;
 }
 
-Value *expr_value_safe(expression)
-    CONST char *expression;
+Value *expr_value_safe(Program *prog)
 {
     Value *result;
+#if 0 /* XXX */
+    int old_eflag = evalflag;
+    int old_condition = condition;
+    int old_breaking = breaking;
     TFILE *old_tfin = tfin, *old_tfout = tfout;
-    result = expr_value(expression);
+
+    evalflag = 1;
+    condition = 1;
+    breaking = 0;
+#endif
+
+    result = prog_interpret(prog, 1);
+
+#if 0 /* XXX */
     tfin = old_tfin;    /* in case expression closed tfin */
     tfout = old_tfout;  /* in case expression closed tfout */
+    evalflag = old_eflag;
+    condition = old_condition;
+    breaking = old_breaking;
+#endif
     return result;
 }
 
 
-#ifndef NO_FLOAT
-static Value *newfloat_fl(f, file, line)
-    double f;
-    CONST char *file;
-    int line;
+#if !NO_FLOAT
+Value *newfloat_fl(double f, const char *file, int line)
 {
     Value *val;
 
-    if (breaking || !evalflag || !condition) return NULL;
     palloc(val, Value, valpool, u.next, file, line);
     val->count = 1;
     val->type = TYPE_FLOAT;
     val->u.fval = f;
-    val->len = -1;
+    val->name = NULL;
+    val->sval = NULL;
     return val;
-}
-
-/* get math type of item: float or int */
-static int mathtype(val)
-    Value *val;
-{
-    CONST char *str;
-    long result;
-
-    if (val->type == TYPE_INT || val->type == TYPE_FLOAT)
-        return val->type;
-    str = val->u.sval;
-    if (val->type == TYPE_ID) {
-        str = getnearestvar(str, &result);
-        if (result >= 0 || !str) return TYPE_INT;
-    }
-    while (is_space(*str)) ++str;
-    while (*str == '-' || *str == '+') ++str;
-    if (str[0] == '.' && is_digit(str[1])) return TYPE_FLOAT;
-    if (!is_digit(*str)) return TYPE_INT;
-    ++str;
-    while (is_digit(*str)) ++str;
-    if (*str == '.') return TYPE_FLOAT;
-    if (ucase(*str) != 'E') return TYPE_INT;
-    ++str;
-    if (*str == '-' || *str == '+') ++str;
-    if (is_digit(*str)) return TYPE_FLOAT;
-    return TYPE_INT;
 }
 #endif /* NO_FLOAT */
 
-Value *newint_fl(i, file, line)
-    long i;
-    CONST char *file;
-    int line;
+inline Value *newval_fl(const char *file, int line)
 {
     Value *val;
 
-    if (breaking || !evalflag || !condition) return NULL;
     palloc(val, Value, valpool, u.next, file, line);
     val->count = 1;
-    val->type = TYPE_INT;
-    val->u.ival = i;
-    val->len = -1;
+    val->name = NULL;
+    val->sval = NULL;
     return val;
 }
 
-Value *newstrid(str, len, type, file, line)
-    CONST char *str, *file;
-    int len, type, line;
+Value *newint_fl(long i, const char *file, int line)
+{
+    Value *val;
+
+    val = newval();
+    val->type = TYPE_INT;
+    val->u.ival = i;
+    return val;
+}
+
+Value *newtime_fl(long s, long u, const char *file, int line)
+{
+    Value *val;
+
+    val = newval();
+    val->type = TYPE_TIME;
+    val->u.tval.tv_sec = s;
+    val->u.tval.tv_usec = u;
+    return val;
+}
+
+Value *newstr_fl(const char *data, int len, const char *file, int line)
+{
+    Value *val;
+
+    val = newval();
+    val->type = TYPE_STR;
+    (val->sval = Stringnew(data, len, 0))->links++;
+    val->u.p = NULL;
+    return val;
+}
+
+/* newSstr shares argument; caller must Stringdup() if needed. */
+Value *newSstr_fl(String *str, const char *file, int line)
+{
+    Value *val;
+
+    val = newval();
+    val->type = TYPE_STR;
+    (val->sval = str)->links++;
+    val->u.p = NULL;
+    return val;
+}
+
+Value *newid_fl(const char *id, int len, const char *file, int line)
 {
     Value *val;
     char *new;
 
-    if (breaking || !evalflag || !condition) return NULL;
-    palloc(val, Value, valpool, u.next, file, line);
-    val->count = 1;
-    val->type = type;
-    if (len < 0) len = strlen(str);
-    new = strncpy((char *)xmalloc(len + 1, file, line), str, len);
+    val = newval();
+    val->type = TYPE_ID;
+    new = strncpy((char *)xmalloc(NULL, len + 1, file, line), id, len);
     new[len] = '\0';
-    val->u.sval = new;
-    val->len = len;
+    val->name = new;
+    val->u.hash = hash_string(new);	/* cache hashkey to speed lookup */
     return val;
 }
 
-void freeval(val)
+/* Push a void pointer. */
+Value *newptr_fl(void *ptr, const char *file, int line)
+{
     Value *val;
+
+    val = newval();
+    val->type = TYPE_FILE;
+    val->u.p = ptr;
+    return val;
+}
+
+/* If val is an ID, create a copy of its value, free the ID, return the copy;
+ * otherwise, just return val.
+ */
+Value *valval_fl(Value *val, const char *file, int line)
+{
+    Value *result;
+    struct timeval tv;
+
+    if (!val->name)
+	return val;
+    if (!(result = hgetnearestvarval(val->name, val->u.hash))) {
+	result = newSstr_fl(blankline, file, line);
+    } else {
+	switch (result->type) {
+	case TYPE_ENUM:
+	case TYPE_POS:
+	case TYPE_INT:
+	    result = newint_fl(result->u.ival, file, line); break;
+	case TYPE_TIME:
+	    valtime(&tv, result);
+	    result = newtime_fl(tv.tv_sec, tv.tv_usec, file, line); break;
+	case TYPE_FLOAT:
+	    result = newfloat_fl(valfloat(result), file, line); break;
+	default:
+	    result = newSstr_fl(valstr(result), file, line); break;
+	}
+    }
+    freeval(val);
+    return result;
+}
+
+/* free value of val (but not its name) */
+void clearval_fl(Value *val, const char *file, int line)
+{
+    if (val->sval) {
+        Stringfree_fl(val->sval, file, line);
+	val->sval = NULL;
+    }
+
+    if (val->type & TYPE_REGEX) {
+	tf_reg_free(val->u.ri);
+    }
+    if (val->type & TYPE_EXPR) {
+	prog_free(val->u.prog);
+    }
+    val->type &= TYPES_BASIC;
+
+    val->u.ival = 0;
+}
+
+void freeval_fl(Value *val, const char *file, int line)
 {
     if (!val) return;
-    if (--val->count) return;
-    if (val->type == TYPE_STR || val->type == TYPE_ID) FREE(val->u.sval);
-    pfree(val, valpool, u.next);
+    if (--val->count > 0) return;
+    assert(val->count == 0); 
+    clearval_fl(val, file, line);
+    if (val->name) {
+        xfree(NULL, (void*)val->name, file, line);
+	val->name = NULL;
+    }
+    pfree_fl(val, valpool, u.next, file, line);
+}
+
+/* Return numeric value of val (converting ID or STR if needed) */
+static Value *valnum(Value *val)
+{
+    static Value parsed[1]; /* NB: may return pointer to this */
+
+    if (!val) return NULL;
+    if (val->type == TYPE_ID)
+        if (!(val = hgetnearestvarval(val->name, val->u.hash)))
+            return NULL;
+
+    if (val->type & TYPE_STR) {
+        if (!val->sval) return NULL;
+        if (!parsenumber(val->sval->data, NULL, TYPE_NUM, parsed)) {
+#if 0
+            if (pedantic)
+                eprintf("warning: %s",
+                    "non-numeric string value used in numeric context");
+#endif
+            return NULL;
+        }
+	val = parsed;
+    }
+    return val;
 }
 
 /* return boolean value of item */
-int valbool(val)
-    Value *val;
+int valbool(Value *val)
 {
-    if (!val) return 0;
-#ifndef NO_FLOAT
-    if (mathtype(val) == TYPE_FLOAT) return !!val->u.fval;
-#endif
-    return !!valint(val);
-}
+    if (!(val = valnum(val)))
+	return 0;
 
-/* return integer value of item */
-static long valint(val)
-    Value *val;
-{
-    CONST char *str;
-    long result;
-
-    if (!val) return 0;
-    if (val->type == TYPE_INT) return val->u.ival;
-#ifndef NO_FLOAT
-    if (val->type == TYPE_FLOAT) return (int)val->u.fval;
+    if (val->type & (TYPE_INT | TYPE_POS | TYPE_ENUM))
+        return !!val->u.ival;
+    if (val->type & TYPE_TIME)
+        return (val->u.tval.tv_sec || val->u.tval.tv_usec);
+#if !NO_FLOAT
+    else if (val->type & TYPE_FLOAT)
+        return !!val->u.fval;
 #endif
-    str = val->u.sval;
-    if (val->type == TYPE_ID) {
-        str = getnearestvar(str, &result);
-        if (result >= 0) return result;
-        if (!str) return 0;
-    }
-    while (is_space(*str)) ++str;
-    if (*str == '-' || *str == '+') return atol(str);
-    if (is_digit(*str)) return parsetime((char **)&str, NULL);
-    if (*str && pedantic)
-        eprintf("warning: non-numeric string value used in numeric context");
     return 0;
 }
 
-#ifndef NO_FLOAT
-/* return floating value of item */
-static double valfloat(val)
-    Value *val;
+/* return integer value of item */
+long valint(Value *val)
 {
-    CONST char *str;
-    double result;
-    long i;
+    if (!(val = valnum(val)))
+	return 0;
 
-    if (!val) return 0.0;
-    errno = 0;
-    if (val->type == TYPE_FLOAT) return val->u.fval;
-    if (val->type == TYPE_INT) return (double)val->u.ival;
-    str = val->u.sval;
-    if (val->type == TYPE_ID) {
-        str = getnearestvar(str, &i);
-        if (i >= 0) return (double)i;
-        if (!str) return 0.0;
+    if (val->type & (TYPE_INT | TYPE_POS | TYPE_ENUM))
+        return val->u.ival;
+    if (val->type & TYPE_TIME)
+        return (long)val->u.tval.tv_sec;
+#if !NO_FLOAT
+    else if (val->type & TYPE_FLOAT) {
+        double fival = val->u.fval < 0 ? ceil(val->u.fval) : floor(val->u.fval);
+        if (fival != (long)val->u.fval) {
+	    eprintf("real value too large to convert to integer");
+	}
+        return (long)val->u.fval;
     }
-    result = strtod(str, (char**)&str);
-    return result;
+#endif
+    return 0;
+}
+
+/* copy timeval of item */
+void valtime(struct timeval *tvp, Value *val)
+{
+    if (!(val = valnum(val)))
+	goto valtime_error;
+
+    /* *tvp and val->u might be aliases, so we can't write to *tvp if we still
+     * need to read from val->u. */
+
+    if (val->type & (TYPE_INT | TYPE_POS | TYPE_ENUM)) {
+        tvp->tv_sec = val->u.ival;
+        tvp->tv_usec = 0;
+    } else if (val->type & TYPE_TIME) {
+        *tvp = val->u.tval;
+#if !NO_FLOAT
+    } else if (val->type & TYPE_FLOAT) {
+        long ival = (long)val->u.fval;
+        double fival = val->u.fval < 0 ? ceil(val->u.fval) : floor(val->u.fval);
+        if (fival != ival) {
+	    eprintf("real value too large to convert to time");
+	}
+        tvp->tv_usec = (long)((val->u.fval - ival) * 1000000);
+        tvp->tv_sec = ival;
+#endif
+    }
+    return;
+
+valtime_error:
+    *tvp = tvzero;
+    return;
+}
+
+#if !NO_FLOAT
+/* return floating value of item */
+double valfloat(Value *val)
+{
+    if (!val) return 0.0;
+    if (val->type == TYPE_ID) {
+        if (!(val = hgetnearestvarval(val->name, val->u.hash)))
+            return 0.0;
+    }
+    errno = 0;
+    if (val->type & TYPE_FLOAT)
+        return val->u.fval;
+    if (val->type & (TYPE_INT | TYPE_POS | TYPE_ENUM))
+        return (double)val->u.ival;
+    if (val->type & TYPE_TIME)
+        return (double)val->u.tval.tv_sec + val->u.tval.tv_usec / 1000000.0;
+    return val->sval ? strtod(val->sval->data, NULL) : 0.0;
 }
 #endif /* NO_FLOAT */
 
-/* return string value of item (only valid for lifetime of val!) */
-CONST char *valstr(val)
-    Value *val;
+/* return String value of item (only valid for lifetime of val!) */
+String *valstr(Value *val)
 {
-    CONST char *str;
-    static char buffer[32];
+    const char *p;
 
-    if (!val) return "";
-    switch (val->type) {
-        case TYPE_INT:  sprintf(buffer, "%ld", val->u.ival); return buffer;
-        case TYPE_STR:  return val->u.sval;
-        case TYPE_ID:   return (str=getnearestvar(val->u.sval,NULL)) ? str : "";
-#ifndef NO_FLOAT
-        case TYPE_FLOAT:
-            /* Note: with more than 15 significant figures, rounding errors
-             * become visible. */
-            sprintf(buffer, "%.15g", val->u.fval);
-            if (!strchr(buffer, '.'))
-                strcat(buffer, ".0");
-            return buffer;
-#endif
+    if (!val) return NULL;
+    if (val->type == TYPE_ID) {
+        if (!(val = hgetnearestvarval(val->name, val->u.hash)))
+            return blankline;
     }
-    return NULL; /* impossible */
+
+    /* use existing sval (but floats may be affected by %sigfigs) */
+    if (val->sval && val->type != TYPE_FLOAT)
+        return val->sval;
+
+    /* generate and cache new sval */
+    switch (val->type & TYPES_BASIC) {
+        case TYPE_STR:
+        case TYPE_ENUM:
+            val->sval = blankline;
+            break;
+        case TYPE_INT:
+        case TYPE_POS:
+            val->sval = Stringnew(NULL, 0, 0);
+            Sprintf(val->sval, 0, "%ld", val->u.ival);
+            break;
+        case TYPE_TIME:
+            val->sval = Stringnew(NULL, 0, 0);
+            tftime(val->sval, NULL, &val->u.tval);
+            break;
+#if !NO_FLOAT
+        case TYPE_FLOAT:
+	    if (val->sval) Stringfree(val->sval);
+	    val->sval = Stringnew(NULL, 0, 0);
+            Sprintf(val->sval, 0, "%.*g", sigfigs, val->u.fval);
+            /* note: appending ".0" could imply more precision than is proper */
+            for (p = val->sval->data; is_digit(*p); p++) ;
+            if (!*p)
+                Stringadd(val->sval, '.');
+            break;
+#endif
+        default:
+	    internal_error(__FILE__, __LINE__, "valstr: impossible type %d",
+		val->type);
+	    return NULL;
+    }
+    val->sval->links++;
+    return val->sval;
 }
 
-/* return length of string value of item */
-static int vallen(val)
-    Value *val;
+/* return String data (char*) of item (only valid for lifetime of val!) */
+const char *valstd(Value *val)
 {
-    if (!val) return 0;
-    return (val->type == TYPE_STR) ? val->len : strlen(valstr(val));
+    return val ? valstr(val)->data : NULL;
 }
 
-int pushval(val)
-    Value *val;
+/* Return void pointer value of item.  Internal, conversion not needed. */
+void *valptr(Value *val)
+{
+    return val ? val->u.p : NULL;
+}
+
+int pushval(Value *val)
 {
     if (stacktop == STACKSIZE) {
         eprintf("expression stack overflow");
@@ -360,43 +502,39 @@ int pushval(val)
 }
 
 /* Pop n operands, apply op to them, and push result */
-static int reduce(op, n)
-    int op;   /* operator */
-    int n;    /* number of operands */
+int reduce(opcode_t op, int n)
 {
     Value *val = NULL;
     Var *var;
-    char buf[16];
     long i; /* scratch */
-#ifndef NO_FLOAT
-    double f[3];
-    int do_float = FALSE;
-#endif
 
     if (stacktop < n) {
-        internal_error(__FILE__, __LINE__);
-        eputs("% stack underflow");
+	if (oplabel[opnum(op)])
+	    internal_error(__FILE__, __LINE__,
+		"stack underflow, op=%s, n=%d", oplabel[opnum(op)], n);
+	else
+	    internal_error(__FILE__, __LINE__,
+		"stack underflow, op=0x%04X, n=%d", op, n);
         return 0;
     }
 
-    if (!evalflag || !condition || breaking) {
-        /* Just maintain the depth of the stack, for parsing purposes;
-         * the (nonexistant) value will never be used.
-         */
-        stacktop -= n - 1;
-        return 1;
-    }
-
-    if (op == '/' && (block == IF || block == WHILE) &&
-        opd(1)->type == TYPE_ID && !getnearestvar(opd(1)->u.sval, NULL))
+    if (op == '/' && (block == IF || block == ELSEIF || block == WHILE) &&
+	opd(1)->type == TYPE_ID && !hfindnearestvar(opd(1)->name, opd(1)->u.hash))
     {
-        /* common error: "/if /test expr /then ..." */
-        /* common error: "/if (expr /true_branch ..." */
-        eprintf("%% warning: possibly missing %s before /%s", "%; or )",
-            opd(1)->u.sval);
+	/* common error: "/{if,while} /test expr /{then,do,stuff} ..." */
+	/* common error: "/{if,while} (expr /stuff ..." */
+	eprintf("%% warning: possibly missing '%s' before /%s",
+	    (cstrcmp(current_command, "test") == 0) ? "%;" : ")",
+	    opd(1)->name);
     }
 
-#ifndef NO_FLOAT
+    if ((op == OP_ASSIGN || op == OP_PREINC || op == OP_PREDEC) &&
+        (opd(n)->type != TYPE_ID))
+    {
+        eprintf("illegal object of assignment");
+        goto reduce_exit;
+    }
+
     switch (op) {
     case '>':
     case '<':
@@ -409,151 +547,283 @@ static int reduce(op, n)
     case '-':
     case '*':
     case '/':
-    case '!':
-        for (i = 1; i <= n; i++) {
-            if (mathtype(opd(i)) != TYPE_INT) {
-                do_float = TRUE;
-                break;
-            }
-        }
-
-        if (do_float) {
-#if 0
-            for (i = 1; i <= n; i++)
-                f[i] = opdfloat(i);
-#else
-            switch(n) {
-                case 3: f[3] = opdfloat(3);
-                case 2: f[2] = opdfloat(2);
-                case 1: f[1] = opdfloat(1);
-            }
-#endif
-        }
-
-        break;
-    default:
-        break;
-    }
-
-    if (do_float) {
-        errno = 0;
-        switch (op) {
-        case '>':       val = newint(f[2] > f[1]);                 break;
-        case '<':       val = newint(f[2] < f[1]);                 break;
-        case '=':       /* fall thru to OP_EQUAL */
-        case OP_EQUAL:  val = newint(f[2] == f[1]);                break;
-        case OP_NOTEQ:  val = newint(f[2] != f[1]);                break;
-        case OP_GTE:    val = newint(f[2] >= f[1]);                break;
-        case OP_LTE:    val = newint(f[2] <= f[1]);                break;
-        case '+':       val = newfloat(((n>1) ? f[2] : 0) + f[1]); break;
-        case '-':       val = newfloat(((n>1) ? f[2] : 0) - f[1]); break;
-        case '*':       val = newfloat(f[2] * f[1]);               break;
-        case '/':       val = newfloat(f[2] / f[1]);               break;
-        case '!':       val = newint(!f[1]);                       break;
-        default:        break;
-        }
-        if (val->type == TYPE_FLOAT &&
+        val = reduce_arithmetic(op, n);
+        if (val && val->type == TYPE_FLOAT &&
             (val->u.fval == HUGE_VAL || val->u.fval == -HUGE_VAL))
         {
-            /* note: only single-char ops can overflow */
+            /* assumption: only single-char ops can overflow */
             eprintf("%c operator: arithmetic overflow", op);
             freeval(val);
             val = NULL;
         }
-    } else
-#endif /* NO_FLOAT */
+        break;
 
-    if ((op == OP_ASSIGN || op == OP_PREINC || op == OP_PREDEC) &&
-        (opd(n)->type != TYPE_ID))
-    {
-        eprintf("illegal object of assignment");
-
-    } else {
-        switch (op) {
-        case OP_ASSIGN: var = setnearestvar(opd(2)->u.sval, opdstr(1));
-                        val = var ? newstr(var->value,var->len) : newstr("",0);
-                        break;
-        case OP_PREDEC: /* fall through */
-        case OP_PREINC: i = opdint(1) + ((op == OP_PREINC) ? 1 : -1);
-                        sprintf(buf, "%ld", i);
-                        var = setnearestvar(opd(1)->u.sval, buf);
-                        val = var ? newint(i) : newint(0);
-                        break;
-        case '>':       val = newint(opdint(2) > opdint(1));             break;
-        case '<':       val = newint(opdint(2) < opdint(1));             break;
-        case '=':       /* fall thru to OP_EQUAL */
-        case OP_EQUAL:  val = newint(opdint(2) == opdint(1));            break;
-        case OP_NOTEQ:  val = newint(opdint(2) != opdint(1));            break;
-        case OP_GTE:    val = newint(opdint(2) >= opdint(1));            break;
-        case OP_LTE:    val = newint(opdint(2) <= opdint(1));            break;
-        case OP_STREQ:  val = newint(strcmp(opdstr(2), opdstr(1)) == 0); break;
-        case OP_STRNEQ: val = newint(strcmp(opdstr(2), opdstr(1)) != 0); break;
-        case OP_MATCH:  val = newint(smatch_check(opdstr(1)) &&
-                            smatch(opdstr(1),opdstr(2))==0);
-                        break;
-        case OP_NMATCH: val = newint(smatch_check(opdstr(1)) &&
-                            smatch(opdstr(1),opdstr(2))!=0);
-                        break;
-        case '+':       val = newint(((n>1) ? opdint(2) : 0) + opdint(1));
-                        break;
-        case '-':       val = newint(((n>1) ? opdint(2) : 0) - opdint(1));
-                        break;
-        case '*':       val = newint(opdint(2) * opdint(1));             break;
-        case '/':       if ((i = opdint(1)) == 0)
-                            eprintf("division by zero");
-                        else
-                            val = newint(opdint(2) / i);
-                        break;
-        case '!':       val = newint(!opdint(1));                        break;
-        case OP_FUNC:   val = do_function(n);                            break;
-        default:        internal_error(__FILE__, __LINE__);
-                        eprintf("internal error: reduce: bad op %#o", op);
-                        break;
+    case OP_ASSIGN: {
+            type_t type, basic_type;
+            void *value;
+            val = opd(1);
+            if (val && val->type == TYPE_ID)
+                val = hgetnearestvarval(val->name, val->u.hash);
+            if (!val) {
+                basic_type = type = TYPE_STR;
+                value = blankline;
+            } else {
+                switch ((basic_type = (type = val->type) & TYPES_BASIC)) {
+                case TYPE_STR:   value = Stringdup(val->sval); break;
+                case TYPE_FLOAT: value = &val->u.fval; break;
+                case TYPE_TIME:  value = &val->u.tval; break;
+                case TYPE_ENUM:  /* fall through */
+                case TYPE_POS:   basic_type=TYPE_INT; /* fall through */
+                case TYPE_INT:   value = &val->u.ival; break;
+		default:
+		    internal_error(__FILE__, __LINE__,
+			"OP_ASSIGN: impossible type %d", basic_type);
+		    return 0;
+                }
+            }
+            var = setnearestvar(opd(2)->name, basic_type, value);
+            palloc(val, Value, valpool, u.next, __FILE__, __LINE__);
+            val->name = NULL;
+            val->count = 1;
+            if (var) {
+		if (type & TYPE_REGMATCH)
+		    var->val.type |= TYPE_REGMATCH;
+                val->type = var->val.type;
+                if ((val->sval = var->val.sval))
+                    val->sval->links++;
+                val->u = var->val.u;
+            } else {
+                val->type = TYPE_STR;
+                (val->sval = blankline)->links++;
+		val->u.p = NULL;
+            }
+            break;
         }
+    case OP_PREDEC: i = opdint(1) - 1;
+		    if (i == LONG_MAX)
+			eprintf("integer overflow in --%s", opd(1)->name);
+                    var = hsetnearestvar(opd(1)->name, opd(1)->u.hash,
+			TYPE_INT, &i);
+                    val = newint(var ? i : 0);
+                    break;
+    case OP_PREINC: i = opdint(1) + 1;
+		    if (i == LONG_MIN)
+			eprintf("integer overflow in ++%s", opd(1)->name);
+                    var = hsetnearestvar(opd(1)->name, opd(1)->u.hash,
+			TYPE_INT, &i);
+                    val = newint(var ? i : 0);
+                    break;
+    case OP_STREQ:  val = newint(strcmp(opdstd(2), opdstd(1)) == 0); break;
+    case OP_STRNEQ: val = newint(strcmp(opdstd(2), opdstd(1)) != 0); break;
+    case OP_MATCH:  val = newint(smatch_check(opdstd(1)) &&
+                        smatch(opdstd(1),opdstd(2))==0);
+                    break;
+    case OP_NMATCH: val = newint(smatch_check(opdstd(1)) &&
+                        smatch(opdstd(1),opdstd(2))!=0);
+                    break;
+    case OP_FUNC:   val = do_function(n);                            break;
+    case '!':       val = newint(!opdbool(1));                       break;
+    default:        internal_error(__FILE__, __LINE__,
+			"internal error: reduce: bad op 0x%04X", op);
+                    break;
     }
 
-    stacktop -= n;
-    while (n) freeval(stack[stacktop + --n]);
+reduce_exit:
+    while (n--) freeval(stack[--stacktop]);
     return val ? pushval(val) : 0;
 }
 
-static Value *function_switch(symbol, n, parent)
-    int symbol, n;
-    CONST char *parent;
+static Value *reduce_arithmetic(opcode_t op, int n)
+{
+    int i;
+    int int0, int1, neg0, neg1, sum;
+    double f;
+    struct timeval t, t1;
+    type_t type, promoted_type = 0;
+    Value *val[2], localval[2];
+
+    for (i = 0; i < n; i++) {
+	val[i] = opd(n-i);
+	if (val[i]->type == TYPE_ID)
+	    if (!(val[i] = hgetnearestvarval(val[i]->name, val[i]->u.hash)))
+		val[i] = val_zero;
+	if (val[i]->type & TYPE_STR) {
+	    parsenumber(val[i]->sval->data, NULL, TYPE_NUM, &localval[i]);
+	    val[i] = &localval[i];
+	}
+        type = val[i]->type & TYPES_BASIC;
+	if (type & (TYPE_ENUM | TYPE_POS))
+	    type = TYPE_INT;
+        if (type > promoted_type)
+            promoted_type = type;
+    }
+
+    if ((op == '=' || op == OP_EQUAL || op == OP_NOTEQ) &&
+	((val[0]->type & TYPE_REGMATCH) || (val[1]->type & TYPE_REGMATCH)))
+    {
+	if ((val[0]->type & TYPE_REGMATCH && valint(val[1]) == 1) ||
+	    (val[1]->type & TYPE_REGMATCH && valint(val[0]) == 1) ||
+	    ((val[0]->type & TYPE_REGMATCH) && (val[1]->type & TYPE_REGMATCH)))
+	{
+	    eprintf("Warning: regmatch() may return >= 1 for success.");
+	}
+    }
+
+    if ((promoted_type & (TYPE_INT | TYPE_TIME)) && is_additive(op)) {
+	/* additive overflow causes promotion to float */
+	int0 = (n > 1) ? valint(val[0]) : 0;
+	int1 = valint(val[n-1]);
+	neg0 = int0 < 0;
+	if (op == '-') {
+	    neg1 = int1 >= 0;
+	    sum = (int0 - int1);
+	} else {
+	    neg1 = int1 < 0;
+	    sum = (int0 + int1);
+	}
+	if (neg0 == neg1 && sum<0 != neg0)
+	    promoted_type = TYPE_FLOAT;
+    }
+
+    switch (promoted_type) {
+    case TYPE_INT:
+        switch (op) {
+        case '>':       return newint(valint(val[0]) > valint(val[1]));
+        case '<':       return newint(valint(val[0]) < valint(val[1]));
+        case '=':       /* fall thru to OP_EQUAL */
+        case OP_EQUAL:  return newint(valint(val[0]) == valint(val[1]));
+        case OP_NOTEQ:  return newint(valint(val[0]) != valint(val[1]));
+        case OP_GTE:    return newint(valint(val[0]) >= valint(val[1]));
+        case OP_LTE:    return newint(valint(val[0]) <= valint(val[1]));
+        case '+':	/* fall thru to '-' */
+        case '-':	return newint(sum);
+        case '*':       i = valint(val[0]) * valint(val[1]);
+			f = valfloat(val[0]) * valfloat(val[1]);
+			return (i == f) ? newint(i) : newfloat(f);
+        case '/':       if ((i = valint(val[1])) != 0)
+                            return newint(valint(val[0]) / i);
+                        eprintf("division by zero");
+                        return NULL;
+        default:        return NULL;
+        }
+
+    case TYPE_TIME:
+        valtime(&t1, val[n-1]);
+        if (n == 1)
+            t = tvzero;
+        else
+            valtime(&t, val[0]);
+
+        switch (op) {
+        case '+':  tvadd(&t, &t, &t1);  return newtime(t.tv_sec, t.tv_usec);
+        case '*':  return newfloat(valfloat(val[0]) * valfloat(val[1]));
+        case '/':  return newfloat(valfloat(val[0]) / valfloat(val[1]));
+        default:   break;
+        }
+
+        tvsub(&t, &t, &t1);
+
+        switch (op) {
+        case '>':      return newint(t.tv_sec ? t.tv_sec > 0 : t.tv_usec > 0);
+        case '<':      return newint(t.tv_sec ? t.tv_sec < 0 : t.tv_usec < 0);
+        case '=':      /* fall thru to OP_EQUAL */
+        case OP_EQUAL: return newint(!t.tv_sec && !t.tv_usec);
+        case OP_NOTEQ: return newint(t.tv_sec || t.tv_usec);
+        case OP_GTE:   return newint(t.tv_sec ? t.tv_sec >=0 : t.tv_usec >=0);
+        case OP_LTE:   return newint(t.tv_sec ? t.tv_sec <=0 : t.tv_usec <=0);
+        case '-':      return newtime(t.tv_sec, t.tv_usec);
+        default:       return NULL;
+        }
+
+    case TYPE_FLOAT:
+	switch (op) {
+	case '>':       return newint(valfloat(val[0]) > valfloat(val[1]));
+	case '<':       return newint(valfloat(val[0]) < valfloat(val[1]));
+	case '=':       /* fall thru to OP_EQUAL */
+	case OP_EQUAL:  return newint(valfloat(val[0]) == valfloat(val[1]));
+	case OP_NOTEQ:  return newint(valfloat(val[0]) != valfloat(val[1]));
+	case OP_GTE:    return newint(valfloat(val[0]) >= valfloat(val[1]));
+	case OP_LTE:    return newint(valfloat(val[0]) <= valfloat(val[1]));
+	case '+':       return newfloat((n>1 ? valfloat(val[0]) : 0) + valfloat(val[n-1]));
+	case '-':       return newfloat((n>1 ? valfloat(val[0]) : 0) - valfloat(val[n-1]));
+	case '*':       return newfloat(valfloat(val[0]) * valfloat(val[1]));
+	case '/':       return newfloat(valfloat(val[0]) / valfloat(val[1]));
+	default:        return NULL;
+	}
+
+    default:
+        internal_error(__FILE__, __LINE__,
+            "impossible type %d in reduce_arithmetic", promoted_type);
+	return NULL;  /* impossible */
+    }
+}
+
+static Value *function_switch(int symbol, int n, const char *parent)
 {
     int oldblock;
-    long i, j, len;
+    long i, j;
     char c;
-    CONST char *str, *ptr;
-    regexp *re;
+    const char *str, *ptr;
+    String *Sstr, *Sstr2;
     FILE *file;
     TFILE *tfile;
-    STATIC_BUFFER(scratch);
+    struct timeval tv, *then;
+
+#ifdef __CYGWIN32__
+    STATIC_STRING(systype, "cygwin32", 0);
+#else
+# ifdef PLATFORM_UNIX
+    STATIC_STRING(systype, "unix", 0);
+# else
+#  ifdef PLATFORM_OS2
+    STATIC_STRING(systype, "os/2", 0);
+#  else
+    STATIC_STRING(systype, "unknown", 0);
+#  endif
+# endif
+#endif
 
         switch (symbol) {
 
         case FN_ADDWORLD:
-            /* addworld(name, type, host, port, char, pass, file, use_proxy) */
+    /* addworld(name, type, host, port, char, pass, file, flags, srchost) */
+	  {
+	    int flags = 0;
 
             if (restriction >= RESTRICT_WORLD) {
                 eprintf("restricted");
-                return newint(0);
+                return shareval(val_zero);
             }
 
-            str = opdstr(n-0);  /* name */
-            i = 1;  /* use_proxy */
             if (n > 7) {
-                i = enum2int(opdstr(n-7), enum_flag, "arg 8 (use_proxy)");
-                if (i < 0) return newint(0);
+                for (str = opdstd(n-7); *str; str++) {
+		    switch (*str) {
+		    case 'x': flags |= WORLD_SSL; break;
+		    case 'p': flags |= WORLD_NOPROXY; break;
+		    /* compatibility with old use_proxy */
+		    case 'f':
+		    case '0': flags |= WORLD_NOPROXY; break;
+		    case 'o':
+		    case 'n':
+		    case '1': /* ignore */; break;
+		    default:
+			eprintf("invalid flag %c", *str);
+			return shareval(val_zero);
+		    }
+		}
             }
+            str = opdstd(n-0);  /* name */
 
             return newint(!!new_world(str,  /* name */
-                n>4 ? opdstr(n-4) : "",     /* char */
-                n>5 ? opdstr(n-5) : "",     /* pass */
-                opdstr(n-2), opdstr(n-3),   /* host, port */
-                n>6 ? opdstr(n-6) : "",     /* mfile */
-                opdstr(n-1),                /* type */
-                i ? 0 : WORLD_NOPROXY));    /* flags */
+                opdstd(n-1),                /* type */
+                n>2 ? opdstd(n-2) : "",     /* host */
+                n>3 ? opdstd(n-3) : "",     /* port */
+                n>4 ? opdstd(n-4) : "",     /* char */
+                n>5 ? opdstd(n-5) : "",     /* pass */
+                n>6 ? opdstd(n-6) : "",     /* mfile */
+                flags,			    /* flags */
+		n>8 ? opdstd(n-8) : ""));   /* srchost */
+	  }
 
         case FN_COLUMNS:
             return newint(columns);
@@ -561,47 +831,71 @@ static Value *function_switch(symbol, n, parent)
         case FN_LINES:
             return newint(lines);
 
+        case FN_WINLINES:
+            return newint(winlines());
+
+        case FN_INLINE:
+            {
+		attr_t attr = 0;
+		Value *val;
+		if (n > 1) {
+		    str = opdstd(n-1);
+		    attr = parse_attrs((char**)&str);
+		    if (attr < 0) return newSstr(blankline);
+		}
+		Sstr = opdstrdup(n);
+		handle_inline_attr(Sstr, attr);
+		val = newSstr(Sstr);
+		return val;
+            }
+
         case FN_ECHO:
-            i = (n>=3) ? enum2int(opdstr(n-2), enum_flag, "arg 3 (inline)") : 0;
-            if (i < 0) return newint(0);
-            return newint(handle_echo_func(opdstr(n),
-                (n >= 2) ? opdstr(n-1) : "",
-                i, (n >= 4) ? opdstr(n-3) : "o"));
+            i = (n>2) ?
+		enum2int(opdstd(n-2), 0, enum_flag, "arg 3 (inline)") : 0;
+            if (i < 0) return shareval(val_zero);
+            return newint(handle_echo_func(opdstrdup(n),
+                (n >= 2) ? opdstd(n-1) : "",
+                i, (n >= 4) ? opdstd(n-3) : "o"));
 
         case FN_SUBSTITUTE:
-            i = (n>=3) ? enum2int(opdstr(n-2), enum_flag, "arg 3 (inline)") : 0;
-            if (i < 0) return newint(0);
-            return newint(handle_substitute_func(opdstr(n),
-                (n >= 2) ? opdstr(n-1) : "",  i));
+            i = (n>2) ?
+		enum2int(opdstd(n-2), 0, enum_flag, "arg 3 (inline)") : 0;
+            if (i < 0) return shareval(val_zero);
+            return newint(handle_substitute_func(opdstrdup(n),
+                (n >= 2) ? opdstd(n-1) : "",  i));
 
         case FN_SEND:
-            j = n>2 ? enum2int(opdstr(n-2), enum_flag, "arg 3 (send_nl)") : 1;
-            if (j < 0) return newint(0);
-            i = handle_send_function(opdstr(n), (n>1 ? opdstr(n-1) : NULL), j);
+            i = handle_send_function(opdstr(n), (n>1 ? opdstd(n-1) : NULL), 
+		(n>2 ? opdstd(n-2) : ""));
+            return newint(i);
+
+        case FN_FAKE_RECV:
+            i = handle_fake_recv_function(opdstr(n),
+		(n>1 ? opdstd(n-1) : NULL), (n>2 ? opdstd(n-2) : ""));
             return newint(i);
 
         case FN_FWRITE:
-            ptr = opdstr(2);
+            ptr = opdstd(2);
             file = fopen(expand_filename(ptr), "a");
             if (!file) {
-                eprintf("%s: %s", opdstr(2), strerror(errno));
-                return newint(0);
+                eprintf("%S: %s", opdstr(2), strerror(errno));
+                return shareval(val_zero);
             }
-            fputs(opdstr(1), file);
+            fputs(opdstd(1), file);
             fputc('\n', file);
             fclose(file);
-            return newint(1);
+            return shareval(val_one);
 
         case FN_TFOPEN:
             return newint(handle_tfopen_func(
-                n<2 ? "" : opdstr(2), n<1 ? "q" : opdstr(1)));
+                n<2 ? "" : opdstd(2), n<1 ? "q" : opdstd(1)));
 
         case FN_TFCLOSE:
-            str = opdstr(1);
+            str = opdstd(1);
             if (!str[1]) {
                 switch(lcase(str[0])) {
-                case 'i':  tfin = NULL;  return newint(0);
-                case 'o':  tfout = NULL; return newint(0);
+                case 'i':  tfin = NULL;  return shareval(val_zero);
+                case 'o':  tfout = NULL; return shareval(val_zero);
                 case 'e':  eprintf("tferr can not be closed.");
                            return newint(-1);
                 default:   break;
@@ -611,14 +905,14 @@ static Value *function_switch(symbol, n, parent)
             return newint(tfile ? tfclose(tfile) : -1);
 
         case FN_TFWRITE:
-            tfile = (n > 1) ? find_usable_tfile(opdstr(2), S_IWUSR) : tfout;
+            tfile = (n > 1) ? find_usable_tfile(opdstd(2), S_IWUSR) : tfout;
             if (!tfile) return newint(-1);
-            str = opdstr(1);
-            tfputs(str, tfile);
-            return newint(1);
+            Sstr = opdstrdup(1);
+            tfputline(Sstr, tfile);
+            return shareval(val_one);
 
         case FN_TFREAD:
-            tfile = (n > 1) ? find_usable_tfile(opdstr(2), S_IRUSR) : tfin;
+            tfile = (n > 1) ? find_usable_tfile(opdstd(2), S_IRUSR) : tfin;
             if (!tfile) return newint(-1);
             if (opd(1)->type != TYPE_ID) {
                 eprintf("arg %d: illegal object of assignment", n);
@@ -627,53 +921,70 @@ static Value *function_switch(symbol, n, parent)
             oldblock = block;  /* condition and evalflag are already correct */
             block = 0;
             j = -1;
-            if (tfgetS(scratch, tfile)) {
-                if (setnearestvar(opd(1)->u.sval, scratch->s))
-                    j = scratch->len;
+            (Sstr = Stringnew(NULL, 0, 0))->links++;
+            if (tfgetS(Sstr, tfile)) {
+                if (setnearestvar(opd(1)->name, TYPE_STR, Sstr))
+                    j = Sstr->len;
             }
+            Stringfree(Sstr);
             block = oldblock;
             return newint(j);
 
         case FN_TFFLUSH:
-            tfile = find_usable_tfile(opdstr(n), S_IWUSR);
+            tfile = find_usable_tfile(opdstd(n), S_IWUSR);
             if (!tfile) return newint(-1);
             if (n > 1) {
-                if ((i = enum2int(opdstr(1), enum_flag, "argument 2")) < 0)
-                    return newint(0);
+                if ((i = enum2int(opdstd(1), 0, enum_flag, "argument 2")) < 0)
+                    return shareval(val_zero);
                 tfile->autoflush = i;
             } else {
                 tfflush(tfile);
             }
-            return newint(1);
+            return shareval(val_one);
 
         case FN_ASCII:
-            return newint((0x100 + unmapchar(*opdstr(1))) & 0xFF);
+            return newint((0x100 + unmapchar(*opdstd(1))) & 0xFF);
 
         case FN_CHAR:
             c = mapchar(localize(opdint(1)));
             return newstr(&c, 1);
 
         case FN_KEYCODE:
-            str = opdstr(1);
-            ptr = get_keycode(str);
+            Sstr = opdstr(1);
+            ptr = get_keycode(Sstr->data);
             if (ptr) return newstr(ptr, -1);
-            eprintf("unknown key name \"%s\"", str);
-            return newstr("", 0);
+            eprintf("unknown key name \"%S\"", Sstr);
+            return newSstr(blankline);
 
         case FN_MOD:
-            if (opdint(1) == 0) {
+            if ((i = opdint(1)) == 0) {
                 eprintf("division by zero");
                 return NULL;
             }
-            return newint(opdint(2) % opdint(1));
+            return newint(opdint(2) % i);
 
         case FN_MORESIZE:
-            return newint(moresize);
+	  {
+	    int lim = 0, new = 0;
+	    if (n > 0 && (str = opdstd(1))) {
+		for ( ; *str; str++) {
+		    if (lcase(*str) == 'l') lim++;
+		    else if (lcase(*str) == 'n') new++;
+		    else {
+			eprintf("illegal flag '%c'", *str);
+			return newint(0);
+		    }
+		}
+	    }
+	    return newint(new ?
+		(lim ? display_screen->nnew_filtered : display_screen->nnew) :
+		(lim ? display_screen->nback_filtered : display_screen->nback));
+	  }
 
         case FN_MORESCROLL:
             return newint(clear_more(opdint(1)));
 
-#ifndef NO_FLOAT
+#if !NO_FLOAT
         case FN_SQRT:
             return newfloat(sqrt(opdfloat(1)));
 
@@ -698,7 +1009,7 @@ static Value *function_switch(symbol, n, parent)
         case FN_EXP:
             return newfloat(exp(opdfloat(1)));
 
-        case FN_LOG:
+        case FN_LN:
             return newfloat(log(opdfloat(1)));
 
         case FN_LOG10:
@@ -708,11 +1019,14 @@ static Value *function_switch(symbol, n, parent)
             return newfloat(pow(opdfloat(2), opdfloat(1)));
 
         case FN_TRUNC:
-            return newint((int)opdfloat(1));
+            return newint(opdint(1));
 
         case FN_ABS:
-            return (mathtype(opd(1)) == TYPE_INT) ?
-                newint(abs(opdint(1))) : newfloat(fabs(opdfloat(1)));
+	  {
+	    Value *val = valnum(opd(1));
+	    return (!val) ? shareval(val_zero) : (val->type & TYPE_INT) ?
+                newint(labs(valint(val))) : newfloat(fabs(valfloat(val)));
+	  }
 #else
         case FN_ABS:
             return newint(abs(opdint(1)));
@@ -729,132 +1043,228 @@ static Value *function_switch(symbol, n, parent)
             return newint(!no_tty);
 
         case FN_FTIME:
-            Stringterm(scratch, 0);
-            tftime(scratch, opdstr(2), opdint(1), 0);
-            return newstr(scratch->s, scratch->len);
+            Sstr = Stringnew(NULL, 0, 0);
+            if (n > 1) opdtime(&tv, n-1);
+            else gettime(&tv);
+            tftime(Sstr, n>0 ? opdstr(n) : blankline, &tv);
+            return newSstr(Sstr);
 
         case FN_TIME:
-            return newint((int)time(NULL));
+            gettime(&tv);
+            return newtime(tv.tv_sec, tv.tv_usec);
+
+        case FN_CPUTIME:
+	    {
+		clock_t t;
+		t = clock();
+		return newfloat(t / (double)CLOCKS_PER_SEC);
+	    }
 
         case FN_IDLE:
-            return newint((int)((n == 0) ?
-                (time(NULL) - keyboard_time) :
-                sockidle(opdstr(1), SOCK_RECV)));
-
         case FN_SIDLE:
-            return newint((int)(sockidle(n>0 ? opdstr(1) : "", SOCK_SEND)));
+            if (symbol == FN_SIDLE)
+                then = socktime(n > 0 ? opdstd(1) : "", SOCK_SEND);
+            else if (n > 0)
+                then = socktime(opdstd(1), SOCK_RECV);
+            else
+                then = &keyboard_time;
+            if (!then) return newtime(0, 0);
+            gettime(&tv);
+            tvsub(&tv, &tv, then);
+            return newtime(tv.tv_sec, tv.tv_usec);
+
+        case FN_MKTIME:
+	    {
+		struct tm tm;
+		time_t t;
+		unsigned int usec = 0;
+		tm.tm_sec  = 0;
+		tm.tm_min  = 0;
+		tm.tm_hour = 0;
+		tm.tm_mday = 1;
+		tm.tm_mon  = 0;
+		tm.tm_year = 0;
+		tm.tm_isdst = -1;
+		switch (n) {
+		    case 7: usec       = opdint(n-6);
+		    case 6: tm.tm_sec  = opdint(n-5);
+		    case 5: tm.tm_min  = opdint(n-4);
+		    case 4: tm.tm_hour = opdint(n-3);
+		    case 3: tm.tm_mday = opdint(n-2);
+		    case 2: tm.tm_mon  = opdint(n-1) - 1;
+		    case 1: tm.tm_year = opdint(n-0) - 1900;
+		}
+		t = mktime(&tm);
+		if (t == -1 || usec < 0 || usec > 999999)
+		    return newtime(-1, 0);
+		if (t < 0 && usec > 0) {
+		    t += 1;
+		    usec -= 1000000;
+		}
+		return newtime(t, usec);
+	    }
 
         case FN_FILENAME:
-            str = expand_filename(opdstr(1));
+            str = expand_filename(opdstd(1));
             return newstr(str, -1);
 
         case FN_FG_WORLD:
-            return ((str=fgname())) ? newstr(str, -1) : newstr("", 0);
+            return ((str=fgname())) ? newstr(str, -1) : newSstr(blankline);
 
         case FN_WORLDINFO:
-            ptr = n>=1 ? opdstr(1) : NULL;
-            str = world_info(n>=2 ? opdstr(2) : NULL, ptr);
+            ptr = n>=1 ? opdstd(1) : NULL;
+            str = world_info(n>=2 ? opdstd(2) : NULL, ptr);
             if (!str) {
                 str = "";
                 eprintf("illegal field name '%s'", ptr);
             }
             return newstr(str, -1);
 
+        case FN_IS_CONN:
+            return newint(is_connected(n>0 ? opdstd(1) : ""));
+
+        case FN_IS_OPEN:
+            return newint(is_open(n>0 ? opdstd(1) : ""));
+
         case FN_GETPID:
             return newint((long)getpid());
 
         case FN_REGMATCH:
-            if (!(re = regcomp((char*)opdstr(2)))) return newint(0);
-            str = opdstr(1);
-            return newint(regexec_in_scope(re, str));
+	  {
+	    Value *val;
+            (Sstr = opdstrdup(1))->links++;	/* XXX not needed if no match */
+	    /* test for type ==, not &; it must not have other extentions */
+            i = regmatch_in_scope(opd(2)->type == TYPE_STR ? opd(2) : NULL,
+		opdstd(2), Sstr);
+	    Stringfree(Sstr);
+	    val = newint(i);
+	    val->type |= TYPE_REGMATCH;
+            return val;
+	  }
 
         case FN_STRCAT:
-            for (Stringterm(scratch, 0); n; n--)
-                Stringcat(scratch, opdstr(n));
-            return newstr(scratch->s, scratch->len);
+            Sstr = opdstrdup(n);
+            for (n--; n; n--)
+                SStringcat(Sstr, opdstr(n));
+            return newSstr(Sstr);
 
         case FN_STRREP:
-            str = opdstr(2);
+            Sstr = opdstr(2);
             i = opdint(1);
-            for (Stringterm(scratch, 0); i > 0; i--)
-                Stringcat(scratch, str);
-            return newstr(scratch->s, scratch->len);
+            for (Sstr2 = Stringnew(NULL, 0, 0); i > 0; i--)
+                SStringcat(Sstr2, Sstr);
+            return newSstr(Sstr2);
 
         case FN_PAD:
-            for (Stringterm(scratch, 0); n > 0; n -= 2) {
-                str = opdstr(n);
-                len = opdlen(n);
+            for (Sstr2 = Stringnew(NULL, 0, 0); n > 0; n -= 2) {
+                Sstr = opdstr(n);
                 i = (n > 1) ? opdint(n-1) : 0;
                 if (i >= 0) {
-                    if (i > len) Stringnadd(scratch, ' ', i - len);
-                    Stringcat(scratch, str);
+                    if (i > Sstr->len) Stringnadd(Sstr2, ' ', i - Sstr->len);
+                    SStringcat(Sstr2, Sstr);
                 } else {
-                    Stringcat(scratch, str);
-                    if (-i > len) Stringnadd(scratch, ' ', -i - len);
+                    SStringcat(Sstr2, Sstr);
+                    if (-i > Sstr->len) Stringnadd(Sstr2, ' ', -i - Sstr->len);
                 }
             }
-            return newstr(scratch->s, scratch->len);
+            return newSstr(Sstr2);
 
         case FN_STRCMP:
-            return newint(strcmp(opdstr(2), opdstr(1)));
+            return newint(strcmp(opdstd(2), opdstd(1)));
 
         case FN_STRNCMP:
-            return newint(strncmp(opdstr(3), opdstr(2), opdint(1)));
+            return newint(strncmp(opdstd(3), opdstd(2), opdint(1)));
 
         case FN_STRLEN:
-            return newint(opdlen(1));
+            Sstr = opdstr(1);
+            return newint(Sstr->len);
+
+
+#define bound_check(var, maxval) \
+    do { \
+	if ((var) > (maxval)) { \
+	    (var) = (maxval); \
+	} else if ((var) < 0) { \
+	    (var) = (maxval) + (var); \
+	    if ((var) < 0) (var) = 0; \
+	} \
+    } while (0)
+
+#define optional_int_arg(var, argc, argnum, maxval, defaultval) \
+    do { \
+	if ((argc) >= argnum) { \
+	    (var) = opdint((argc) - (argnum-1)); \
+	    bound_check((var), (maxval)); \
+	} else { \
+	    (var) = (defaultval); \
+	} \
+    } while (0)
 
         case FN_SUBSTR:
-            str = opdstr(n);
-            len = opdlen(n);
-            if ((i = opdint(n - 1)) > len) {
-                i = len;
-            } else if (i < 0) {
-                i = len + i;
-                if (i < 0) i = 0;
-            }
-            if (n < 3 || (j = opdint(1)) > len - i) {
-                j = len - i;
-            } else if (j < 0) {
-                j = len - i + j;
-                if (j < 0) j = 0;
-            }
-            return newstr(str + i, j);
+            Sstr = opdstr(n);
+            i = opdint(n - 1);
+	    bound_check(i, Sstr->len);
+	    optional_int_arg(j, n, 3, Sstr->len - i, Sstr->len - i);
+            Sstr2 = Stringnew(NULL, 0, 0);
+            return newSstr(SStringoncat(Sstr2, Sstr, i, j));
 
         case FN_STRSTR:
-            str = opdstr(2);
-            ptr = strstr(str, opdstr(1));
-            return newint(ptr ? (ptr - str) : -1);
+            Sstr = opdstr(n);
+	    optional_int_arg(j, n, 3, Sstr->len, 0);
+            ptr = strstr(Sstr->data + j, opdstd(n-1));
+            return newint(ptr ? (ptr - Sstr->data) : -1);
 
         case FN_STRCHR:
-            str = opdstr(2);
-            /* strcspn() is defined in regexp/regexp.c if not in libc. */
-            i = strcspn(str, opdstr(1));
-            return newint(str[i] ? i : -1);
+            Sstr = opdstr(n);
+	    optional_int_arg(j, n, 3, Sstr->len, 0);
+            i = strcspn(Sstr->data + j, opdstd(n-1));
+            return newint(Sstr->data[i+j] ? i+j : -1);
 
         case FN_STRRCHR:
-            str = opdstr(2);
-            ptr = opdstr(1);
-            for (i = opdlen(2) - 1; i >= 0; i--)
-                for (j = 0; ptr[j]; j++)
-                    if (str[i] == ptr[j]) return newint(i);
+            Sstr = opdstr(n);
+            ptr = opdstd(n-1);
+	    optional_int_arg(i, n, 3, Sstr->len - 1, Sstr->len - 1);
+            for ( ; i >= 0; i--)
+		if (strchr(ptr, Sstr->data[i]))
+		    return newint(i);
             return newint(-1);
 
+        case FN_REPLACE: {
+	    String *old, *new;
+	    const char *start, *next;
+	    old = opdstr(3);
+	    new = opdstr(2);
+	    Sstr = opdstr(1);
+	    Sstr2 = Stringnew(NULL, -1, Sstr->attrs);
+	    start = Sstr->data;
+	    while ((next = strstr(start, old->data))) {
+		SStringoncat(Sstr2, Sstr, start - Sstr->data, next - start);
+		SStringcat(Sstr2, new);
+		start = next + old->len;
+	    }
+	    SStringocat(Sstr2, Sstr, start - Sstr->data);
+	    return newSstr(Sstr2);
+	  }
+
         case FN_TOLOWER:
-            for (Stringterm(scratch, 0), str = opdstr(1); *str; str++)
-                Stringadd(scratch, lcase(*str));
-            return newstr(scratch->s, scratch->len);
+            Sstr2 = opdstrdup(n);
+	    optional_int_arg(j, n, 2, Sstr2->len, Sstr2->len);
+            for (i = 0; i < j; i++)
+                Sstr2->data[i] = lcase(Sstr2->data[i]);
+            return newSstr(Sstr2);
 
         case FN_TOUPPER:
-            for (Stringterm(scratch, 0), str = opdstr(1); *str; str++)
-                Stringadd(scratch, ucase(*str));
-            return newstr(scratch->s, scratch->len);
+            Sstr2 = opdstrdup(n);
+	    optional_int_arg(j, n, 2, Sstr2->len, Sstr2->len);
+            for (i = 0; i < j; i++)
+                Sstr2->data[i] = ucase(Sstr2->data[i]);
+            return newSstr(Sstr2);
 
         case FN_KBHEAD:
-            return newstr(keybuf->s, keyboard_pos);
+            return newstr(keybuf->data, keyboard_pos);
 
         case FN_KBTAIL:
-            return newstr(keybuf->s + keyboard_pos, keybuf->len - keyboard_pos);
+            return newstr(keybuf->data + keyboard_pos, keybuf->len - keyboard_pos);
 
         case FN_KBPOINT:
             return newint(keyboard_pos);
@@ -877,65 +1287,71 @@ static Value *function_switch(symbol, n, parent)
         case FN_KBLEN:
             return newint(keybuf->len);
 
-        case FN_GETOPTS:
+        case FN_GETOPTS: {
+            char name[] = "opt_?";
+            int offset;
             current_command = parent;
-            if (!argtext) {
-                eprintf("getopts can not be used in a macro called as a function.");
-                return newint(0);
+            if (!tf_argv) {
+                eprintf("getopts may only be called from a command.");
+                return shareval(val_zero);
             }
-            str = opdstr(n);
+            str = opdstd(n);
 
             if (n>1) {
-                CONST char *init = opdstr(n-1);
+                String *init = opdstr(n-1);
                 for (ptr = str; *ptr; ptr++) {
-                    if (!is_alnum(*ptr)) {
+                    if (!is_alpha(*ptr)) {
                         eprintf("%s: invalid option specifier: %c",
                             functab[symbol].name, *ptr);
-                        return newint(0);
+                        return shareval(val_zero);
                     }
-                    Stringadd(Stringcpy(scratch, "opt_"), *ptr);
-                    newlocalvar(scratch->s, init);
-                    if (ptr[1] == ':' || ptr[1] == '#') ptr++;
+                    name[4] = *ptr;
+                    setlocalvar(name, TYPE_STR, Stringdup(init));
+                    if (ptr[1] == ':' || ptr[1] == '#' || ptr[1] == '@')
+			ptr++;
                 }
             }
 
-            startopt(argtext, str);
-            while (i = 1, (c = nextopt((char **)&ptr, &i))) {
+            if (!tf_argc) return shareval(val_one);
+            offset = tf_argv[0].start;
+            startopt(argstring, str);
+            while (i = 1, (c = nextopt((char**)&ptr, &i, NULL, &offset))) {
                 if (is_alpha(c)) {
-                    Stringadd(Stringcpy(scratch, "opt_"), c);
+                    name[4] = c;
                     if (ptr) {
-                        newlocalvar(scratch->s, ptr);
+                        setlocalvar(name, TYPE_STR, Stringnew(ptr, -1, 0));
                     } else {
-                        smallstr numbuf;
-                        sprintf(numbuf, "%ld", i);
-                        newlocalvar(scratch->s, numbuf);
+                        setlocalvar(name, TYPE_INT, &i);
                     }
                 } else {
-                    return newint(0);
+                    return shareval(val_zero);
                 }
             }
-            while (tf_argc > 0 && tf_argv[0].end <= ptr) {
+            while (tf_argc > 0 && offset >= tf_argv[0].end) {
                 tf_argv++;
                 tf_argc--;
             }
             if (tf_argc) {
-                tf_argv[0].start = argtext = ptr;
+                tf_argv[0].start = offset;
             }
-            return newint(1);
+            return shareval(val_one);
+          }
 
         case FN_READ:
             eprintf("warning: read() will be removed in the near future.  Use tfread() instead.");
             oldblock = block;  /* condition and evalflag are already correct */
             block = 0;
-            j = !!tfgetS(scratch, tfin);
+            Sstr = Stringnew(NULL, 0, 0);
+            if (!tfgetS(Sstr, tfin))
+                Stringtrunc(Sstr, 0);
             block = oldblock;
-            return !j ? newstr("", 0) : newstr(scratch->s, scratch->len);
+            return newSstr(Sstr);
 
         case FN_NREAD:
             return newint(read_depth);
 
         case FN_NACTIVE:
-            return newint(nactive(n ? opdstr(1) : NULL));
+            return newint(nactive(n ? opdstd(1) : NULL));
 
         case FN_NLOG:
             return newint(log_count);
@@ -944,20 +1360,28 @@ static Value *function_switch(symbol, n, parent)
             return newint(mail_count);
 
         case FN_SYSTYPE:
+            return newSstr(systype);
 
-#ifdef __CYGWIN32__
-            return newstrliteral("cygwin32");
-#else
-# ifdef PLATFORM_UNIX
-            return newstrliteral("unix");
-# else
-#  ifdef PLATFORM_OS2
-            return newstrliteral("os/2");
-#  else
-            return newstrliteral("unknown");
-#  endif
-# endif
-#endif
+        case FN_WHATIS: {
+	    Value *val = opd(1);
+            Sstr = Stringnew(NULL, 0, 0);
+	    if (val->type == TYPE_ID) {
+		Stringcat(Sstr, "id:");
+		val = hgetnearestvarval(val->name, val->u.hash);
+	    }
+	    if (val) {
+		switch (val->type & TYPES_BASIC) {
+		case TYPE_STR:	  Stringcat(Sstr, "string");	break;
+		case TYPE_ENUM:	  Stringcat(Sstr, "enum");	break;
+		case TYPE_INT:	  Stringcat(Sstr, "int");	break;
+		case TYPE_POS:	  Stringcat(Sstr, "pos");	break;
+		case TYPE_TIME:	  Stringcat(Sstr, "time");	break;
+		case TYPE_FLOAT:  Stringcat(Sstr, "float");	break;
+		default:	  Sprintf(Sstr, SP_APPEND, "%d", opd(1)->type);
+		}
+	    }
+            return newSstr(Sstr);
+	  }
 
         default:
             eprintf("not supported");
@@ -965,35 +1389,35 @@ static Value *function_switch(symbol, n, parent)
         }
 }
 
-static Value *do_function(n)
-    int n;    /* number of operands (including function id) */
+static ExprFunc *find_builtin_func(const char *name) {
+    return (ExprFunc *)binsearch((void*)name, (void*)functab,
+	sizeof(functab)/sizeof(ExprFunc), sizeof(ExprFunc), strstructcmp);
+}
+
+static Value *do_function(int n /* number of operands (including func id) */)
 {
-    Value *val;
-    ExprFunc *funcrec;
+    Value *val, *func_result;
+    ExprFunc *funcrec = NULL;
     Macro *macro = NULL;
-    Handler *handler = NULL;
-    CONST char *id, *old_command;
+    BuiltinCmd *cmd = NULL;
+    const char *id = NULL, *old_command;
     STATIC_BUFFER(scratch);
+    int i;
 
-    if (opd(n)->type != TYPE_ID) {
-        eprintf("function name must be an identifier.");
-        return NULL;
-    }
-    id = opd(n--)->u.sval;
+    val = opd(n);
+    id = val->name;
+    n--;
 
-    funcrec = (ExprFunc *)binsearch((GENERIC*)id, (GENERIC*)functab,
-        sizeof(functab)/sizeof(ExprFunc), sizeof(ExprFunc), strstructcmp);
-
-    if (funcrec) {
-        if (n < funcrec->min || n > funcrec->max) {
-            eprintf("%s: incorrect number of arguments", id);
-            return NULL;
-        }
+    if (val->type == TYPE_FUNC) {
+	funcrec = valptr(val);
         old_command = current_command;
         current_command = id;
         errno = 0;
         val = function_switch(funcrec - functab, n, old_command);
-#ifndef NO_FLOAT
+#if !NO_FLOAT
+	/* BUG: setting val=NULL aborts the macro.  Perhaps instead we should
+	 * set val to a value with TYPE_ERROR.
+	 */
         if (errno == EDOM) {
             eprintf("argument outside of domain");
             freeval(val);
@@ -1006,349 +1430,354 @@ static Value *do_function(n)
 #endif
         current_command = old_command;
         return val;
-
-    } else if ((macro = find_macro(id)) || (handler = find_command(id))) {
-        int saved_argtop, saved_argc;
-        Arg *saved_argv;
-
-        if (handler == handle_exit_command ||
-            handler == handle_result_command ||
-            handler == handle_return_command)
-        {
-            eprintf("%s: not a function", id);
-            return NULL;
-        }
-
-        if (handler && n > 1) {
-            eprintf("%s: command called as function must have 0 or 1 argument",
-                id);
-            return NULL;
-        }
-
-        if (macro) {
-            static int warned = 0;
-            int i;
-
-            if (!warned && !invis_flag && n == 1 && strchr(opdstr(1), ' ')) {
-                eprintf("%s: warning: argument passing semantics for macros called as functions has changed in 4.0.  See '/help functions'.", id);
-                warned = 1;
-            }
-
-            /* pass parameters by value, not by [pseudo]reference */
-            for (i = 1; i <= n; i++) {
-                val = stack[stacktop-i];
-                if (val->type == TYPE_ID) {
-                    stack[stacktop-i] = newstr(valstr(val), -1);
-                    freeval(val);
-                }
-            }
-
-            saved_argtop = argtop;
-            saved_argc = tf_argc;
-            saved_argv = tf_argv;
-            argtop = stacktop;
-            tf_argc = n;
-            tf_argv = NULL;
-
-            if (!do_macro(macro, NULL))
-                set_user_result(NULL);
-
-            argtop = saved_argtop;
-            tf_argc = saved_argc;
-            tf_argv = saved_argv;
-        } else if (handler) {
-            set_user_result((*handler)
-                (Stringcpy(scratch, n ? opdstr(1) : "")->s));
-        }
-
-        return_user_result();
     }
 
-    eprintf("%s: no such function", id);
-    return NULL;
+    if (val->type == TYPE_CMD) {
+	cmd = valptr(val);
+	if (cmd->macro)
+	    macro = (cmd->macro);
+    } else if (!(macro = find_macro(id))) {
+	eprintf("%s: no such function", id);
+	return NULL;
+    }
+
+    if (macro) {
+	Value *saved_user_result;
+	int saved_argtop, saved_argc;
+	Arg *saved_argv;
+
+	/* pass parameters by value, not by [pseudo]reference */
+	for (i = 1; i <= n; i++) {
+	    val = stack[stacktop-i];
+	    if (val->type == TYPE_ID) {
+		stack[stacktop-i] = newSstr(Stringdup(valstr(val)));
+		freeval(val);
+	    }
+	}
+
+	saved_argtop = argtop;
+	saved_argc = tf_argc;
+	saved_argv = tf_argv;
+	saved_user_result = user_result;
+
+	argtop = stacktop;
+	tf_argc = n;
+	tf_argv = NULL;
+	user_result = NULL; /* prevent macro from freeing it */
+
+	func_result = do_macro(macro, NULL, 0, USED_NAME, NULL) ?
+	    user_result : NULL;
+
+	argtop = saved_argtop;
+	tf_argc = saved_argc;
+	tf_argv = saved_argv;
+	user_result = saved_user_result;
+
+    } else /* if (cmd) */ {
+	SStringcpy(scratch, n ? opdstr(1) : blankline);
+	func_result = (*cmd->func)(scratch, 0);
+    }
+
+    return func_result;
 }
 
-static int comma_expr()
+static int comma_expr(Program *prog)
 {
-    if (!assignment_expr()) return 0;
+    if (!assignment_expr(prog)) return 0;
     while (*ip == ',') {
         ip++;
-        freeval(stack[--stacktop]);  /* throw it away */
-        if (!assignment_expr()) return 0;
+	code_add(prog, OP_POP, 1);	/* throw it away */
+        if (!assignment_expr(prog)) return 0;
     }
     return 1;
 }
 
-static int assignment_expr()
+static int assignment_expr(Program *prog)
 {
-    if (!conditional_expr()) return 0;
+    if (!conditional_expr(prog)) return 0;
     if (ip[0] == ':' && ip[1] == '=') {
         ip += 2;
-        if (!assignment_expr()) return 0;
-        if (!reduce(OP_ASSIGN, 2)) return 0;
+        if (!assignment_expr(prog)) return 0;
+	code_add(prog, OP_ASSIGN, 2);
     }
     return 1;
 }
 
-static int conditional_expr()
+static int conditional_expr(Program *prog)
 {
-    /* This is more like flow-control than expression, so we handle the stack
-     * here instead of calling reduce().
-     */
-    int oldevalflag, oldcondition;
+    int jump_point;
 
-    if (!or_expr()) return 0;
+    if (!or_expr(prog)) return 0;
     if (*ip == '?') {
-        oldevalflag = evalflag;
-        oldcondition = condition;
-        evalflag = evalflag && condition && !breaking;
-        condition = evalflag && opdbool(1);
-
         while (is_space(*++ip));
         if (*ip == ':') {
-            /* reuse condition value as true value */
+	    code_add(prog, OP_DUP, 1);	/* reuse condition val as true val */
+	    code_add(prog, OP_JNZ, -1);	/* place holder */
+	    jump_point = prog->len - 1;
+	    code_add(prog, OP_POP, 1);	/* discard dup'd value */
         } else {
-            freeval(stack[--stacktop]);  /* discard condition value */
-            if (!comma_expr()) return 0;
+	    code_add(prog, OP_JZ, -1);	/* place holder */
+	    jump_point = prog->len - 1;
+            if (!comma_expr(prog)) return 0;
             if (*ip != ':') {
-                parse_error("expression", "':' after '?...'");
+                parse_error(prog, "expression", "':' after '?...'");
                 return 0;
             }
+	    code_add(prog, OP_JUMP, -1);	/* place holder */
+	    comefrom(prog, jump_point, prog->len);
+	    jump_point = prog->len - 1;
         }
-        if (!condition) freeval(stack[--stacktop]);  /* discard first value */
-        condition = !condition;
         ip++;
-        if (!conditional_expr()) return 0;
-        if (!condition) freeval(stack[--stacktop]);  /* discard second value */
-
-        evalflag = oldevalflag;
-        condition = oldcondition;
+        if (!conditional_expr(prog)) return 0;
+	comefrom(prog, jump_point, prog->len);
     }
     return 1;
 }
 
-static int or_expr()
+static int or_expr(Program *prog)
 {
-    /* This is more like flow-control than expression, so we handle the stack
-     * here instead of calling reduce().
-     */
-    int i, oldcondition = condition;
-    if (!and_expr()) return 0;
-    condition = evalflag && oldcondition && !breaking;
-    i = 0;
+    int jump_point;
+
+    if (!and_expr(prog)) return 0;
     while (*ip == '|') {
         ip++;
-        i = i || opdbool(1);
-        condition = condition && !i;
-        if (!i) freeval(stack[--stacktop]);  /* discard first value */
-        if (!and_expr()) return 0;
-        if (i) freeval(stack[--stacktop]);   /* discard second value */
+	code_add(prog, OP_DUP, 1);
+	code_add(prog, OP_JNZ, -1);	/* place holder */
+	jump_point = prog->len - 1;
+	code_add(prog, OP_POP, 1);	/* discard dup'd value */
+        if (!and_expr(prog)) return 0;
+        comefrom(prog, jump_point, prog->len);
     }
-    condition = oldcondition;
     return 1;
 }
 
-static int and_expr()
+static int and_expr(Program *prog)
 {
-    /* This is more like flow-control than expression, so we handle the stack
-     * here instead of calling reduce().
-     */
-    int i, oldcondition = condition;
-    if (!relational_expr()) return 0;
-    condition = evalflag && condition && !breaking;
-    i = 1;
+    int jump_point;
+
+    if (!relational_expr(prog)) return 0;
     while (*ip == '&') {
         ip++;
-        i = i && opdbool(1);
-        condition = condition && i;
-        if (i) freeval(stack[--stacktop]);   /* discard first value */
-        if (!relational_expr()) return 0;
-        if (!i) freeval(stack[--stacktop]);  /* discard second value */
+	code_add(prog, OP_DUP, 1);
+	code_add(prog, OP_JZ, -1);	/* place holder */
+	jump_point = prog->len - 1;
+	code_add(prog, OP_POP, 1);	/* discard dup'd value */
+        if (!relational_expr(prog)) return 0;
+        comefrom(prog, jump_point, prog->len);
     }
-    condition = oldcondition;
+    /* XXX optimize: in a series of &'s, a zero should jump all the way to
+     * the end, not to another { DUP; JZ }.
+     */
     return 1;
 }
 
-static int relational_expr()
+static int relational_expr(Program *prog)
 {
-    char op;
+    opcode_t op;
 
-    if (!additive_expr()) return 0;
+    if (!additive_expr(prog)) return 0;
     while (1) {
         if (ip[0] == '=') {
-            if      (ip[1] == '~') op = OP_STREQ;
-            else if (ip[1] == '/') op = OP_MATCH;
-            else if (ip[1] == '=') op = OP_EQUAL;
+	    ip++;
+            if      (*ip == '~') op = OP_STREQ;
+            else if (*ip == '/') op = OP_MATCH;
+            else if (*ip == '=') op = OP_EQUAL;
             else {
                 if (pedantic) eprintf("suggestion: use == instead of =");
                 op = '=';
+		ip--;
             }
         } else if (ip[0] == '!') {
             if      (ip[1] == '~') op = OP_STRNEQ;
             else if (ip[1] == '/') op = OP_NMATCH;
             else if (ip[1] == '=') op = OP_NOTEQ;
             else break;
+	    ip++;
         }
-        else if (ip[0] == '>') op = (ip[1] == '=') ? OP_GTE : *ip;
-        else if (ip[0] == '<') op = (ip[1] == '=') ? OP_LTE : *ip;
+        else if (ip[0] == '>') op = (ip[1] == '=') ? ++ip, OP_GTE : *ip;
+        else if (ip[0] == '<') op = (ip[1] == '=') ? ++ip, OP_LTE : *ip;
         else break;
 
-        ip += 1 + !!(op & 0x80);     /* high bit means it's a 2-char op */
-        if (!additive_expr()) return 0;
-        if (!reduce(op, 2)) return 0;
+        ip++;
+        if (!additive_expr(prog)) return 0;
+	code_add(prog, op, 2);
     }
     return 1;
 }
 
-static int additive_expr()
+static int additive_expr(Program *prog)
 {
-    char op;
-    if (!multiplicative_expr()) return 0;
+    opcode_t op;
+    if (!multiplicative_expr(prog)) return 0;
     while (is_additive(*ip)) {
         op = *ip++;
-        if (!multiplicative_expr()) return 0;
-        if (!reduce(op, 2)) return 0;
+        if (!multiplicative_expr(prog)) return 0;
+	code_add(prog, op, 2);
     }
     return 1;
 }
 
-static int multiplicative_expr()
+static int multiplicative_expr(Program *prog)
 {
-    char op;
+    opcode_t op;
 
-    if (!unary_expr()) return 0;
+    if (!unary_expr(prog)) return 0;
     while (is_mult(*ip)) {
         op = *ip++;
-        if (!unary_expr()) return 0;
-        if (!reduce(op, 2)) return 0;
+        if (!unary_expr(prog)) return 0;
+	code_add(prog, op, 2);
     }
     return 1;
 }
 
-static int unary_expr()
+static int unary_expr(Program *prog)
 {
-    char op;
+    opcode_t op;
 
     while (is_space(*ip)) ip++;
 
     if (is_unary(*ip)) {
-        op = *ip++;
-        if (op != '!' && op == *ip) {
-            op = (*ip == '+') ? OP_PREINC : OP_PREDEC;
-            ip++;
-        }
-        if (!unary_expr()) return 0;
-        if (!reduce(op, 1)) return 0;
+	if (ip[0] == '!') {
+	    op = '!';
+	} else if (ip[0] == '+') {
+	    op = (ip[1] == '+') ? ++ip, OP_PREINC : '+';
+	} else /* if (ip[0] == '-') */ {
+	    op = (ip[1] == '-') ? ++ip, OP_PREDEC : '-';
+	}
+	ip++;
+        if (!unary_expr(prog)) return 0;
+	code_add(prog, op, 1);
         return 1;
 
     } else {
-        if (!primary_expr()) return 0;
+        if (!primary_expr(prog)) return 0;
 
         if (*ip == '(') {
             /* function call expression */
             int n = 1;
-            for (++ip; is_space(*ip); ip++);
+	    InstructionArg *arg;
+	    ExprFunc *funcrec = NULL;
+	    BuiltinCmd *cmd = NULL;
+
+	    arg = &prog->code[prog->len-1].arg;
+	    if (prog->code[prog->len-1].op != OP_PUSH ||
+		arg->val->type != TYPE_ID)
+	    {
+		eprintf("function name must be an identifier.");
+		return 0;
+	    }
+	    if ((funcrec = find_builtin_func(arg->val->name))) {
+		arg->val->type = TYPE_FUNC;
+		arg->val->u.p = funcrec;
+	    } else if ((cmd = find_builtin_cmd(arg->val->name))) {
+		arg->val->type = TYPE_CMD;
+		arg->val->u.p = cmd;
+		if (cmd->func == handle_exit_command ||
+		    cmd->func == handle_result_command ||
+		    cmd->func == handle_return_command)
+		{
+		    eprintf("%s: not a function", cmd->name);
+		    return 0;
+		}
+	    }
+	    ++ip;
+	    eat_space(prog);
             if (*ip != ')') {
                 while (1) {
-                    if (!assignment_expr()) return 0;
+                    if (!assignment_expr(prog)) return 0;
                     n++;
                     if (*ip == ')') break;
                     if (*ip != ',') {
-                        parse_error("expression",
+                        parse_error(prog, "expression",
                             "',' or ')' after function argument");
                         return 0;
                     }
                     ++ip;
                 }
             }
-            for (++ip; is_space(*ip); ip++);
-            if (!reduce(OP_FUNC, n)) return 0;
+	    if (funcrec && (n-1 < funcrec->min || n-1 > funcrec->max)) {
+		eprintf((funcrec->min == funcrec->max) ?
+		    "%s: found %d arguments, expected %d" :
+		    "%s: found %d arguments, expected between %d and %d",
+		    funcrec->name, n-1, funcrec->min, funcrec->max);
+		return 0;
+	    }
+	    if (cmd && n > 2) {
+		eprintf("%s: command called as function must have 0 or 1 "
+		    "argument", cmd->name);
+		return 0;
+	    }
+	    ++ip;
+	    eat_space(prog);
+	    code_add(prog, OP_FUNC, n);
         }
         return 1;
     }
 }
 
-static int primary_expr()
+static int primary_expr(Program *prog)
 {
-    CONST char *end;
-    STATIC_BUFFER(static_buffer);
-    int result;
-    double d;
-    Stringp buffer;  /* gotta be reentrant */
+    const char *end;
+    Value *val;
+    String *str;
 
-    while (is_space(*ip)) ip++;
-    if (is_digit(*ip)) {
-#ifndef NO_FLOAT
-        for (end = ip+1; is_digit(*end); end++);
-        if (*end == '.' || ucase(*end) == 'E') {
-            d = strtod(ip, (char**)&ip);
-            if (d == HUGE_VAL || d == -HUGE_VAL) {
-                eprintf("float literal: arithmetic overflow");
-                return 0;
-            }
-            if (!pushval(newfloat(d))) return 0;
-        } else
-#endif /* NO_FLOAT */
-        {
-            if (!pushval(newint(parsetime((char **)&ip, NULL)))) return 0;
-        }
-#ifndef NO_FLOAT
-    } else if (ip[0] == '.' && is_digit(ip[1])) {
-        if (!pushval(newfloat(strtod(ip, (char**)&ip)))) return 0;
-#endif /* NO_FLOAT */
+    eat_space(prog);
+    if (is_digit(*ip) || (ip[0] == '.' && is_digit(ip[1]))) {
+        if (!(val = parsenumber(ip, (char**)&ip, TYPE_NUM, NULL)))
+	    return 0;
+	code_add(prog, OP_PUSH, val);
     } else if (is_quote(*ip)) {
-        if (!stringliteral(static_buffer, (char**)&ip)) {
-            eprintf("%S in string literal", static_buffer);
-            return 0;
-        }
-        if (!pushval(newstr(static_buffer->s, static_buffer->len))) return 0;
+	int error = 0;
+        (str = Stringnew(NULL, 0, 0))->links++;
+        if (!stringliteral(str, (char**)&ip)) {
+            eprintf("%S in string literal", str);
+            error++;
+	} else {
+	    val = newSstr(str);
+	}
+        Stringfree(str);
+        if (error) return 0;
+	code_add(prog, OP_PUSH, val);
     } else if (is_alpha(*ip) || *ip == '_') {
         for (end = ip + 1; is_alnum(*end) || *end == '_'; end++);
-        if (!pushval(newid(ip, end - ip))) return 0;
+        val = newid(ip, end - ip);
         ip = end;
+	code_add(prog, OP_PUSH, val);
     } else if (*ip == '$') {
         static int warned = 0;
         ++ip;
-        Stringinit(buffer);
         if ((!warned || pedantic) && *ip == '[') {
             eprintf("warning: $[...] substitution in expression is legal, but redundant.  Try using (...) instead.");
             warned = 1;
         }
-        result = dollarsub(buffer) && pushval(newstr(buffer->s, buffer->len));
-        Stringfree(buffer);
-        if (!result) return 0;
+        dollarsub(prog, NULL);
     } else if (*ip == '{') {
-        if (!varsub(NULL, 0)) return 0;
+        if (!varsub(prog, 0, 1)) return 0;
     } else if (*ip == '%') {
         ++ip;
-        if (!varsub(NULL, 1)) return 0;
+        if (!varsub(prog, 1, 1)) return 0;
     } else if (*ip == '(') {
         ++ip;
-        if (!comma_expr()) return 0;
+        if (!comma_expr(prog)) return 0;
         if (*ip != ')') {
-            parse_error("expression", "')' after '(...'");
+            parse_error(prog, "expression", "')' after '(...'");
             return 0;
         }
         ++ip;
     } else {
-        parse_error("expression", "operand");
+        parse_error(prog, "expression", "operand");
         return 0;
     }
     
-    while (is_space(*ip)) ip++;
+    eat_space(prog);
     return 1;
 }
 
 
-#ifdef DMALLOC
-void free_expr()
+#if USE_DMALLOC
+void free_expr(void)
 {
-    Value *val;
-    while (valpool) {
-       val = valpool;
-       valpool = valpool->u.next;
-       FREE(val);
-    }
+    pfreepool(Value, valpool, u.next);
 }
 #endif
 

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: port.h,v 35004.25 1999/01/31 00:27:50 hawkeye Exp $ */
+/* $Id: port.h,v 35004.35 2003/05/27 01:09:24 hawkeye Exp $ */
 
 #ifndef PORT_H
 #define PORT_H
@@ -21,36 +21,6 @@
 #  define _ALL_SOURCE     /* Enables some "extensions" on AIX. */
 # endif
 /* # define _BSD 44 */    /* Needed for nonblocking connect on AIX. */
-#endif
-
-#if __STDC__ - 0
-# undef  HAVE_PROTOTYPES
-# define HAVE_PROTOTYPES
-#endif
-
-#ifdef __GNUC__
-# undef  HAVE_PROTOTYPES
-# define HAVE_PROTOTYPES
-#endif
-
-#ifdef HAVE_PROTOTYPES
-# define NDECL(f)        f(void)
-# define FDECL(f, p)     f p
-# ifdef HAVE_STDARG
-#  define VDECL(f, p)     f p
-# else
-#  define VDECL(f, p)     f()
-# endif
-#else
-# define NDECL(f)        f()
-# define FDECL(f, p)     f()
-# define VDECL(f, p)     f()
-#endif
-
-#ifdef HAVE_STDARG
-# define VDEF(args)  args
-#else
-# define VDEF(args)  (va_alist)  va_dcl
 #endif
 
 #if 0  /* These cause a few problems, but little benefit, so forget it. */
@@ -100,19 +70,8 @@ extern int errno;  /* Some systems don't declare errno in errno.h. Duh. */
 #endif
 
 
-#undef GENERIC
-#undef CONST
-
-#if __STDC__ - 0
-# define GENERIC void
-# define CONST   const
-#else
-# define GENERIC char
-# define CONST
-#endif
-
-#ifdef UNISTD_H
-# include UNISTD_H
+#if HAVE_UNISTD_H
+# include <unistd.h>
 #endif
 
 #ifndef STDIN_FILENO
@@ -121,61 +80,57 @@ extern int errno;  /* Some systems don't declare errno in errno.h. Duh. */
 # define STDERR_FILENO       2
 #endif
 
-#ifdef STDLIB_H
-# include STDLIB_H
+#if STDC_HEADERS
+# include <stdlib.h>
+# include <string.h>
 #else
 extern void free();
-#endif
-
-#include STRING_H
-
-#ifndef HAVE_strchr
-# ifdef HAVE_index
-#  define strchr index
-#  define strrchr rindex    /* assumed */
+# if HAVE_MEMORY_H
+#  include <memory.h>
+# endif
+# if !HAVE_STRCHR
+#  if HAVE_INDEX
+#   define strchr index
+#   define strrchr rindex    /* assumed */
+#  endif
+# endif
+# if !HAVE_MEMCPY
+#  if HAVE_BCOPY
+#   define memcpy(dst, src, len) bcopy((src), (dst), (len))
+#  endif
 # endif
 #endif
 
-#ifndef HAVE_bzero
+
+#if !HAVE_BZERO
   /* We don't use the nonstandard bzero(), but some stupid sys/select.h do */
 # define bzero(ptr, size)    memset((ptr), '\0', (size))
 #endif
 
-/* We use the standard memcpy(), so we must define it if it doesn't exist. */
-#ifndef HAVE_memcpy
-# ifdef HAVE_bcopy
-#  define memcpy(dst, src, len) bcopy((src), (dst), (len))
-# endif
-#endif
-
 /* Try the common case insensitive strcmp's before falling back to our own */
-#ifdef HAVE_strcasecmp
+#if HAVE_STRCASECMP
 # define cstrcmp   strcasecmp
 #else
-# ifdef HAVE_stricmp
+# if HAVE_STRICMP
 #  define cstrcmp   stricmp
 # else
-#  ifdef HAVE_strcmpi
+#  if HAVE_STRCMPI
 #   define cstrcmp   strcmpi
 #  endif
 # endif
 #endif
 #ifndef cstrcmp
-extern int    FDECL(cstrcmp,(CONST char *s, CONST char *t));
+extern int    cstrcmp(const char *s, const char *t);
 #endif
 
-#ifndef HAVE_strstr
-  extern char *FDECL(strstr,(CONST char *s1, CONST char *s2));
-#endif
-
-#ifndef HAVE_strerror
+#if !HAVE_STRERROR
 extern int sys_nerr;
 extern char *sys_errlist[];
 # define strerror(n) (((n) > 0 && (n) < sys_nerr) ? sys_errlist[(n)] : \
     "unknown error")
 #endif
 
-#ifndef HAVE_fileno  /* occurs on at least one pre-POSIX SVr3-like platform */
+#if !HAVE_FILENO  /* occurs on at least one pre-POSIX SVr3-like platform */
 # ifdef PLATFORM_UNIX
 #  define fileno(p)  ((p)->_file)
 # else
@@ -184,26 +139,27 @@ extern char *sys_errlist[];
 #endif
 
 #ifdef PLATFORM_OS2
-# define HAVE_getcwd
+# define HAVE_GETCWD
 # define getcwd _getcwd2   /* handles drive names */
 # define chdir _chdir2     /* handles drive names */
 #endif
 
 
-#ifndef LOCALE_H
-# undef HAVE_setlocale
+#if !HAVE_LOCALE_H
+# undef HAVE_SETLOCALE
 #endif
-#ifndef HAVE_setlocale
-# undef LOCALE_H
+#if !HAVE_SETLOCALE
+# undef HAVE_LOCALE_H
 #endif
 
 
 #include <ctype.h>
-#ifdef CASE_OK /* are tolower and toupper safe on non-letters, per ANSI? */
+#if STDC_HEADERS /* are tolower and toupper safe on non-letters, per ANSI? */
   /* more efficient */
 # define lcase(x)  tolower((unsigned char)(x))
 # define ucase(x)  toupper((unsigned char)(x))
 #else
+  /* will work even in nonstandard C */
   extern int lcase(int x);
   extern int ucase(int x);
   /* This expression evaluates its argument more than once:
@@ -211,7 +167,6 @@ extern char *sys_errlist[];
    * This expression has no sequence points:
    *  (dummy=(x), (is_upper(dummy) ? tolower(dummy) : (dummy)))
    */
-  /* guaranteed to work in nonstandard C */
 #endif
 
 /* The standard ctype functions expect an int argument, containing either EOF
@@ -231,10 +186,6 @@ extern char *sys_errlist[];
 #define is_upper(c)	isupper((unsigned char)(c))
 #define is_xdigit(c)	isxdigit((unsigned char)(c))
 
-/* Standard C allows struct assignment, but K&R1 didn't. */
-#define structcpy(dst, src) \
-    memcpy((GENERIC*)&(dst), (GENERIC*)&(src), sizeof(src))
-
 /* RRAND(lo,hi) returns a random integer in the range [lo,hi].
  * RAND() returns a random integer in the range [0,TF_RAND_MAX].
  * SRAND() seeds the generator.
@@ -246,16 +197,16 @@ extern char *sys_errlist[];
  * not agree with RAND_MAX.  We must not link with -lucb.
  */
 
-#ifdef HAVE_srandom
+#if HAVE_SRANDOM
 # include <math.h>
 # define RAND()         (int)random()
 # define SRAND(seed)    srandom(seed)
 # define RRAND(lo,hi)   (RAND() % ((hi)-(lo)+1) + (lo))
 #else
-# ifdef HAVE_srand
+# if HAVE_SRAND
 #  define RAND()         rand()
 #  define SRAND(seed)    srand(seed)
-#  ifdef RAND_MAX
+#  if RAND_MAX
 #   define RRAND(lo,hi)  ((hi)==(lo)) ? (hi) : \
                              ((RAND() / (RAND_MAX / ((hi)-(lo)+1) + 1)) + (lo))
 #  else
@@ -267,7 +218,7 @@ extern char *sys_errlist[];
 #endif
 
 
-#ifndef HAVE_strtod
+#if !HAVE_STRTOD
 # define NO_FLOAT
 #endif
 
@@ -285,22 +236,22 @@ extern char *sys_errlist[];
  * used in production, since they might conflict with system headers.
  */
 #ifdef TF_IRIX_DECLS
-extern int  FDECL(kill,(pid_t, int));
-extern int  VDECL(ioctl,(int, int, ...));
-extern long NDECL(random);
-extern int  FDECL(srandom,(unsigned));
+extern int  kill(pid_t, int);
+extern int  ioctl(int, int, ...);
+extern long random(void);
+extern int  srandom(unsigned);
 #endif
 #ifdef TF_AIX_DECLS
-extern int  FDECL(strcasecmp,(CONST char *, CONST char *));
-extern time_t FDECL(time,(time_t *));
-/* extern pid_t FDECL(wait,(int *)); */
-extern int FDECL(socket,(int, int, int));
-extern int FDECL(getsockopt,(int, int, int, char *, int *));
-extern int FDECL(send,(int, CONST char *, int, int));
-extern int FDECL(recv,(int, char *, int, int));
-extern int  VDECL(ioctl,(int, int, ...));
-extern long NDECL(random);
-extern int  FDECL(srandom,(unsigned));
+extern int  strcasecmp(const char *, const char *);
+extern time_t time(time_t *);
+/* extern pid_t wait(int *); */
+extern int socket(int, int, int);
+extern int getsockopt(int, int, int, char *, int *);
+extern int send(int, const char *, int, int);
+extern int recv(int, char *, int, int);
+extern int  ioctl(int, int, ...);
+extern long random(void);
+extern int  srandom(unsigned);
 #endif
 
 #ifndef TRUE

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expand.h,v 35004.19 1999/01/31 00:27:42 hawkeye Exp $ */
+/* $Id: expand.h,v 35004.38 2003/05/27 01:09:21 hawkeye Exp $ */
 
 #ifndef EXPAND_H
 #define EXPAND_H
@@ -17,20 +17,36 @@
 #define SUB_FULL     2  /* all subs and command execution                    */
 #define SUB_MACRO    3  /* all subs and command execution, from macro        */
 
+#if 0
+typedef struct {
+    Program *prog;
+    int ip;		/* instruction pointer */
+    String *cmd;
+} Process;
+#endif
 
-extern void NDECL(init_expand);
-extern int  FDECL(process_macro,(CONST char *body, CONST char *args, int subs,
-                  CONST char *name));
-extern String *NDECL(do_mprefix);
-extern CONST char **FDECL(keyword,(CONST char *id));
+extern void init_expand(void);
+extern void prog_free(Program *prog);
+extern int prog_run(Program *prog, String *args, int offset,
+    const char *name, String *kbnumlocal);
+extern struct Program *compile_tf(String *body, int bodystart, int subs,
+    int is_expr, int optimize);
+extern int macro_run(String *body, int boffset, String *args, int offset,
+    int subs, const char *name);
+extern Value *prog_interpret(Program *prog, int in_expr);
+extern String *do_mprefix(void);
+extern const char **keyword(const char *id);
+extern void eat_newline(Program *prog);
+extern void eat_space(Program *prog);
 
 
-#ifdef DMALLOC
-extern void   NDECL(free_expand);
+#if USE_DMALLOC
+extern void   free_expand(void);
 #endif
 
 extern struct Value *user_result;
-extern CONST char *current_command;
+extern const char *current_command;
+extern char current_opt;
 extern int recur_count, breaking;
 
 #define return_user_result() do { \
@@ -40,7 +56,8 @@ extern int recur_count, breaking;
     } while (0)
 
 #define set_user_result(val)  do { \
-        freeval(user_result); user_result = val; \
+	Value *tmp = val; /* evaluate val once, before freeing user_result */ \
+        freeval(user_result); user_result = tmp; \
     } while(0)
 
 #endif /* EXPAND_H */

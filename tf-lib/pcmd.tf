@@ -1,10 +1,12 @@
 ;;; prefix/suffix for mud commands
+;;; from tf 5.0 alpha 9
 
 ;; usage:
-;; /pfxrand			- randomize *fixes
-;; /pfxon [-w<world>]		- enable *fixes	on <world>
-;; /pfxoff [-w<world>]		- disable *fixes on <world>
-;; /pcmd [-w<world>] <cmd>	- execute *fixed <cmd> on <world>
+;; /pfxgen			    - generate *fixes
+;; /pfxon [[-w]<world>]		    - enable *fixes on <world>
+;; /pfxoff [[-w]<world>]	    - disable *fixes on <world>
+;; /pcmd [-w<world>] <cmd>	    - execute *fixed <cmd> on <world>
+;; /test pfcmd(<cmd>[, <world>])    - execute *fixed <cmd> on <world>
 
 ;; It is okay to issue multiple /pcmd commands without worrying that their
 ;; triggers will interfere with each other, because a unique prefix and
@@ -24,36 +26,32 @@
 ;;     /undef foobar_fail%;\
 ;;   /pcmd foobar %1
 
-;; Programmer's note: the /send commands here deliberately do not have a
-;; leading "-", because we want the -w<world> option to be interpreted.
 
+/loaded pcmd.tf
 
-/loaded __TFLIB__/pcmd.tf
-
-/def -i pfxrand = \
+/def -i pfxgen = \
+    /set _pfx_counter=$[_pfx_counter + 1]%; \
     /set outputprefix=<pre:%{_pfx_counter}:$[rand()]>%;\
     /set outputsuffix=<suf:%{_pfx_counter}:$[rand()]>
 
-/pfxrand
-/set _pfx_counter=1
+/pfxgen
 
 /def -i pfxon = \
-    /send %* - OUTPUTPREFIX %{outputprefix}%;\
-    /send %* - OUTPUTSUFFIX %{outputsuffix}
+    /if ({*} =/ "-*") /if (!getopts("w:", "")) /return 0%; /endif%; /else /let opt_w=%*%; /endif%; \
+    /test send('OUTPUTPREFIX %{outputprefix}', opt_w) & \
+	  send('OUTPUTSUFFIX %{outputsuffix}', opt_w)
 
 /def -i pfxoff = \
-    /send %* - OUTPUTPREFIX%;\
-    /send %* - OUTPUTSUFFIX
+    /if ({*} =/ "-*") /if (!getopts("w:", "")) /return 0%; /endif%; /else /let opt_w=%*%; /endif%; \
+    /test send('OUTPUTPREFIX', opt_w) & \
+	  send('OUTPUTSUFFIX', opt_w)
+
+/def -i pfcmd = \
+    /let result=$[pfxon({2}) & send({1}, {2}) & pfxoff({2})]%; \
+    /pfxgen%; \
+    /return result
 
 /def -i pcmd = \
-    /let _opts=%; \
-    /while ( {1} =/ "-[^- ]*" ) \
-        /let _opts=%_opts %1%; \
-        /shift%; \
-    /done%; \
-    /pfxon %{_opts}%; \
-    /send %{_opts} %*%; \
-    /pfxoff %{_opts}%; \
-    /@test _pfx_counter := _pfx_counter + 1%; \
-    /pfxrand
+    /if (!getopts("w:", "")) /return 0%; /endif%; \
+    /return pfcmd({*}, opt_w)
 

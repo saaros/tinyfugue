@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tty.c,v 35004.16 1999/01/31 00:27:56 hawkeye Exp $ */
+static const char RCSid[] = "$Id: tty.c,v 35004.29 2003/05/27 01:09:25 hawkeye Exp $";
 
 /*
  * TTY driver routines.
@@ -19,7 +19,7 @@
 # include <os2.h>
 #endif
 
-#ifdef USE_TERMIOS                    /* POSIX is the way to go. */
+#if USE_TERMIOS                    /* POSIX is the way to go. */
 # include <termios.h>
 /* # ifndef TIOCGWINSZ */
 #  include <sys/ioctl.h>              /* BSD needs this for TIOCGWINSZ */
@@ -31,7 +31,7 @@
 # define ingetattr_error "tcgetattr"
 #endif
 
-#ifdef USE_TERMIO      /* with a few macros, this looks just like USE_TERMIOS */
+#if USE_TERMIO      /* with a few macros, this looks just like USE_TERMIOS */
 # ifdef hpux                                   /* hpux's termio is different. */
 #  undef USE_TERMIO
 #  define USE_HPUX_TERMIO
@@ -49,13 +49,13 @@
 # define ingetattr_error "TCGETA ioctl"
 #endif
 
-#ifdef NEED_PTEM_H                   /* Xenix, maybe others */
+#if NEED_PTEM_H                   /* Xenix, maybe others */
 # include <sys/types.h>              /* Needed for sys/stream.h, which is... */
 # include <sys/stream.h>             /* needed for sys/ptem.h, which is... */
 # include <sys/ptem.h>               /* needed for struct winsize.  Ugh. */
 #endif
 
-#ifdef USE_SGTTY
+#if USE_SGTTY
 # include <sys/ioctl.h>
 # include <sgtty.h>                  /* BSD's old "new" terminal driver. */
 # define tty_struct struct sgttyb
@@ -71,22 +71,21 @@ static int is_custom_tty = 0;        /* is tty in customized mode? */
 int no_tty = 1;
 
 #include "tf.h"
-#include "dstring.h"	/* for util.h, output.h */
 #include "util.h"	/* for macro.h */
+#include "search.h"	/* for variable.h */
 #include "tty.h"
 #include "output.h"	/* ch_visual() */
 #include "macro.h"	/* add_ibind() */
-#include "search.h"	/* for variable.h */
 #include "variable.h"	/* set_var_by_*() */
 
 #define DEFAULT_COLUMNS 80
 
-void init_tty()
+void init_tty(void)
 {
-#ifdef USE_HPUX_TERMIO
+#if USE_HPUX_TERMIO
     struct ltchars chars;
 #endif
-#ifdef USE_SGTTY
+#if USE_SGTTY
     struct ltchars chars;
 #endif
 
@@ -98,7 +97,7 @@ void init_tty()
 
     if (!no_tty) {
 
-#ifdef USE_TERMIOS
+#if USE_TERMIOS
         *bs = old_tty.c_cc[VERASE];
         *dline = old_tty.c_cc[VKILL];
 # ifdef VWERASE /* Not POSIX, but many systems have it. */
@@ -112,7 +111,7 @@ void init_tty()
 # endif
 #endif
 
-#ifdef USE_HPUX_TERMIO
+#if USE_HPUX_TERMIO
         *bs = old_tty.c_cc[VERASE];
         *dline = old_tty.c_cc[VKILL];
         if (ioctl(STDIN_FILENO, TIOCGLTC, &chars) < 0) perror("TIOCGLTC ioctl");
@@ -123,7 +122,7 @@ void init_tty()
         }
 #endif
 
-#ifdef USE_SGTTY
+#if USE_SGTTY
         *bs = old_tty.sg_erase;
         *dline = old_tty.sg_kill;
         if (ioctl(STDIN_FILENO, TIOCGLTC, &chars) < 0) perror("TIOCGLTC ioctl");
@@ -144,7 +143,7 @@ void init_tty()
     if (is_cntrl(*bs)      && *bs       && *bs != '\b' && *bs != '\177')
                                        add_ibind(bs,      "/DOKEY BSPC");
     if (is_cntrl(*bword)   && *bword)   add_ibind(bword,   "/DOKEY BWORD");
-    if (is_cntrl(*dline)   && *dline)   add_ibind(dline,   "/DOKEY DLINE");
+/*  if (is_cntrl(*dline)   && *dline)   add_ibind(dline,   "/DOKEY DLINE"); */
     if (is_cntrl(*refresh) && *refresh) add_ibind(refresh, "/DOKEY REFRESH");
     if (is_cntrl(*lnext)   && *lnext)   add_ibind(lnext,   "/DOKEY LNEXT");
 }
@@ -157,7 +156,7 @@ void init_tty()
 # define CAN_GET_WINSIZE
 #endif
 
-int get_window_size()
+int get_window_size(void)
 {
 #ifdef CAN_GET_WINSIZE
     int ocol = columns, oline = lines;
@@ -178,7 +177,7 @@ int get_window_size()
 # endif
 
     if (columns == ocol && lines == oline) return 1;
-    set_var_by_id(VAR_wrapsize, columns - (ocol - wrapsize), NULL);
+    set_var_by_id(VAR_wrapsize, columns - (ocol - wrapsize));
     ch_visual();
     do_hook(H_RESIZE, NULL, "%d %d", columns, lines);
     return 1;
@@ -187,15 +186,15 @@ int get_window_size()
 #endif
 }
 
-void cbreak_noecho_mode()
+void cbreak_noecho_mode(void)
 {
     tty_struct tty;
 
     if (no_tty) return;
     if (ingetattr(&tty) < 0) die(ingetattr_error, errno);
-    structcpy(old_tty, tty);
+    old_tty = tty;
 
-#ifdef USE_TERMIOS
+#if USE_TERMIOS
     tty.c_lflag &= ~(ECHO | ICANON);
     tty.c_lflag |= ISIG;
     tty.c_iflag |= IGNBRK | IGNPAR;
@@ -210,12 +209,19 @@ void cbreak_noecho_mode()
      */
     tty.c_cc[VMIN] = 0;
     tty.c_cc[VTIME] = 0;
+    tty.c_cc[VSTOP] = 0;	/* disable useless key */
+    tty.c_cc[VSTART] = 0;	/* disable useless key */
+#if 0
+# ifdef VLNEXT
+    tty.c_cc[VLNEXT] = 0;	/* don't let useless key get caught by tty */
+# endif
+#endif
 # ifdef VDSUSP
-    tty.c_cc[VDSUSP] = 0;  /* disable this useless and confusing key */
+    tty.c_cc[VDSUSP] = 0;	/* disable this useless and confusing key */
 # endif
 #endif /* USE_TERMIOS */
 
-#ifdef USE_HPUX_TERMIO
+#if USE_HPUX_TERMIO
     tty.c_lflag &= ~(ECHO | ECHOE | ICANON);
     tty.c_iflag &= ~ICRNL;
     tty.c_oflag &= ~OCRNL;
@@ -226,7 +232,7 @@ void cbreak_noecho_mode()
     tty.c_cc[VTIME] = 0;
 #endif
 
-#ifdef USE_SGTTY
+#if USE_SGTTY
     tty.sg_flags |= CBREAK;
     tty.sg_flags &= ~(ECHO | CRMOD);
     /* Sgtty's CRMOD is equivalent to termios' (ICRNL | OCRNL | ONLCR).
@@ -240,7 +246,7 @@ void cbreak_noecho_mode()
     is_custom_tty = 1;
 }
 
-void reset_tty()
+void reset_tty(void)
 {
     if (is_custom_tty) {
         if (insetattr(&old_tty) < 0) perror(insetattr_error);

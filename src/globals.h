@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996 - 1999 Ken Keys
+ *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: globals.h,v 35000.18 1999/01/31 00:27:43 hawkeye Exp $ */
+/* $Id: globals.h,v 35000.51 2003/05/27 01:09:22 hawkeye Exp $ */
 
 #ifndef GLOBALS_H
 #define GLOBALS_H
@@ -14,25 +14,104 @@
  * Global user variables *
  *************************/
 
-typedef int NDECL((Toggler));
+/* Note: order of arithmetic types defines how they are promoted */
+typedef enum {
+    TYPE_ID       = 0x0001,	/* identifier */
+    TYPE_STR      = 0x0002,	/* String */
+    TYPE_ENUM     = 0x0004,	/* enumerated */
+    TYPE_POS      = 0x0008,	/* positive integer */
+    TYPE_INT      = 0x0010,	/* integer */
+    TYPE_TIME     = 0x0020,	/* seconds and microseconds */
+    TYPE_FLOAT    = 0x0040,	/* double */
+    TYPE_FILE     = 0x0080,	/* tfile (internal use only) */
+    TYPE_FUNC     = 0x0100,	/* resolved ExprFunc (internal only) */
+    TYPE_CMD      = 0x0200,	/* resolved BuiltinCmd (internal only) */
+    TYPE_REGEX    = 0x0400,	/* STR: regular expression (internal only) */
+    TYPE_EXPR     = 0x0800,	/* STR: expression (internal only) */
+    TYPE_REGMATCH = 0x1000,	/* INT: result of regmatch() (internal only) */
+    TYPE_HMS      = 0x2000	/* TIME: was in H:M:S form (internal only) */
+} type_t;
+
+#define TYPES_BASIC \
+    ( TYPE_ID | TYPE_STR | TYPE_ENUM | TYPE_POS | TYPE_INT | TYPE_TIME | \
+    TYPE_FLOAT | TYPE_FILE | TYPE_FUNC | TYPE_CMD )
+
+/* numeric types */
+#if NO_FLOAT
+# define TYPE_NUM	(TYPE_INT | TYPE_TIME)
+#else
+# define TYPE_NUM	(TYPE_INT | TYPE_TIME | TYPE_FLOAT)
+#endif
+
+/* Most types use the union for their value, and cache a string value in sval.
+ * A pure TYPE_STR does not use the union, but it does if type is or'd with
+ * TYPE_REGEX or TYPE_EXPR.
+ */
+typedef struct Value {
+    const char *name;		/* identifier name (must be first member!) */
+    type_t type;
+    int count;			/* reference count */
+    String *sval;		/* string value (any type, not just STR) */
+    union {
+        long ival;		/* integer value (ENUM, POS, INT) */
+        double fval;		/* float value (FLOAT) */
+        struct timeval tval;	/* time value (TIME) */
+	struct RegInfo *ri;	/* compiled regexp (STR|REGEX) */
+	struct Program *prog;	/* compiled expression (STR|EXPR) */
+	void *p;		/* other pointer type (FILE, FUNC, CMD) */
+	unsigned int hash;	/* hash value (ID) */
+        struct Value *next;	/* valpool pointer */
+    } u;
+} Value;
+
+extern Value *val_zero, *val_one;
+/* shareval is a func, not a macro, so it doesn't eval v twice */
+static inline Value *shareval(Value *v)	{ v->count++; return v;}
+
+#define newval()	newval_fl(__FILE__, __LINE__)
+#define newint(i)	newint_fl(i, __FILE__, __LINE__)
+#define newtime(s, u)	newtime_fl(s, u, __FILE__, __LINE__)
+#define newfloat(f)	newfloat_fl(f, __FILE__, __LINE__)
+#define newid(id,l)	newid_fl(id, l, __FILE__, __LINE__)
+#define newstr(s,l)	newstr_fl(s, l, __FILE__, __LINE__)
+#define newSstr(S)	newSstr_fl(S, __FILE__, __LINE__)
+#define newptr(ptr)	newptr_fl(ptr, __FILE__, __LINE__)
+#define valval(val)	valval_fl(val, __FILE__, __LINE__)
+#define clearval(val)	clearval_fl(val, __FILE__, __LINE__)
+
+extern void clearval_fl(Value *val, const char *file, int line);
+extern struct Value *newval_fl(const char *file, int line);
+extern struct Value *newfloat_fl(double f, const char *file, int line);
+extern struct Value *newint_fl(long i, const char *file, int line);
+extern struct Value *newtime_fl(long s, long u,
+              const char *file, int line);
+extern struct Value *newSstr_fl(String *S, const char *file, int line);
+extern struct Value *newstr_fl(const char *s, int len,
+              const char *file, int line);
+extern struct Value *newid_fl(const char *id, int len,
+              const char *file, int line);
+extern struct Value *valval_fl(Value *val, const char *file, int line);
+
+
+typedef int (Toggler)(void);
 
 typedef struct Var {
-    CONST char *name;
-    CONST char *value;
-    int len;
+    Value val;			/* value (must be first member!) */
     int flags;
-    CONST char **enumvec;	/* list of valid string values */
-    long ival;			/* integer value */
-    Toggler *func;		/* called when ival changes */
+    String *enumvec;		/* list of valid enum values */
+    Toggler *func;		/* called when value changes */
     struct ListEntry *node;	/* backpointer to node in list */
-    GENERIC *status;		/* status line field to update on change */
+    short statuses;		/* # of status fields watching this var */
+    short statusfmts;		/* # of status fields using this var as fmt */
+    short statusattrs;		/* # of status fields using this var as attr */
 } Var;
 
 
 enum Vars {
-#define varcode(id, name, val, type, enums, ival, func)      id
+#define varcode(id, name, val, type, flags, enums, ival, uval, func)      id,
 #include "varlist.h"
 #undef varcode
+    NUM_VARS
 };
 
 
@@ -41,17 +120,30 @@ enum Vars {
  * enforces the readonly-ness in standard C (gcc needs -pedantic to warn).
  */
 
-#define intvar(id)	(special_var[(id)].ival)
-#define strvar(id)	(special_var[(id)].value)
+#ifdef WORLD_VARS
+# define get_special_var(id) \
+    ((xsock && xsock->world->special_var[(id)]) ? \
+        xsock->world->special_var[(id)] : \
+	&special_var[(id)])
+#else
+# define get_special_var(id)	(&special_var[(id)])
+#endif
 
-#define getintvar(id)	((long) intvar(id))
-#define getstrvar(id)	((char*)strvar(id))
+#define strvar(id)	(get_special_var(id)->val.sval)
+#define intvar(id)	(get_special_var(id)->val.u.ival)
+#define timevar(id)	(get_special_var(id)->val.u.tval)
 
-#define MAIL		getstrvar(VAR_MAIL)
-#define TERM		getstrvar(VAR_TERM)
-#define TFLIBDIR	getstrvar(VAR_TFLIBDIR)
-#define TFPATH		getstrvar(VAR_TFPATH)
-#define TFMAILPATH	getstrvar(VAR_TFMAILPATH)
+#define gettimevar(id)	(timevar(id))
+#define getintvar(id)	((long)          intvar(id))
+#define getstrvar(id)	((String*)       strvar(id))
+#define getstdvar(id)	((char*)         (strvar(id) ? strvar(id)->data : NULL))
+
+#define MAIL		getstdvar(VAR_MAIL)
+#define TERM		getstdvar(VAR_TERM)
+#define TFLIBDIR	getstdvar(VAR_TFLIBDIR)
+#define TFPATH		getstdvar(VAR_TFPATH)
+#define TFMAILPATH	getstdvar(VAR_TFMAILPATH)
+#define alert_time	gettimevar(VAR_alert_time)
 #define auto_fg		getintvar(VAR_auto_fg)
 #define background	getintvar(VAR_background)
 #define backslash	getintvar(VAR_backslash)
@@ -60,6 +152,7 @@ enum Vars {
 #define bg_output	getintvar(VAR_bg_output)
 #define binary_eol	getintvar(VAR_binary_eol)
 #define borg		getintvar(VAR_borg)
+#define cecho		getintvar(VAR_cecho)
 #define cleardone	getintvar(VAR_cleardone)
 #define clearfull	getintvar(VAR_clearfull)
 #define clock_flag	getintvar(VAR_clock)
@@ -72,48 +165,57 @@ enum Vars {
 #define histsize	getintvar(VAR_histsize)
 #define hookflag	getintvar(VAR_hook)
 #define hpri		getintvar(VAR_hpri)
+#define iecho		getintvar(VAR_iecho)
 #define insert		getintvar(VAR_insert)
 #define isize		getintvar(VAR_isize)
 #define istrip		getintvar(VAR_istrip)
+#define kbnum		getstrvar(VAR_kbnum)
 #define kecho		getintvar(VAR_kecho)
-#define kprefix		getstrvar(VAR_kprefix)
+#define keepalive	getintvar(VAR_keepalive)
+#define keypad		getintvar(VAR_keypad)
+#define kprefix		getstdvar(VAR_kprefix)
 #define login		getintvar(VAR_login)
 #define lpflag		getintvar(VAR_lp)
 #define lpquote		getintvar(VAR_lpquote)
-#define maildelay	getintvar(VAR_maildelay)
+#define maildelay	gettimevar(VAR_maildelay)
 #define matching	getintvar(VAR_matching)
 #define max_iter	getintvar(VAR_max_iter)
+#define max_kbnum	getintvar(VAR_max_kbnum)
 #define max_recur	getintvar(VAR_max_recur)
 #define mecho		getintvar(VAR_mecho)
 #define meta_esc	getintvar(VAR_meta_esc)
 #define more		getintvar(VAR_more)
-#define mprefix		getstrvar(VAR_mprefix)
+#define mprefix		getstdvar(VAR_mprefix)
 #define oldslash	getintvar(VAR_oldslash)
 #define pedantic	getintvar(VAR_pedantic)
-#define prompt_sec	getintvar(VAR_prompt_sec)
-#define prompt_usec	getintvar(VAR_prompt_usec)
-#define proxy_host	getstrvar(VAR_proxy_host)
-#define proxy_port	getstrvar(VAR_proxy_port)
-#define process_time	getintvar(VAR_ptime)
+#define prompt_wait	gettimevar(VAR_prompt_wait)
+#define proxy_host	getstdvar(VAR_proxy_host)
+#define proxy_port	getstdvar(VAR_proxy_port)
+#define process_time	gettimevar(VAR_ptime)
 #define qecho		getintvar(VAR_qecho)
-#define qprefix		getstrvar(VAR_qprefix)
+#define qprefix		getstdvar(VAR_qprefix)
 #define quietflag	getintvar(VAR_quiet)
 #define quitdone	getintvar(VAR_quitdone)
 #define redef		getintvar(VAR_redef)
 #define refreshtime	getintvar(VAR_refreshtime)
 #define scroll		getintvar(VAR_scroll)
 #define shpause		getintvar(VAR_shpause)
+#define sigfigs		getintvar(VAR_sigfigs)
 #define snarf		getintvar(VAR_snarf)
 #define sockmload	getintvar(VAR_sockmload)
-#define status_fields	getstrvar(VAR_status_fields)
-#define status_pad	getstrvar(VAR_status_pad)
+#define status_fields	getstdvar(VAR_stat_fields)
+#define status_pad	getstdvar(VAR_stat_pad)
 #define sub		getintvar(VAR_sub)
 #define tabsize		getintvar(VAR_tabsize)
 #define telopt		getintvar(VAR_telopt)
+#define tfhost		getstdvar(VAR_tfhost)
 #define time_format	getstrvar(VAR_time_format)
+#define virtscreen	getintvar(VAR_virtscreen)
+#define warn_curly_re	getintvar(VAR_warn_curly_re)
+#define warn_status	getintvar(VAR_warn_status)
 #define watchdog	getintvar(VAR_watchdog)
 #define watchname	getintvar(VAR_watchname)
-#define wordpunct	getstrvar(VAR_wordpunct)
+#define wordpunct	getstdvar(VAR_wordpunct)
 #define wrapflag	getintvar(VAR_wrap)
 #define wraplog		getintvar(VAR_wraplog)
 #define wrapsize	getintvar(VAR_wrapsize)
@@ -125,5 +227,7 @@ enum Vars {
 #define visual		((long)(getintvar(VAR_visual) > 0))
 
 extern Var special_var[];
+
+#define reset_kbnum()	unsetvar(&special_var[VAR_kbnum])
 
 #endif /* GLOBALS_H */

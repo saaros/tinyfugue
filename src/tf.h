@@ -1,23 +1,53 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tf.h,v 35004.24 1999/01/31 00:27:55 hawkeye Exp $ */
+/* $Id: tf.h,v 35004.41 2003/05/27 01:09:25 hawkeye Exp $ */
 
 #ifndef TF_H
 #define TF_H
 
-/* headers needed everywhere */
+#ifndef COLORS
+# define COLORS 16
+#endif
 
+#if SIZEOF_INT == 4
+    typedef unsigned int attr_t;
+#elif SIZEOF_LONG == 4
+    typedef unsigned long attr_t;
+#else
+#   error "no 32 bit integer?"
+#endif
+
+#if COLORS == 256 /* character attributes can't fit in 16 bits */
+# if SIZEOF_INT == 4
+    typedef unsigned int cattr_t;
+# elif SIZEOF_LONG == 4
+    typedef unsigned long cattr_t;
+# else
+#   error "no 32 bit integer?"
+# endif
+#else /* character attributes can fit in 16 bits */
+# if SIZEOF_SHORT == 2
+    typedef unsigned short cattr_t;
+# elif SIZEOF_INT == 2
+    typedef unsigned int cattr_t;
+# else
+#   error "no 16 bit integer?"
+# endif
+#endif
+
+/* headers needed everywhere */
 #include <time.h>	/* may conflict with <sys/time.h> on some systems? */
 #include <sys/time.h>	/* for struct timeval */
 #include "malloc.h"
+#include "dstring.h"
 #include "globals.h"
 
-#ifdef SOCKS
+#if SOCKS
 # if (SOCKS == 4)
 #  define connect Rconnect
 #  define select Rselect
@@ -31,7 +61,8 @@
  * TinyFugue global types and variables.
  */
 
-/* History sizes are now defined at runtime with /histsize and %histsize. */
+typedef struct Program Program;
+typedef struct Screen Screen;
 
 #define RESTRICT_SHELL  1
 #define RESTRICT_FILE   2
@@ -39,57 +70,61 @@
 
 typedef char smallstr[65];     /* Short buffer */
 
-#define Queue List
+enum enum_attr {
+    /* inside the 16 low bits */
+    F_UNDERLINE   = 0x0001,
+    F_REVERSE     = 0x0002,
+    F_FLASH       = 0x0004,
+    F_DIM         = 0x0000,   /* zero - not implemented */
+    F_BOLD        = 0x0008,
+    F_HILITE      = 0x0010,
+    F_NONE        = 0x0020,
+    F_EXCLUSIVE   = 0x0040,
 
-#define attr_t long
+#if COLORS == 256 /* XXX ??? */
+# define FGCOLORSHIFT 7
+    F_FGCOLORMASK = 0x00007f80,   /* 8 bits, interpreted as an integer */
+    F_FGCOLOR     = 0x00008000,   /* flag */
+# define BGCOLORSHIFT 16
+    F_BGCOLORMASK = 0x00ff0000,   /* 8 bits, interpreted as an integer */
+    F_BGCOLOR     = 0x01000000,   /* flag */
+#else
+    /* inside the 16 low bits */
+# define FGCOLORSHIFT 7
+    F_FGCOLORMASK = 0x0780,   /* 4 bits, interpreted as an integer */
+    F_FGCOLOR     = 0x0800,   /* flag */
+# define BGCOLORSHIFT 12
+    F_BGCOLORMASK = 0x7000,   /* 3 bits, interpreted as an integer */
+    F_BGCOLOR     = 0x8000,   /* flag */
+#endif
 
-typedef struct Aline {         /* shared line, with attributes */
-    char *str;
-    unsigned int len;
-    int links;
-    attr_t attrs;
-    short *partials;
-    struct timeval tv;
-} Aline;
+    /* outside the 16 low bits */
+    F_BELL        = 0x04000000,
+    F_GAG         = 0x08000000,
+    F_NOHISTORY   = 0x10000000,
+    F_SUPERGAG    = (F_GAG | F_NOHISTORY),
 
-#define BLANK_ALINE { "", 0, 1, 0, NULL, { 0, 0 } }
-#define LITERAL_ALINE(str) { (str), sizeof(str)-1, 1, 0, NULL, { 0, 0 } }
+    F_INDENT      = 0x20000000,
+    F_TEMP	  = 0x40000000,
 
-#define F_FGCOLORMASK 00000017   /* 4 bits, interpreted as an integer */
-#define F_FGCOLOR     00000020   /* flag */
-#define F_BGCOLORMASK 00000340   /* 3 bits, interpreted as an integer */
-#define F_BGCOLOR     00000400   /* flag */
-#define F_UNDERLINE   00001000
-#define F_REVERSE     00002000
-#define F_FLASH       00004000
-#define F_DIM         00010000
-#define F_BOLD        00020000
-#define F_HILITE      00040000
-#define F_BELL        00100000
+    F_COLORS      = (F_FGCOLOR | F_BGCOLOR | F_FGCOLORMASK | F_BGCOLORMASK),
+    F_SIMPLE      = (F_UNDERLINE | F_REVERSE | F_FLASH | F_DIM | F_BOLD),
+    F_HWRITE      = (F_SIMPLE | F_HILITE | F_COLORS),
+    F_ATTR        = (F_HWRITE | F_SUPERGAG | F_NONE | F_EXCLUSIVE)
+};
 
-#define F_GAG         00200000
-#define F_NOHISTORY   00400000
-#define F_SUPERGAG    (F_GAG | F_NOHISTORY)
-#define F_NONE        01000000
-#define F_EXCLUSIVE   02000000
-
-#define F_INDENT      04000000
-
-#define F_COLORS      (F_FGCOLOR | F_BGCOLOR | F_FGCOLORMASK | F_BGCOLORMASK)
-#define F_SIMPLE      (F_UNDERLINE | F_REVERSE | F_FLASH | F_DIM | F_BOLD)
-#define F_HWRITE      (F_SIMPLE | F_HILITE | F_COLORS)
-#define F_ATTR        (F_HWRITE | F_SUPERGAG | F_NONE | F_EXCLUSIVE)
-
-#define attr2fgcolor(attr)	((attr) & F_FGCOLORMASK)
-#define attr2bgcolor(attr)	((((attr) & F_BGCOLORMASK) >> 5) + 16)
+#define attr2fgcolor(attr) \
+    (((attr) & F_FGCOLORMASK) >> FGCOLORSHIFT)
+#define attr2bgcolor(attr) \
+    ((((attr) & F_BGCOLORMASK) >> BGCOLORSHIFT) + COLORS)
 #define color2attr(color)   \
-    (((color) < 16) ? \
-    (F_FGCOLOR | (color)) : \
-    (F_BGCOLOR | (((color) - 16) << 5)))
+    (((color) < COLORS) ? \
+    (F_FGCOLOR | ((color) << FGCOLORSHIFT)) : \
+    (F_BGCOLOR | (((color) - COLORS) << BGCOLORSHIFT)))
 
-/* If new contains F_EXCLUSIVE, it replaces attr; otherwise, it combines. */
-#define add_attr(attr, new) \
-    (attr = (new & F_EXCLUSIVE) ? (new) : (attr | new))
+# define attr2cattr(attr)    ((cattr_t)(attr & F_HWRITE))
+
+extern attr_t adj_attr(attr_t base, attr_t adj);  /* output.c */
 
 
 /* Macros for defining and manipulating bit vectors of arbitrary length.
@@ -112,7 +147,7 @@ typedef struct Aline {         /* shared line, with attributes */
 #define VEC_SET(n,p)   ((p)->bits[(n)/LONGBITS] |= (1L << ((n) % LONGBITS)))
 #define VEC_CLR(n,p)   ((p)->bits[(n)/LONGBITS] &= ~(1L << ((n) % LONGBITS)))
 #define VEC_ISSET(n,p) ((p)->bits[(n)/LONGBITS] & (1L << ((n) % LONGBITS)))
-#ifdef HAVE_memcpy   /* assume memcpy implies memset and bcopy implies bzero. */
+#if HAVE_MEMCPY   /* assume memcpy implies memset and bcopy implies bzero. */
 # define VEC_ZERO(p)   memset((char *)(p)->bits, '\0', sizeof(*(p)))
 #else
 # define VEC_ZERO(p)   bzero((char *)(p)->bits, sizeof(*(p)))
@@ -124,27 +159,29 @@ typedef struct Aline {         /* shared line, with attributes */
 #define bicode(a, b)  a 
 #include "enumlist.h"
 
-extern CONST char *enum_flag[];
-extern CONST char *enum_sub[];
-extern CONST char *enum_color[];
+extern String enum_flag[];
+extern String enum_sub[];
+extern String enum_color[];
 
 /* hook definitions */
 
-extern int VDECL(do_hook,(int indx, CONST char *fmt, CONST char *argfmt, ...))
+extern int do_hook(int indx, const char *fmt, const char *argfmt, ...)
     format_printf(2, 4);
 
 enum Hooks {
-#define bicode(a, b)  a 
+#define gencode(a, b, c)  a 
 #include "hooklist.h"
-#undef bicode
+#undef gencode
 };
 
 #define ALL_HOOKS  (~(~0L << NUM_HOOKS))
 
 
 /* externs */
-extern CONST char version[], sysname[], copyright[], contrib[], mods[];
-extern int restriction;
+extern const char version[], sysname[], copyright[], contrib[], mods[];
+extern int restriction, debug;
+extern void internal_error(const char *file, int line, const char *fmt, ...)
+    format_printf(3, 4);
 
 
 #endif /* TF_H */

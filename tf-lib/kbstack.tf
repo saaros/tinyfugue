@@ -13,20 +13,28 @@
 /def -ib^[^[[A = /kb_pop
 
 /def -i kb_push = \
+    /let n=$[+kbnum]%; \
+    /if (n < 0) \
+	/echo -e %% %0: illegal stack number %n.%; \
+	/return 0%; \
+    /endif%; \
     /let _line=$(/recall -i 1)%;\
     /if ( _line !~ "" ) \
-        /set _kb_stack_top=$[_kb_stack_top + 1]%;\
-        /set _kb_stack_%{_kb_stack_top}=%{_line}%;\
+        /eval \
+	    /set _kb_stack_%{n}_top=$$[_kb_stack_%{n}_top + 1]%%;\
+	    /set _kb_stack_%{n}_%%{_kb_stack_%{n}_top}=%%{_line}%;\
     /endif%;\
     /dokey dline
 
 /def -i kb_pop = \
-    /if ( _kb_stack_top > 0 ) \
+    /let n=$[+kbnum]%; \
+    /if /test %{n} >= 0 & _kb_stack_%{n}_top > 0%; /then \
         /dokey dline%;\
-        /@test input(_kb_stack_%{_kb_stack_top})%;\
-        /unset _kb_stack_%{_kb_stack_top}%;\
-        /set _kb_stack_top=$[_kb_stack_top - 1]%;\
+        /eval \
+	    /@test input(_kb_stack_%{n}_%%{_kb_stack_%{n}_top})%%;\
+	    /unset _kb_stack_%{n}_%%{_kb_stack_%{n}_top}%%;\
+	    /set _kb_stack_%{n}_top=$$[_kb_stack_%{n}_top - 1]%;\
     /else \
-        /echo -e %% %0: Keyboard stack is empty.%;\
+        /echo -e %% %0: Keyboard stack %n is empty.%;\
     /endif
 

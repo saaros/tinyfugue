@@ -1,31 +1,33 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: process.h,v 35004.8 1999/01/31 00:27:51 hawkeye Exp $ */
+/* $Id: process.h,v 35004.16 2003/05/27 01:09:24 hawkeye Exp $ */
 
 #ifndef PROCESS_H
 #define PROCESS_H
 
-# ifndef NO_PROCESS
+# if !NO_PROCESS
 
-extern void FDECL(kill_procs_by_world,(struct World *world));
-extern void NDECL(kill_procs);
-extern void NDECL(nuke_dead_procs);
-extern int  NDECL(runall);
+extern void kill_procs_by_world(struct World *world);
+extern void kill_procs(void);
+extern void nuke_dead_procs(void);
+extern void runall(int prompted, struct World *world);
+extern int  ch_lpquote(void);
 
-extern TIME_T proctime;         /* when next process should run */
+extern struct timeval proctime;		/* when next process should run */
 
 # else
 
-#define kill_procs_by_world(world)     /* do nothing */
-#define kill_procs()                   /* do nothing */
-#define nuke_dead_procs()              /* do nothing */
-#define runall(now)                    /* do nothing */
-#define proctime 0
+#define kill_procs_by_world(world)	/* do nothing */
+#define kill_procs()			/* do nothing */
+#define nuke_dead_procs()		/* do nothing */
+#define runall(prompted, world)		/* do nothing */
+#define ch_lpquote			NULL
+#define proctime tvzero
 
 # endif /* NO_PROCESS */
 

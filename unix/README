@@ -3,60 +3,78 @@
 
 Installing TinyFugue
 
-  TinyFugue should work on any Unix-like system that has BSD-style
-  select().  This includes almost everything except some old SVr3-like
-  systems which either do not have select(), or have a select() that
-  works only on STREAMS devices but not terminals.
+  TinyFugue should work on any Unix-like system that has an ANSI compiler
+  and BSD-style select().  This includes almost everything except some old
+  SVr3-like systems which either do not have select(), or have a select()
+  that works only on STREAMS devices but not terminals.
 
-  Installing TinyFugue is quite easy on most Unix-like systems:  simply
-  type "sh unixmake" in the top directory.  The tfconfig script
-  will attempt to figure out everything it needs to know about your
-  system and install all files in their proper location.  If you have any
-  problems, or want to change a default installation option, be sure to
-  read the rest of this file, and the unix/Config file.  Changes should be
-  made in unix/Config only.
+  Installing TinyFugue is quite easy on most Unix-like systems.
+  In the top directory, execute these commands:
+    ./configure
+    make install
+  The configure script will attempt to figure out everything it needs to
+  know about your system and install all files in their proper location.
+  If you have any problems, or want to change a default installation
+  option, be sure to read the rest of this file.
 
 
-unixmake options:
+  In addition to the usual GNU configure options, TinyFugue's configure script
+  has these options:
 
- install	Compile for default locations and install (this is default).
- local		Compile for /usr/local/*/tf-{version}*, but do not install.
- files		Compile for default locations, but do not install.
- clean		Remove object files and other junk from source directory.
- uninstall	Remove tf executable, help files, and library from their
-			installed locations.
+  --enable-version        insert version number into name of tf executable
+                          and library directory (implies --enable-symlink)
+  --enable-symlink[=NAME] make a symlink NAME to the executable [PREFIX/bin/tf]
+  --disable-netdb         disable hostname resolution
+  --disable-termcap       use hardcoded vt100 codes instead of termcap
+  --enable-termcap=LIB    enable termcap with library LIB (e.g., ncurses)
+                          (needed only if configure guesses incorrectly)
+  --disable-mail          disable mail checking
+  --enable-mail=DIR       enable checking for mail in directory DIR
+                          (needed only if configure guesses incorrectly)
+  --enable-manpage        enable installation of man page
+  --disable-history       disable /recall
+  --disable-process       disable /quote and /repeat
+  --disable-float         disable floating point arithmetic and functions
+
+The following environment variables are meaningful to configure.  Their
+default values are listed in brackets after the description.  They can
+be set on the command line like this:
+  sh -c "CPPFLAGS=-I/my/include ./configure"
+
+  CC		C compiler ["gcc" or "cc"]
+  CFLAGS	Options for C compiler ["-g -O2" or "-O2" for gcc,
+		"-g" for others]
+  CPPFLAGS	Options for C preprocessor (e.g. -I) [""]
+  LIBS		"-l" and "-L" options for the linker (in addition to the ones
+		determined automatically by configure).
 
 
 File Locations
 --------------
 
-If you do not explicitly define the file locations in unix/Config, TF will
-try to install them in these places:
+If you do not define the file prefix with ./configure --prefix=PREFIX,
+configure will choose a prefix:
 
-   /usr/local/bin and /usr/local/lib, if you used "sh unixmake local"; or,
-   /usr/local/bin and /usr/local/lib, if you have write permission; or,
-   $HOME/bin and $HOME/lib, if they exist; or,
-   $HOME, if all of the above fail.
+   "/usr/local" if you can write to /usr/local/bin and /usr/local/lib; or,
+   $HOME, otherwise.
 
-The man page is not installed by default.  To change the location of a
-file, edit the appropriate variable in unix/Config, using a full path
-name.
+The man page is not installed by default; use --enable-manpage to install it.
 
-If SYMLINK is set in unix/Config, its value will be used as the name of a
-symbolic link to the file named by TF.  This is useful for giving
-all the files a name that includes a version number, so they can be
-installed without problem even if old versions are currently in use.
+If --enable-version is given, the tf executable and library directory will
+have a version number embedded in their names (e.g., PREFIX/bin/tf-50a1 and
+PREFIX/lib/tf-50a1-lib).  This is useful if you want to keep old versions
+around.  This option will automatically --enable-symlink.
 
 If you move or rename any files after installing (this includes copying
 TF to another machine where the file paths are different), you must let
-TF know.  One way is to edit unix/Config and compile again.  The other is to
-set environment variable TFLIBDIR to the new path before running tf.
+TF know.  One way is to reinstall, starting from ./configure.  The other is
+to set environment variable TFLIBDIR to the new path before running tf.
 This can be done with a shell script like this:
 
-    #!/bin/sh
-    TFLIBDIR=/new/location/of/lib/tf-lib
+    #! /bin/sh
+    TFLIBDIR=/new/location/lib/tf-lib
     export TFLIBDIR
-    exec /new/location/of/bin/tf $*
+    exec /new/location/bin/tf "$@"
 
 The variables TFHELP and TFLIBRARY can also be set in the environment,
 but this should not normally be necessary, since their default values are
@@ -67,9 +85,9 @@ Public Installation
 -------------------
 
 If you have write permission in /usr/local/bin and /usr/local/lib, TinyFugue
-will be installed there by default.  Or you can use "unixmake local" or
-change the locations by editing unix/Config as described above.  The Makefile
-will then put all files in their proper location with the proper permissions.
+will be installed there by default.  Or you can change the locations by using
+the options described above.  The Makefile will then put all files in their
+proper location with the proper permissions.
 
 Some features of TF can be disabled for secure public installation, by using
 the /restrict commands in %{TFLIBDIR}/local.tf.  See ../README.
@@ -78,45 +96,38 @@ the /restrict commands in %{TFLIBDIR}/local.tf.  See ../README.
 Terminal Handling
 -----------------
 
-unix/tfconfig will try termcap-compatible libraries in this order: the
-one specified in unix/Config (if any); termcap; ncurses; curses.
-If none of those work, tf will use hardcoded vt100 codes.
+On a UNIX-like system, ./configure will try to find a termcap-compatible library
+in this order: the one specified in --enable-termcap=LIB, if any; termcap;
+ncurses; curses.  If none of those work, tf will use hardcoded vt100 codes.
+On CYGWIN, tf will use hardcoded ANSI codes.
 
 
 Installation Problems
 ---------------------
 
-The unix/tfconfig script can usually figure out everything it needs to
+The ./configure script can usually figure out everything it needs to
 know to configure TinyFugue for your unix-like system.  But if it fails
-because your system is brain damaged, you may need to edit some lines
-in the unix/Config file.  Try installing with the defaults at least once
-before making any of these changes.
+because your system is brain damaged, you may need to change some environment
+variables or disable some features.
 
 
 Problem: On AIX 4.1, a bug in gcc 2.8.0 causes /addworld and some operators to
   fail with an error like "% internal error: reduce: bad op 037777777703"
-Solution: use a different compiler (cc or xlc) or a different version of
-  gcc (2.7.2 is known to work).
-
-Problem: On SunOS 5.4 (Solaris 2.4), connections fail with "Resource
-  temporarily unavailable".
-Solution: Install patch 101945(?) from sunsite.unc.edu/pub/patches
+Solution: use a different compiler (cc or xlc) by setting the CC environment
+  variable before running ./configure, or use a different version of gcc
+  (2.7.2 is known to work).
 
 Problem: On OSF/1 with gcc, compile errors involving 'sigval_t',
   'union sigval', or 'clock_id'.
-Solution: in Config: CC=cc
+Solution: use a different compiler (cc) by setting the CC environment
+  variable before running ./configure.
 
 Problem: With gcc, compile errors involving va_list or __builtin_va_alist.
-Solution: in Config: CC=cc
-
-Problem: Hostnames don't work on SunOS 4.0.x.
-Solution: in Config: LIBS='-lresolv'
-
-Problem: Ioctl or tcgetattr errors when compiled with gcc.
-Solution: in Config: FLAGS='-traditional'
+Solution: use a different compiler (cc) by setting the CC environment
+  variable before running ./configure.
 
 Problem: Your system is Apollo Domain/OS.
-Solution: in Config: FLAGS='-U__STDC__'
+Solution: in Config: FLAGS='-U__STDC__' (XXX this is wrong XXX)
 
 Problem: On debian linux, undefined references to tgetent, tgetstr, tgetnum,
   tgoto, tputs.
@@ -125,11 +136,11 @@ Solution: Get an ELF termcap library, or add /usr/i486-linuxaout/bin to your
 
 Problem: On DYNIX/ptx 4 or later, runtime error saying that -linet is not
   needed.  (Why do they have it if it's not needed!?)
-Solution: Run "./unixmake config", edit src/Makefile to remove "-linet"
-  from the LIBS line, and run "./unixmake".
+Solution: Run ./configure, edit src/Makefile to remove "-linet"
+  from the LIBS line, and run "make".
 
 
-SOCKS Proxy
+SOCKS Proxy XXX
 -----------
 
 TF supports the SOCKS proxy server.  If your site uses SOCKS to connect
@@ -140,7 +151,7 @@ TF can also be made to connect through a generic proxy server by setting
 the %proxy_host variable at runtime.  See "/help proxy".
 
 
-Last Resort
+Last Resort XXX
 -----------
 
 If you think TF won't compile because of a bug or incompatibility with

@@ -1,8 +1,8 @@
 
-  TinyFugue.  Copyright (C) 1993 - 1999 Ken Keys.
+  TinyFugue is Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 by Ken Keys.
 
-  Regexp package is Copyright (c) 1986 by University of Toronto.  See
-  src/regexp/README for details.
+  PCRE regexp package is Copyright 1997-1999 University of Cambridge.
+  See src/pcre-2.08/LICENCE for details.
 
 =======
 
@@ -36,16 +36,16 @@ intended for OS/2.  It is possible to convert line delimiters, but it's
 easier to just get a distribution that already has the correct delimiters.
 
 
-Installation program options
-----------------------------
+"Make" options
+--------------
 
 Options are not available on all systems.  To use an option, give it as
-an argument to the installation program (e.g., "sh unixmake clean").
+an argument to the installation program (e.g., "make clean").
 
- install	Compile and install (this is the default).  The default
-			installation locations depend on the operating system.
- files		Compile, but do not install (the "install" option should be
+ all		Compile, but do not install (the "install" option should be
 			run later to install the files).
+ install	Compile (if you haven't already) and install.  The default
+			installation locations depend on the operating system.
  clean		Remove object files and other junk from source directory.
  uninstall	Remove tf executable, help files, and library from their
 			installed locations.

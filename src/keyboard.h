@@ -1,32 +1,32 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: keyboard.h,v 35004.11 1999/01/31 00:27:45 hawkeye Exp $ */
+/* $Id: keyboard.h,v 35004.19 2003/05/27 01:09:22 hawkeye Exp $ */
 
 #ifndef KEYBOARD_H
 #define KEYBOARD_H
 
-extern TIME_T keyboard_time;
+extern struct timeval keyboard_time;
 extern int keyboard_pos;
 extern Stringp keybuf;
 extern int pending_line, pending_input;
 
-extern void          NDECL(init_keyboard);
-extern int           FDECL(bind_key,(struct Macro *macro));
-extern void          FDECL(unbind_key,(struct Macro *macro));
-extern struct Macro *FDECL(find_key,(CONST char *key));
-extern int           FDECL(do_kbdel,(int place));
-extern int           FDECL(do_kbword,(int start, int dir));
-extern int           FDECL(do_kbmatch,(int start));
-extern int           FDECL(handle_keyboard_input,(int read_flag));
-extern int           NDECL(handle_input_line);
+extern void          init_keyboard(void);
+extern int           bind_key(struct Macro *macro);
+extern void          unbind_key(struct Macro *macro);
+extern struct Macro *find_key(const char *key);
+extern int           do_kbdel(int place);
+extern int           do_kbword(int start, int dir);
+extern int           do_kbmatch(int start);
+extern int           handle_keyboard_input(int read_flag);
+extern int           handle_input_line(void);
 
-#ifdef DMALLOC
-extern void   NDECL(free_keyboard);
+#if USE_DMALLOC
+extern void   free_keyboard(void);
 #endif
 
 #endif /* KEYBOARD_H */

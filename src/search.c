@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1999 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: search.c,v 35004.10 1999/01/31 00:27:51 hawkeye Exp $ */
+static const char RCSid[] = "$Id: search.c,v 35004.23 2003/05/27 01:09:24 hawkeye Exp $";
 
 
 /**********************************************
@@ -20,17 +20,13 @@
 
 static ListEntry *nodepool = NULL;		/* freelist */
 
-static unsigned int FDECL(hash_string,(CONST char *str));
-
 
 /********/
 /* trie */
 /********/
 
 /* Find the datum in trie assosiated with the key. */
-GENERIC *trie_find(root, key)
-    TrieNode *root;
-    CONST unsigned char *key;
+void *trie_find(TrieNode *root, const unsigned char *key)
 {
     TrieNode *n;
 
@@ -43,10 +39,7 @@ GENERIC *trie_find(root, key)
  * returns TRIE_SUB, TRIE_SUPER, or TRIE_DUP and does not insert.
  * Otherwise, returns 1 for success.
  */
-int intrie(root, datum, key)
-    TrieNode **root;
-    GENERIC *datum;
-    CONST unsigned char *key;
+int intrie(TrieNode **root, void *datum, const unsigned char *key)
 {
     int i;
 
@@ -76,9 +69,7 @@ int intrie(root, datum, key)
     }
 }
 
-TrieNode *untrie(root, s)
-    TrieNode **root;
-    CONST unsigned char *s;
+TrieNode *untrie(TrieNode **root, const unsigned char *s)
 {
     if (*s) {
         if (untrie(&((*root)->u.child[*s]), s + 1)) return *root;
@@ -94,17 +85,15 @@ TrieNode *untrie(root, s)
 /* linked list */
 /***************/
 
-void init_list(list)
-    List *list;
+void init_list(List *list)
 {
     list->head = list->tail = NULL;
 }
 
-GENERIC *unlist(node, list)                /* delete Node from linked list */
-    ListEntry *node;
-    List *list;
+/* delete Node from linked list */
+void *unlist(ListEntry *node, List *list)
 {
-    GENERIC *result;
+    void *result;
 
     *(node->next ? &node->next->prev : &list->tail) = node->prev;
     *(node->prev ? &node->prev->next : &list->head) = node->next;
@@ -116,10 +105,7 @@ GENERIC *unlist(node, list)                /* delete Node from linked list */
 /* Create new node for datum and insert into list in sorted order.
  * <cmp> is a function that compares two data.
  */
-ListEntry *sinsert(datum, list, cmp)
-    GENERIC *datum;
-    List *list;
-    Cmp *cmp;
+ListEntry *sinsert(void *datum, List *list, Cmp *cmp)
 {
     ListEntry *node;
 
@@ -133,12 +119,8 @@ ListEntry *sinsert(datum, list, cmp)
 /* Create new node for datum and insert into list.
  * If where is non-null, insert after it; else, insert at beginning
  */
-ListEntry *inlist_fl(datum, list, where, file, line)
-    GENERIC *datum;
-    List *list;
-    ListEntry *where;
-    CONST char *file;
-    int line;
+ListEntry *inlist_fl(void *datum, List *list, ListEntry *where,
+    const char *file, int line)
 {
     ListEntry *node;
 
@@ -161,10 +143,7 @@ ListEntry *inlist_fl(datum, list, where, file, line)
 /* hash table */
 /**************/
 
-void init_hashtable(table, size, cmp)
-    HashTable *table;
-    int size;
-    Cmp *cmp;
+void init_hashtable(HashTable *table, int size, Cmp *cmp)
 {
     table->size = size;
     table->cmp = cmp;
@@ -173,24 +152,22 @@ void init_hashtable(table, size, cmp)
         table->bucket[--size] = NULL;
 }
 
-GENERIC *hash_find(name, table)       /* find entry by name */
-    CONST char *name;
-    HashTable *table;
+/* find entry by name */
+void *hashed_find(const char *name, unsigned int hash, HashTable *table)
 {
     List *bucket;
     ListEntry *node;
 
-    bucket = table->bucket[hash_string(name) % table->size];
+    bucket = table->bucket[hash % table->size];
     if (bucket) {
         for (node = bucket->head; node; node = node->next)
-            if ((*table->cmp)((GENERIC *)name, node->datum) == 0)
+            if ((*table->cmp)((void *)name, node->datum) == 0)
                 return node->datum;
     }
     return NULL;
 }
 
-static unsigned int hash_string(str)
-    CONST char *str;
+unsigned int hash_string(const char *str)
 {
     unsigned int h;
 
@@ -199,9 +176,7 @@ static unsigned int hash_string(str)
     return h;
 }
 
-ListEntry *hash_insert(datum, table)     /* add node to hash table */
-    GENERIC *datum;
-    HashTable *table;
+ListEntry *hash_insert(void *datum, HashTable *table)
 {
     int indx;
 
@@ -214,9 +189,7 @@ ListEntry *hash_insert(datum, table)     /* add node to hash table */
 }
 
 
-void hash_remove(node, tab)         /* remove node from hash table */
-    ListEntry *node;
-    HashTable *tab;
+void hash_remove(ListEntry *node, HashTable *tab)
 {
     unlist(node, tab->bucket[hash_string(*(char**)node->datum) % tab->size]);
 }
@@ -226,14 +199,12 @@ void hash_remove(node, tab)         /* remove node from hash table */
 /* binary search */
 /*****************/
 
-#ifndef HAVE_bsearch
+#if !HAVE_BSEARCH
 /*
  * binsearch - replacement for bsearch().
  */
-GENERIC *binsearch(key, base, nel, size, cmp)
-    CONST GENERIC *key, *base;
-    int nel, size;
-    Cmp *cmp;
+void *binsearch(const void *key, const void *base, int nel, int size,
+    Cmp *cmp)
 {
     int bottom, top, mid, value;
 
@@ -241,10 +212,10 @@ GENERIC *binsearch(key, base, nel, size, cmp)
     top = nel - 1;
     while (bottom <= top) {
         mid = (top + bottom) / 2;
-        value = (*cmp)(key, (GENERIC *)((char *)base + size * mid));
+        value = (*cmp)(key, (void *)((char *)base + size * mid));
         if (value < 0) top = mid - 1;
         else if (value > 0) bottom = mid + 1;
-        else return (GENERIC *)((char *)base + size * mid);
+        else return (void *)((char *)base + size * mid);
     }
     return NULL;
 }
@@ -256,32 +227,122 @@ GENERIC *binsearch(key, base, nel, size, cmp)
 /***************/
 
 /* strstructcmp - compares a string to the first field of a structure */
-int strstructcmp(key, datum)
-    CONST GENERIC *key, *datum;
+int strstructcmp(const void *key, const void *datum)
 {
     return strcmp((char *)key, *(char **)datum);
 }
 
 /* cstrstructcmp - compares string to first field of a struct, ignoring case */
-int cstrstructcmp(key, datum)
-    CONST GENERIC *key, *datum;
+int cstrstructcmp(const void *key, const void *datum)
 {
     return cstrcmp((char *)key, *(char **)datum);
 }
 
-#ifdef DMALLOC
-void free_search()
+
+/*******************/
+/* circular queues */
+/*******************/
+static int alloc_cqueue(CQueue *cq, int maxsize)
 {
-    ListEntry *node;
-    while (nodepool) {
-       node = nodepool;
-       nodepool = nodepool->next;
-       FREE(node);
+    cq->maxsize = maxsize;
+    if (maxsize) {
+        cq->data =
+            (void**)MALLOC(maxsize * sizeof(void*));
+        if (!cq->data) {
+            /*eprintf("not enough memory for %d lines.", maxsize); */ /* XXX */
+            cq->maxsize = 1;
+            cq->data = (void**)XMALLOC(1 * sizeof(void*));
+	    return 0;
+        }
+    } else {
+        cq->data = NULL;
+    }
+    return 1;
+}
+
+struct CQueue *init_cqueue(CQueue *cq, int maxsize,
+    void (*free_f)(void*, const char *, int))
+{
+    if (!cq) cq = (CQueue*)XMALLOC(sizeof(CQueue));
+    cq->free = free_f;
+    cq->last = cq->index = -1;
+    cq->first = cq->size = cq->total = 0;
+    alloc_cqueue(cq, maxsize);
+    return cq;
+}
+
+void free_cqueue(CQueue *cq)
+{
+    if (cq->data) {
+        for ( ; cq->size; cq->size--) {
+            cq->free(cq->data[cq->first], __FILE__, __LINE__);
+            cq->first = nmod(cq->first + 1, cq->maxsize);
+        }
+        cq->first = 0;
+        cq->last = -1;
+        FREE(cq->data);
     }
 }
 
-void free_hash(table)
-    HashTable *table;
+void encqueue(CQueue *cq, void *datum)
+{
+    if (!cq->data)
+        alloc_cqueue(cq, cq->maxsize);
+    if (cq->size == cq->maxsize) {
+        cq->free(cq->data[cq->first], __FILE__, __LINE__);
+        cq->first = nmod(cq->first + 1, cq->maxsize);
+    } else {
+        cq->size++;
+    }
+    cq->last = nmod(cq->last + 1, cq->maxsize);
+    cq->data[cq->last] = datum;
+    cq->total++;
+}
+
+void cqueue_replace(CQueue *cq, void *datum, int idx)
+{
+    cq->free(cq->data[idx], __FILE__, __LINE__);
+    cq->data[idx] = datum;
+}
+
+int resize_cqueue(CQueue *cq, int maxsize)
+{
+    int first, last, size;
+    void **newdata;
+
+    if (!(newdata = (void**)MALLOC(maxsize * sizeof(void*))))
+	return 0;
+    first = nmod(cq->total, maxsize);
+    last = nmod(cq->total - 1, maxsize);
+    for (size = 0; cq->size; cq->size--) {
+	if (size < maxsize) {
+	    first = nmod(first - 1, maxsize);
+	    newdata[first] = cq->data[cq->last];
+	    size++;
+	} else {
+	    cq->free(cq->data[cq->last], __FILE__, __LINE__);
+	}
+	cq->last = nmod(cq->last - 1, cq->maxsize);
+    }
+    if (cq->data) FREE(cq->data);
+    cq->data = newdata;
+    cq->first = first;
+    cq->last = last;
+    cq->size = size;
+    cq->maxsize = maxsize;
+
+    cq->index = cq->last;
+    return cq->maxsize;
+}
+
+
+#if USE_DMALLOC
+void free_search(void)
+{
+    pfreepool(ListEntry, nodepool, next);
+}
+
+void free_hash(HashTable *table)
 {
     int i;
     for (i = 0; i < table->size; i++) {
