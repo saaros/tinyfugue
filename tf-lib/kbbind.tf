@@ -2,7 +2,7 @@
 ;;; This file is loaded by stdlib.tf.
 ;;; ^J, ^M, and ^H are builtin, and do not need to be bound.
 
-/~loaded kbbind.tf
+/loaded __TFLIB__/kbbind.tf
 
 /require kbfunc.tf
 

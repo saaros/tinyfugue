@@ -1,7 +1,7 @@
 ;;; cut/copy/paste input region
 ;;; this file is incomplete
 
-/~loaded kbregion.tf
+/loaded __TFLIB__/kbregion.tf
 
 /def -ib'^x@'	= /kb_set_mark
 /def -ib'^xx'	= /kb_cut_region

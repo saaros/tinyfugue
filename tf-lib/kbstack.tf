@@ -5,7 +5,7 @@
 ;;;; Type ESC UP to restore the saved line.  Any number of lines can
 ;;;; be saved and restored.
 
-/~loaded kbstack.tf
+/loaded __TFLIB__/kbstack.tf
 
 /def -ib^[^[OB = /kb_push
 /def -ib^[^[[B = /kb_push

@@ -5,23 +5,23 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: commands.h,v 35004.16 1998/04/02 06:38:28 hawkeye Exp $ */
+/* $Id: commands.h,v 35004.18 1998/06/23 23:49:07 hawkeye Exp $ */
 
 #ifndef COMMANDS_H
 #define COMMANDS_H
 
-extern struct Value *FDECL(newint,(long i));
+extern struct Value *FDECL(newint_fl,(long i, CONST char *file, int line));
 extern struct Value *FDECL(newstrid,(CONST char *str, int len, int type,
               CONST char *file, int line));
 
-#define newid(s,l)        (newstrid(s, l, TYPE_ID, __FILE__, __LINE__))
-#define newstr(s,l)       (newstrid(s, l, TYPE_STR, __FILE__, __LINE__))
-#define newstrliteral(s)  (newstr(s, sizeof(s)))
+#define newint(i)         newint_fl(i, __FILE__, __LINE__)
+#define newid(s,l)        newstrid(s, l, TYPE_ID, __FILE__, __LINE__)
+#define newstr(s,l)       newstrid(s, l, TYPE_STR, __FILE__, __LINE__)
+#define newstrliteral(s)  newstr(s, sizeof(s))
 
 
 #define HANDLER(name) struct Value *FDECL(name,(char *args))
 
-extern HANDLER (handle_addworld_command);
 extern HANDLER (handle_dc_command);
 extern HANDLER (handle_def_command);
 extern HANDLER (handle_dokey_command);

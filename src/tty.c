@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tty.c,v 35004.12 1998/01/02 09:41:48 hawkeye Exp $ */
+/* $Id: tty.c,v 35004.14 1998/06/23 23:49:08 hawkeye Exp $ */
 
 /*
  * TTY driver routines.
@@ -21,9 +21,9 @@
 
 #ifdef USE_TERMIOS                    /* POSIX is the way to go. */
 # include <termios.h>
-# ifndef TIOCGWINSZ
+/* # ifndef TIOCGWINSZ */
 #  include <sys/ioctl.h>              /* BSD needs this for TIOCGWINSZ */
-# endif
+/* # endif */
 # define tty_struct struct termios
 # define insetattr(buf) (tcsetattr(STDIN_FILENO, TCSAFLUSH, (buf)))
 # define ingetattr(buf) (tcgetattr(STDIN_FILENO, (buf)))
@@ -77,7 +77,7 @@ int no_tty = 1;
 #include "output.h"	/* ch_visual() */
 #include "macro.h"	/* add_ibind() */
 #include "search.h"	/* for variable.h */
-#include "variable.h"	/* setivar() */
+#include "variable.h"	/* set_var_by_*() */
 
 #define DEFAULT_COLUMNS 80
 
@@ -178,7 +178,7 @@ int get_window_size()
 # endif
 
     if (columns == ocol && lines == oline) return 1;
-    setivar("wrapsize", columns - (ocol - wrapsize), FALSE);
+    set_var_by_id(VAR_wrapsize, columns - (ocol - wrapsize), NULL);
     ch_visual();
     do_hook(H_RESIZE, NULL, "%d %d", columns, lines);
     return 1;

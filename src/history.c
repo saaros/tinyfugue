@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: history.c,v 35004.42 1998/04/14 19:41:53 hawkeye Exp $ */
+/* $Id: history.c,v 35004.50 1998/06/24 21:37:54 hawkeye Exp $ */
 
 
 /****************************************************************
@@ -31,7 +31,8 @@
 #include "commands.h"
 #include "search.h"		/* List in recall_history() */
 #include "keyboard.h"		/* keybuf */
-#include "variable.h"		/* setvar() */
+#include "variable.h"		/* set_var_by_*() */
+#include "signals.h"		/* interrupted() */
 
 #define GLOBALSIZE    1000	/* global history size */
 #define LOCALSIZE      100	/* local history size */
@@ -58,8 +59,7 @@ static void     FDECL(save_to_log,(History *hist, CONST char *str));
 static void     FDECL(hold_input,(CONST char *str));
 static void     FDECL(listlog,(World *world));
 static void     FDECL(stoplog,(World *world));
-static int      FDECL(do_watch,(char *args, CONST char *name, int *wlines,
-                      int *wmatch, int flag));
+static int      FDECL(do_watch,(char *args, int id, int *wlines, int *wmatch));
 
 
 static Aline blankline[1] = { BLANK_ALINE };
@@ -278,10 +278,12 @@ struct Value *handle_recall_command(args)
 int do_recall(args)
     char *args;
 {
-    int n0, n1, istime, i, ii, mflag = matching, want, count, truth = !0;
+    int n0, n1, istime, i, ii, want;
+    int count = 0, mflag = matching, quiet = 0, truth = !0;
     long n_or_t = 0;
-    TIME_T t0, t1, now = time(NULL);
-    int numbers, timestamps = FALSE;
+    TIME_T t0, t1;
+    int numbers;
+    CONST char *recall_time_format = NULL;
     attr_t attrs = 0;
     short *partials = NULL;
     char opt;
@@ -293,29 +295,30 @@ int do_recall(args)
     STATIC_BUFFER(buffer);
     static Aline *startmsg = NULL, *endmsg = NULL;
 
-    if (!startmsg) {
-        (startmsg = new_aline("---- Recall start ----", 0))->links = 1;
-        (endmsg = new_aline("---- Recall end ----", 0))->links = 1;
-    }
-
     init_pattern_str(&pat, NULL);
-    startopt(args, "ligw:a:f:tm:v");
+    startopt(args, "ligw:a:f:t:m:vq");
     while ((opt = next_hist_opt(&args, &hist, NULL))) {
         switch (opt) {
         case 'a': case 'f':
-            if ((i = parse_attrs(&args)) < 0) return 0;
+            if ((i = parse_attrs(&args)) < 0)
+                goto do_recall_exit;
             attrs |= i;
             break;
         case 't':
-            timestamps = TRUE;
+            if (recall_time_format) FREE(recall_time_format);
+            recall_time_format = STRDUP(args);
             break;
         case 'm':
-            if ((mflag = enum2int(args, enum_match, "-m")) < 0) return 0;
+            if ((mflag = enum2int(args, enum_match, "-m")) < 0)
+                goto do_recall_exit;
             break;
         case 'v':
             truth = 0;
             break;
-        default: return 0;
+        case 'q':
+            quiet = 1;
+            break;
+        default: goto do_recall_exit;
         }
     }
     if (!hist) hist = world ? world->history : globalhist;
@@ -323,7 +326,7 @@ int do_recall(args)
     while(is_space(*args)) args++;
 
     t0 = 0;
-    t1 = now;
+    t1 = -1;
     n0 = 0;
     n1 = hist->total - 1;
     want = hist->size;
@@ -331,12 +334,12 @@ int do_recall(args)
     if (!args || !*args) {
         n_or_t = -1;  /* flag syntax error */
         eprintf("missing arguments");
-        return 0;
+        goto do_recall_exit;
     } else if (*args == '-') {                                 /*  -y */
         ++args;
         if ((n_or_t = parsetime(&args, &istime)) < 0) {
             eprintf("syntax error in recall range");
-            return 0;
+            goto do_recall_exit;
         }
         if (istime) t1 = abstime(n_or_t);
         else n0 = n1 = hist->total - n_or_t;
@@ -346,7 +349,7 @@ int do_recall(args)
     } else if (is_digit(*args)) {
         if ((n_or_t = parsetime(&args, &istime)) < 0) {
             eprintf("syntax error in recall range");
-            return 0;
+            goto do_recall_exit;
         } else if (*args != '-') {                             /* x   */
             if (istime) t0 = t1 - n_or_t;
             else n0 = hist->total - n_or_t;
@@ -355,7 +358,7 @@ int do_recall(args)
             else n0 = n_or_t - 1;
             if ((n_or_t = parsetime(&args, &istime)) < 0) {
                 eprintf("syntax error in recall range");
-                return 0;
+                goto do_recall_exit;
             }
             if (istime) t1 = abstime(n_or_t);
             else n1 = n_or_t - 1;
@@ -366,31 +369,50 @@ int do_recall(args)
     }
     if (*args && !is_space(*args)) {
         eprintf("extra characters after recall range: %s", args);
-        return 0;
+        goto do_recall_exit;
     }
     while (is_space(*args)) ++args;
     if (*args && !init_pattern(&pat, args, mflag))
-        return 0;
+        goto do_recall_exit;
 
-    if (empty(hist)) return 0;          /* (after parsing, before searching) */
+    if (empty(hist))
+        goto do_recall_exit;            /* (after parsing, before searching) */
 
-    if (tfout == tfscreen) {
+    if (!startmsg) {
+        (startmsg = new_aline("---- Recall start ----", 0))->links = 1;
+        (endmsg = new_aline("---- Recall end ----", 0))->links = 1;
+    }
+
+    if (!quiet && tfout == tfscreen) {
         norecord++;                     /* don't save this output in history */
         oputa(startmsg);
+        oflush();			/* in case this takes a while */
+    }
+
+    if (recall_time_format && !*recall_time_format) {
+        char *temp = XMALLOC(strlen(time_format) + 3);
+        sprintf(temp, "[%s]", time_format);
+        FREE(recall_time_format);
+        recall_time_format = temp;
     }
 
     if (n0 < hist->total - hist->size) n0 = hist->total - hist->size;
     if (n1 >= hist->total) n1 = hist->total - 1;
-    if (n0 <= n1 && t0 <= t1) {
+    if (n0 <= n1 && (t0 <= t1 || t1 < 0)) {
         n0 = nmod(n0, hist->maxsize);
         n1 = nmod(n1, hist->maxsize);
         attrs = ~attrs;
 
         if (hist == input) hold_input(keybuf->s);
         for (i = n1; want > 0; i = nmod(i - 1, hist->maxsize)) {
+            if (interrupted()) {
+                eprintf("history scan interrupted at #%d",
+                    hist->total - nmod(hist->last - i, hist->maxsize));
+                break;
+            }
             if (i == n0) want = 0;
             aline = hist->alines[i];
-            if (aline->time > t1 || aline->time < t0) continue;
+            if (aline->time < t0 || (t1 >=0 && aline->time > t1)) continue;
             if (gag && (aline->attrs & F_GAG & attrs)) continue;
             if (!patmatch(&pat, aline->str) == truth) continue;
             want--;
@@ -398,9 +420,9 @@ int do_recall(args)
             if (numbers)
                 Sprintf(buffer, SP_APPEND, "%d: ",
                     hist->total - nmod(hist->last - i, hist->maxsize));
-            if (timestamps) {
-                Sprintf(buffer, SP_APPEND, "[%s] ",
-                    tftime(time_format, aline->time));
+            if (recall_time_format) {
+                Sprintf(buffer, SP_APPEND, "%s ",
+                    tftime(recall_time_format, aline->time));
             }
 
             /* share aline if possible: copy only if different */
@@ -430,28 +452,31 @@ int do_recall(args)
     for (count = 0; stack->head; count++)
         oputa((Aline *)unlist(stack->head, stack));
 
-    free_pattern(&pat);
-
-    if (tfout == tfscreen) {
+    if (!quiet && tfout == tfscreen) {
         oputa(endmsg);
         norecord--;
     }
+
+do_recall_exit:
+    free_pattern(&pat);
+    if (recall_time_format) FREE(recall_time_format);
+
     return count;
 }
 
-static int do_watch(args, name, wlines, wmatch, flag)
+static int do_watch(args, id, wlines, wmatch)
     char *args;
-    CONST char *name;
-    int *wlines, *wmatch, flag;
+    int id, *wlines, *wmatch;
 {
     int out_of, match;
 
     if (!*args) {
-        oprintf("%% %s %sabled.", name, flag ? "en" : "dis");
+        oprintf("%% %s %sabled.", special_var[id].name,
+            special_var[id].ival ? "en" : "dis");
         return 1;
     } else if (cstrcmp(args, "off") == 0) {
-        setvar(name, "0", FALSE);
-        oprintf("%% %s disabled.", name);
+        set_var_by_id(id, 0, NULL);
+        oprintf("%% %s disabled.", special_var[id].name);
         return 1;
     } else if (cstrcmp(args, "on") == 0) {
         /* do nothing */
@@ -461,22 +486,22 @@ static int do_watch(args, name, wlines, wmatch, flag)
         *wmatch = match;
         *wlines = out_of;
     }
-    setvar(name, "1", FALSE);
+    set_var_by_id(id, 1, NULL);
     oprintf("%% %s enabled, searching for %d out of %d lines",
-        name, *wmatch, *wlines);
+        special_var[id].name, *wmatch, *wlines);
     return 1;
 }
 
 struct Value *handle_watchdog_command(args)
     char *args;
 {
-    return newint(do_watch(args, "watchdog", &wdlines, &wdmatch, watchdog));
+    return newint(do_watch(args, VAR_watchdog, &wdlines, &wdmatch));
 }
 
 struct Value *handle_watchname_command(args)
     char *args;
 {
-    return newint(do_watch(args, "watchname", &wnlines, &wnmatch, watchname));
+    return newint(do_watch(args, VAR_watchname, &wnlines, &wnmatch));
 }
 
 int is_watchname(hist, aline)
@@ -496,9 +521,7 @@ int is_watchname(hist, aline)
         if (++nmatches == wnmatch) break;
     }
     if (nmatches < wnmatch) return 0;
-    Stringcpy(buf, "{");
-    Stringfncat(buf, aline->str, end - aline->str);
-    Stringcat(buf, "}*");
+    Sprintf(buf, 0, "{%.*s}*", end - aline->str, aline->str);
     oprintf("%% Watchname: gagging \"%S\"", buf);
     return add_macro(new_macro(buf->s, "", 0, NULL, "", gpri, 100, F_GAG, 0,
         MATCH_GLOB));

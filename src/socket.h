@@ -5,10 +5,13 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: socket.h,v 35004.20 1998/01/02 09:41:47 hawkeye Exp $ */
+/* $Id: socket.h,v 35004.21 1998/06/07 19:03:43 hawkeye Exp $ */
 
 #ifndef SOCKET_H
 #define SOCKET_H
+
+#define SOCK_RECV	0
+#define SOCK_SEND	1
 
 struct World   *world_decl;	/* declares struct World */
 
@@ -21,7 +24,7 @@ extern void    NDECL(init_sock);
 extern int     FDECL(is_active,(int fd));
 extern void    FDECL(readers_clear,(int fd));
 extern void    FDECL(readers_set,(int fd));
-extern TIME_T  FDECL(sockidle,(CONST char *name));
+extern TIME_T  FDECL(sockidle,(CONST char *name, int dir));
 extern int     NDECL(tog_bg);
 extern int     FDECL(openworld,(CONST char *name, CONST char *port,
                      int autologin, int quietlogin));

@@ -30,14 +30,17 @@
 #define HAVE_gethostbyname
 #undef  HAVE_getpwnam
 #undef  HAVE_getwd
+#define HAVE_h_errno
+#define HAVE_hstrerror
 #undef  HAVE_index
+#define HAVE_kill
 #define HAVE_memcpy
 #define HAVE_memset
-#define HAVE_kill
+#define HAVE_raise
 #define HAVE_setlocale
+#define HAVE_sigaction
 #define HAVE_srand
 #undef  HAVE_srandom
-#define HAVE_sigaction
 #undef  HAVE_strcasecmp
 #define HAVE_strchr
 #undef  HAVE_strcmpi
@@ -46,10 +49,12 @@
 #define HAVE_strftime
 #define HAVE_stricmp
 #define HAVE_strstr
+#define HAVE_strtod
 #define HAVE_strtol
+#define HAVE_tzset
+
 
 #define TERMCAP
 #define USE_TERMIOS
-#define NONBLOCKING_GETHOST
 
 /* LIBDIR is defined by os2make.cmd */

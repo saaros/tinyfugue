@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: macro.h,v 35004.19 1998/01/02 09:41:40 hawkeye Exp $ */
+/* $Id: macro.h,v 35004.20 1998/05/20 21:03:46 hawkeye Exp $ */
 
 #ifndef MACRO_H
 #define MACRO_H
@@ -17,7 +17,7 @@ typedef struct Macro {
     struct ListEntry *hooknode;		/* node in list by hook */
     struct ListEntry *hashnode;		/* node in list in hash bucket */
     struct Macro *tnext;		/* temp list ptr for collision/death */
-    CONST char *bind, *keyname, *body;
+    CONST char *bind, *keyname, *body, *expr;
     Pattern trig, hargs, wtype;		/* trigger/hook/worldtype patterns */
     long hook;				/* bit vector, at least 32 bits */
     struct World *world;		/* only trig on text from world */

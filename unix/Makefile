@@ -1,4 +1,4 @@
-# $Id: Makefile,v 35000.16 1998/03/29 06:37:10 hawkeye Exp $
+# $Id: Makefile,v 35000.19 1998/06/30 06:12:30 hawkeye Exp $
 ########################################################################
 #
 #  TinyFugue - programmable mud client
@@ -101,13 +101,32 @@ tar ../tf-$(TFVER).tar: ./src/*.[ch] srcdist distclean
 	rm -f ../tf-$(TFVER)/src/dmalloc.c
 	cd ..; tar -cf tf-$(TFVER).tar tf-$(TFVER)
 
-dist: ./tf-lib/tf-help ../tf-$(TFVER).tar
+dist: ./tf-lib/tf-help ../tf-$(TFVER).tar ../tf-$(TFVER)-help.tar
 	cd ..; gzip tf-$(TFVER).tar
 	cd ..; zip -qlr tf-$(TFVER).zip tf-$(TFVER)
 	cd ..; chmod ugo+r tf-$(TFVER).tar.gz tf-$(TFVER).zip
+	cd ..; gzip tf-$(TFVER)-help.tar
 
 gzdist: ./tf-lib/tf-help ../tf-$(TFVER).tar
 	cd ..; gzip tf-$(TFVER).tar
+
+tarhelp ../tf-$(TFVER)-help.tar: help
+	@wd=`pwd`; [ "`basename $$wd`" = "work" ] || \
+	    echo 'WARNING: You are not in the "work" directory.'
+	@echo 'Press return to archive tf-$(TFVER)-help.'
+	@read foo
+	rm -rf ../tf-$(TFVER)-help;
+	for dir in "/" /commands/ /topics/; do \
+	    mkdir ../tf-$(TFVER)-help$${dir}; \
+	    cp help/$${dir}*.html ../tf-$(TFVER)-help$${dir}; \
+	    chmod ugo+r ../tf-$(TFVER)-help$${dir}*; \
+	done
+	chmod ugo+r ../tf-$(TFVER)-help
+	cd ..; tar -cf tf-$(TFVER)-help.tar tf-$(TFVER)-help
+
+tcp.com:
+	cd ..; scp tf-$(TFVER).tar.gz tf-$(TFVER).zip tf-$(TFVER)-help.tar.gz \
+	    tcp.com:
 
 local:
 	TFDEV_TF='/usr/local/bin/tf-$(TFVER)' \

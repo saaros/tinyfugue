@@ -9,7 +9,7 @@
 ;;; command: /biff TinyFugue is cool wares, dude.
 ;;; output:  T1NYFUGUE 1Z C00L WAREZ, DUDE!
 
-/~loaded tr.tf
+/loaded __TFLIB__/tr.tf
 
 /def -i tr = \
     /let old=%;\

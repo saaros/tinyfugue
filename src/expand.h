@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expand.h,v 35004.16 1998/03/11 23:12:19 hawkeye Exp $ */
+/* $Id: expand.h,v 35004.18 1998/06/24 05:36:15 hawkeye Exp $ */
 
 #ifndef EXPAND_H
 #define EXPAND_H
@@ -19,7 +19,8 @@
 
 
 extern void NDECL(init_expand);
-extern int  FDECL(process_macro,(CONST char *body, CONST char *args, int subs));
+extern int  FDECL(process_macro,(CONST char *body, CONST char *args, int subs,
+                  CONST char *name));
 extern String *NDECL(do_mprefix);
 extern CONST char **FDECL(keyword,(CONST char *id));
 
@@ -31,5 +32,15 @@ extern void   NDECL(free_expand);
 extern struct Value *user_result;
 extern CONST char *current_command;
 extern int recur_count, breaking;
+
+#define return_user_result() do { \
+        struct Value *v = user_result; \
+        user_result = NULL; \
+        return v; \
+    } while (0)
+
+#define set_user_result(val)  do { \
+        freeval(user_result); user_result = val; \
+    } while(0)
 
 #endif /* EXPAND_H */

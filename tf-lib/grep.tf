@@ -1,6 +1,13 @@
 ;; simple grep
 
-/~loaded grep.tf
+/loaded __TFLIB__/grep.tf
+
+; Note: users should not rely on %_loaded_libs like this.  I can get away
+; with this here only because this and /loaded are internal to TF.
+/if (_loaded_libs =/ "*{__TFLIB__/textutil.tf}*") \
+    /echo -e %% Warning: textutil.tf and grep.tf have conflicting defintions.%;\
+/endif
+
 
 /def -i _fgrep = \
     /@test (strstr({*}, pattern) >= 0) & echo({*})

@@ -24,4 +24,4 @@
             /test (result:=result * n), --n%; \
         /done%; \
         /result result%; \
-    /endif%; \
+    /endif

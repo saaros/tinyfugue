@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: malloc.h,v 35004.8 1998/01/02 09:41:41 hawkeye Exp $ */
+/* $Id: malloc.h,v 35004.9 1998/06/23 23:49:07 hawkeye Exp $ */
 
 #ifndef MALLOC_H
 #define MALLOC_H
@@ -21,11 +21,14 @@ extern int low_memory_warning;
 #ifdef DMALLOC
 extern GENERIC  *FDECL(dmalloc,(long unsigned size,
                        CONST char *file, CONST int line));
+extern GENERIC  *FDECL(dcalloc,(long unsigned size,
+                       CONST char *file, CONST int line));
 extern GENERIC  *FDECL(drealloc,(GENERIC *ptr, long unsigned size,
                        CONST char *file, CONST int line));
 extern void   FDECL(dfree,(GENERIC *ptr, CONST char *file, CONST int line));
 #else
 # define dmalloc(size, file, line) malloc(size)
+# define dcalloc(size, file, line) calloc(size)
 # define drealloc(ptr, size, file, line) realloc((GENERIC*)(ptr), (size))
 # define dfree(ptr, file, line) free((GENERIC*)(ptr))
 #endif
@@ -40,15 +43,15 @@ extern void      NDECL(init_malloc);
 /* Fast allocation from pool.
  * Should be used only on objects which are freed frequently.
  */
-#define palloc(item, type, pool, next) \
+#define palloc(item, type, pool, next, file, line) \
     ((pool) ? \
       ((item) = (pool), (pool) = pool->next) : \
-      ((item) = (type *)XMALLOC(sizeof(type))))
+      ((item) = (type *)xmalloc(sizeof(type), file, line)))
 
 #ifndef DMALLOC
 #define pfree(item, pool, next)  (item->next = (pool), (pool) = (item))
 #else
-#define pfree(item, pool, next)  FREE(item)
+#define pfree(item, pool, next)  dfree(item, __FILE__, __LINE__)
 #endif
 
 

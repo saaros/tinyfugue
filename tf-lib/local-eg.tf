@@ -1,4 +1,4 @@
-;;; $Id: local-eg.tf,v 35000.3 1998/04/09 20:26:16 hawkeye Exp $
+;;; $Id: local-eg.tf,v 35000.4 1998/06/17 05:38:12 hawkeye Exp $
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; TF local library
@@ -9,7 +9,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;; Mark this file as already loaded, for /require.
-/~loaded local.tf
+/loaded __TFLIB__/local.tf
 
 ;;; If this tf is available to users without shells, you probably want
 ;;; to restrict their access. (See "/help restrict" in tf).
@@ -17,26 +17,26 @@
 ; /restrict FILE
 ; /restrict WORLD
 
-;;; HELPFILE is defined during installation.  If you want to move the
-;;; helpfile without re-installing, uncomment and edit the line below.
+;;; The helpfile location is defined during installation.  If you want to
+;;; move it without re-installing, uncomment and edit the line below.
 
-; /def -i HELPFILE=/usr/local/lib/tf-lib/help
+; /set TFHELP=/usr/local/lib/tf-lib/help
 
 ;;; Mail location
 ;; If your system keeps incoming mail in the recipient's home, instead of
-;; in a central spool directory, uncomment the lines below (and edit the
-;; "/set MAIL" line if needed).
+;; in a central spool directory, uncomment the lines below, and edit the
+;; "/set MAIL" line if needed.
 
 ; /eval \
 ;     /if ( MAIL !~ "" ) \
-;         /set MAIL=%{HOME}/.mailbox %;\
+;         /set MAIL=%{HOME}/.mailbox%;\
 ;     /endif
 
 ;;; file compression
 ;; COMPRESS_READ should contain a command that take a filename as an
-;; argument, and prints its output on stdout.  The library is configured
-;; to use '.Z' and 'zcat'.  To use a different program, uncomment the pair
-;; used on your system, or add your own.
+;; argument, and prints its output on stdout.  By default, these macros
+;; are set to '.Z' and 'zcat'.  To use a different program, uncomment the
+;; pair used on your system, or add your own.
 
 ; GNU compression
 ; /def -i COMPRESS_SUFFIX=.gz

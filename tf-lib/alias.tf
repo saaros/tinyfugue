@@ -3,7 +3,7 @@
 ; syntax:  /alias <name> <command...>
 ; syntax:  /unalias <name>
 
-/~loaded alias.tf
+/loaded __TFLIB__/alias.tf
 
 /if ( alias =~ "old" ) \
     /echo -e Note: you have alias=old, so argument substitutions will follow \

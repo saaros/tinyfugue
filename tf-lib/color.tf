@@ -1,6 +1,6 @@
 ;;;; popular color definitions
 ;;; I provided extended ANSI codes because they're the most common.
-;;; The user can of course redefine them.
+;;; The user can of course redefine them (in another file).
 
 ;; Code 37;40 sets white on black, and 30;47 sets black on white; we have
 ;; no way to know which are the terminal's normal colors.  Code 0 resets
@@ -16,6 +16,7 @@
 /set end_color  		\033[37;40;0m
 ;; For terminals where 0 resets color, and/or normal is black on white.
 ; /set end_color  		\033[30;47;0m
+
 
 /set start_color_black		\033[30m
 /set start_color_red		\033[31m
@@ -35,6 +36,7 @@
 /set start_color_bgcyan		\033[46m
 /set start_color_bgwhite	\033[47m
 
+
 ;; For some reason, aixterm "white" appears grey; adding 60 gives true white.
 /if ( TERM =~ "aixterm" ) \
     /set start_color_white	\\033[97m%; \
@@ -44,6 +46,7 @@
 ;;  black on white
 ;   /set end_color  		\\033[30;107;0m%; \
 /endif
+
 
 ; This group is set up for 16 colors on xterms.
 ; Colors 0-7 correspond to the 8 named foreground colors above.  The named
@@ -67,4 +70,19 @@
 /set start_color_13		\033[213m
 /set start_color_14		\033[214m
 /set start_color_15		\033[215m
+
+
+; Simple commands to disable/enable color.  Resetting status_fields forces
+; a redraw of the status line (with the new colors).
+
+/purge -mregexp ^color_(on|off)$
+
+/def -i color_on = \
+    /load -q %TFLIBDIR/color.tf%; \
+    /set status_fields=%status_fields
+
+/def -i color_off = \
+    /quote -S /unset `/listvar -s start_color_*%; \
+    /unset end_color%; \
+    /set status_fields=%status_fields
 

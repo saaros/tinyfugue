@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: signals.c,v 35004.21 1998/04/09 20:21:35 hawkeye Exp $ */
+/* $Id: signals.c,v 35004.23 1998/06/23 23:48:02 hawkeye Exp $ */
 
 /* Signal handling, core dumps, job control, and interactive shells */
 
@@ -219,7 +219,7 @@ static void handle_interrupt()
         die("Interrupt, exiting.", 0);
     setup_screen(0);
     if (ucase(c) == 'T') {
-        setivar("borg", 0, FALSE);
+        set_var_by_id(VAR_borg, 0, NULL);
         oputs("% Cyborg triggers disabled.");
     } else if (ucase(c) == 'P') {
         kill_procs();
@@ -268,9 +268,12 @@ static RETSIG core_handler(sig)
         panic_fix_screen();
         coremsg();
         fprintf(stderr, "> Abnormal termination - signal %d\r\n\n", sig);
-#ifdef PLATFORM_UNIX
-        fputs("If you can, follow these instructions to get a stack trace.\r\n",
+        fputs("If you can, get a stack trace and send it to the author.\r\n",
             stderr);
+        fputs("If not, please at least describe what you were doing at the",
+            stderr);
+        fputs("time of this crash.\r\n", stderr);
+#ifdef PLATFORM_UNIX
         fputs("If you haven't already done so, in the 'Config' file set\r\n",
             stderr);
         fputs("CCFLAGS='-g' and STRIP='', and rerun 'make'.  Then do:\r\n",
@@ -293,9 +296,6 @@ static RETSIG core_handler(sig)
         fputs("If you can, get a stack trace and send it to the author.\r\n",
             stderr);
 #endif
-        fputs("If you can't or don't get a stack trace, at least describe\r\n",
-            stderr);
-        fputs("what you were doing at the time of this crash.\r\n", stderr);
     }
 
     fputs("\nPress any key.\r\n", stderr);

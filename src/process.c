@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: process.c,v 35004.26 1998/03/29 03:52:06 hawkeye Exp $ */
+/* $Id: process.c,v 35004.28 1998/06/24 05:36:16 hawkeye Exp $ */
 
 /************************
  * Fugue processes.     *
@@ -213,7 +213,7 @@ static struct Value *killproc(proc, needresult)
     if (proc->type == P_QFILE) result = result + 1;
 
     if (!needresult) return NULL;
-    if (proc->type == P_QLOCAL || proc->type == P_REPEAT) return user_result;
+    if (proc->type == P_QLOCAL || proc->type == P_REPEAT) return_user_result();
     else return newint(result);
 }
 
@@ -245,10 +245,12 @@ void nuke_dead_procs()
 void kill_procs()
 {
     while (proclist) {
-        if (proclist->type == P_QSHELL)
-            readers_clear(fileno(proclist->input->u.fp));
-        if (proclist->input)
-            tfclose(proclist->input);
+        if (proclist->state != PROC_DEAD) {
+            if (proclist->type == P_QSHELL)
+                readers_clear(fileno(proclist->input->u.fp));
+            if (proclist->input)
+                tfclose(proclist->input);
+        }
         nukeproc(proclist);
     }
 
@@ -340,7 +342,7 @@ static int runproc(p)
 static int do_repeat(proc)
     Proc *proc;
 {
-    process_macro(proc->cmd, NULL, SUB_MACRO);
+    process_macro(proc->cmd, NULL, SUB_MACRO, "\bREPEAT");
     return --proc->count;
 }
 
@@ -361,10 +363,10 @@ static int do_quote(proc)
         oputs(proc->buffer->s);
         break;
     case DISP_SEND:
-        process_macro(proc->buffer->s, NULL, SUB_LITERAL);
+        process_macro(proc->buffer->s, NULL, SUB_LITERAL, "\bQUOTE");
         break;
     case DISP_EXEC:
-        process_macro(proc->buffer->s, NULL, SUB_KEYWORD);
+        process_macro(proc->buffer->s, NULL, SUB_KEYWORD, "\bQUOTE");
         break;
     }
     return TRUE;
@@ -511,7 +513,7 @@ struct Value *handle_quote_command(args)
         olderr = tferr;
         tfout = input = tfopen(NULL, "q");
         /* tferr = input; */
-        process_macro(cmd, NULL, subflag);
+        process_macro(cmd, NULL, subflag, "\bQUOTE");
         tferr = olderr;
         tfout = oldout;
         break;

@@ -1,5 +1,5 @@
 
-  TinyFugue.  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys.
+  TinyFugue.  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998 Ken Keys.
 
   Regexp package is Copyright (c) 1986 by University of Toronto.  See
   src/regexp/README for details.
@@ -112,11 +112,11 @@ email at hawkeye@tf.tcp.com.  Please provide the following information:
 
     The version of TF (type "/version" in tf).
     The operating system version (on unix, type "uname -a" in the shell).
-    If tf won't compile, send the Build.log file (in plaintext form).
-    If you have a bug or core, give me all error messages from tf.
-    If you have a bug or core, tell me what you did or what happened
+    If tf won't compile, send the Build.log file (in plaintext form, please).
+    If you have a bug or core, give ALL error messages from tf.
+    If you have a bug or core, describe what you did or what happened
         before the problem, and if the problem is repeatable.
-    If you have a core, do _not_ send the core file.
+    If you have a core file, do NOT send it.
 
 
 Porting

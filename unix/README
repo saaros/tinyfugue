@@ -93,6 +93,11 @@ in the unix/Config file.  Try installing with the defaults at least once
 before making any of these changes.
 
 
+Problem: On AIX 4.1, a bug in gcc 2.8.0 causes /addworld and some operators to
+  fail with an error like "% internal error: reduce: bad op 037777777703"
+Solution: use a different compiler (cc or xlc) or a different version of
+  gcc (2.7.2 is known to work).
+
 Problem: On SunOS 5.4 (Solaris 2.4), connections fail with "Resource
   temporarily unavailable".
 Solution: Install patch 101945(?) from sunsite.unc.edu/pub/patches

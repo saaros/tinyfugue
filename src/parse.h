@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: parse.h,v 35004.5 1998/03/20 22:02:22 hawkeye Exp $ */
+/* $Id: parse.h,v 35004.7 1998/06/24 05:36:16 hawkeye Exp $ */
 
 #ifndef PARSE_H
 #define PARSE_H
@@ -44,10 +44,9 @@ typedef struct Arg {
     CONST char *start, *end;
 } Arg;
 
-
 extern void        FDECL(parse_error,(CONST char *type, CONST char *expect));
 extern int         FDECL(macsub,(Stringp dest));
-extern int         FDECL(varsub,(Stringp dest));
+extern int         FDECL(varsub,(Stringp dest, int sub_warn));
 extern int         FDECL(exprsub,(Stringp dest));
 extern int         FDECL(cmdsub,(Stringp dest));
 extern CONST char *FDECL(valstr,(Value *val));
@@ -57,16 +56,6 @@ extern void        FDECL(freeval,(Value *val));
 
 #define dollarsub(dest) \
     ((*ip == '[') ? exprsub(dest) : (*ip == '(') ? cmdsub(dest) : macsub(dest))
-
-#define set_user_result(val)  do { \
-      struct Value *v = val;  /* only evaluate (val) once */ \
-      if (v != user_result) { freeval(user_result); user_result = v; } \
-    } while(0)
-#define copy_user_result(val) do { \
-      struct Value *v = val;  /* only evaluate (val) once */ \
-      if (v != user_result) \
-          { freeval(user_result); (user_result = v)->count++; } \
-    } while(0)
 
 extern Value *stack[];			/* expression stack */
 extern int stacktop;			/* first free position on stack */

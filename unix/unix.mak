@@ -1,4 +1,4 @@
-# $Id: unix.mak,v 35004.15 1998/03/29 06:37:11 hawkeye Exp $
+# $Id: unix.mak,v 35004.17 1998/06/24 23:15:23 hawkeye Exp $
 ########################################################################
 #  TinyFugue - programmable mud client
 #  Copyright (C) 1994 - 1998 Ken Keys
@@ -112,7 +112,9 @@ LIBRARY $(LIBDIR): ../tf-lib/tf-help ../tf-lib/tf-help.idx
 makehelp: makehelp.c
 	$(CC) $(CFLAGS) -o makehelp makehelp.c
 
-../tf-lib/tf-help:
+__always__:
+
+../tf-lib/tf-help: __always__
 	if test -d ../help; then cd ../help; $(MAKE) tf-help; fi
 	if test -d ../help; then cp ../help/tf-help ../tf-lib; fi
 
@@ -149,7 +151,7 @@ clean distclean cleanest:
 # development stuff, not necessarily portable.
 
 tags: *.[ch]
-	ctags -t port.h tf.h *.[ch] 2>/dev/null
+	ctags port.h tf.h *.[ch] 2>/dev/null
 
 dep: *.c
 	gcc -E -MM *.c \

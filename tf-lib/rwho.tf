@@ -11,7 +11,7 @@
 ;;; Make sure you /load rwho.tf _after_ you define your worlds, or rwho
 ;;; will be the default world.
 
-/~loaded rwho.tf
+/loaded __TFLIB__/rwho.tf
 
 ;; This site is current as of November 1993, but is subject to change.
 /addworld rwho riemann.math.okstate.edu 6889

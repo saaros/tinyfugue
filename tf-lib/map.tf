@@ -19,7 +19,7 @@
 ;;;			  "/dopath 10 n 3 e d 2 w" will execute "n" 10
 ;;;			  times, "e" 3 times, "d" once, and "w" twice.
 
-/~loaded map.tf
+/loaded __TFLIB__/map.tf
 
 /set path=
 

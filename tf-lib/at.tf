@@ -4,9 +4,9 @@
 ;; "hh:mm" or "hh:mm:ss" ("hh" is between 0 and 23).  <when> is within
 ;; the next 24 hours.
 
-/~loaded at.tf
+/loaded __TFLIB__/at.tf
 
 /def -i at = \
     /let delay=$[{1} - $(/time %%H:%%M:%%S)]%;\
-    /repeat -$[(delay >= 0) ? delay : (delay + 24:00)] 1 %-1
+    /repeat -$[(delay > 0) ? delay : (delay + 24:00)] 1 %-1
 

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: globals.h,v 35000.14 1998/01/04 21:08:56 hawkeye Exp $ */
+/* $Id: globals.h,v 35000.17 1998/06/22 20:36:31 hawkeye Exp $ */
 
 #ifndef GLOBALS_H
 #define GLOBALS_H
@@ -50,6 +50,8 @@ enum Vars {
 #define MAIL		getstrvar(VAR_MAIL)
 #define TERM		getstrvar(VAR_TERM)
 #define TFLIBDIR	getstrvar(VAR_TFLIBDIR)
+#define TFPATH		getstrvar(VAR_TFPATH)
+#define TFMAILPATH	getstrvar(VAR_TFMAILPATH)
 #define auto_fg		getintvar(VAR_auto_fg)
 #define background	getintvar(VAR_background)
 #define backslash	getintvar(VAR_backslash)
@@ -67,7 +69,6 @@ enum Vars {
 #define async_conn	getintvar(VAR_async_conn)
 #define gpri		getintvar(VAR_gpri)
 #define hilite		getintvar(VAR_hilite)
-#define hiliteattr	getintvar(VAR_hiliteattr)
 #define histsize	getintvar(VAR_histsize)
 #define hookflag	getintvar(VAR_hook)
 #define hpri		getintvar(VAR_hpri)
@@ -104,7 +105,6 @@ enum Vars {
 #define shpause		getintvar(VAR_shpause)
 #define snarf		getintvar(VAR_snarf)
 #define sockmload	getintvar(VAR_sockmload)
-#define status_attr	getintvar(VAR_status_attr)
 #define status_fields	getstrvar(VAR_status_fields)
 #define status_pad	getstrvar(VAR_status_pad)
 #define sub		getintvar(VAR_sub)

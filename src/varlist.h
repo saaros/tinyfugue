@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: varlist.h,v 35000.21 1998/04/11 20:16:58 hawkeye Exp $ */
+/* $Id: varlist.h,v 35000.24 1998/06/22 20:36:31 hawkeye Exp $ */
 
 /* It may not be easy to read in 80 columns, but it keeps the constants and
  * the array in the same place, so they can't get out of sync.
@@ -16,15 +16,17 @@
 /*      ID             , NAME           , VAL    , TYPE   , ENUMS     , IVAL  , FUNC */
 
 #ifdef HAVE_setlocale
-varcode(VAR_LANG       , "LANG"         , NULL   , VARSTR , NULL      , 0     , ch_locale),
-varcode(VAR_LC_ALL     , "LC_ALL"       , NULL   , VARSTR , NULL      , 0     , ch_locale),
-varcode(VAR_LC_CTYPE   , "LC_CTYPE"     , NULL   , VARSTR , NULL      , 0     , ch_locale),
-varcode(VAR_LC_TIME    , "LC_TIME"      , NULL   , VARSTR , NULL      , 0     , ch_locale),
+varcode(VAR_LANG       , "LANG"         , NULL   , VARSTRX, NULL      , 0     , ch_locale),
+varcode(VAR_LC_ALL     , "LC_ALL"       , NULL   , VARSTRX, NULL      , 0     , ch_locale),
+varcode(VAR_LC_CTYPE   , "LC_CTYPE"     , NULL   , VARSTRX, NULL      , 0     , ch_locale),
+varcode(VAR_LC_TIME    , "LC_TIME"      , NULL   , VARSTRX, NULL      , 0     , ch_locale),
 #endif /* HAVE_setlocale */
 varcode(VAR_MAIL       , "MAIL"         , NULL   , VARSTR , NULL      , 0     , ch_mailfile),
 varcode(VAR_TERM       , "TERM"         , NULL   , VARSTR , NULL      , 0     , change_term),
 varcode(VAR_TFLIBDIR   , "TFLIBDIR"     , LIBDIR , VARSTR , NULL      , 0     , NULL),
-varcode(VAR_TZ         , "TZ"           , NULL   , VARSTR , NULL      , 0     , ch_timezone),
+varcode(VAR_TFMAILPATH , "TFMAILPATH"   , NULL   , VARSTR , NULL      , 0     , ch_mailfile),
+varcode(VAR_TFPATH     , "TFPATH"       , NULL   , VARSTR , NULL      , 0     , NULL),
+varcode(VAR_TZ         , "TZ"           , NULL   , VARSTRX, NULL      , 0     , ch_timezone),
 varcode(VAR_auto_fg    , "auto_fg"      , NULL   , VARENUM, enum_flag , TRUE  , NULL),
 varcode(VAR_background , "background"   , NULL   , VARENUM, enum_flag , TRUE  , tog_bg),
 varcode(VAR_backslash  , "backslash"    , NULL   , VARENUM, enum_flag , TRUE  , NULL),

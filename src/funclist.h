@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: funclist.h,v 35000.23 1998/03/28 20:39:16 hawkeye Exp $ */
+/* $Id: funclist.h,v 35000.27 1998/06/27 23:54:12 hawkeye Exp $ */
 
 /*	  Symbol	Name		Min	Max	*/
 /*					Args	Args	*/
@@ -55,6 +55,7 @@ funccode( FN_RAND,	"rand",		0,	2),
 funccode( FN_READ,	"read",		0,	0),
 funccode( FN_REGMATCH,	"regmatch",	2,	2),
 funccode( FN_SEND,	"send",		1,	3),
+funccode( FN_SIDLE,	"sidle",	0,	1),
 funccode( FN_SIN,	"sin",		1,	1),
 funccode( FN_SQRT,	"sqrt",		1,	1),
 funccode( FN_STRCAT,	"strcat",	0,	(unsigned)-1),
@@ -65,6 +66,7 @@ funccode( FN_STRNCMP,	"strncmp",	3,	3),
 funccode( FN_STRRCHR,	"strrchr",	2,	2),
 funccode( FN_STRREP,	"strrep",	2,	2),
 funccode( FN_STRSTR,	"strstr",	2,	2),
+funccode( FN_SUBSTITUTE,"substitute",	1,	3),
 funccode( FN_SUBSTR,	"substr",	2,	3),
 funccode( FN_SYSTYPE,	"systype",	0,	0),
 funccode( FN_TAN,	"tan",		1,	1),
@@ -77,4 +79,4 @@ funccode( FN_TIME,	"time",		0,	0),
 funccode( FN_TOLOWER,	"tolower",	1,	1),
 funccode( FN_TOUPPER,	"toupper",	1,	1),
 funccode( FN_TRUNC,	"trunc",	1,	1),
-funccode( FN_WORLDINFO,	"world_info",	1,	2)
+funccode( FN_WORLDINFO,	"world_info",	0,	2)

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tf.h,v 35004.16 1998/03/28 20:38:30 hawkeye Exp $ */
+/* $Id: tf.h,v 35004.18 1998/05/03 19:32:19 hawkeye Exp $ */
 
 #ifndef TF_H
 #define TF_H
@@ -61,14 +61,15 @@ typedef struct Aline {         /* shared line, with attributes */
 #define F_GAG         00200000
 #define F_NOHISTORY   00400000
 #define F_SUPERGAG    (F_GAG | F_NOHISTORY)
-#define F_NORM        01000000
+#define F_NONE        01000000
+#define F_EXCLUSIVE   02000000
 
-#define F_INDENT      02000000
+#define F_INDENT      04000000
 
 #define F_COLORS      (F_FGCOLOR | F_BGCOLOR | F_FGCOLORMASK | F_BGCOLORMASK)
 #define F_SIMPLE      (F_UNDERLINE | F_REVERSE | F_FLASH | F_DIM | F_BOLD)
 #define F_HWRITE      (F_SIMPLE | F_HILITE | F_COLORS)
-#define F_ATTR        (F_HWRITE | F_SUPERGAG | F_NORM)
+#define F_ATTR        (F_HWRITE | F_SUPERGAG | F_NONE | F_EXCLUSIVE)
 
 #define attr2fgcolor(attr)	((attr) & F_FGCOLORMASK)
 #define attr2bgcolor(attr)	((((attr) & F_BGCOLORMASK) >> 5) + 16)
@@ -76,6 +77,11 @@ typedef struct Aline {         /* shared line, with attributes */
     (((color) < 16) ? \
     (F_FGCOLOR | (color)) : \
     (F_BGCOLOR | (((color) - 16) << 5)))
+
+/* If new contains F_EXCLUSIVE, it replaces attr; otherwise, it combines. */
+#define add_attr(attr, new) \
+    (attr = (new & F_EXCLUSIVE) ? (new) : (attr | new))
+
 
 /* Macros for defining and manipulating bit vectors of arbitrary length.
  * We use an array of long because select() does, and these macros will be

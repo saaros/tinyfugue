@@ -28,7 +28,7 @@
 ;; leading "-", because we want the -w<world> option to be interpreted.
 
 
-/~loaded pcmd.tf
+/loaded __TFLIB__/pcmd.tf
 
 /def -i pfxrand = \
     /set outputprefix=<pre:%{_pfx_counter}:$[rand()]>%;\

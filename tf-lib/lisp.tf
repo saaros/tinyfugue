@@ -2,7 +2,7 @@
 ; These macros return values via /result, so they can be used in $() command
 ; subs, or as functions in expressions.
 
-/~loaded lisp.tf
+/loaded __TFLIB__/lisp.tf
 
 /def -i car = /result {1}
 /def -i cdr = /result {-1}

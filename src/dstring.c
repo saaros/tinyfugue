@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: dstring.c,v 35004.6 1998/01/02 09:41:31 hawkeye Exp $ */
+/* $Id: dstring.c,v 35004.7 1998/06/24 04:41:01 hawkeye Exp $ */
 
 
 /*********************************************************************
@@ -38,6 +38,9 @@ String *dSinit(str, size, file, line)
     str->s = (char *) xmalloc(str->size * sizeof(char), file, line);
     str->s[0] = '\0';
     str->len = 0;
+#ifdef DMALLOC
+    str->is_static = 0;
+#endif
     /* fprintf(stderr, "%s:%d\tinit\t%8u\n", file, line, str->size); */
     return str;
 }
@@ -48,7 +51,10 @@ void dSfree(str, file, line)
     int line;
 {
     /* fprintf(stderr, "%s:%d\tfree\t%8u (%8u)\n", file, line, str->size, str->len); */
-    if (str->s) FREE(str->s);    /* Might have been an unused STATIC_BUFFER */
+#ifdef DMALLOC
+    if (!str->is_static)
+#endif
+    if (str->s) FREE(str->s);
     str->s = NULL;
     str->size = str->len = 0;
 }
@@ -61,9 +67,21 @@ static void resize(str, file, line)
     /* fprintf(stderr, "%s:%d\tresize\t%8u to %8lu (%8u)\n",
         file, line, str->size, (str->len/ALLOCSIZE+1)*ALLOCSIZE, str->len); */
     str->size = (str->len / ALLOCSIZE + 1) * ALLOCSIZE;
-    str->s = (str->s)
-        ? (char*) xrealloc(str->s, str->size * sizeof(char), file, line)
-        : (char*) xmalloc(str->size * sizeof(char), file, line);
+#ifdef DMALLOC
+    if (str->is_static) {
+        str->s = (str->s)
+            ? (char*) realloc(str->s, str->size * sizeof(char))
+            : (char*) malloc(str->size * sizeof(char));
+        if (!str->s)
+            error_exit("{m,re}alloc(%ld): out of memory.",
+                file, line, (long)str->size);
+    } else
+#endif
+    {
+        str->s = (str->s)
+            ? (char*) xrealloc(str->s, str->size * sizeof(char), file, line)
+            : (char*) xmalloc(str->size * sizeof(char), file, line);
+    }
 }
 
 String *dSadd(str, c, file, line)

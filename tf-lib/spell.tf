@@ -3,7 +3,7 @@
 ;;; If any misspellings are found, you will be told.
 ;;; This requires the "spell" utility on your local system.
 
-/~loaded spell.tf
+/loaded __TFLIB__/spell.tf
 
 /def -i spell_line = \
     /setenv ARGS=$(/recall -i 1)%; \

@@ -5,7 +5,7 @@
 ;;; These commands have not been fully tested.
 
 
-/~loaded tintin.tf
+/loaded __TFLIB__/tintin.tf
 
 ;;; Some useful stuff is stored in other files.
 /require tick.tf
@@ -34,8 +34,8 @@
 ;mark		(see map.tf)
 /def -i math	= /@test %1 := %-1
 /def -i message	= /echo -e %0: Not implemented; use hooks with gags.
-/def -i -mregexp -p2 -h'send ^#([0-9]+) ' #rep_hook = /repeat -S %P1 %PR
-/def -i nop	= /:
+/def -i -mregexp -p2 -h'send ^#([0-9]+) ' rep_hook = /repeat -S %P1 %PR
+/def -i nop	= /@test 1
 ;path		(see map.tf)
 /def -i presub =/echo -e %0: Use the -F flag in triggers that call /substitute.
 ;redraw		not needed (always on)
@@ -69,7 +69,7 @@
 				/echo $${world_name}: %%*%;\
 		/endif
 
-;speedwalk	(see speedwalk.tf)
+;speedwalk	(see spedwalk.tf)
 /def -i split	= /isize %{1-3}%; /visual on
 ;subs		(see /substitute)
 ;substitute	(see /substitute)

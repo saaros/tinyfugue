@@ -1,6 +1,6 @@
 ;;;; Bash-like keyboard bindings
 
-/~loaded kb-bash.tf
+/loaded __TFLIB__/kb-bash.tf
 
 /require kbfunc.tf
 /require complete.tf

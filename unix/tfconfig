@@ -35,7 +35,7 @@ echo "Configuring $TFVERSION"; echo
 
 ### Initialize variables, just in case they're already defined.
 
-AOUT=a.out
+AOUT=tfconfig.out
 BINDIR=''
 # CC=''		;# Use the value from the environment if there is one.
 CCFLAGS=${TFDEV_CCFLAGS-'-O'}
@@ -317,7 +317,7 @@ if [ $? != 0 ] ; then
     echo "I give up."
     exit 2
 elif egrep 'gnuc' test.out >/dev/null 2>&1; then
-    echo "Ah ha, ${CC} is GNU C."
+    echo "Ah ha, ${CC} is GNU C `${CC} --version`"
     GNU_C=1
 elif egrep 'stdc' test.out >/dev/null 2>&1; then
     echo "Cool, you appear have a standard (ANSI/ISO) compiler."
@@ -566,6 +566,7 @@ int main() {
     strtod(NULL, NULL);
     strtol(NULL, NULL, 0);
     tzset();
+    waitpid(0, NULL, 0);
 
     nonexistant_function();
     return 0;
@@ -588,7 +589,7 @@ ${CC} ${CCFLAGS} -c symtest.c >symtest.out 2>&1 || {
     exit 1
 }
 
-${CC} ${CCFLAGS} symtest.o >symtest.out 2>&1
+${CC} ${CCFLAGS} symtest.o -o ${AOUT}>symtest.out 2>&1
 
 # If "nonexistant_function" didn't appear in stderr, something else is wrong.
 if egrep nonexistant_function symtest.out >/dev/null; then
@@ -605,7 +606,7 @@ for sym in \
     bcopy bsearch bzero connect fileno getcwd gethostbyname getpwnam getwd \
     h_errno hstrerror index kill memcpy memset raise setlocale \
     sigaction srand srandom strcasecmp strchr strcmpi strcspn strerror \
-    strftime stricmp strstr strtod strtol tzset
+    strftime stricmp strstr strtod strtol tzset waitpid
 do
     if egrep "(^|[^a-z_])_?_?${sym}([^a-z]|\$)" symtest.out >/dev/null; then
         echo "Did not find ${sym}, but that's ok."
@@ -627,9 +628,11 @@ fi
 echo "Testing case conversion..."
 cat >test.c <<EOF
 #include <ctype.h>
-int main() { return !(toupper('a') == 'A'); }
+int main() {
+    return !(toupper('a') == 'A' && toupper('A') == 'A' && toupper('@') == '@');
+}
 EOF
-if ${CC} ${CCFLAGS} test.c >/dev/null 2>&1 && ./${AOUT}; then
+if ${CC} ${CCFLAGS} test.c -o ${AOUT}>/dev/null 2>&1 && ./${AOUT}; then
     echo "Case conversion works."
     echo '#define CASE_OK' >&4
 else
@@ -647,7 +650,7 @@ cat >test.c <<EOF
 extern void (*signal())();
 main() { exit(0); }
 EOF
-if ${CC} ${CCFLAGS} -c test.c >/dev/null 2>&1; then
+if ${CC} ${CCFLAGS} -c test.c -o ${AOUT}>/dev/null 2>&1; then
     echo "Signal handlers return void, as they should."
     echo '#define RETSIG void' >&4
 else
@@ -663,7 +666,7 @@ cat >test.c <<EOF
 extern time_t time();
 main() { exit(0); }
 EOF
-if ${CC} ${CCFLAGS} -c test.c >/dev/null 2>&1; then
+if ${CC} ${CCFLAGS} -c test.c -o ${AOUT}>/dev/null 2>&1; then
     echo "time() returns time_t, as it should."
     echo '#define TIME_T time_t' >&4
 else
@@ -688,7 +691,7 @@ echo "Creating linker test..."
 echo 'main() { exit(0); }' > libtest.c
 ${CC} ${CCFLAGS} -c libtest.c >/dev/null 2>&1
 rm libtest.c
-LIBTEST="rm -f ${AOUT}; ${CC} ${CCFLAGS} libtest.o"
+LIBTEST="rm -f ${AOUT}; ${CC} ${CCFLAGS} libtest.o -o ${AOUT}"
 
 ### Test LIBS, to make sure user didn't screw it up.
 
@@ -706,7 +709,7 @@ fi
 ### we don't need it, especially since it's the last library we link).
 
 if eval "${LIBTEST} -lbsd ${LIBS} >/dev/null 2>&1" && test -f ${AOUT}; then
-    echo "Will link with -lbsd."
+    echo "Will link with -lbsd compatibility library."
     LIBS="-lbsd $LIBS"
 fi
 
@@ -788,7 +791,7 @@ else
 #include "../src/config.h"
 main() { char s[9]; TIME_T t; strftime(s, sizeof(s), "%H", localtime(&t)); }
 EOF
-    if ${CC} ${CCFLAGS} test.c -lintl ${LIBS} >/dev/null 2>&1; then
+    if ${CC} ${CCFLAGS} test.c -lintl ${LIBS} -o ${AOUT}>/dev/null 2>&1; then
         echo "Will link with -lintl for strftime()."
         LIBS="-lintl $LIBS"
         echo "#define HAVE_strftime" >&4
@@ -812,7 +815,7 @@ else
 #endif
 main() { setlocale(LC_ALL, "C"); }
 EOF
-    if ${CC} ${CCFLAGS} test.c -lintl ${LIBS} >/dev/null 2>&1; then
+    if ${CC} ${CCFLAGS} test.c -lintl ${LIBS} -o ${AOUT}>/dev/null 2>&1; then
         echo "Will link with -lintl for setlocale()."
         LIBS="-lintl $LIBS"
         echo "#define HAVE_setlocale" >&4
@@ -844,7 +847,7 @@ HARDCODE*) # hardcode for a specific terminal
     TERMINAL=curses
   else
     echo ''
-    echo "WARNING:  Can't link with ${TERMINAL-term library}."
+    echo "WARNING:  Can't link with ${TERMINAL:-term library}."
     TERMINAL="HARDCODE TERM_vt100"
     echo ''
   fi
@@ -865,7 +868,7 @@ HARDCODE*)
     echo "#define $TERMINAL" >&4
     ;;
 *)
-    echo "Will link with -l${TERMINAL}."
+    echo "Will link with -l${TERMINAL} terminal control library."
     LIBS="-l${TERMINAL} $LIBS"
     echo "#define TERMCAP" >&4
     ;;
@@ -875,7 +878,10 @@ esac
 if echo "$FLAGS" | egrep 'NO_FLOAT' >/dev/null 2>&1; then
     echo "Floating point math disabled."
 else
-    LIBS="-lm $LIBS"
+    if eval "$LIBTEST -lm $LIBS $ERR" && test -f ${AOUT}; then
+        echo "Will link with -lm math library."
+        LIBS="-lm $LIBS"
+    fi
 fi
 
 
@@ -929,9 +935,6 @@ echo "#define $TTYDRIVER" >&4
 if { egrep 'winsize' /usr/include/sys/ptem.h; } >/dev/null 2>&1; then
     echo "#define NEED_PTEM_H" >&4
 fi
-
-# nonblocking name resolution
-echo "#define NONBLOCKING_GETHOST" >&4
 
 FLAGS="${CCFLAGS} ${FLAGS}"
 

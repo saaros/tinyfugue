@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.c,v 35004.51 1998/04/10 20:30:05 hawkeye Exp $ */
+/* $Id: tfio.c,v 35004.56 1998/06/24 05:15:04 hawkeye Exp $ */
 
 
 /***********************************
@@ -80,10 +80,10 @@ void init_tfio()
     init_list(userfilelist);
 
     /* tfkeyboard's queue is never actually used, it's just a place holder */
-    tfin = tfkeyboard = tfopen("<stdin>", "q");
+    tfin = tfkeyboard = tfopen("<tfkeyboard>", "q");
     tfkeyboard->mode = S_IRUSR;
 
-    tfout = tferr = tfscreen = tfopen("<stdout>", "q");
+    tfout = tferr = tfscreen = tfopen("<tfscreen>", "q");
     tfscreen->mode = S_IWUSR;
     tfscreen_size = 0;
 }
@@ -192,6 +192,7 @@ TFILE *tfopen(name, mode)
         result->type = TF_PIPE;
         result->name = STRDUP(name);
         result->id = -1;
+        result->mode = S_IRUSR;
         result->tfmode = *mode;
         result->autoflush = 1;
         result->node = NULL;
@@ -500,22 +501,37 @@ void vSprintf(buf, flags, fmt, ap)
         case 'S':
             sval = NULL;
             Sval = NULL;
-            if (*fmt == 's') {
-                sval = va_arg(ap, char *);
-                min = max = len = sval ? strlen(sval) : 0;
-            } else {
-                Sval = va_arg(ap, String *);
-                min = max = len = Sval ? Sval->len : 0;
-            }
+            min = 0;
+            max = -1;
+
             specptr = &spec[1];
             if ((leftjust = (*specptr == '-')))
                 specptr++;
-            if (isdigit(*specptr))
+            if (*specptr == '*') {
+                ++specptr;
+                min = va_arg(ap, int);
+            } else if (isdigit(*specptr)) {
                 min = strtoint(&specptr);
-            if (*specptr == '.' && (++specptr, isdigit(*specptr)))
-                max = strtoint(&specptr);
+            }
+            if (*specptr == '.') {
+                ++specptr;
+                if (*specptr == '*') {
+                    ++specptr;
+                    max = va_arg(ap, int);
+                } else if (isdigit(*specptr)) {
+                    max = strtoint(&specptr);
+                }
+            }
 
-            if (len > max) len = max;
+            if (*fmt == 's') {
+                sval = va_arg(ap, char *);
+                len = sval ? strlen(sval) : 0;
+            } else {
+                Sval = va_arg(ap, String *);
+                len = Sval ? Sval->len : 0;
+            }
+
+            if (max >= 0 && len > max) len = max;
             if (!leftjust && len < min) Stringnadd(buf, ' ', min - len);
             Stringfncat(buf, Sval ? Sval->s : sval ? sval : "", len);
             if (leftjust && len < min) Stringnadd(buf, ' ', min - len);
@@ -626,7 +642,7 @@ void eprefix(buffer)
         else
             Sprintf(buffer, SP_APPEND, "s %d-%d: ", loadstart, loadline);
     }
-    if (current_command)
+    if (current_command && *current_command != '\b')
         Sprintf(buffer, SP_APPEND, "%s: ", current_command);
 }
 

@@ -15,9 +15,8 @@
 ; Written by David Moore ("OliverJones").
 
 
-/~loaded watch.tf
+/loaded __TFLIB__/watch.tf
 /require pcmd.tf
-/require replace.tf
 
 ;;; Global variables:
 ;/set watch_pid

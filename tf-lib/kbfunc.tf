@@ -11,7 +11,7 @@
 ;;; /kb_expand_line		/eval and replace current line
 ;;; /kb_goto_match		move cursor to matching parenthesis or bracket
 
-/~loaded kbfunc.tf
+/loaded __TFLIB__/kbfunc.tf
 
 ;;; /dokey functions.
 

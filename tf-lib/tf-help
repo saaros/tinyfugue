@@ -28,7 +28,6 @@ addworld()
   The optional <[4mtype[24m> is used in hooks and triggers, and for automatic [1mlogin[22;0m 
   and flag setting.  The library pre-defines WORLD and LOGIN hooks for these 
   types: 
-
   (none)  TinyMud [1mlogin[22;0m format.  
 
   tiny, tiny.* 
@@ -48,7 +47,6 @@ addworld()
   telnet, telnet.* 
           telnet [1mlogin[22;0m format, [1mlp[22;0m=on, [1m/localecho[22;0m on.  For any line-by-line 
           telnet service.  
-
   You can define your own world types for use in other triggers or hooks.  If 
   you use names that match the [1mglob[22;0m patterns above, the standard library hooks 
   will still work.  For example, if you did: 
@@ -132,8 +130,11 @@ addworld()
   [1m/AT[22;0m <[4mwhen[24m> <[4mcommands[24m>
   ____________________________________________________________________________
 
-  <[4mCommands[24m> will be executed at <[4mwhen[24m>, which must be of the form "hh:mm" or 
-  "hh:mm:ss" ("hh" is between 0 and 23).  <[4mWhen[24m> is within the next 24 hours.  
+  <[4mCommands[24m> will be executed at time-of-day <[4mwhen[24m>, which must be of the form 
+  "hh:mm" or "hh:mm:ss" ("hh" is between 0 and 23).  If <[4mwhen[24m> is less than 
+  equal to the current time of day, it is interpeted that time tomorrow.  The 
+  "equal" condition makes it possible for /at to call /at again with the same 
+  <[4mwhen[24m> argument, and have it execute tomorrow instead of immediately.  
 
   Example: [1m/at[22;0m 23:30 [1m/echo[22;0m Stop mudding, it's time for Letterman! 
 
@@ -279,7 +280,7 @@ addworld()
   If the [1m%{sub}[22;0m flag is set on, this will [1mexpand[22;0m to three lines ":foo", ":bar" 
   and ":baz" and be sent to the [1msocket[22;0m.  
 
-  See: [1mgeneral[22;0m, [1mhistory[22;0m, [1m/sub[22;0m 
+  See: [1m/paste[22;0m, [1m/sub[22;0m, [1mgeneral[22;0m, [1mhistory[22;0m 
 
 &/changes
 
@@ -316,10 +317,8 @@ addworld()
   temporary world with the given address, and try to connect to it.  
 
   [1mOptions:[22;0m 
-
   -l      No [1mautomatic login[22;0m (i.e., don't call the [1mLOGIN[22;0m [1mhook[22;0m).  
   -q      Quiet login (overrides [1m%{quiet}[22;0m flag).  
-
   When successfully connected to a new [1msocket[22;0m, these events occur: 
 
     * If [1m%{sockmload}[22;0m is on and there is a file associated with the world, 
@@ -356,11 +355,14 @@ addworld()
   you still want the switch to occur, you must either make it a [1mfall-thru[22;0m, or 
   explicitly call "[1m/fg[22;0m [1m%1[22;0m" from your [1mhook[22;0m.  
 
+  If you have trouble connecting (especially if you use SOCKS), try setting 
+  [1mconnect[22;0m=blocking.  
+
   [1m/connect[22;0m returns 0 on error or failure, 1 on success, or 2 if the connection 
   is pending.  
 
   See: [1mworlds[22;0m, [1msockets[22;0m, [1mproxy[22;0m, [1m/world[22;0m, [1m/addworld[22;0m, [1m/fg[22;0m, [1m/retry[22;0m, [1m%login[22;0m, 
-  [1m%gethostbyname[22;0m, [1mhooks[22;0m 
+  [1m%gethostbyname[22;0m, [1m%connect[22;0m, [1mhooks[22;0m 
 
 &disconnect
 &close
@@ -394,6 +396,7 @@ addworld()
 #-msimple
 #-mglob
 #-mregexp
+#/def -m
 #-m
   -m<[4mmatching[24m> 
           Determines which matching style should be used for [1m-t[22;0m, [1m-h[22;0m, or [1m-T[22;0m 
@@ -401,12 +404,24 @@ addworld()
           [1mpatterns[22;0m).  If omitted, the value of [1m%{matching}[22;0m ("[1mglob[22;0m" by default) 
           is used, unless [1m-P[22;0m is also given, in which case "[1mregexp[22;0m" is used.  
 
+#/def -n
 #-n
   -n<[4mshots[24m> 
           The [1mmacro[22;0m is a multi-shot, that is, it will be deleted after it is 
           [1mtrigger[22;0med or [1mhook[22;0med <[4mshots[24m> times.  A value of 0 makes the [1mmacro[22;0m 
           permanent.  Default: 0.  
 
+#/def -E
+#-E
+  -E<[4mexpression[24m> 
+          If this [1mmacro[22;0m is matched by a [1mtrigger[22;0m (-t) or [1mhook[22;0m (-h), it will 
+          only be treated as a match if <[4mexpression[24m> has a non-zero value at 
+          the time of the match.  Thus if the value of <[4mexpression[24m> is 0, no 
+          [1mattributes[22;0m (-a) will be applied, and this macro will not block 
+          matches of lower [1mpriority[22;0m (-p).  Default: no [1mexpression[22;0m (i.e., 
+          always match if the trigger or hook matches).  
+
+#/def -t
 #-t
   -t<[4mpattern[24m> 
           Defines a [1mtrigger[22;0m pattern which will cause the [1mmacro[22;0m to be called 
@@ -416,6 +431,7 @@ addworld()
           determined by the [1m-m[22;0m option, or defaults to the value of 
           [1m%{matching}[22;0m.  Default: no [1mtrigger[22;0m.  
 
+#/def -h
 #-h
   -h"<[4mevent[24m>[ <[4mpattern[24m>]" 
           Specifies that the [1mmacro[22;0m will be called automatically whenever 
@@ -425,32 +441,39 @@ addworld()
           omitted.  The [1mpattern[22;0m matching style is determined by the [1m-m[22;0m option, 
           or defaults to the value of [1m%{matching}[22;0m.  Default: no [1mhook[22;0m.  
 
+#/def -b
 #-b
   -b<[4mbind[24m> 
           The [1mmacro[22;0m will be called when the string <[4mbind[24m> is typed at the 
           keyboard.  Default: no binding.  The <[4mbind[24m> string may contain the 
           special codes described under "[1mbind[22;0m".  
 
+#/def -B
 #-B
   -B<[4mkeyname[24m> 
           The [1mmacro[22;0m will be called when the key named <[4mkeyname[24m> is typed at 
           the keyboard.  Default: no key.  The list of recognized <[4mkeyname[24m>s 
           and other details are described under "[1mkeybindings[22;0m".  
 
+#/def -p
 #-p
   -p<[4mpri[24m> 
           Sets the [1mpriority[22;0m of the [1mmacro[22;0m's [1mtrigger[22;0m or [1mhook[22;0m to <[4mpri[24m>.  Default: 
           0.  See also: [1mfall-thru[22;0m.  
 
+#/def -c
 #-c
   -c<[4mchance[24m> 
-          Sets the percent probability of a [1mtrigger[22;0m execution.  Default: 100%.  
+          Sets the percent probability of executing the body of a matched 
+          [1mtrigger[22;0m or [1mhook[22;0m.  Default: 100%.  
 
+#/def -w
 #-w
   -w<[4mworld[24m> 
           If the [1mmacro[22;0m has a [1mtrigger[22;0m or [1mhook[22;0m, it can be matched only by text 
           or events from <[4mworld[24m>.  Default: any world.  
 
+#/def -T
 #-T
   -T<[4mtype[24m> 
           If the [1mmacro[22;0m has a [1mtrigger[22;0m or [1mhook[22;0m, it can be matched only by text 
@@ -458,10 +481,12 @@ addworld()
           [1mpattern[22;0m matching style is determined by the [1m-m[22;0m option, or defaults 
           to the value of [1m%{matching}[22;0m.  Default: any type.  
 
+#/def -F
 #-F
   -F      [1mFall-thru[22;0m: on a [1mtrigger[22;0m or [1mhook[22;0m, allows additional matches 
           of lower [1mpriority[22;0m to be run.  Default: not [1mfall-thru[22;0m.  See: [1mpriority[22;0m 
 
+#/def -a
 #-a
   -a[ngGurfdBbhC] 
           Set [1mattribute[22;0m(s) (normal, [1mgag[22;0m, norecord, underline, reverse, flash, 
@@ -469,6 +494,7 @@ addworld()
           [1mtrigger[22;0m or to display the default message of a [1mhook[22;0m.  Default: 
           normal.  See "[1mattributes[22;0m".  
 
+#/def -P
 #-P
   -P[<[4mn[24m>][nurfdBhC] 
           "Partial [1mhilite[22;0m": Set [1mattribute[22;0m(s) used to display text matched by 
@@ -478,16 +504,20 @@ addworld()
           will be applied to all of them.  Implies [1m-m[22;0mregexp.  Only one [1m-P[22;0m 
           option is allowed.  See "[1mattributes[22;0m".  
 
+#/def -f
 #-f
   -f      Same as [1m-a[22;0m, for backward compatibility.  
 
+#/def -I
 #-I
+#/def -i
 #-i
   -i 
   -I      Makes the [1mmacro[22;0m "invisible".  Invisible [1mmacros[22;0m are not 
           processed by [1m/list[22;0m, [1m/save[22;0m, or [1m/purge[22;0m unless forced.  Default: not 
           invisible.  
 
+#/def -q
 #-q
   -q      Makes the [1mmacro[22;0m "quiet".  If called as a [1mtrigger[22;0m, the [1mmacro[22;0m 
           will not count toward the [1mBACKGROUND[22;0m [1mhook[22;0m or the return value of 
@@ -600,50 +630,18 @@ addworld()
 
 #newline
     NEWLINE       ^J, ^M            Execute current line
-#recallb</a
-    RECALLB       ^P                Recall previous input line
-#recallf
-    RECALLF       ^N                Recall next input line
-#recallbeg
-    RECALLBEG     ^[<               Recall first input line
-#recallend
-    RECALLEND     ^[>               Recall last input line
-#searchb
-    SEARCHB       ^[p               Search backward in input history
-#searchf
-    SEARCHF       ^[n               Search forward in input history
-#socketb
-    SOCKETB       ^[b               Switch to previous [1msocket[22;0m
-#socketf
-    SOCKETF       ^[f               Switch to next [1msocket[22;0m
-#dword
-    DWORD         ^[d               Delete word
-#del
-#delete
-#dch
-    DCH           ^D                Delete character under cursor
-#redraw
-    REDRAW        ^L                Clear/redraw screen
-#home
-    HOME          ^A                Go to beginning of line
-#end
-    END           ^E                Go to end of line
-#wleft
-    WLEFT         ^B                Go left, to beginning of word
-#wright
-    WRIGHT        ^F                Go right, to end of word
-#deol
-    DEOL          ^K                Delete from cursor to end of line
-#page
-    PAGE          ^I                Scroll 1 page ("[1mmore[22;0m")
+#recallb</a><!--
+------->  RECALLB	^P		  Recall previous input line
+<a name=
+  more")
 #hpage
     HPAGE         ^[h               Scroll half page ("[1mmore[22;0m")
 #line
     LINE          ^[L               Scroll 1 line ("[1mmore[22;0m")
 #flush
-    FLUSH         ^[j               Discard all queued lines. 
+    FLUSH         ^[j               Discard all queued lines.
 #selflush
-    SELFLUSH      ^[J               Discard queued lines without [1mattributes[22;0m. 
+    SELFLUSH      ^[J               Discard queued lines without [1mattributes[22;0m.
 
 #
 
@@ -671,6 +669,7 @@ addworld()
   See: [1mkeybindings[22;0m, [1mgeneral[22;0m, [1msockets[22;0m, [1mhistory[22;0m, [1m/bind[22;0m, [1m/more[22;0m 
 
 &/echo
+&/_echo
 &echo()
 
 echo()
@@ -682,20 +681,21 @@ echo()
   Command usage: 
 
   [1m/ECHO[22;0m [-p] [-a<[4mattrs[24m>] [-e] [-w[<[4mworld[24m>]] <[4mtext[24m>
+  [1m/_ECHO[22;0m <[4mtext[24m>
   ____________________________________________________________________________
 
   Displays <[4mtext[24m> on the [1mtfout stream[22;0m (i.e., the screen, usually), unless 
   otherwise redirected by options.  
 
   [1mOptions[22;0m and arguments: 
-
   command: -a<[4mattrs[24m> 
   function: <[4mattrs[24m> 
           Echo <[4mtext[24m> with the [1mattributes[22;0m given by <[4mattrs[24m>.  
   command: -p 
   function: <[4minline[24m> = "on" or 1 
           Interpet @{<[4mattr[24m>} strings as commands to set [1mattributes[22;0m inline.  
-          "@@" strings are interpreted as "@".  
+          "@@" strings are interpreted as "@".  "@{n}" or "@{x}" will turn 
+          attributes off.  
   command: -w<[4mworld[24m> 
   function: <[4mdest[24m> = "w<[4mworld[24m>" 
           Echo <[4mtext[24m> to the <[4mworld[24m> [1mstream[22;0m instead of the default [1mtfout 
@@ -712,6 +712,9 @@ echo()
   only way to echo text with leading or trailing spaces.  Remember that "-" by 
   itself can be used to mark the end of command [1moptions[22;0m, in case <[4mtext[24m> begins 
   with "-".  
+
+  [1m/_echo[22;0m is more efficient than [1m/echo[22;0m, so it is better for use in heavily used 
+  macros that don't need all the options of [1m/echo[22;0m.  
 
   Example: Both of these commands 
 
@@ -762,7 +765,7 @@ echo()
   [1m/edit[22;0m.  It is not possible to clear the [1m-F[22;0m option.  The [1m-w[22;0m, [1m-T[22;0m [1m-t[22;0m, and [1m-h[22;0m 
   options also can not be cleared, but their arguments can be changed.  The 
   [1m-T[22;0m, [1m-t[22;0m, and [1m-h[22;0m options will use the [1mpatern matching style[22;0m specified by the 
-  [1m-m[22;0m option to the [1m/edit[22;0m command; they will [1mnot[22m inherit [1m-m[22;0m from the original 
+  [1m-m[22;0m option to the [1m/edit[22;0m command; they will [4mnot[24m inherit [1m-m[22;0m from the original 
   definition.  Any other options that are not specified with [1m/edit[22;0m will remain 
   unchanged from the original definition.  
 
@@ -823,7 +826,6 @@ echo()
   Positional parameters ([1m%1[22;0m, etc) are inherited from the caller.  
 
   [1mOptions:[22;0m 
-
   -s<[4mlevel[24m> 
           Expands the <[4mcommand[24m> as if [1m%{sub}[22;0m were set to <[4mlevel[24m>.  By default, 
           [1m/eval[22;0m expands the <[4mcommand[24m> as if [1m%{sub}[22;0m were "full", and echoes it 
@@ -885,7 +887,7 @@ echo()
   ____________________________________________________________________________
 
   If <[4mvariable[24m> is a global [1mvariable[22;0m, it becomes an environment [1mvariable[22;0m.  
-  This makes <[4mvariable[24m> available to the environment for "[1m/sh[22;0m" and "[1m/quote[22;0m !".  
+  This makes <[4mvariable[24m> available to the environment for "[1m/sh[22;0m" and "[1m/quote[22;0m !". 
 
   Local [1mvariables[22;0m may not be exported.  
 
@@ -928,7 +930,6 @@ echo()
   option is given.  
 
   /fg [1mOptions:[22;0m 
-
   -n      no [1msocket[22;0m: put all [1msockets[22;0m in the [1mbackground[22;0m.  
   -s      suppress error messages.  
   -<      previous [1msocket[22;0m in cycle.  
@@ -1071,9 +1072,8 @@ echo()
 
   See: [1m/input[22;0m, [1mgeneral[22;0m 
 
-&/fgrep
-&/egrep
-&/grep
+&oldgrep
+&grep.tf
 
 /grep
 
@@ -1087,18 +1087,18 @@ echo()
   ____________________________________________________________________________
 
   Executes <[4mcommand[24m> and prints only the output that matches <[4mpattern[24m> (which 
-  must not contain spaces).  [1m/fgrep[22;0m prints lines that [1mcontain[22m the string 
+  must not contain spaces).  [1m/fgrep[22;0m prints lines that [4mcontain[24m the string 
   <[4mpattern[24m>; [1m/grep[22;0m prints lines that match the [1mglob[22;0m <[4mpattern[24m>; [1m/egrep[22;0m prints 
   lines that match the [1mregexp[22;0m <[4mpattern[24m>.  
 
   Remember to use "*" at each end of <[4mpattern[24m> to make [1m/grep[22;0m match lines that 
-  [1mcontain[22m a piece that matches the [1mglob[22;0m <[4mpattern[24m>; without the "*"s, the 
+  [4mcontain[24m a piece that matches the [1mglob[22;0m <[4mpattern[24m>; without the "*"s, the 
   entire line must match.  
 
   Example: "/fgrep T'tiny.muck' /listworlds" lists all the worlds defined with 
   the -T'tiny.muck' option.  
 
-  See: [1m/require[22;0m, [1mpatterns[22;0m, [1mexpressions[22;0m, [1mfunctions[22;0m 
+  See: [1mtextutil.tf[22;0m, [1m/require[22;0m, [1mpatterns[22;0m, [1mexpressions[22;0m, [1mfunctions[22;0m 
 
 &/man
 &/help
@@ -1200,7 +1200,6 @@ echo()
   ____________________________________________________________________________
 
   [1mOptions:[22;0m 
-
   -l      local history 
   -i      input history 
   -g      global [1mhistory[22;0m (default) 
@@ -1318,7 +1317,7 @@ echo()
 
   will do "[1m/visual[22;0m on" if your [1m%{TERM}[22;0m is not "dumb".  
 
-  See: [1mevaluation[22;0m, [1mexpressions[22;0m, [1m/test[22;0m 
+  See: [1mevaluation[22;0m, [1mexpressions[22;0m, [1m/test[22;0m, [1m/def -E[22;0m, 
 
 &builtins
 &commands
@@ -1329,24 +1328,24 @@ index
   Commands marked with '+' are new in the current version.  Commands marked 
   with '*' have changed in the current version.  
 
-   [1mADDWORLD[22;0m       [1mFG[22;0m            *[1mLISTSOCKETS[22;0m    [1mRECORDLINE[22;0m     [1mTOGGLE[22;0m        
-   [1mBAMF[22;0m           [1mFINGER[22;0m        +[1mLISTSTREAMS[22;0m   +[1mRESULT[22;0m         [1mTR[22;0m            
-   [1mBEEP[22;0m           [1mFOR[22;0m           +[1mLISTVAR[22;0m       +[1mRETURN[22;0m         [1mTRIG[22;0m          
-   [1mBIND[22;0m           [1mGAG[22;0m           *[1mLISTWORLDS[22;0m     [1mSAVE[22;0m           [1mTRIGGER[22;0m       
-   [1mBREAK[22;0m          [1mGETFILE[22;0m        [1mLOAD[22;0m           [1mSAVEWORLD[22;0m      [1mUNBIND[22;0m        
-   [1mCAT[22;0m            [1mGRAB[22;0m           [1mLOCALECHO[22;0m     *[1mSEND[22;0m          *[1mUNDEF[22;0m         
-   [1mCHANGES[22;0m        [1mGREP[22;0m           [1mLOG[22;0m            [1mSET[22;0m            [1mUNDEFN[22;0m        
-   [1mCONNECT[22;0m        [1mHELP[22;0m           [1mmapping[22;0m        [1mSETENV[22;0m         [1mUNDEFT[22;0m        
-   [1mDC[22;0m             [1mHILITE[22;0m         [1mNOHILITE[22;0m       [1mSH[22;0m             [1mUNHOOK[22;0m        
-   [1mDEF[22;0m            [1mHISTSIZE[22;0m       [1mPARTIAL[22;0m        [1mSHIFT[22;0m          [1mUNSET[22;0m         
-   [1mDOKEY[22;0m          [1mHOOK[22;0m           [1mPASTE[22;0m          [1mspelling[22;0m       [1mUNTRIG[22;0m        
-  *[1mECHO[22;0m           [1mIF[22;0m             [1mPS[22;0m             [1mSUB[22;0m           *[1mUNWORLD[22;0m       
-   [1mEDIT[22;0m           [1mINPUT[22;0m          [1mPURGE[22;0m          [1mSUBSTITUTE[22;0m     [1mVERSION[22;0m       
-   [1mESCAPE[22;0m         [1mKILL[22;0m          *[1mPURGEWORLD[22;0m     [1mSUSPEND[22;0m        [1mWATCHDOG[22;0m      
-   [1mEVAL/NOT[22;0m       [1mLCD[22;0m            [1mPUTFILE[22;0m        [1mTELNET[22;0m         [1mWATCHNAME[22;0m     
-  +[1mEXIT[22;0m           [1mLET[22;0m            [1mQUIT[22;0m           [1mTEST[22;0m           [1mWHILE[22;0m         
-   [1mEXPORT[22;0m         [1mlist commands[22;0m  [1mQUOTE[22;0m          [1mTICK[22;0m           [1mWORLD[22;0m         
-   [1mEXPR[22;0m           [1mLIST[22;0m           [1mRECALL[22;0m         [1mTIME[22;0m                         
+   [1mADDWORLD[22;0m       [1mFG[22;0m            +[1mLISTSTREAMS[22;0m    [1mRECORDLINE[22;0m     [1mTIME[22;0m          
+   [1mBAMF[22;0m           [1mFINGER[22;0m        +[1mLISTVAR[22;0m       +[1mREPLACE[22;0m        [1mTOGGLE[22;0m        
+   [1mBEEP[22;0m           [1mFOR[22;0m           *[1mLISTWORLDS[22;0m    +[1mRETURN[22;0m         [1mTR[22;0m            
+   [1mBIND[22;0m           [1mGAG[22;0m           *[1mLOAD[22;0m           [1mSAVE[22;0m           [1mTRIG[22;0m          
+   [1mBREAK[22;0m          [1mGETFILE[22;0m        [1mLOCALECHO[22;0m      [1mSAVEWORLD[22;0m      [1mTRIGGER[22;0m       
+   [1mCAT[22;0m            [1mGRAB[22;0m           [1mLOG[22;0m           *[1mSEND[22;0m           [1mUNBIND[22;0m        
+   [1mCHANGES[22;0m        [1mHELP[22;0m           [1mmapping[22;0m        [1mSET[22;0m           *[1mUNDEF[22;0m         
+   [1mCONNECT[22;0m        [1mHILITE[22;0m         [1mNOHILITE[22;0m       [1mSETENV[22;0m         [1mUNDEFN[22;0m        
+   [1mDC[22;0m             [1mHISTSIZE[22;0m       [1mPARTIAL[22;0m        [1mSH[22;0m             [1mUNDEFT[22;0m        
+  *[1mDEF[22;0m            [1mHOOK[22;0m          *[1mPASTE[22;0m          [1mSHIFT[22;0m          [1mUNHOOK[22;0m        
+   [1mDOKEY[22;0m          [1mIF[22;0m             [1mPS[22;0m             [1mspelling[22;0m       [1mUNSET[22;0m         
+  *[1mECHO[22;0m           [1mINPUT[22;0m          [1mPURGE[22;0m          [1mSUB[22;0m            [1mUNTRIG[22;0m        
+   [1mEDIT[22;0m           [1mKILL[22;0m          *[1mPURGEWORLD[22;0m     [1mSUBSTITUTE[22;0m    *[1mUNWORLD[22;0m       
+   [1mESCAPE[22;0m         [1mLCD[22;0m            [1mPUTFILE[22;0m        [1mSUSPEND[22;0m        [1mVERSION[22;0m       
+   [1mEVAL/NOT[22;0m       [1mLET[22;0m            [1mQUIT[22;0m           [1mTELNET[22;0m         [1mWATCHDOG[22;0m      
+  +[1mEXIT[22;0m           [1mlist commands[22;0m  [1mQUOTE[22;0m          [1mTEST[22;0m           [1mWATCHNAME[22;0m     
+   [1mEXPORT[22;0m         [1mLIST[22;0m           [1mquoter.tf[22;0m     +[1mtextutil.tf[22;0m    [1mWHILE[22;0m         
+   [1mEXPR[22;0m          *[1mLISTSOCKETS[22;0m   *[1mRECALL[22;0m         [1mTICK[22;0m           [1mWORLD[22;0m         
 
   See also: [1mintro[22;0m, [1mtopics[22;0m 
 
@@ -1443,7 +1442,7 @@ index
   ____________________________________________________________________________
 
   Assigns <[4mvalue[24m> to [1mvariable[22;0m <[4mname[24m> in the current local [1mscope[22;0m.  Can only be 
-  used during [1mmacro[22;0m [1mexpansion[22;0m.  The [1mvariable[22;0m will be destroyed when the [1mscope[22;0m.  
+  used during [1mmacro[22;0m [1mexpansion[22;0m.  The [1mvariable[22;0m will be destroyed when the [1mscope[22;0m. 
   in which it was created exits.  
 
   Note to lisp users: this is nothing like lisp's let.  
@@ -1473,7 +1472,6 @@ index
 
 #list options
   [1mOptions:[22;0m 
-
   -s      List [1mmacros[22;0m in short format.  
   -m<[4mmatching[24m> 
           Determines matching style used for comparison of string fields 
@@ -1483,12 +1481,13 @@ index
   -t<[4mpattern[24m> 
   -b<[4mpattern[24m> 
   -B<[4mpattern[24m> 
+  -E<[4mpattern[24m> 
   -T<[4mpattern[24m> 
           Matches [1mmacros[22;0m with a corresponding [1m/def[22;0m option whose 
           option-argument matches <[4mpattern[24m>.  <[4mpattern[24m>.  An option with no 
           pattern matches all [1mmacros[22;0m that have that option, regardless of the 
           option-argument.  A "{}" [1mglob[22;0m pattern or "^$" [1mregexp[22;0m can be used to 
-          match [1mmacros[22;0m that [1mdon't[22m have that option, 
+          match [1mmacros[22;0m that [4mdon't[24m have that option, 
   -h["<[4mevent[24m>[ <[4mpattern[24m>]"] 
           Matches [1mmacros[22;0m with [1mhooks[22;0m matching <[4mevent[24m> and <[4mpattern[24m>.  "-h" by 
           itself matches all non-empty [1mhooks[22;0m; "-h0" matches only [1mmacros[22;0m 
@@ -1506,14 +1505,13 @@ index
           <[4mbody[24m> is a pattern that macro bodies must match.  The [1mglob[22;0m pattern 
           "{}", or the [1mregexp[22;0m "^$" or the [1msimple pattern[22;0m "" will match 
           bodyless [1mmacros[22;0m only.  
-
 #
 
   Other options allowed by [1m/def[22;0m may be used with [1m/list[22;0m, and are compared 
   directly to macros.  
 
   The return value of [1m/list[22;0m is the number of the last [1mmacro[22;0m listed, or 0 if no 
-  [1mmacros[22;0m were listed (because of error or none matched the specified options).  
+  [1mmacros[22;0m were listed (because of error or none matched the specified options). 
 
   The standard library also defines the [1mmacros[22;0m [1m/listbind[22;0m, [1m/listdef[22;0m, [1m/listgag[22;0m, 
   [1m/listhilite[22;0m, [1m/listfullhilite[22;0m, [1m/listpartial[22;0m, [1m/listhook[22;0m, and [1m/listtrig[22;0m, which 
@@ -1603,7 +1601,6 @@ list commands
   Lists the [1msockets[22;0m to which TinyFugue is connected.  
 
   [1mOptions[22;0m and arguments: 
-
   -s      short form, list only world names 
   -m<[4mstyle[24m> 
           Use <[4mstyle[24m> for [1mpattern matching[22;0m in other options (default: 
@@ -1621,7 +1618,6 @@ list commands
    ?    none  15s tiny      SlowMUD         slow.machine.com           4201
 
   The columns and their meanings are: 
-
   unlabeled first column 
           "*" marks the [1mcurrent[22;0m socket.  
   unlabeled second column 
@@ -1653,7 +1649,6 @@ list commands
   are not included.  
 
   The columns and their meanings are: 
-
   HANDLE  The handle returned by [1mtfopen()[22;0m.  
   MODE    The mode argument given to [1mtfopen()[22;0m.  
   FLUSH   Whether automatic flushing is enabled.  See [1mtfflush()[22;0m.  
@@ -1671,18 +1666,17 @@ list commands
 
   Usage: 
 
-  [1m/LISTVAR[22;0m [-m<[4mmatching[24m>] [-gxs] [<[4mname[24m> [<[4mvalue[24m>]]
+  [1m/LISTVAR[22;0m [-m<[4mmatching[24m>] [-gxsv] [<[4mname[24m> [<[4mvalue[24m>]]
   ____________________________________________________________________________
 
   [1mOptions:[22;0m 
-
   -m<[4mmatching[24m> 
-          Determines matching style used for comparison of <[4mname[24m> and <[4mvalue[24m>.  
+          Determines matching style used for comparison of <[4mname[24m> and <[4mvalue[24m>. 
           If omitted, the style is determined by [1m%{matching}[22;0m.  
   -g      List only global (unexported) variables.  
   -x      List only variables that are exported to the environment.  
-  -s      List variable names in short format (suitable for input to 
-          another macro).  
+  -s      Short format: list variable names only.  
+  -v      List values only.  
 
   [1m/Listvar[22;0m lists values of [1mvariables[22;0m whose name and value match <[4mname[24m> and 
   <[4mvalue[24m> according to <[4mmatching[24m>.  If neither -g nor -x is given, global and 
@@ -1702,7 +1696,6 @@ list commands
   Lists world definitions.  
 
   [1mOptions[22;0m and arguments: 
-
   -m<[4mstyle[24m> 
           Use <[4mstyle[24m> for [1mpattern matching[22;0m of <[4mtype[24m> and <[4mname[24m> patterns.  
           (default: [1m%{matching}[22;0m).  
@@ -1726,6 +1719,7 @@ list commands
 &/loadhook
 &/loadworld
 &/require
+&/loaded
 &/load
 
 /load
@@ -1734,15 +1728,21 @@ list commands
 
   [1m/LOAD[22;0m [-q] <[4mfile[24m>
   [1m/REQUIRE[22;0m [-q] <[4mfile[24m>
+  [1m/LOADED[22;0m <[4mtoken[24m>
   ____________________________________________________________________________
 
-  Reads and executes commands from <[4mfile[24m>.  [1m/Load[22;0m and [1m/require[22;0m are identical, 
-  except that if <[4mfile[24m> is a library file and has already been read once, 
-  [1m/require[22;0m will not read it again (but the LOAD message/[1mhook[22;0m will still be 
-  displayed/called).  
+  [1m/Load[22;0m and [1m/require[22;0m both read and execute commands from <[4mfile[24m>.  They are 
+  identical, except that if <[4mfile[24m> calls [1m/loaded[22;0m and has already been read 
+  once, [1m/require[22;0m will not read it again (but the LOAD message/[1mhook[22;0m will still 
+  be displayed/called).  
+
+  "[1m/Loaded[22;0m <[4mtoken[24m>" should be the first command in a file that is designed to 
+  be loaded only once with [1m/require[22;0m.  <[4mToken[24m> should be a string that does not 
+  contain space or [1mglob[22;0m metacharacters, and is different than the token used 
+  by any other [1m/loaded[22;0m call.  The file's full name is usually a good choice 
+  for <[4mtoken[24m>.  
 
   [1mOptions:[22;0m 
-
   -q      Do not echo the "% Loading commands from <[4mfile[24m>" message in 
           this [1m/load[22;0m call or any [1m/load[22;0m calls in <[4mfile[24m>.  (but the [1mLOAD hook[22;0m 
           will still be called).  
@@ -1755,10 +1755,13 @@ list commands
 
   The <[4mfile[24m> name is expanded as described under "[1mfilenames[22;0m".  
 
+  If the COMPRESS_SUFFIX and COMPRESS_READ [1mmacros[22;0m are defined, the file will 
+  be automatically uncompressed if needed.  
+
   If the expanded filename is not an absolute path name, TF will search first 
-  in the current directory (which can be changed with [1m/lcd[22;0m), and then in 
-  [1m%{TFLIBDIR}[22;0m.  If the COMPRESS_SUFFIX and COMPRESS_READ [1mmacros[22;0m are defined, 
-  the file will be automatically uncompressed if needed.  
+  in the current directory (which can be changed with [1m/lcd[22;0m), and then in the 
+  list of directories named by [1m%{TFPATH}[22;0m.  If [1m%{TFPATH}[22;0m is blank or unset, the 
+  single directory named by [1m%{TFLIBDIR}[22;0m is used.  
 
   A [1m/load[22;0m may be aborted early with the [1m/exit[22;0m command in the file.  
 
@@ -1769,7 +1772,7 @@ list commands
   [1m/loadhilite[22;0m, [1m/loadgag[22;0m, [1m/loadtrig[22;0m, [1m/loadhook[22;0m, and [1m/loadworld[22;0m.  These [1mmacros[22;0m 
   will load from a [1mdefault file[22;0m if no file is specified.  
 
-  See: [1mmacros[22;0m, [1mlibrary[22;0m, [1m/exit[22;0m, [1m/def[22;0m, [1m/save[22;0m, [1m/lcd[22;0m, [1mfilenames[22;0m 
+  See: [1mmacros[22;0m, [1mlibrary[22;0m, [1m/exit[22;0m, [1m/def[22;0m, [1m/save[22;0m, [1m/lcd[22;0m, [1mfilenames[22;0m, [1mcompression[22;0m 
 
 &%always_echo
 &always_echo
@@ -1822,7 +1825,6 @@ list commands
   on that [1mhistory[22;0m.  
 
   [1mOptions:[22;0m 
-
   -w<[4mworld[24m> 
           Output from <[4mworld[24m> only.  
   -w      Output from the [1mforeground[22;0m world.  
@@ -1831,7 +1833,6 @@ list commands
   -g      Global output (all worlds and local TF output).  
 
   Arguments: 
-
   OFF     Disable specified log, or all logs if unspecified.  
   ON      Log to [1m${LOGFILE}[22;0m; -g is assumed if -ligw not given.  
   <[4mfile[24m>  Log to <[4mfile[24m>; -g is assumed if -ligw not given.  
@@ -1961,7 +1962,7 @@ mapping
   [1m/NOGAG[22;0m [<[4mpattern[24m>]
   ____________________________________________________________________________
 
-  Eliminates a [1mmacro[22;0m that is [1mtrigger[22;0med by <[4mpattern[24m> and has the [1mgag[22;0m [1mattribute[22;0m.  
+  Eliminates a [1mmacro[22;0m that is [1mtrigger[22;0med by <[4mpattern[24m> and has the [1mgag[22;0m [1mattribute[22;0m. 
   [1m/nogag[22;0m with no arguments turns off the flag [1m%{gag}[22;0m, disabling all [1mgag[22;0m 
   [1mattributes[22;0m.  <[4mPattern[24m> is matched against exisiting patterns using simple 
   comparison.  
@@ -2048,7 +2049,7 @@ mapping
 
   Usage: 
 
-  [1m/PASTE[22;0m [<[4mprefix[24m>]
+  [1m/PASTE[22;0m [-p] [<[4mprefix[24m>]
   [1m/ENDPASTE[22;0m
   ____________________________________________________________________________
 
@@ -2058,6 +2059,11 @@ mapping
   if %paste_prefix is empty or unset, it defaults to ":|".  Entering the line 
   "[1m/endpaste[22;0m" turns this off.  [1m/Paste[22;0m can be very useful when using the 
   cut-and-paste mechanism of many windowing systems.  
+
+  [1mOptions:[22;0m 
+  -p      "paragraph mode": adjacent non-blank lines are joined, and 
+          leading spaces are stripped (this is particularly useful when 
+          pasting text cut from a web browser).  
 
   Note that [1m/endpaste[22;0m is not actually a command, but a "magic cookie" 
   recognized by [1m/paste[22;0m.  "[1m/Endpaste[22;0m" and SIGINT (ctrl-c) are the only ways to 
@@ -2077,9 +2083,11 @@ mapping
   Sets the [1mprompt[22;0m for the [1mcurrent[22;0m [1msocket[22;0m to <[4mtext[24m>, replacing any existing 
   [1mprompt[22;0m.  [1m/prompt[22;0m is most useful when called from a PROMPT [1mhook[22;0m, like this: 
 
-      [1m/def[22;0m [1m-h[22;0m"PROMPT *> " catch_prompt = [1m/prompt[22;0m [1m%*[22;0m
+      [1m/def[22;0m [1m-h[22;0m"PROMPT *> " catch_prompt = [1m/test[22;0m [1mprompt[22;0m([1m{*}[22;0m)
 
   Then, any text that ends in ">" without a newline will be made the prompt.  
+
+  For a more sophisticated example, see "[1mstatus line[22;0m".  
 
   See: [1mprompts[22;0m, [1mhooks[22;0m (PROMPT) 
 
@@ -2093,7 +2101,6 @@ mapping
   ____________________________________________________________________________
 
   [1mOptions[22;0m: 
-
   -s      short form, lists only PIDs.  
   -r      list /repeats only.  
   -q      list /quotes only.  
@@ -2207,14 +2214,7 @@ mapping
 
 /quote
 
-  Usage: [1m/QUOTE[22;0m [-d<[4mdisp[24m>] [-w[<[4mworld[24m>]] [-<[4mtime[24m>] [<[4mpre[24m>] '"<[4mfile[24m>"[<[4msuf[24m>]
-  [1m/QUOTE[22;0m [-d<[4mdisp[24m>] [-w[<[4mworld[24m>]] [-<[4mtime[24m>] [<[4mpre[24m>] #"<[4mrecall_cmd[24m>"[<[4msuf[24m>]
-  [1m/QUOTE[22;0m [-d<[4mdisp[24m>] [-w[<[4mworld[24m>]] [-<[4mtime[24m>] [<[4mpre[24m>] !"<[4mshell_cmd[24m>"[<[4msuf[24m>]
-  [1m/QUOTE[22;0m [-d<[4mdisp[24m>] [-w[<[4mworld[24m>]] [-<[4mtime[24m>] [-s<[4msub[24m>] [<[4mpre[24m>] 
-  `"<[4mTF_cmd[24m>"[<[4msuf[24m>]
-  ____________________________________________________________________________
-
-  --> 
+  Usage: 
 
   [1m/QUOTE[22;0m [<[4moptions[24m>] [<[4mpre[24m>] '"<[4mfile[24m>"[<[4msuf[24m>]
   [1m/QUOTE[22;0m [<[4moptions[24m>] [<[4mpre[24m>] #"<[4mrecall_cmd[24m>"[<[4msuf[24m>]
@@ -2227,7 +2227,6 @@ mapping
   the section "[1mprocesses[22;0m".  
 
   [1mOptions[22;0m and arguments: 
-
   -d<[4mdisp[24m> 
           disposition of generated text.  <[4mDisp[24m> is one of: "echo" (echo to 
           the screen), "send" (send directly to the [1msocket[22;0m), or "exec" 
@@ -2276,7 +2275,6 @@ mapping
   shortcuts for some common uses of [1mquote[22;0m.  
 
   The following is a list of some nearly equivalent pairs of commands: 
-
   [1m/quote[22;0m -S -dexec '<[4mfile[24m> 
           [1m/load[22;0m <[4mfile[24m> 
   [1m/quote[22;0m -S -decho #<[4margs[24m> 
@@ -2289,12 +2287,12 @@ mapping
   Examples: 
 
 
-    [1m/quote[22;0m -1 :reads about '"/usr/dict/words" in the dictionary. 
+    [1m/quote[22;0m -1 :reads about '"/usr/dict/words" in the dictionary.
 
   This sends off lines like:
 
-    :reads about aardvark in the dictionary. 
-    :reads about aardvore in the dictionary. 
+    :reads about aardvark in the dictionary.
+    :reads about aardvore in the dictionary.
 
   with one-second delays between lines.  
 
@@ -2350,36 +2348,36 @@ Quoter Commands
   on the command line for [1m/qdef[22;0m, [1m/qmac[22;0m, [1m/qworld[22;0m, and [1m/qfile[22;0m.  Also, before any 
   output is generated, the command used to generate the output is quoted.  
 
-  [1m/QDEF[22;0m [<[4mprefix[24m>] <[4mname[24m>
-  Prepends <[4mprefix[24m> to each line generated by "[1m/list[22;0m <[4mname[24m>", and executes 
-  each resulting line as a command.  
+  [1m/QDEF[22;0m [<[4mprefix[24m>] <[4mname[24m> 
+          Prepends <[4mprefix[24m> to each line generated by "[1m/list[22;0m <[4mname[24m>", and 
+          executes each resulting line as a command.  
 
-  [1m/QMAC[22;0m [<[4mprefix[24m>] <[4mname[24m>
-  Searches for the defintion of macro <[4mname[24m> in a group of tf files, prepends 
-  <[4mprefix[24m> to each line found, "[1m/quote[22;0m <[4mname[24m>", and executes each resulting 
-  line as a command.  
+  [1m/QMAC[22;0m [<[4mprefix[24m>] <[4mname[24m> 
+          Searches for the defintion of macro <[4mname[24m> in a group of tf files, 
+          prepends <[4mprefix[24m> to each line found, "[1m/quote[22;0m <[4mname[24m>", and executes 
+          each resulting line as a command.  
 
-  [1m/QWORLD[22;0m [<[4mprefix[24m>] <[4mname[24m>
-  Prepends <[4mprefix[24m> to each line generated by "[1m/listworlds[22;0m <[4mname[24m>", and 
-  executes each resulting line as a command.  
+  [1m/QWORLD[22;0m [<[4mprefix[24m>] <[4mname[24m> 
+          Prepends <[4mprefix[24m> to each line generated by "[1m/listworlds[22;0m <[4mname[24m>", 
+          and executes each resulting line as a command.  
 
-  [1m/QFILE[22;0m [<[4mprefix[24m>] <[4mname[24m>
-  Prepends <[4mprefix[24m> to each line of file <[4mname[24m>, and executes each resulting 
-  line as a command.  
+  [1m/QFILE[22;0m [<[4mprefix[24m>] <[4mname[24m> 
+          Prepends <[4mprefix[24m> to each line of file <[4mname[24m>, and executes each 
+          resulting line as a command.  
 
-  [1m/QTF[22;0m <[4mcmd[24m>
-  Prepends <[4mprefix[24m> to each line generated by executing <[4mcmd[24m> in tf, and 
-  executes each resulting line as a command.  
+  [1m/QTF[22;0m <[4mcmd[24m> 
+          Prepends <[4mprefix[24m> to each line generated by executing <[4mcmd[24m> in tf, 
+          and executes each resulting line as a command.  
 
-  [1m/QSH[22;0m <[4mcmd[24m>
-  Prepends <[4mprefix[24m> to each line generated by executing <[4mcmd[24m> in the shell, 
-  and executes each resulting line as a command.  
+  [1m/QSH[22;0m <[4mcmd[24m> 
+          Prepends <[4mprefix[24m> to each line generated by executing <[4mcmd[24m> in the 
+          shell, and executes each resulting line as a command.  
 
-  [1m/QMUD[22;0m [-w<[4mworld[24m>] <[4mcmd[24m>
-  Prepends <[4mprefix[24m> to each line generated by executing <[4mcmd[24m> on world <[4mworld[24m> 
-  (default: the [1mcurrent[22;0m [1mworld[22;0m), and executes each resulting line as a command.  
-  [1m/Qmud[22;0m requires that the mud supports the OUTPUTPREFIX and OUTPUTSUFFIX 
-  commands.  
+  [1m/QMUD[22;0m [-w<[4mworld[24m>] <[4mcmd[24m> 
+          Prepends <[4mprefix[24m> to each line generated by executing <[4mcmd[24m> on world 
+          <[4mworld[24m> (default: the [1mcurrent[22;0m [1mworld[22;0m), and executes each resulting 
+          line as a command.  [1m/Qmud[22;0m requires that the mud supports the 
+          OUTPUTPREFIX and OUTPUTSUFFIX commands.  
 
   Examples: 
 
@@ -2401,7 +2399,7 @@ Quoter Commands
   would generate a series of commands something like this: 
 
     :| Cave> score
-    :| You have 8704 pennies. 
+    :| You have 8704 pennies.
 
   ____________________________________________________________________________
 
@@ -2413,22 +2411,24 @@ Quoter Commands
 
   Usage: 
 
-  [1m/RECALL[22;0m [-w<[4mworld[24m>] [-ligt] [-v] [-a<[4mattrs[24m>] [-m<[4mstyle[24m>] [#]<[4mrange[24m> 
-  [<[4mpattern[24m>]
+  [1m/RECALL[22;0m [-w<[4mworld[24m>] [-ligv] [-t[<[4mformat[24m>]] [-a<[4mattrs[24m>] [-m<[4mstyle[24m>] 
+  [#]<[4mrange[24m> [<[4mpattern[24m>]
   ____________________________________________________________________________
 
   Recalls lines from a [1mhistory[22;0m buffer.  
 
   [1mOptions:[22;0m 
-
   -w      recall from [1mcurrent[22;0m world's [1mhistory[22;0m (default) 
   -w<[4mworld[24m> 
           recall from <[4mworld[24m>'s [1mhistory[22;0m 
   -l      recall from local [1mhistory[22;0m (i.e., TF output) 
   -g      recall from global [1mhistory[22;0m (all worlds, and local) 
   -i      recall from input history 
-  -t      display timestamps on each line, using [1m%{time_format}[22;0m 
-  -v      recall lines that don't match the pattern 
+  -t[<[4mformat[24m>] 
+          display timestamps on each line, using <[4mformat[24m>.  If <[4mformat[24m> is 
+          omitted, [1m%{time_format}[22;0m will be used.  
+  -v      recall lines that [4mdon't[24m match the pattern 
+  -q      quiet: suppress the header and footer lines 
   -a<[4mattr[24m> 
           suppress specified [1mattributes[22;0m (e.g., -ag shows [1mgag[22;0mged lines) 
   -m<[4mstyle[24m> 
@@ -2439,7 +2439,6 @@ Quoter Commands
   integers, they are interpreted as line numbers or counts.  If they have the 
   form "hh:mm" or "hh:mm:ss", they are interpreted as time values (either a 
   period of time, or a clock time within the last 24 hours).  
-
   /[4mx[24m      Recall the last <[4mx[24m> matching lines.  
   [4mx[24m       Recall from the last <[4mx[24m> lines, or lines within the last 
           time period <[4mx[24m>.  
@@ -2456,9 +2455,9 @@ Quoter Commands
   given, [1m%{matching}[22;0m otherwise.  
 
   If the output of [1m/recall[22;0m is being sent to the screen, it will be preceeded 
-  with "---- Recall start ----" and followed by "---- Recall end ----".  These 
-  lines will not be produced if the output is redirected, for example with 
-  [1m$(...)[22;0m [1mcommand substitution[22;0m or "[1m/quote `[22;0m[1m/recall[22;0m".  
+  with "---- Recall start ----" and followed by "---- Recall end ----", unless 
+  -q is used.  These lines will not be produced if the output is redirected, 
+  for example with [1m$(...)[22;0m [1mcommand substitution[22;0m or "[1m/quote `[22;0m[1m/recall[22;0m".  
 
   If lines are received while tf is suspended (by ^Z or [1m/suspend[22;0m) or in a 
   subshell (by [1m/sh[22;0m), the timestamps on the lines will correspond to the time 
@@ -2475,16 +2474,21 @@ Quoter Commands
 
   Usage: 
 
-  [1m/RECORDLINE[22;0m [-lig] [-w<[4mworld[24m>] [-t<[4mtime[24m>] <[4mtext[24m>
+  [1m/RECORDLINE[22;0m [-lig] [-w[<[4mworld[24m>]] [-t<[4mtime[24m>] <[4mtext[24m>
   ____________________________________________________________________________
 
-  Records <[4mtext[24m> into a [1mhistory[22;0m buffer.  The "-l" option selects local 
-  [1mhistory[22;0m; "-i" selects input [1mhistory[22;0m; "-g" selects global [1mhistory[22;0m; and 
-  "-w<[4mworld[24m>" selects the [1mhistory[22;0m buffer for <[4mworld[24m>.  If none of the -ligw 
-  options are specified, -g is assumed.  The timestamp of the recorded line 
-  will be the current time, unless overridden with "-t<[4mtime[24m>"; <[4mtime[24m> is 
-  interpreted as a system time (e.g., seconds since 0:00:00 January 1 1970 
-  GMT).  
+  Records <[4mtext[24m> into a [1mhistory[22;0m buffer.  
+
+  [1mOptions:[22;0m 
+  -w      record to [1mcurrent[22;0m world's [1mhistory[22;0m 
+  -w<[4mworld[24m> 
+          record to <[4mworld[24m>'s [1mhistory[22;0m 
+  -l      record to local [1mhistory[22;0m 
+  -g      record to global [1mhistory[22;0m (default) 
+  -i      record to input history 
+  -t<[4mtime[24m> 
+          record the line with the system time <[4mtime[24m> (as displayed by [1m/recall[22;0m 
+          -t@) instead of the current time 
 
   The <[4mtext[24m> will not be echoed to the screen or saved in any log.  
 
@@ -2492,11 +2496,15 @@ Quoter Commands
   [1mhistory[22;0m.  For example, if you had created a log with "[1m/log[22;0m -i input.log" in 
   an earlier tf session, you could start a new tf session and use 
 
-  [1m/quote[22;0m -dexec [1m/recordline[22;0m -i 'input.log 
+  [1m/quote[22;0m -dexec [1m/recordline[22;0m -i [1m-[22;0m 'input.log 
 
   to restore that input [1mhistory[22;0m.  That way, you could use the RECALLB, 
   RECALLF, RECALLBEG, RECALLEND, SEARCHB, and SEARCHF (^P, ^N, ^[<, ^[>, ^[P, 
   and ^[N) keys to recall lines you typed in the earlier session.  
+
+  Note that [1m/recordline[22;0m always appends to the end of a [1mhistory[22;0m.  [1m/Recordline[22;0m 
+  -t<[4mtime[24m> makes it possible to insert lines that are not in chronological 
+  order, which may produce strange results with [1m/recall[22;0m.  
 
   See: [1m/recall[22;0m, [1m/quote[22;0m, [1mhistory[22;0m 
 
@@ -2541,6 +2549,33 @@ Quoter Commands
 
   See: [1mprocesses[22;0m, [1m%ptime[22;0m, [1m/at[22;0m 
 
+&/replace
+
+/replace
+
+  [1mFunction[22;0m usage: 
+
+  [1mREPLACE[22;0m(<[4mold[24m>, <[4mnew[24m>, <[4mstring[24m>)
+
+  Command usage: 
+
+  [1m/REPLACE[22;0m <[4mold[24m> <[4mnew[24m> <[4mstring[24m>
+  ____________________________________________________________________________
+
+  Echoes (in command form) or returns (in [1mfunction[22;0m form) <[4mstring[24m>, with any 
+  occurances of <[4mold[24m> in <[4mstring[24m> replaced by <[4mnew[24m>.  
+
+#ex
+  Example: 
+
+  This example replaces "TF" with "TinyFugue" in every line sent by the 
+  server.  
+
+    [1m/def[22;0m [1m-m[22;0mregexp [1m-t[22;0m"TF" replace_tf = \
+        [1m/test[22;0m [1msubstitute[22;0m([1mreplace[22;0m("TF", "TinyFugue", {*}))
+
+  See: [1mevaluation[22;0m 
+
 &security
 &/restrict
 
@@ -2555,7 +2590,6 @@ Quoter Commands
 
   With an argument, [1m/restrict[22;0m sets the restriction level.  Once restriction 
   has been set to a particular level, it can not be lowered.  
-
   level 0: NONE 
           No restrictions.  
   level 1: SHELL 
@@ -2601,6 +2635,10 @@ Quoter Commands
   <[4m[1mexpression[22;0m[24m> to the [1mtfout stream[22;0m.  [1m/Result[22;0m thus allows the same macro to be 
   called usefully as either a [1mcommand[22;0m or a [1mfunction[22;0m.  
 
+  The return value of the last command (builtin or macro) is stored in [1m%{?}[22;0m.  
+  The return value of a function (builtin or macro) is just the value of the 
+  function.  
+
   These examples define several [1mmacros[22;0m intended to be called as a [1mfunctions[22;0m: 
 
     [1m/def[22;0m square = [1m/return[22;0m [1mpow[22;0m({1}, 2)
@@ -2615,7 +2653,7 @@ Quoter Commands
   If those examples had used [1m/result[22;0m instead of [1m/return[22;0m, they could also be 
   used as commands when echoing is more convenient.  For example, 
 
-      [1m/eval[22;0m say My name backwards is [1m$([22;0m/strrev ${world_character}). 
+      [1m/eval[22;0m say My name backwards is [1m$([22;0m/strrev ${world_character}).
 
   See: [1m/if[22;0m, [1m/while[22;0m, [1m/test[22;0m, [1m/break[22;0m, [1m/exit[22;0m, [1mexpressions[22;0m, [1mevaluation[22;0m, [1mvariables[22;0m 
 
@@ -2666,7 +2704,7 @@ Quoter Commands
   [1mmacros[22;0m will overwrite any existing contents of <[4mfile[24m>.  
 
   The return value of [1m/save[22;0m is the number of the last [1mmacro[22;0m listed, or 0 if no 
-  [1mmacros[22;0m were listed (because of error or none matched the specified options).  
+  [1mmacros[22;0m were listed (because of error or none matched the specified options). 
 
   The standard [1mmacro[22;0m library also defines the commands [1m/savedef[22;0m, [1m/savebind[22;0m, 
   [1m/savehilite[22;0m, [1m/savegag[22;0m, [1m/savetrig[22;0m, and [1m/savehook[22;0m.  These [1mmacros[22;0m will save 
@@ -2716,7 +2754,6 @@ Quoter Commands
   Sends <[4mtext[24m> to a world.  
 
   [1mOptions:[22;0m 
-
   -w<[4mworld[24m> 
           sends <[4mtext[24m> to <[4mworld[24m>.  
   -T<[4mtype[24m> 
@@ -2923,19 +2960,36 @@ spelling checker
   See: [1mgeneral[22;0m, [1mevaluation[22;0m 
 
 &/substitute
+&substitute()
 
 /substitute
 
-  Usage: 
+  [1mFunction[22;0m usage: 
 
-  [1m/SUBSTITUTE[22;0m <[4mtext[24m>
+  [1mSUBSTITUTE[22;0m(<[4mtext[24m> [, <[4mattrs[24m> [, <[4minline[24m>]])
+
+  Command usage: 
+
+  [1m/SUBSTITUTE[22;0m [-a<[4mattrs[24m>] [-p] <[4mtext[24m>
   ____________________________________________________________________________
 
-  When called from a [1mtrigger[22;0m (directly or indirectly), the [1mtrigger[22;0ming text is 
-  replaced with <[4mtext[24m>.  After a [1m/substitute[22;0m, it will appear as if <[4mtext[24m> is 
-  what caused the [1mtrigger[22;0m; the original text is lost.  In particular, this 
-  means when [1m/substitute[22;0m is called from a [1mfall-thru[22;0m [1mtrigger[22;0m, [1mtriggers[22;0m of lower 
-  [1mpriority[22;0m will be compared against <[4mtext[24m> instead of the original text.  
+  When called from a [1mtrigger[22;0m (directly or indirectly), the entire [1mtrigger[22;0ming 
+  line is replaced with <[4mtext[24m>.  After a [1m/substitute[22;0m, it will appear as if 
+  <[4mtext[24m> is what caused the [1mtrigger[22;0m; the original line is lost.  In 
+  particular, this means when [1m/substitute[22;0m is called from a [1mfall-thru[22;0m [1mtrigger[22;0m, 
+  [1mtriggers[22;0m of lower [1mpriority[22;0m will be compared against <[4mtext[24m> instead of the 
+  original line.  
+
+  [1mOptions[22;0m and arguments: 
+  command: -a<[4mattrs[24m> 
+  function: <[4mattrs[24m> 
+          Give <[4mtext[24m> the [1mattributes[22;0m described by <[4mattrs[24m>.  These are added to 
+          the original line's [1mattributes[22;0m unless <[4mattrs[24m> include the "x" 
+          [1mattribute[22;0m.  
+  command: -p 
+  function: <[4minline[24m> = "on" or 1 
+          Interpet @{<[4mattr[24m>} strings as commands to set [1mattributes[22;0m inline.  
+          "@@" strings are interpreted as "@".  
 
   Example: 
 
@@ -2946,6 +3000,8 @@ spelling checker
 
   This will match no matter what page format the sender uses, and strip off 
   the "##page>" so you never see it.  
+
+  For another example, see [1m/replace[22;0m.  
 
   See: [1mtriggers[22;0m 
 
@@ -2984,7 +3040,7 @@ spelling checker
 
   The return value of [1m/sys[22;0m is the exit status of the shell if it exited 
   normally, -1 otherwise.  Note that UNIX shell commands usually return 0 for 
-  success and nonzero for failure, which is the opposite of the TF convention.  
+  success and nonzero for failure, which is the opposite of the TF convention. 
 
   See: [1m/sh[22;0m, [1m/quote[22;0m 
 
@@ -3004,7 +3060,7 @@ spelling checker
   running on the telnet login port) expects character-by- character mode.  So, 
   simple shell operations and anything else which is basically line-by-line 
   should work without much difficulty, but anything that tries to control the 
-  screen or expects single keystroke input will [1mnot[22m work.  [1m/Telnet[22;0m is somewhat 
+  screen or expects single keystroke input will [4mnot[24m work.  [1m/Telnet[22;0m is somewhat 
   useful, but not useful enough to alter the fundamental line-by-line nature 
   of TF.  If you want a general telnet client, you know where to find it.  
 
@@ -3040,9 +3096,79 @@ spelling checker
 
   Before version 4.0, [1m/test[22;0m was sometimes used to set the return value of a 
   [1mmacro[22;0m, since a [1mmacro[22;0m's return value is that of the last command executed.  
-  The preferred way to do this now is with [1m/return[22;0m.  
+  The preferred way to do this now is with [1m/return[22;0m or [1m/result[22;0m.  
 
   See: [1m/return[22;0m, [1m/if[22;0m, [1m/while[22;0m, [1mexpressions[22;0m, [1mevaluation[22;0m, [1mvariables[22;0m 
+
+&/fgrep
+&/grep
+&/egrep
+&/readfile
+&/writefile
+&/head
+&/wc
+&/tee
+&/copyio
+&/fmt
+&/uniq
+&textutil
+&textutil.tf
+
+Text Utilities
+
+  [1m/REQUIRE[22;0m textutil.tf
+  ____________________________________________________________________________
+
+  The library file [1mtextutil.tf[22;0m defines several unix-like commands that are 
+  particularly convenient when used with the [1m%|[22;0m pipe to redirect their input 
+  or output.  For all commands that take an optional <[4mhandle[24m> argument, [1mtfin[22;0m 
+  is used if <[4mhandle[24m> is omitted.  
+
+  [1m/fgrep[22;0m [-cv] <[4mpattern[24m> 
+  [1m/grep[22;0m [-cv] <[4mpattern[24m> 
+  [1m/egrep[22;0m [-cv] <[4mpattern[24m> 
+          These commands search [1mtfin[22;0m for lines that match the given pattern, 
+          and by default prints those lines.  For [1m/fgrep[22;0m, a line must contain 
+          <[4mpattern[24m> to match; for [1m/grep[22;0m, it must match the [1mglob[22;0m pattern 
+          <[4mpattern[24m>; for [1m/egrep[22;0m, it must match the [1mregexp[22;0m pattern <[4mpattern[24m>.  
+          [1mOptions[22;0m: 
+          -c      print only the count of matching lines.  
+          -v      select only non-matching lines.  
+          Note: these commands are not compatible with those defined in the 
+          old library file [1mgrep.tf[22;0m.  
+
+  [1m/readfile[22;0m <[4mfilename[24m> 
+          Reads lines from <[4mfilename[24m> and writes them to [1mtfout[22;0m.  
+
+  [1m/writefile[22;0m [-a] <[4mfilename[24m> 
+          Reads lines from [1mtfin[22;0m and writes them to file <[4mfilename[24m>.  
+          [1mOptions[22;0m: 
+          -a      append to file instead of overwriting.  
+
+  [1m/head[22;0m [-n<[4mcount[24m>] [<[4mhandle[24m>] 
+          Reads the first <[4mcount[24m> (default 10) lines from <[4mhandle[24m> and writes 
+          them to [1mtfout[22;0m.  
+
+  [1m/wc[22;0m [-lwc] [<[4mhandle[24m>] 
+          Reads lines from <[4mhandle[24m> and prints the count of lines, 
+          space-separated words, and characters that were read.  
+          [1mOptions[22;0m: 
+          -l      Print the count of lines only.  
+          -w      Print the count of words only.  
+          -c      Print the count of characters only.  
+
+  [1m/tee[22;0m <[4mhandle[24m> 
+          Reads lines from [1mtfin[22;0m and prints them to <[4mhandle[24m> and [1mtfout[22;0m.  
+
+  [1m/copyio[22;0m <[4min[24m> <[4mout[24m> 
+          Reads lines from handle <[4min[24m> and prints them to handle <[4mout[24m>.  
+
+  [1m/fmt[22;0m    Copies [1mtfin[22;0m to [1mtfout[22;0m, with adjacent non-blank lines joined.  
+
+  [1m/uniq[22;0m   Copies [1mtfin[22;0m to [1mtfout[22;0m, with adjacent duplicate lines removed. 
+  ____________________________________________________________________________
+
+  See: [1mtfio[22;0m, [1mevaluation[22;0m, [1msubstitution[22;0m, [1moldgrep[22;0m 
 
 &/tick
 &/tickon
@@ -3167,7 +3293,7 @@ spelling checker
   [1m/trig[22;0m is equivalent to: [1m/def[22;0m [1m-t[22;0m<[4mpattern[24m> = <[4mbody[24m>. 
   [1m/trigp[22;0m is equivalent to: [1m/def[22;0m [1m-p[22;0m<[4mpriority[24m> [1m-t[22;0m<[4mpattern[24m> = <[4mbody[24m>. 
   [1m/trigc[22;0m is equivalent to: [1m/def[22;0m [1m-c[22;0m<[4mchance[24m> [1m-t[22;0m<[4mpattern[24m> = <[4mbody[24m>. 
-  [1m/trigpc[22;0m is equivalent to: [1m/def[22;0m [1m-p[22;0m<[4mpriority[24m> [1m-c[22;0m<[4mchance[24m> [1m-t[22;0m<[4mpattern[24m> = <[4mbody[24m>. 
+  [1m/trigpc[22;0m is equivalent to: [1m/def[22;0m [1m-p[22;0m<[4mpriority[24m> [1m-c[22;0m<[4mchance[24m> [1m-t[22;0m<[4mpattern[24m> = <[4mbody[24m>.
 
   See: [1mtriggers[22;0m, [1mevaluation[22;0m, [1mpatterns[22;0m, [1m/def[22;0m, [1m/untrig[22;0m 
 
@@ -3180,14 +3306,13 @@ spelling checker
   [1m/TRIGGER[22;0m [-g] [-w[<[4mworld[24m>]] [-h[<[4mevent[24m>]] <[4mtext[24m>
   ____________________________________________________________________________
 
-  Searches for and executes [1mmacros[22;0m with [1mtriggers[22;0m or [1mhook[22;0m arguments that match 
-  <[4mtext[24m>, just as if <[4mtext[24m> had come from a [1msocket[22;0m or a hook event had occured 
-  with <[4mtext[24m> as its arguments.  The return value of [1m/trigger[22;0m is the number of 
-  (non-[1mquiet[22;0m) [1mmacros[22;0m that were executed.  [1m/Trigger[22;0m is primarily useful for 
-  debugging [1mtriggers[22;0m and [1mhooks[22;0m.  
+  Executes [1mmacros[22;0m with [1mtriggers[22;0m or [1mhook[22;0m arguments that match <[4mtext[24m>, just as 
+  if <[4mtext[24m> had come from a [1msocket[22;0m or a hook event had occured with <[4mtext[24m> as 
+  its arguments.  The return value of [1m/trigger[22;0m is the number of (non-[1mquiet[22;0m) 
+  [1mmacros[22;0m that were executed.  [1m/Trigger[22;0m is useful for debugging [1mtriggers[22;0m and 
+  [1mhooks[22;0m.  
 
   [1mOptions:[22;0m 
-
   -g      Match "global" [1mtriggers[22;0m or [1mhooks[22;0m that were not defined with 
           [1m/def[22;0m [1m-w[22;0m 
   -w<[4mworld[24m> 
@@ -3197,7 +3322,6 @@ spelling checker
           Match [1mhooks[22;0m where <[4mevent[24m> matches the hook event and <[4mtext[24m> matches 
           the hook argument pattern.  Without -h, [1m/trigger[22;0m matches [1mtriggers[22;0m, 
           not [1mhooks[22;0m.  
-
   If no options are given, both -g and -w are assumed.  That is, <[4mtext[24m> is 
   matched against global [1mtriggers[22;0m and [1mhooks[22;0m, as well as [1mtriggers[22;0m and [1mhooks[22;0m for 
   the [1mcurrent[22;0m [1mworld[22;0m.  
@@ -3494,49 +3618,55 @@ spelling checker
 attributes
 
   Many TF commands take an argument to specifiy an [1mattribute[22;0m list, containing 
-  one or more of: n, g, G, u, r, f, d, B, b, h, C<[4mcolor[24m>.  The attribute codes 
-  stand for: normal, [1mgag[22;0m, norecord, underline, reverse, flash, dim, Bold, 
-  bell, [1mhilite[22;0m, and [1mColor[22;0m.  These [1mattributes[22;0m are used to display text 
-  associated with the command.  Use commas to separate attributes within an 
-  attribute list; commas may be omitted between single-letter attributes.  For 
-  example, "BuCred,Cbgyellow" means bold underlined red text on a yellow 
+  one or more of: n, x, g, G, u, r, f, d, B, b, h, C<[4mcolor[24m>.  The attribute 
+  codes stand for: none, exclusive, [1mgag[22;0m, norecord, underline, reverse, flash, 
+  dim, Bold, bell, [1mhilite[22;0m, and [1mColor[22;0m.  These [1mattributes[22;0m are used to display 
+  text associated with the command.  Use commas to separate attributes within 
+  an attribute list; commas may be omitted between single-letter attributes.  
+  For example, "BuCred,Cbgyellow" means bold underlined red text on a yellow 
   background.  
 
-  Norecord ("G") prevents the line from being recorded in [1mhistory[22;0m (however, if 
+  "None" ("n") is useful only for finding macros without attributes, e.g.  
+  "[1mlist[22;0m -an".  
+
+  Normally, new attributes are combined with the pre-existing attributes.  But 
+  if the new attributes include "x" (exclusive), the pre-existing display 
+  attributes are turned off first.  So, for example, if one trigger with [1m-a[22;0mu 
+  and another trigger with [1m-P[22;0mr match the same line, the whole line will be 
+  underlined and part of it will also be reversed; but if the second trigger 
+  had [1m-P[22;0mxr instead, then most of the line would be underlined, and part would 
+  be reversed but not underlined.  
+
+  "G" (norecord) prevents the line from being recorded in [1mhistory[22;0m (however, if 
   [1mlogging[22;0m is enabled, the line will be [1mlogged[22;0m).  
 
-  [1mColor[22;0m ("C<[4mname[24m>") allows you to specify black, red, green, yellow, blue, 
+  "C<[4mname[24m>" ([1mColor[22;0m) allows you to specify black, red, green, yellow, blue, 
   magenta, cyan, white, 8 thru 15, bgblack, bgred, bggreen, bgyellow, bgblue, 
-  bgmagenta, bgcyan, or bgwhite.  "C" must be the last option in the [1mattribute[22;0m 
-  string, and is followed by the <[4mname[24m> of the color.  See: [1mcolor[22;0m.  
+  bgmagenta, bgcyan, or bgwhite.  The "C" must be followed by the <[4mname[24m> of 
+  the color; a comma after the <[4mname[24m> can be used to separate it from 
+  attributes that follow it.  See: [1mcolor[22;0m.  
 
-  Normally, when attributes are applied to a line, they are added to any 
-  attributes that already exist on the line (e.g., when two triggers match the 
-  same line).  But the Normal attribute ("n") turns off any attributes that 
-  already existed on the line before applying the new attributes.  So, for 
-  example, if one trigger with [1m-a[22;0mu and another trigger with [1m-P[22;0mr match the same 
-  line, the whole line will be underlined and part of it will also be 
-  reversed; but if the second trigger had [1m-P[22;0mnr instead, then most of the line 
-  would be underlined, and part would be reversed but not underlined.  
-
-  The [1mhilite[22;0m ('h') [1mattribute[22;0m is special.  If specified, the [1mattributes[22;0m listed 
-  in the [1m%{hiliteattr}[22;0m [1mvariable[22;0m will be combined with the other [1mattributes[22;0m 
+  "h" ([1mhilite[22;0m) [1mattribute[22;0m is special.  If specified, the [1mattributes[22;0m listed in 
+  the [1m%{hiliteattr}[22;0m [1mvariable[22;0m will be combined with the other [1mattributes[22;0m 
   listed.  For example, the commands 
 
         [1m/set[22;0m [1mhiliteattr[22;0m=r
         [1m/echo[22;0m -ahu foobar
 
   will display the word "foobar" with reverse and underline [1mattributes[22;0m.  
+  [1m%{hiliteattr}[22;0m makes it easy to change the meaning of all your hilite macros 
+  at once, without editing each one individually.  
 
   All [1mattributes[22;0m except 'n' may be combined usefully.  (Even [1mgag[22;0ms can be 
   combined with other [1mattributes[22;0m: combining 'g' and 'B', for example, will [1mgag[22;0m 
-  the text initially, but will display it as bold if is is recalled with 
+  the text initially, but will display it as bold if it is recalled with 
   [1m/recall[22;0m -ag.) 
 
   It is possible to apply [1mattributes[22;0m to a part of a line, using [1m/partial[22;0m or 
   the [1m-P[22;0m option of [1m/def[22;0m.  If two or more partial [1mattributes[22;0m overlap, their 
-  effects will be combined.  For example, overlapping bold and reverse will 
-  appear bold and reverse; overlapping blue and red will appear magenta.  
+  effects will be combined (unless the "x" attribute is used).  For example, 
+  overlapping bold and reverse will appear bold and reverse; overlapping blue 
+  and red will appear magenta.  
 
   Ansi [1mattribute[22;0m codes sent by the server will be interpreted by tf if 
   [1m%{emulation}[22;0m is set to "ansi_attr".  See: [1m%emulation[22;0m.  
@@ -3548,6 +3678,8 @@ attributes
 %catch_ctrls
 
   See: [1m%emulation[22;0m 
+&/color_on
+&/color_off
 &color
 &colour
 &colours
@@ -3555,15 +3687,19 @@ attributes
 
 colors
 
+  Color is enabled by default.  To disable it, use "/color_off"; to re-enable 
+  color using ANSI codes, use "/color_on".  
+
   The color [1mattribute[22;0m ("C<[4mname[24m>") allows you to specify any one of: [30mblack[0m 
   (black), [31mred[0m, [32mgreen[0m, [33myellow[0m, [34mblue[0m, [35mmagenta[0m, [36mcyan[0m, [37mwhite[0m (white), 8 thru 15, 
   [40mbgblack[0m (bgblack), [41mbgred[0m, [42mbggreen[0m, [43mbgyellow[0m, [44mbgblue[0m, [45mbgmagenta[0m, [46mbgcyan[0m, or 
   [47mbgwhite[0m (bgwhite).  (If the previous sentence did not contain colored words, 
-  you do not have working color support.) The first eight are defined in 
-  stdlib.tf as ANSI foreground colors.  The bg* colors are defined in 
-  stdlib.tf as ANSI background colors.  The numbered colors are defined in 
-  stdlib.tf to work with the corresponding color xterm colors.  They can all 
-  be redefined as described below.  
+  you do not have working color support.  If it contained garbage, you should 
+  do "/color_off" or redefine the codes as described below.) The first eight 
+  are defined in stdlib.tf as ANSI foreground colors.  The bg* colors are 
+  defined in stdlib.tf as ANSI background colors.  The numbered colors are 
+  defined in stdlib.tf to work with the corresponding color xterm colors.  
+  They can all be redefined as described below.  
 
   You can use a defined color in any [1mattribute[22;0m string.  For example, to make 
   [1m/hilite[22;0m'd text appear blue, you can [1m/set[22;0m [1mhiliteattr[22;0m=Cblue.  
@@ -3608,7 +3744,6 @@ completion
   ____________________________________________________________________________
 
   Loading complete.tf will define the following keybindings: 
-
   ESC TAB 
           complete from context, input [1mhistory[22;0m, or [1m%{completion_list}[22;0m.  
   ESC ;   complete from [1m%{completion_list}[22;0m.  
@@ -3776,8 +3911,8 @@ expressions
 
   [1mExpressions[22;0m apply operators to numeric and string operands, and return a 
   result.  They can be used in [1m$[...] expression subs[22;0m, the condition of [1m/if[22;0m 
-  and [1m/while[22;0m statements, and as arguments to [1m/return[22;0m, [1m/result[22;0m, and [1m/test[22;0m 
-  commands.  
+  and [1m/while[22;0m statements, the condition of [1m/def -E[22;0m, and as arguments to 
+  [1m/return[22;0m, [1m/result[22;0m, and [1m/test[22;0m commands.  
 
 #float
 #integer
@@ -3820,7 +3955,7 @@ Operators
   lowest precedence.  Operators listed together have equal precedence.  The 
   letters in the table below correspond to the type of objects acted on by the 
   operators: [4mn[24m and [4mm[24m for numeric (integer or float), [4ms[24m and [4mt[24m for string.  All 
-  operators group left-to-right except assignment, which groups right-to-left.  
+  operators group left-to-right except assignment, which groups right-to-left. 
   If any binary numeric operator is applied to two integers, the result will 
   be an integer; but if either operand is a float, the other will be converted 
   to float if it is not already a float, and the result will be a float.  
@@ -3832,7 +3967,7 @@ Operators
           Perform [1mfunction[22;0m <[4mfn[24m> on <[4margs[24m> (see: [1mfunctions[22;0m).  
 
   ![4mn[24m      Boolean NOT (1 if [4mn[24m==0, otherwise 0).  
-  +[4mn[24m      Unary positive (useful for converting a string to a number).  
+  +[4mn[24m      Unary positive (useful for converting a string to a number). 
   -[4mn[24m      Unary negative.  
   ++[4mv[24m     Adds 1 to variable [4mv[24m and returns its new value.  
   --[4mv[24m     Subtracts 1 from variable [4mv[24m and returns its new value.  
@@ -3910,12 +4045,12 @@ Examples
 
       [1mExpression[22;0m             Value   Comments
       ----                   -----   --------
-      3 + X * 2                 13   3 + (5 * 2) = 13. 
-      "foo" =~ "bar"             0   "foo" is not identical to "bar". 
-      name =/ 'hawk*'            1   "Hawkeye" matches the [1mglob[22;0m "hawk*". 
-      X =~ "+5"                  0   X is interpreted as string "5". 
-      X == "+5"                  1   string "+5" is converted to integer 5. 
-      visual & (X > 0)           1   visual is nonzero, AND %X is positive. 
+      3 + X * 2                 13   3 + (5 * 2) = 13.
+      "foo" =~ "bar"             0   "foo" is not identical to "bar".
+      name =/ 'hawk*'            1   "Hawkeye" matches the [1mglob[22;0m "hawk*".
+      X =~ "+5"                  0   X is interpreted as string "5".
+      X == "+5"                  1   string "+5" is converted to integer 5.
+      visual & (X > 0)           1   visual is nonzero, AND %X is positive.
 
   See: [1mfunctions[22;0m, [1m/test[22;0m, [1mevaluation[22;0m, [1mpatterns[22;0m 
 
@@ -3956,7 +4091,6 @@ functions
 
 Mathematical functions
   Angles are in radians.  
-
 #abs
 #abs()
   [1mabs[22m([4mi[24m)  (int) Absolute value of <[4mi[24m>.  
@@ -4021,7 +4155,6 @@ Mathematical functions
 #
 
 Input/output functions
-
 #
   [1mecho[22m([4ms[24m [,[4mattrs[24m [,[4mdest[24m [,[4minline[24m]]]) 
           (int) Echoes <[4ms[24m> to the screen or <[4mdest[24m> with [1mattributes[22;0m <[4mattrs[24m>, 
@@ -4033,9 +4166,9 @@ Input/output functions
           (int) Sends string <[4ms[24m> to world <[4mt[24m>, or the [1mcurrent[22;0m world if <[4mworld[24m> 
           is blank.  An end-of-line will be appended if <[4mf[24m> is 1 or "on".  
   [1msend[22m([4ms[24m, [4mt[24m) 
-          Equivilent to [1msend[22;0m([4ms[24m, <[4mt[24m>, 1).  
+          Equivalent to [1msend[22;0m([4ms[24m, <[4mt[24m>, 1).  
   [1msend[22m([4ms[24m) 
-          Equivilent to [1msend[22;0m(<[4ms[24m>, "", 1).  
+          Equivalent to [1msend[22;0m(<[4ms[24m>, "", 1).  
 #fwrite
 #fwrite()
   [1mfwrite[22m([4ms[24m,[4mt[24m) 
@@ -4084,7 +4217,6 @@ String functions
   Range checking is done on string positions.  Any position given outside the 
   allowed range will be silently forced to the closest value that is in the 
   range.  
-
 #ascii
 #ascii()
   [1mascii[22m([4ms[24m) 
@@ -4118,7 +4250,9 @@ String functions
   [1mregmatch[22m([4ms[24m, [4mt[24m) 
           (int) Returns 1 if string <[4mt[24m> matches [1mregexp[22;0m <[4ms[24m>, otherwise returns 
           0.  Subexpressions can later be extracted using the P[4mn[24m [1mvariables[22;0m or 
-          [1m%P[4mn[24m[22;0m substitutions.  (See also: [1mregexp[22;0m) 
+          [1m%P[4mn[24m[22;0m substitutions.  Warning: [1mregmatch()[22;0m is much less efficient than 
+          the =/ [1moperator[22;0m (their difference in efficiency is even greater than 
+          that between [1mregexp[22;0m and [1mglob[22;0m [1mtriggers[22;0m).  (See also: [1mregexp[22;0m) 
 #strcat
 #strcat()
   [1mstrcat[22m(...) 
@@ -4167,7 +4301,6 @@ String functions
 #
 
 Keyboard buffer functions
-
 #kbdel
 #kbdel()
   [1mkbdel[22m([4mi[24m) 
@@ -4218,7 +4351,6 @@ Keyboard buffer functions
 #
 
 Information functions
-
 #time
 #time()
   [1mtime[22m()  (int) System time (typically seconds since 00:00:00 GMT, 
@@ -4247,9 +4379,11 @@ Information functions
 #world_info
 #world_info()
   [1mworld_info[22m([4ms[24m, [4mt[24m) 
+          (str) Return the value of field <[4mt[24m> of world <[4ms[24m>, 
   [1mworld_info[22m([4mt[24m) 
-          (str) Return the value of field <[4mt[24m> of world <[4ms[24m>, or the current 
-          world if <[4ms[24m> is omitted.  See [1mworlds[22;0m.  
+          (str) Return the value of field <[4mt[24m> of the [1mcurrent world[22;0m.  
+  [1mworld_info[22m() 
+          (str) Return the name of the [1mcurrent world[22;0m.  See [1mworlds[22;0m.  
 #fg_world
 #fg_world()
   [1mfg_world[22m() 
@@ -4261,6 +4395,12 @@ Information functions
   [1midle[22m([4ms[24m) 
           (int) Number of seconds since the last text was received on the 
           [1msocket[22;0m connected to [1mworld[22;0m <[4ms[24m>, or -1 on error.  
+#sidle
+#sidle()
+  [1msidle[22m() 
+  [1msidle[22m([4ms[24m) 
+          (int) Number of seconds since the last text was sent on the [1mcurrent 
+          socket[22;0m or the [1msocket[22;0m connected to [1mworld[22;0m <[4ms[24m>, or -1 on error.  
 #nactive
 #nactive()
   [1mnactive[22m() 
@@ -4273,8 +4413,8 @@ Information functions
 #nmail
 #nmail()
   [1mnmail[22m() 
-          (int) Number of monitored mail files containing unread mail (either 
-          0 or 1).  See [1m%MAIL[22;0m.  
+          (int) Number of monitored mail files containing unread mail.  See 
+          [1mmail[22;0m.  
 #nread
 #nread()
   [1mnread[22m() 
@@ -4287,11 +4427,10 @@ Information functions
 #systype
 #systype()
   [1msystype[22m() 
-          (str) System type, either "unix" or "os/2".  
+          (str) System type: "unix", "os/2", or "cygwin32".  
 #
 
 Other functions
-
 #
   [1maddworld[22m([4mname[24m, [4mtype[24m, [4mhost[24m, [4mport[24m, [4mchar[24m, [4mpass[24m, [4mfile[24m, [4muse_proxy[24m) 
           Defines or redefines a [1mworld[22;0m.  See "[1maddworld()[22;0m".  
@@ -4312,9 +4451,11 @@ Other functions
           [1mlocale[22;0m.  See also: [1mtime()[22;0m, [1m%TZ[22;0m.  
 #
   [1mgetopts[22m([4ms[24m, [4mt[24m) 
-          (int) Parse macro options according to format <[4ms[24m>.  See "[1mgetopts()[22;0m".  
+          (int) Parse macro options according to format <[4ms[24m>.  See "[1mgetopts()[22;0m". 
 #
-
+  [1msubstitute[22m([4ms[24m [,[4mattrs[24m [,[4minline[24m]]) 
+          (int) Replaces trigger text.  See "[1m/substitute[22;0m".  
+#
 #macro
 #function syntax
 
@@ -4435,7 +4576,7 @@ hints
       want to throw a tomato at anyone who says the word "tomato", and I write 
       the following [1mtrigger[22;0m: 
 
-        [1m/def[22;0m -t"*tomato*" tomato = :throws a tomato at [1m%1[22;0m. 
+        [1m/def[22;0m -t"*tomato*" tomato = :throws a tomato at [1m%1[22;0m.
 
       If Ben uses the word tomato, I will [1mtrigger[22;0m, and then see the text 
       "Hawkeye throws a tomato at Ben." That text contains the word tomato, 
@@ -4546,7 +4687,6 @@ history
 hooks
 
   Associated commands: 
-
   [1m/def[22;0m    define a [1mmacro[22;0m with any fields 
   [1m/hook[22;0m   define a [1mhook[22;0m [1mmacro[22;0m 
   [1m/unhook[22;0m 
@@ -4724,7 +4864,7 @@ topics
    *[1mglobals[22;0m       special tf variables
     [1mattributes[22;0m    special text display
     [1mprompts[22;0m       using LP/Diku prompts
-    [1mproblems[22;0m      bugs, core dumps, etc. 
+    [1mproblems[22;0m      bugs, core dumps, etc.
    *[1mevaluation[22;0m    macro body execution
     [1mmacros[22;0m        user-defined commands
    *[1msockets[22;0m       world connections
@@ -4736,6 +4876,7 @@ topics
     [1mexpressions[22;0m   math and string operations
     [1mtriggers[22;0m      automatic command execution based on incoming text
     [1mhooks[22;0m         automatic command execution based on tf events
+   +[1mmail[22;0m          mail checking
     [1mlibrary[22;0m       macros and variables in stdlib.tf
    *[1mtools[22;0m         extra commands in tools.tf
     [1mutilities[22;0m     useful extra command files
@@ -4864,7 +5005,8 @@ Binding keys
 
     * Function keys: F0, F1,...  F19 
     * Keypad keys: KP1 (upper left), KP2 (upper right), KP3 (center), KP4 
-      (lower left), KP5 (lower right) 
+      (lower left), KP5 (lower right).  (It may be necessary to turn Num Lock 
+      off to enable these.) 
     * Arrow keys: Up, Down, Right, Left 
     * others: Backspace, Clear EOL, Clear EOS, Clear Screen, Delete, 
       Delete Line, Home, Home Down, Insert, Insert Line, PgDn, PgUp, Scroll 
@@ -4878,6 +5020,16 @@ Binding keys
   They must be spelled as shown, but capitilization is ignored.  The function 
   [1mkeycode()[22;0m can be used to find the string generated by a key (as defined in 
   termcap).  
+
+  [1mTF[22m does not see the key itself, but the characters generated by a key.  If 
+  two different keys generate the same characters, [1mTF[22m can not tell them apart. 
+  For example, on most keyboards, with Num Lock on, the numeric keypad 
+  generates numbers, which can not be distinguished from the numbers generated 
+  by keys above the letter keys; and with Num Lock off, the numeric keypad 
+  generates codes that can not be distinguished from the codes generated by 
+  the arrow keys.  So on most keyboards it is impossible to bind special 
+  macros to keypad keys without also binding them to the arrow keys or regular 
+  number keys.  
 
   Note that before version 3.5 alpha 21 or beta 1, it was usually harmless to 
   "[1m/set[22;0m [1mTERM[22;0m=vt100" on terminals that accepted a superset of vt100 display 
@@ -4963,7 +5115,6 @@ Other key bindings
 #extra keybindings
   Some additional keyboard operations can be defined by [1m/load[22;0ming these library 
   files: 
-
   kb-bash.tf 
           keybindings like those in bash 
   kb-emacs.tf 
@@ -4972,7 +5123,6 @@ Other key bindings
           cut-and-paste operations 
   kbstack.tf 
           save the current line and recall it later 
-
   See the comments at the top of each file for further documentation.  
 
 #
@@ -5009,7 +5159,6 @@ Filenames:
 
 #list*
 List commands:
-
   [1m/listdef[22;0m <[4mspec[24m> 
           equivalent to '[1m/list[22;0m <[4mspec[24m>'.  
   [1m/listhilite[22;0m <[4mspec[24m> 
@@ -5117,7 +5266,6 @@ locale
   A locale defines a set of rules for a language and culture.  If the platform 
   on which TF runs supports locales, TF will support the following categories 
   of locale rules: 
-
   LC_CTYPE 
           determines what characters are allowed, and whether they should be 
           treated as letters, digits, puctuation, or control characters.  When 
@@ -5129,10 +5277,10 @@ locale
 
   The user can set the locale either by having special variables defined in 
   the environment before starting TF (preferred), or by setting them while TF 
-  is running with [1m/setenv[22;0m ([1m/set[22;0m is not sufficient, the variables must be in 
-  the environment).  The exact rules for setting locale depend on the 
-  platform, and should be found your system's documentation for setlocale().  
-  The rules are usually something like this: 
+  is running (they will automatically be exported to the environment even if 
+  [1m/set[22;0m is used).  The exact rules for setting locale depend on the platform, 
+  and should be found your system's documentation for setlocale().  The rules 
+  are usually something like this: 
 
     * If the variable [1mLC_ALL[22;0m is set, its value is used as the locale for 
       all supported categories.  
@@ -5160,7 +5308,7 @@ locale
 
   If your system has locale support, but does not have any locales installed, 
   you can get the POSIX 1003.2 WG15-collection locale definitions from 
-  [1mftp://dkuug.dk/i18n/[22;0m or [1mftp://i44ftp.info.uni-karlsruhe.de/pub/linux/ctype/[22;0m.  
+  [1mftp://dkuug.dk/i18n/[22;0m or [1mftp://i44ftp.info.uni-karlsruhe.de/pub/linux/ctype/[22;0m. 
 
   Note to linux users and other users of GNU libc: at least some versions of 
   GNU localedef generate invalid LC_TIME information from the WG15-collection 
@@ -5205,7 +5353,7 @@ macros
 
   A [1mmacro[22;0m name is the way of calling it from the command line or from another 
   [1mmacro[22;0m.  You can execute a [1mmacro[22;0m by typing '/' followed by the name of the 
-  [1mmacro[22;0m.  If a [1mmacro[22;0m and builtin have the same name, the [1mmacro[22;0m will be called.  
+  [1mmacro[22;0m.  If a [1mmacro[22;0m and builtin have the same name, the [1mmacro[22;0m will be called. 
   Typing '/@' followed by the name will always call the builtin command.  
 
   A [1mmacro[22;0m body, or execution text, is the commands and/or text executed when 
@@ -5258,7 +5406,6 @@ macros
 
   invisibility 
           prevents handling of [1mmacro[22;0m by [1m/list[22;0m, [1m/save[22;0m, or [1m/purge[22;0m.  
-
   [1mMacros[22;0m may be called in several ways: 
 
     * a command of the form "/[4mname[24m" or "/#[4mnumber[24m" 
@@ -5267,7 +5414,6 @@ macros
     * by keybindings 
 
   Associated commands: 
-
   [1m/def[22;0m    define a named [1mmacro[22;0m, with any fields 
   [1m/trig[22;0m   define a [1mtrigger[22;0m [1mmacro[22;0m 
   [1m/hilite[22;0m 
@@ -5290,6 +5436,38 @@ macros
   [1m/save[22;0m   save [1mmacro[22;0m definitions to a file 
 
   See also: [1mtriggers[22;0m, [1mgags[22;0m, [1mhilites[22;0m, [1mhooks[22;0m 
+
+&%MAIL
+&%TFMAILPATH
+&TFMAILPATH
+&mail
+&mail check
+&mail checking
+
+mail checking
+
+  If [1m%{maildelay}[22;0m is nonzero, TF will check for mail every [1m%{maildelay}[22;0m 
+  seconds.  TF checks for mail in each file in the space-separated list of 
+  files in the [1m%{TFMAILPATH}[22;0m [1mvariable[22;0m.  If [1m%{TFMAILPATH}[22;0m is not set, TF will 
+  check in the single file named by the [1m%{MAIL}[22;0m [1mvariable[22;0m.  
+
+  TF considers a mailfile to have unread mail if the file has been written 
+  more recently than it has been read.  When this changes for any of the 
+  monitored files, TF updates the mail indicator on the [1mstatus line[22;0m (actually, 
+  the "@mail" [1mstatus[22;0m).  When TF determines that a mailfile contains new mail, 
+  it calls the [1mMAIL hook[22;0m.  If a mailfile is not empty the [4mfirst[24m time TF checks 
+  it, TF just prints "You have mail" without calling the [1mMAIL hook[22;0m (which by 
+  default prints "You have new mail").  The [1mnmail()[22;0m [1mfunction[22;0m returns the 
+  number of monitored mail files containing unread mail.  
+
+  MAIL and/or MAILPATH are usually set in the environment before [1mTF[22;0m starts.  
+  If [1m%{MAIL}[22;0m is not set when TF starts, TF will try to set it to the name of 
+  the system mail directory plus your user name (if the system mail directory 
+  was defined when TF was installed).  If MAILPATH (which uses ":" as a 
+  delimeter) is set when TF starts, it is transferred to [1m%{TFMAILPATH}[22;0m (which 
+  uses space as a delimiter).  
+
+  See: [1mnmail()[22;0m, [1mvariables[22;0m, [1mspecial variables[22;0m, [1m/set[22;0m 
 
 &mailing list
 &mail list
@@ -5374,8 +5552,9 @@ options
     * A literal delimiter character or '\' within a delimited string must 
       be escaped by preceding it with '\'.  
     *  All options must precede normal arguments.  
-    *  A '-' or '--' by itself may be used to mark the end of the options.  
+    *  A '-' or '--' by itself may be used to mark the end of the options. 
       This is useful when the first regular argument begins with '-'.  
+    *  A '-?' or invalid option will produce a list of valid options.  
 
   See also: [1mgetopts()[22;0m.  
 
@@ -5461,17 +5640,17 @@ Regular expressions ("regexp")
 
        REGULAR EXPRESSION SYNTAX
             A regular expression is zero or more branches, separated by
-            `|'.  It matches anything that matches one of the branches. 
+            `|'.  It matches anything that matches one of the branches.
 
             A branch is zero or more pieces, concatenated.  It matches a
             match for the first, followed by a match for the second,
-            etc. 
+            etc.
 
-            A piece is an atom possibly followed by `*', `+', or `?'. 
+            A piece is an atom possibly followed by `*', `+', or `?'.
             An atom followed by `*' matches a sequence of 0 or more
             matches of the atom.  An atom followed by `+' matches a
             sequence of 1 or more matches of the atom.  An atom followed
-            by `?' matches a match of the atom, or the null string. 
+            by `?' matches a match of the atom, or the null string.
 
             An atom is a regular expression in parentheses (matching a
             match for the regular expression), a range (see below), `.'
@@ -5480,7 +5659,7 @@ Regular expressions ("regexp")
             the null string at the end of the input string), a `\'
             followed by a single character (matching that character), or
             a single character with no other significance (matching that
-            character). 
+            character).
 
             A range is a sequence of characters enclosed in `[]'.  It
             normally matches any single character from the sequence.  If
@@ -5491,14 +5670,14 @@ Regular expressions ("regexp")
             (e.g. `[0-9]' matches any decimal digit).  To include a
             literal `]' in the sequence, make it the first character
             (following a possible `^').  To include a literal `-', make
-            it the first or last character. 
+            it the first or last character.
 
        AMBIGUITY
             If a regular expression could match two different parts of
             the input string, it will match the one which begins
             earliest.  If both begin in the same place    but match
             different lengths, or match the same length in different
-            ways, life gets messier, as follows. 
+            ways, life gets messier, as follows.
 
             In general, the possibilities in a list of branches are
             considered in left-to-right order, the possibilities for
@@ -5509,14 +5688,14 @@ Regular expressions ("regexp")
             possibility in the first choice that has to be made.  If
             there is more than one choice, the next will be made in the
             same manner (earliest possibility) subject to the decision
-            on the first choice.  And so forth. 
+            on the first choice.  And so forth.
 
             For example, `(ab|a)b*c' could match `abc' in one of two
             ways.  The first choice is between `ab' and `a'; since `ab'
             is earlier, and does lead to a successful overall match, it
             is chosen.  Since the `b' is already spoken for, the `b*'
             must match its last possibility-the empty string-since it
-            must respect the earlier choice. 
+            must respect the earlier choice.
 
             In the particular case where no `|'s are present and there
             is only one `*', `+', or `?', the net effect is that the
@@ -5555,7 +5734,7 @@ Notes.
 
     * For best speed, make the beginning of your patterns as specific as 
       possible.  
-    * Do not use ".*" or "^.*" at the beginning of a regexp.  It is [1mvery[22m 
+    * Do not use ".*" or "^.*" at the beginning of a regexp.  It is [4mvery[24m 
       inefficient, and not needed.  Use [1m%PL[22;0m instead if you need to retrieve 
       the value of the left side.  
     * If a glob and regexp can do the same job, use the glob, it's usually 
@@ -5620,7 +5799,7 @@ problems
       the shell to get the version; otherwise, say OS/2, Win95, or WinNT.  
     * If tf won't install, send the Build.log file (UNIX only) if there is 
       one, or send a log of the installation errors (don't leave out parts 
-      just because you don't know what they mean or think they're irrelevant).  
+      just because you don't know what they mean or think they're irrelevant). 
     * If you have a bug or core, give me ALL messages from tf, not just 
       the last line.  If you have a bug or core, tell me what you did or what 
       happened before the problem, and if the problem is repeatable.  
@@ -5676,7 +5855,7 @@ processes
   the value of [1m%{ptime}[22;0m.  
 
   2.  If the [1m%{lpquote}[22;0m flag is on, [1mprocesses[22;0m run whenever a [1mprompt[22;0m is 
-  received from the server, indicating that the previous command as completed.  
+  received from the server, indicating that the previous command as completed. 
   Example: 
 
           [1m/lpquote[22;0m on
@@ -5755,7 +5934,7 @@ prompts
   command, you can recognize most [1mprompts[22;0m immediately without having to use 
   the [1m%{lp}[22;0m timing mechanism.  The typical way of doing this is: 
 
-      [1m/def[22;0m -h"PROMPT *> " catch_prompt = [1m/prompt[22;0m [1m%*[22;0m
+      [1m/def[22;0m -h"PROMPT *> " catch_prompt = [1m/test[22;0m [1mprompt[22;0m([1m{*}[22;0m)
 
   So, whenever TF receives an unterminated line that ends in "> ", 
   catch_prompt will see it, and use [1m/prompt[22;0m to copy it to the current [1mprompt[22;0m.  
@@ -5774,7 +5953,7 @@ prompts
 
   All of this hackery can be avoided if the server sends unambiguous [1mprompts[22;0m.  
   TF will recognize "*\b" (that is, "*" followed by backspace) and anything 
-  ending with GOAHEAD or END-OF-RECORD telnet characters.  When TF sees such 
+  ending with [1mGOAHEAD[22;0m or [1mEND-OF-RECORD[22;0m telnet characters.  When TF sees such 
   text, it does not wait for a delay, but calls the PROMPT hook immediately; 
   if there is no match, TF displays the prompt immediately.  To avoid some 
   minor glitches, you should leave the [1m%{lp}[22;0m flag off when connected to such a 
@@ -5844,41 +6023,6 @@ proxy server
 
   See: [1m/addworld[22;0m, [1m%proxy_host[22;0m, [1m%proxy_port[22;0m 
 
-&quoting
-&/qsh
-&/qtf
-&/qfile
-&/qmud
-&quoter.tf
-
-quoter.tf
-
-  Usage: 
-
-  [1m/REQUIRE[22;0m quoter.tf
-
-  [1m/qdef[22;0m [<[4mprefix[24m>] <[4mname[24m> - quote a current [1mmacro[22;0m definition
-  [1m/qmac[22;0m [<[4mprefix[24m>] <[4mname[24m> - quote a [1mmacro[22;0m from a [1mmacro[22;0m file
-  [1m/qworld[22;0m [<[4mprefix[24m>] <[4mname[24m> - quote a world definition
-  [1m/qfile[22;0m [<[4mprefix[24m>] <[4mname[24m> - quote a file
-  [1m/qtf[22;0m <[4mcmd[24m> - quote a tf command
-  [1m/qsh[22;0m <[4mcmd[24m> - quote a shell command
-  [1m/qmud[22;0m <[4mcmd[24m> - quote a mud command
-  ____________________________________________________________________________
-
-  Each of these commands will quote some text to the [1mcurrent[22;0m world.  <[4mprefix[24m> 
-  is prepended to each generated line.  The default prefix is ":|", but can be 
-  changed in [1m/qdef[22;0m, [1m/qmac[22;0m, [1m/qworld[22;0m, and [1m/qfile[22;0m.  
-
-  [1m/qmac[22;0m will search a list of commonly used filenames.  To add your own, add 
-  them to [1m%{_qmac_files}[22;0m.  
-
-  [1m/qworld[22;0m will not list passwords.  
-
-  [1m/qmud[22;0m requires that the world supports OUTPUTPREFIX and OUTPUTSUFFIX.  
-
-  See: [1m/quote[22;0m, [1m/list[22;0m, [1m/listworlds[22;0m, [1m/sh[22;0m, [1mtfrc[22;0m 
-
 &redirection
 
 redirection
@@ -5902,7 +6046,6 @@ redirection
 sockets
 
   Associated topics: 
-
   [1m/connect[22;0m 
           open a [1msocket[22;0m connection to a world 
   [1m/dc[22;0m     close (disconnect) a [1msocket[22;0m 
@@ -5970,7 +6113,7 @@ sockets
 
   TF supports several TELNET options; see [1mtelnet[22;0m.  
 
-  If [1m%{proxy_host}[22;0m is defined, all connections will go through a [1mproxy[22;0m server.  
+  If [1m%{proxy_host}[22;0m is defined, all connections will go through a [1mproxy[22;0m server. 
   See: [1mproxy[22;0m.  
 
   See also: [1mworlds[22;0m 
@@ -5997,14 +6140,13 @@ special variables
 Special substitute-only variables
   The following special [1mvariables[22;0m may be used only in [1msubstitutions[22;0m, never as 
   a variable [1mreference[22;0m in an [1mexpression[22;0m.  
-
 ##
 #%#
   [1m#[22m       The number of words in a [1mmacro[22;0m's argument text.  
 
 #?
 #%?
-  [1m?[22m       The integer return value of the most recently executed 
+  [1m?[22m       The string return value of the most recently executed 
           command (builtin or [1mmacro[22;0m).  
 
 #
@@ -6023,10 +6165,9 @@ Special substitute-only variables
 #
 Special global variables
   The following special global [1mvariables[22;0m can be examined and set.  In the 
-  following list, a '=' following a [1mvariable[22;0m name indicates its default value.  
+  following list, a '=' following a [1mvariable[22;0m name indicates its default value. 
   For [1mvariables[22;0m that do not have defaults listed, the default is dependant on 
   your system or configuration.  
-
 #COLUMNS
 #%COLUMNS
   [1mCOLUMNS[22m 
@@ -6041,34 +6182,34 @@ Special global variables
 
 #LANG
 #%LANG
-  [1mLANG[22m    The current locale.  See [1mlocale[22;0m.  
+  [1mLANG[22m    The current locale.  See [1mlocale[22;0m.  Automatically exported to 
+          the environment when set.  
 
 #LC_ALL
 #%LC_ALL
-  [1mLC_ALL[22m  The current locale.  See [1mlocale[22;0m.  
+  [1mLC_ALL[22m  The current locale.  See [1mlocale[22;0m.  Automatically exported to 
+          the environment when set.  
 
 #LC_CTYPE
 #%LC_CTYPE
   [1mLC_CTYPE[22m 
           The current locale for character classification.  See [1mlocale[22;0m.  
+          Automatically exported to the environment when set.  
 
 #LC_TIME
 #%LC_TIME
   [1mLC_TIME[22m 
-          The current locale for time formatting.  See [1mlocale[22;0m.  
+          The current locale for time formatting.  See [1mlocale[22;0m.  Automatically 
+          exported to the environment when set.  
 
 #LINES
 #%LINES
   [1mLINES[22m   If this variable is set in the environment when TF starts, 
-          TF will use its value instead of the value from the terminal driver.  
+          TF will use its value instead of the value from the terminal driver. 
           See [1m%COLUMNS[22;0m, [1mlines()[22;0m.  
 
-#MAIL
 #%MAIL
-  [1mMAIL[22m    If [1m%{maildelay}[22;0m is nonzero, TF will tell you there is new 
-          mail when the file named by [1m%{MAIL}[22;0m has been modified but not yet 
-          read.  If [1m%{MAIL}[22;0m is undefined, TF will try to define it as the file 
-          with your login name in the mail directory.  See also: [1mnmail()[22;0m.  
+  [1mMAIL[22m    The name of a file which TF may check for mail.  See: [1mmail[22;0m.  
 
 #SHELL
 #%SHELL
@@ -6099,7 +6240,9 @@ Special global variables
           file (tf-help), the standard library (stdlib.tf), the local library 
           (local.tf), and many useful utility files.  The default value of 
           [1mTFLIBDIR[22;0m is set when TF is installed, but can be overridden by 
-          setting it in the environment before starting TF.  See also: [1m/load[22;0m.  
+          setting it in the environment before starting TF.  This directory 
+          will be searched by [1m/load[22;0m if [1mTFPATH[22;0m is blank or not set.  See also: 
+          [1m/load[22;0m.  
 
 #TFLIBRARY
 #%TFLIBRARY
@@ -6107,6 +6250,20 @@ Special global variables
           The name of the library file loaded at [1mstartup[22;0m.  This can be set in 
           the environment before starting tf, to load from an alternate 
           library file.  
+
+#%TFMAILPATH
+  [1mTFMAILPATH[22m 
+          A space-separated list of files which TF may check for mail.  See: 
+          [1mmail[22;0m.  
+
+#TFPATH
+#%TFPATH
+  [1mTFPATH[22m= 
+          A space-separated list of directories that will be searched by 
+          [1m/load[22;0m.  If this is set, [1m%{TFLIBDIR}[22;0m will be ignored by [1m/load[22;0m, so be 
+          sure to include the value of [1m%{TFLIBDIR}[22;0m in [1m%{TFPATH}[22;0m if you want to 
+          be able to [1m/load[22;0m files with relative names from the standard library 
+          directory.  See also: [1m/load[22;0m.  
 
 #TZ
 #%TZ
@@ -6117,7 +6274,8 @@ Special global variables
           "PST8PDT".  For details, see your system documentation for tzset(3) 
           or environ(5).  To change the timezone, the value of [1m%TZ[22;0m must be 
           changed with [1m/setenv[22;0m, not [1m/set[22;0m.  This is usually inherited from the 
-          environment when tf starts.  
+          environment when tf starts, and is automatically exported to the 
+          environment when set.  
 
 #auto_fg
 #%auto_fg
@@ -6145,11 +6303,9 @@ Special global variables
 #bamf
 #%bamf
   [1mbamf[22m=off 
-
           off     (0): server "[1mportals[22;0m" are ignored.  
           on      (1): Unter-style [1mbamfing[22;0m is enabled (disconnect).  
           old     (2): Old-style [1mbamfing[22;0m is enabled (no disconnect).  
-
           See [1m/bamf[22;0m.  
 
 #bg_output
@@ -6166,7 +6322,7 @@ Special global variables
 #binary_eol
 #%binary_eol
   [1mbinary_eol[22m=LF 
-          Determines what to send as end-of-line marker in [1mTELNET[22;0m BINARY mode.  
+          Determines what to send as end-of-line marker in [1mTELNET[22;0m BINARY mode. 
           Valid values are "LF", "CR", and "CRLF".  (See: [1m/telnet[22;0m) 
 
 #borg
@@ -6205,14 +6361,15 @@ Special global variables
           unavailable" errors when connecting; if this happens, set %connect 
           to "blocking".  See also [1m%gethostbyname[22;0m.  
 
+#%e
+  [1me[22m=2.718281828 
+          The natural logarithm base.  
+
 #raw
-#%raw
 #canon
 #print
-#%print
 #ansi
 #ansi_strip
-#%ansi_strip
 #ansi_attr
 #emulation
 #%emulation
@@ -6220,7 +6377,6 @@ Special global variables
           Determines how special codes sent by the server should be 
           interpreted by tf.  The set of printable characters is determined by 
           the current [1mlocale[22;0m.  Valid values for [1m%emulation[22;0m are: 
-
           raw:    No processing done; lines not wrapped; all 
                   nonprintable characters are displayed, and their effect is 
                   undefined (depending mainly on your terminal).  TF's input 
@@ -6236,14 +6392,14 @@ Special global variables
                   consisting of ESC, '[', 0 or more digits and ';'s, and a 
                   letter) are also removed.  
           ansi_attr: 
-                  Like "ansi_strip", but ansi-like [1mattribute[22;0m (color) codes 
+                  Like "ansi_strip", but ansi-like [1mdisplay attribute[22;0m codes 
                   (i.e., ansi codes ending with 'm') will be converted to tf's 
                   internal format and displayed correctly (on any terminal).  
-                  Other ansi-like codes (e.g., cursor motion) will be removed.  
-                  Recommended for servers that send vt100/ansi [1mattributes[22;0m.  
-          debug:  converts nonprinting characters to a printable form.  
+                  Other ansi-like codes (e.g., cursor motion) will be removed. 
+                  Recommended for servers that send vt100/ansi display 
+                  [1mattribute[22;0m codes.  
+          debug:  converts nonprinting characters to a printable form. 
                   See also: [1m%telopt[22;0m.  
-
           See also: [1m%istrip[22;0m, [1m%meta_esc[22;0m, [1m%tabsize[22;0m, [1mlocale[22;0m, [1mattributes[22;0m 
 
 #end_color
@@ -6355,14 +6511,12 @@ Special global variables
 #%matching
   [1mmatching[22m=glob 
           Determines the default [1mpattern matching[22;0m style.  
-
           "[1msimple[22;0m": 
                   straightforward string comparison.  
           "[1mglob[22;0m": 
                   shell-like matching (as before version 3.2).  
           "[1mregexp[22;0m": 
                   regular expression.  
-
           See also: [1mpatterns[22;0m, [1mregmatch()[22;0m, [1m%Pn[22;0m.  
 
 #max_iter
@@ -6382,16 +6536,15 @@ Special global variables
 #mecho
 #%mecho
   [1mmecho[22m=off 
-
           "off" (0): 
                   do not echo [1mmacro[22;0m [1mexpansions[22;0m.  
           "on" (1): 
                   echo [1mexpansions[22;0m of non-invisible [1mmacros[22;0m.  
           "all" (2): 
                   echo [1mexpansions[22;0m of all [1mmacros[22;0m.  
-
           [1m%{mprefix}[22;0m will be prepended once for each recursion level when 
           [1mmacro[22;0m [1mexpansion[22;0m echoing is enabled.  
+
 #meta_esc
 #%meta_esc
   [1mmeta_esc[22m=on 
@@ -6418,6 +6571,10 @@ Special global variables
           written before version 3.0 to work properly.  With oldslash=off, 
           only slashes at the beginning of a body are handled specially.  You 
           are encouraged to turn this off.  (See: [1mevaluation[22;0m) 
+
+#%pi
+  [1mpi[22m=3.141592654 
+          The ratio of a circle's circumference to its diameter.  
 
 #pedantic
 #%pedantic
@@ -6513,10 +6670,8 @@ Special global variables
 #%start_color
 #start_color_name
 #%start_color_name
-#start_color_<name
-          "> 
-#%start_color_<name
-          "> 
+#start_color_<name>
+#%start_color_<name>
   [1mstart_color_<[4mname[24m>[22m 
           The code that should be sent to your terminal to produce [1mcolor[22;0m 
           <[4mname[24m>.  See: [1mcolor[22;0m.  
@@ -6556,7 +6711,6 @@ Special global variables
 #sub
 #%sub
   [1msub[22m=off 
-
           "off" (0): 
                   input is not [1mexpanded[22;0m.  
           "on" (1): 
@@ -6574,7 +6728,7 @@ Special global variables
 #visual
 #%visual
   [1mvisual[22m=on 
-          (flag) Divides the screen into an input window and an output window.  
+          (flag) Divides the screen into an input window and an output window. 
           (See: [1mmode[22;0m) 
 
 #watchdog
@@ -6650,10 +6804,10 @@ status line
 
     [1;7mMore 156[22;27m_[4mWorldName[24m____________(Read)_(Active: [4mn[24m)_(Log)_(Mail)_(Over)_12:34
 
-    * "[1mMore[22;0m" indicates how many [1mmore[22;0m lines of text are waiting to be seen.  
+    * "[1mMore[22;0m" indicates how many [1mmore[22;0m lines of text are waiting to be seen. 
     * "<[4mWorldName[24m>" is the name of the [1mcurrent[22;0m [1msocket[22;0m's world.  
     * "Read" indicates that keyboard input is being read by [1mread()[22;0m.  
-    * The "Active" indicator shows the number of [1msockets[22;0m with unseen text.  
+    * The "Active" indicator shows the number of [1msockets[22;0m with unseen text. 
     * "Log" indicates that there is one or more [1mlog[22;0m file open.  
     * "Mail" indicates that the file named by [1m%MAIL[22;0m contains unread mail.  
     * "Over" indicates that typed characters will overstrike instead of 
@@ -6703,7 +6857,6 @@ Configuring the status line
 
   Any [1mvariable[22;0m may be monitored, but there is a fixed list of internal 
   statuses.  The internal statuses available are: 
-
   @more   Updated when the number of unseen lines changes.  
   @world  Updated when when the [1mforeground[22;0m [1mworld[22;0m changes.  
   @read   Updated when entering or exiting a [1mread()[22;0m function call.  
@@ -6746,29 +6899,33 @@ Configuring the status line
   The first field is "@more:8:Br".  So, whenever the number of unseen lines 
   changes, TF looks for the [1mvariable[22;0m status_int_more, and evaluates the 
   [1mexpression[22;0m it contains.  The result of the [1mexpression[22;0m is printed in the 
-  first 8 columns of the status line, with [1mattributes[22;0m "Br" (bold and reverse).  
+  first 8 columns of the status line, with [1mattributes[22;0m "Br" (bold and reverse). 
   The [1mexpression[22;0m was carefully written so that it will never be more than 8 
   characters, because it would be confusing to generate something like 
   "More:12345" and then have it truncated to "More:123" because of the field 
   width of 8.  
 
-  Since the "@world" field has no width, it uses dynamic width.  The fields on 
-  its left are pushed to the left side of the screen, the fields on its right 
-  are pushed to the right side of the screen, and the "@world" field uses 
-  whatever space remains in the middle.  
+  Since the "@world" field has no explicit width, its width is determined 
+  dynamically.  The fields on its left are pushed to the left side of the 
+  screen, the fields on its right are pushed to the right side of the screen, 
+  and the "@world" field uses whatever space remains in the middle.  
 
   The unnamed fields with width 1 are used to display a pad character between 
   the named fields.  
+#prompt example
 
   Another example: Say your mud has a [1mprompt[22;0m like "H:42 M:17> " that shows 
   your hit points and mana, and you want it displayed on the status line like 
   " 42, 17".  To do this, add "hp_mana:7" to the [1mstatus_fields[22;0m [1mvariable[22;0m, and 
   define a [1mprompt[22;0m [1mhook[22;0m: 
 
-    [1m/def[22;0m [1m-mregexp[22;0m [1m-h[22;0m"PROMPT H:([^ ]*) M:([^ ]*)> " hp_mana_hook = \
+    [1m/def[22;0m [1m-mregexp[22;0m [1m-h[22;0m"PROMPT ^H:([^ ]*) M:([^ ]*)> $" hp_mana_hook = \
         [1m/set[22;0m hp=[1m%P1[22;0m%; \
         [1m/set[22;0m mana=[1m%P2[22;0m%; \
-        [1m/set[22;0m hp_mana=$[[1mpad[22;0m(hp, 3, ",", 0, mana, 3)]
+        [1m/set[22;0m hp_mana=[1m$[[22;0m[1mpad[22;0m(hp, 3, ",", 0, mana, 3)]%; \
+        [1m/test[22;0m [1mprompt[22;0m([1m{*}[22;0m)
+
+#
 
   See: [1mvisual[22;0m 
 
@@ -6885,6 +7042,7 @@ $$...
 #%L
 #%*
 #%#
+#%?
 #variable subs
 #variable substitution
 #positional parameters
@@ -6910,6 +7068,9 @@ Variable and Argument substitution.
   #       selects the count of positional parameters.  
 
   *       selects all positional parameters.  
+
+  ?       selects the return value of the most recently executed 
+          command (builtin or macro).  
 
   1, 2, 3, etc.  
           selects the corresponding positional parameter.  There is no maximum 
@@ -7074,7 +7235,6 @@ tf
       will start up in unconnected mode.  
 
   [1mOptions:[22;0m 
-
   -f<[4mfile[24m> 
           Load <[4mfile[24m> instead of the normal personal config file.  
   -f      Do not load any personal config file at startup.  
@@ -7132,9 +7292,8 @@ tfio
 
 tfopen()
   The [1mtfopen[22;0m([4mname[24m, [4mmode[24m) function can be used to open arbitrary [1mstreams[22;0m.  If 
-  called with no arguments, [1mtfopen()[22;0m opens a "q" mode [1mstream[22;0m.  The <[4mmode[24m> 
-  argument describes the usage of the [1mstream[22;0m: 
-
+  called with no arguments, [1mtfopen()[22;0m opens an unnamed "q" mode [1mstream[22;0m.  The 
+  <[4mmode[24m> argument describes the usage of the [1mstream[22;0m: 
   "w"     Open a file "<[4mname[24m>" for writing.  Write operations will 
           overwrite existing file contents, if any.  
   "a"     Open a file "<[4mname[24m>" for appending.  Write operations will 
@@ -7143,8 +7302,7 @@ tfopen()
   "p"     Execute a shell command "<[4mname[24m>" and read its output (see 
           also: "[1m/quote ![22;0m").  
   "q"     Open a queue for reading and writing.  The <[4mname[24m> argument 
-          is ignored (but will appear in the output of [1m/liststreams[22;0m).  
-
+          will appear in the output of [1m/liststreams[22;0m, but has no other meaning. 
   A "q" mode [1mstream[22;0m may be thought of as a place to hold lines for passing 
   between two or more commands.  
 
@@ -7210,7 +7368,11 @@ Keyboard Reading
   keyboard read, typing ^[^M would send "go" first, and then do the newline 
   that completes the read.  
 
-  See: [1minterface[22;0m, [1m/liststreams[22;0m, [1m/input[22;0m, [1mexpressions[22;0m, [1mnread()[22;0m, [1mfunctions[22;0m 
+  The library file [1mtextutil.tf[22;0m defines several commands that are useful with 
+  [1mtfio[22;0m.  
+
+  See: [1minterface[22;0m, [1m/liststreams[22;0m, [1m/input[22;0m, [1mexpressions[22;0m, [1mnread()[22;0m, [1mfunctions[22;0m, 
+  [1mtextutil.tf[22;0m 
 
 &config
 &configuration
@@ -7253,8 +7415,7 @@ Keyboard Reading
 
 timing
 
-  See: [1mprocesses[22;0m, [1m/repeat[22;0m, [1m/quote[22;0m, utilities ([1m/at[22;0m, [1m/tick[22;0m), [1m%clock[22;0m, [1m/pause[22;0m, 
-  [1m/time[22;0m.  
+  See: [1mprocesses[22;0m, [1m/repeat[22;0m, [1m/quote[22;0m, utilities ([1m/at[22;0m, [1m/tick[22;0m), [1m%clock[22;0m, [1m/time[22;0m.  
 &tools
 &/reedit
 &/edmac
@@ -7296,14 +7457,13 @@ triggers
 
   Before we get into the gory details, here's a simple example of a trigger: 
 
-    [1m/def[22;0m [1m-t[22;0m"{*} has arrived." greet = :waves to [1m%1[22;0m. 
+    [1m/def[22;0m [1m-t[22;0m"{*} has arrived." greet = :waves to [1m%1[22;0m.
 
   This command defines a macro called "greet".  Whenever text like "Bob has 
   arrived." is received, /greet will be executed automatically, sending the 
   text ":waves to Bob." to the server.  
 
   Associated commands: 
-
   [1m/def[22;0m    define a [1mmacro[22;0m with any fields 
   [1m/trig[22;0m   define a [1mtrigger[22;0m [1mmacro[22;0m 
   [1m/trigp[22;0m  define a [1mtrigger[22;0m [1mmacro[22;0m with [1mpriority[22;0m 
@@ -7450,7 +7610,6 @@ utilities
 variables
 
   Associated commands: 
-
   [1m/listvar[22;0m 
           list values of [1mvariables[22;0m.  
   [1m/set[22;0m    set the value of a global [1mvariable[22;0m 
@@ -7486,7 +7645,6 @@ variables
 worlds
 
   Associated commands: 
-
   [1m/addworld[22;0m 
           define a new world 
   [1m/world[22;0m  connect to a defined world 
@@ -7514,7 +7672,6 @@ worlds
 #fields
   Fugue stores a list of "worlds" that it knows about.  Each world has several 
   fields associated with it: 
-
   name    a label used to refer to the world 
   type    an optional string for matching /def -T 
   character 

@@ -2,7 +2,7 @@
 ; syntax:  /relog <file> <recall_arguments>
 ; Starts logging, and silently performs a /recall into the log file.
 
-/~loaded relog.tf
+/loaded __TFLIB__/relog.tf
 
 /def -i relog = \
     /def -i -hlog -1 -ag = /echo %%% Recalling to log file %1%;\

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.h,v 35004.24 1998/01/29 06:28:49 hawkeye Exp $ */
+/* $Id: output.h,v 35004.25 1998/06/30 05:13:15 hawkeye Exp $ */
 
 #ifndef OUTPUT_H
 #define OUTPUT_H
@@ -33,7 +33,7 @@ extern TIME_T clock_update;
 extern int need_refresh;       /* Does input need refresh? */
 extern int need_more_refresh;  /* Does visual more prompt need refresh? */
 
-extern void FDECL(bell,(int n));
+extern void FDECL(dobell,(int n));
 extern void NDECL(init_output);
 extern int  NDECL(change_term);
 extern void FDECL(setup_screen,(int clearlines));

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expand.c,v 35004.103 1998/04/10 20:30:04 hawkeye Exp $ */
+/* $Id: expand.c,v 35004.114 1998/06/25 21:50:04 hawkeye Exp $ */
 
 
 /********************************************************************
@@ -92,9 +92,8 @@ struct Value *handle_eval_command(args)
             return newint(0);
         }
     }
-    if (!process_macro(args, NULL, subflag)) return NULL;
-    user_result->count++;
-    return user_result;
+    if (!process_macro(args, NULL, subflag, "\bEVAL")) return NULL;
+    return_user_result();
 }
 
 
@@ -106,11 +105,12 @@ struct Value *handle_test_command(args)
 
     ip = args;
     if (expr()) {
+        stacktop--;
         if (*ip) {
-            parse_error("expression", "operand");
+            parse_error("expression", "operator");
+            freeval(stack[stacktop]);
             result = NULL;
         } else {
-            stacktop--;
             if (stack[stacktop]->type == TYPE_ID) {
                 result = newstr(valstr(stack[stacktop]), -1);
                 freeval(stack[stacktop]);
@@ -128,6 +128,10 @@ struct Value *handle_return_command(args)
 {
     struct Value *result;
 
+    if (cmdsub_count) {
+        eprintf("may be called only directly from a macro, not in $() command substitution.");
+        return NULL;
+    }
     result = *args ? handle_test_command(args) : NULL;
     breaking = -1;
     return result;
@@ -138,8 +142,7 @@ struct Value *handle_result_command(args)
 {
     struct Value *result;
 
-    result = *args ? handle_test_command(args) : NULL;
-    breaking = -1;
+    result = handle_return_command(args);
     if (!argtop) oputs(valstr(result));
     return result;
 }
@@ -178,8 +181,9 @@ int handle_command(cmd_line)
     } else if (!(macro = find_macro(current_command)) &&
         !(handler = find_command(current_command)))
     {
-        do_hook(H_NOMACRO, "!%s: no such command or macro", "%s",
-            current_command);
+        CONST char *name = current_command;
+        current_command = old_command;  /* for eprefix() */
+        do_hook(H_NOMACRO, "!%s: no such command or macro", "%s", name);
         error++;
     }
 
@@ -201,8 +205,8 @@ int handle_command(cmd_line)
     return !error;
 }
 
-int process_macro(body, args, subs)
-    CONST char *body, *args;
+int process_macro(body, args, subs, name)
+    CONST char *body, *args, *name;
     int subs;
 {
     Stringp buffer;
@@ -210,8 +214,7 @@ int process_macro(body, args, subs)
     int vecsize = 20, error = 0;
     int saved_cmdsub, saved_argc, saved_breaking, saved_argtop;
     Arg *saved_argv;
-    CONST char *saved_ip;
-    CONST char *saved_argtext;
+    CONST char *saved_ip, *saved_argtext, *saved_command;
     List scope[1];
 
     if (++recur_count > max_recur && max_recur) {
@@ -219,6 +222,7 @@ int process_macro(body, args, subs)
         recur_count--;
         return 0;
     }
+    saved_command = current_command;
     saved_cmdsub = cmdsub_count;
     saved_ip = ip;
     saved_argc = tf_argc;
@@ -227,6 +231,7 @@ int process_macro(body, args, subs)
     saved_breaking = breaking;
     saved_argtop = argtop;
 
+    current_command = name;
     ip = body;
     cmdsub_count = 0;
 
@@ -267,6 +272,7 @@ int process_macro(body, args, subs)
     argtext = saved_argtext;
     breaking = exiting ? -1 : saved_breaking;
     argtop = saved_argtop;
+    current_command = saved_command;
     recur_count--;
     return !!user_result;
 }
@@ -280,6 +286,13 @@ String *do_mprefix()
     for (i = 0; i < recur_count + cmdsub_count; i++)
         Stringcat(buffer, mprefix);
     Stringadd(buffer, ' ');
+    if (current_command) {
+        if (*current_command == '\b') {
+            Sprintf(buffer, SP_APPEND, "%s: ", current_command+1);
+        } else {
+            Sprintf(buffer, SP_APPEND, "/%s: ", current_command);
+        }
+    }
     return buffer;
 }
 
@@ -300,7 +313,6 @@ static int list(dest, subs)
     static CONST char unexpect_msg[] = "unexpected /%s in %s block";
     TFILE *orig_tfin = tfin, *orig_tfout = tfout;
     TFILE *inpipe = NULL, *outpipe = NULL;
-    STATIC_BUFFER(scratch);
 
 #define unexpected(innerblock, outerblock) \
     eprintf(unexpect_msg, keyword_table[innerblock - BREAK], \
@@ -312,8 +324,10 @@ static int list(dest, subs)
      * or keyword will be skipped.
      */
 
-    if (!*ip || is_end_of_cmdsub(ip))
-        copy_user_result(default_result);  /* empty list returns 1 */
+    if (!*ip || is_end_of_cmdsub(ip)) {   /* empty list returns 1 */
+        default_result->count++;
+        set_user_result(default_result);
+    }
 
     if (block == WHILE) blockstart = ip;
 
@@ -358,16 +372,14 @@ static int list(dest, subs)
                 ip++; /* skip '(' */
                 if (!expr()) goto list_exit;
                 if (stack[--stacktop])
-                    copy_user_result(stack[stacktop]);
-                freeval(stack[stacktop]);
+                    set_user_result(stack[stacktop]);
                 if (*ip != ')') {
                     parse_error("condition", "operator or ')'");
                     goto list_exit;
                 }
                 if (!breaking && evalflag && condition && mecho > invis_flag) {
-                    SStringcpy(scratch, do_mprefix());
-                    Stringncat(scratch, exprstart, ip - exprstart + 1);
-                    tfputs(scratch->s, tferr);
+                    tfprintf(tferr, "%S%.*s",
+                        do_mprefix(), ip - exprstart + 1, exprstart);
                 }
                 while(is_space(*++ip)); /* skip ')' and spaces */
                 block = (block == WHILE) ? DO : THEN;
@@ -618,7 +630,7 @@ static int statement(dest, subs)
             if (*ip == '%') {
                 while (*ip == '%') Stringadd(dest, *ip++);
             } else if (subs >= SUB_FULL) {
-                if (!varsub(dest)) return 0;
+                if (!varsub(dest, 0)) return 0;
             } else {
                 Stringadd(dest, '%');
             }
@@ -670,9 +682,7 @@ static CONST char *error_text()
         if (is_alnum(*ip) || is_quote(*ip) || *ip == '/') {
             while (is_alnum(*end)) end++;
         }
-        Stringcpy(buf, "'");
-        Stringfncat(buf, ip, end - ip);
-        Stringcat(buf, "'");
+        Sprintf(buf, 0, "'%.*s'", end - ip, ip);
         return buf->s;
     } else {
         return "end of body";
@@ -793,7 +803,7 @@ int macsub(dest)
             }
         } else if (*ip == '%') {
             ++ip;
-            if (!varsub(buffer)) return 0;
+            if (!varsub(buffer, 0)) return 0;
         } else {
             for (s = ip++; *ip && !is_punct(*ip) && !is_space(*ip); ip++);
             Stringfncat(buffer, s, ip - s);
@@ -831,10 +841,11 @@ static int backsub(dest)
     return 1;
 }
 
-int varsub(dest)
-    String *dest;	/* if NULL, string result will be pushed onto stack */
+int varsub(dest, sub_warn)
+    String *dest;	/* if NULL, string value will be pushed onto stack */
+    int sub_warn;
 {
-    CONST char *value, *start;
+    CONST char *value, *start, *contents;
     int bracket, except, ell = FALSE, pee = FALSE, star = FALSE, n = -1;
     int first, last, empty = 0;
     STATIC_BUFFER(selector);
@@ -842,6 +853,7 @@ int varsub(dest)
     int stackflag;
     Value *val = NULL;
     int result = 0;
+    static int sub_warned = 0;
 
     if ((stackflag = !dest)) {
         Stringzero(buffer);
@@ -859,6 +871,7 @@ int varsub(dest)
         goto varsub_exit;
     }
 
+    contents = ip;
     if ((bracket = (*ip == '{'))) ip++;
 
     if (ip[0] == '#' && (!bracket || ip[1] == '}')) {
@@ -923,12 +936,13 @@ int varsub(dest)
             } else if (star) {
                 first = 0, last = tf_argc - 1;
             } else if (n == 0) {
-                static int warned = 0;
-                if (!warned && !invis_flag) {
+                static int zero_warned = 0;
+                if (!zero_warned && !invis_flag) {
                     eprintf("warning: as of version 4.0, '%%0' is no longer the same as '%%*'.");
-                    warned = 1;
+                    zero_warned = 1;
                 }
-                Stringcat(dest, current_command);
+                if (current_command && *current_command != '\b')
+                    Stringcat(dest, current_command);
             } else if (n > 0) {
                 if (except) first = n, last = tf_argc - 1;
                 else first = last = n - 1;
@@ -993,7 +1007,7 @@ int varsub(dest)
                 break;
             } else if (*ip == '%') {
                 ++ip;
-                if (!varsub(dest)) goto varsub_exit;
+                if (!varsub(dest, 0)) goto varsub_exit;
             } else if (*ip == '$') {
                 ++ip;
                 if (!dollarsub(dest)) goto varsub_exit;
@@ -1022,6 +1036,13 @@ int varsub(dest)
     }
 
     result = 1;
+    if (sub_warn & (!sub_warned || pedantic)) {
+        sub_warned = 1;
+        eprintf("warning: \"%%%.*s\" %s  Try using \"{%.*s}\" instead.",
+            ip-contents, contents,
+            "substitution in expression is legal, but can be confusing.",
+            (ip-bracket)-(contents+bracket), contents+bracket);
+    }
 varsub_exit:
     if (stackflag) {
         if (result) {

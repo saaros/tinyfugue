@@ -6,7 +6,7 @@
 ;;;; General Public License.  See the file "COPYING" for details.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;; $Id: stdlib.tf,v 35000.32 1998/04/14 18:40:30 hawkeye Exp $
+;;; $Id: stdlib.tf,v 35000.36 1998/06/24 23:17:16 hawkeye Exp $
 
 ;;; TF macro library
 
@@ -21,7 +21,7 @@
 ;;; much a part of TF as the executable file.  It is designed so that
 ;;; it can be used by one or many users.
 
-;;; Many "hidden" macros here are named starting with "~" to minimize
+;;; Many internal macros here are named starting with "~" to minimize
 ;;; conflicts with the user's namespace; you should not give your own
 ;;; macros names beginning with "~".  Also, you probably don't want to
 ;;; use the -i flag in defining your personal macros, although you can.
@@ -41,7 +41,10 @@
 /set status_int_read    nread() ? "(Read)" : ""
 /set status_int_active  nactive() ? pad("(Active:", 0, nactive(), 2, ")") : ""
 /set status_int_log     nlog() ? "(Log)" : ""
-/set status_int_mail    nmail() ? "(Mail)" : ""
+/set status_int_mail \
+    !nmail() ? "" : \
+    nmail()==1 ? "(Mail)" : \
+    pad("Mail", 0, nmail(), 2)
 /set status_var_insert  insert ? "" : "(Over)"
 /set status_int_clock   ftime("%I:%M", time())
 
@@ -62,14 +65,25 @@
 
 ;;; Commands
 ;; Some of these use helper macros starting with ~ to reduce conflicts with
-;; the user's namespace.
+;; the user's namespace.  Users should not rely on them or any other
+;; undocumented implementation details.
 
 
 ;;; /echo [-a<attr>] [-p] [-oer] [-w[<world>]] <text>
 /def -i echo = \
-    /if (!getopts("a:poerw:", "")) /return 0%; /endif%; \
+    /let opt_a=%; \
+    /let opt_w=()%; \
+    /let opt_p=0%; /let opt_o=0%; /let opt_e=0%; /let opt_r=0%; \
+    /if (!getopts("a:poerw:")) /return 0%; /endif%; \
     /return echo({*}, opt_a, !!opt_p, \
-        (opt_w !~ "") ? strcat("w",opt_w) : opt_e ? "e" : opt_r ? "r" : "o")
+        (opt_w !~ "()") ? strcat("w",opt_w) : opt_e ? "e" : opt_r ? "r" : "o")
+
+/def -i _echo = /test echo({*})
+
+;;; /substitute [-a<attr>] [-p] <text>
+/def -i substitute = \
+    /if (!getopts("a:p", "")) /return 0%; /endif%; \
+    /return substitute({*}, opt_a, !!opt_p)
 
 ;;; /sys <command>
 ; Executes an "inline" shell command.
@@ -159,7 +173,7 @@
 /def -i not	= /@eval %*%; /@test !%?
 
 ;; expression evaluator.
-/def -i expr	= /@test echo((%*))
+/def -i expr	= /@test echo(( %* ))
 
 ;; replace text in input buffer.
 /def -i grab	= /@test kblen() & dokey("dline")%; /test input({*})
@@ -195,15 +209,35 @@
 
 
 ;; cut-and-paste tool
+
 /def -i paste = \
     /echo -ep %% Entering paste mode.  Type "@{B}/endpaste@{n}" to end.%; \
+    /if (getopts("p", 0) < 0) /return 0%; /endif%; \
+    /let prefix=%{*-%{paste_prefix-:|}}%; \
     /let line=%; \
-    /while ((tfread(line) >= 0) & (line !/ "/endpaste")) \
+    /let text=%; \
+    /while ((tfread(line)) >= 0 & line !/ "/endpaste") \
         /if (line =/ "/quit" | line =/ "/help*") \
-            /echo -e %% Type "/endpaste" to end /paste.%; \
+            /echo -ep %% Type "@{B}/endpaste@{n}" to end /paste.%; \
         /endif%; \
-        /send - %{*-%{paste_prefix-:|}} %{line}%; \
-    /done
+        /if (!opt_p) \
+            /~paste %{prefix} %{line}%; \
+        /elseif (regmatch("^ *$", line)) \
+            /~paste %{prefix}%{text}%; \
+            /~paste %{prefix}%; \
+            /let text=%; \
+        /else \
+            /let text=%{text} $(/echo - %{line})%; \
+        /endif%; \
+    /done%; \
+    /if (opt_p) \
+        /~paste %{prefix} %{text}%; \
+    /endif
+
+/def -i ~paste = \
+    /send - %*%; \
+    /recordline -i - %*
+
 
 ;; other useful stuff.
 
@@ -383,14 +417,14 @@
 
 /def -i savehilite = \
     /save %{1-${HILITEFILE}} -mglob -h0 -b{} -t -aurfdhbBC0%;\
-    /save -a %{1-${HILITEFILE}} -mglob -h0 -b{} -t -P
+    /save -a %{1-${HILITEFILE}} -mglob -h0 -t -P
 
 
 ;;; list macros
 
 /def -i listdef		= /list %*
 /def -i listfullhilite	= /list -mglob -h0 -b{} -t'$(/escape ' %*)' -aurfdhbBC0
-/def -i listpartial	= /list -mglob -h0 -b{} -t'$(/escape ' %*)' -P
+/def -i listpartial	= /list -mglob -h0 -t'$(/escape ' %*)' -P
 /def -i listhilite	= /listfullhilite%; /listpartial
 /def -i listgag		= /list -mglob -h0 -b{} -t'$(/escape ' %*)' -ag
 /def -i listtrig	= /list -mglob -h0 -b{} -t'$(/escape ' %*)' -an
@@ -410,10 +444,12 @@
 
 
 ;; library loading
+; Note: users should not rely on %_loaded_libs or any other undocumented
+; feature of /loaded and /require.
 
 /set _loaded_libs=
 
-/def -i ~loaded = \
+/def -i loaded = \
     /if /@test _loaded_libs !/ "*{%{1}}*"%; /then \
         /set _loaded_libs=%{_loaded_libs} %{1}%;\
     /elseif (_required) \
@@ -422,20 +458,37 @@
 
 /def -i require = \
     /let _required=1%; \
-    /load %{-L} %{TFLIBDIR}/%{L}%;\
+    /load %{-L} %{L}
 
 ;; meta-character quoter
 ;; /escape <metachars> <string>
 /def -i escape = \
-    /let meta=$[strcat({1}, "\\")]%;\
-    /let dest=%;\
-    /let tail=%-1%;\
-    /let i=garbage%;\
+    /let meta=%; /let dest=%; /let tail=%; /let i=%;\
+    /test meta:=strcat({1}, "\\\\")%;\
+    /test tail:={-1}%;\
     /while ((i := strchr(tail, meta)) >= 0) \
-        /let dest=$[strcat(dest, substr(tail,0,i), "\\", substr(tail,i,1))]%;\
-        /let tail=$[substr(tail, i+1)]%;\
+        /test dest:=strcat(dest, substr(tail,0,i), "\\\\", substr(tail,i,1)), \
+              tail:=substr(tail, i+1)%;\
     /done%;\
     /result strcat(dest, tail)
+
+
+;;;; Replace
+;;; syntax:  /replace <old> <new> <string>
+
+/def -i replace = \
+    /let old=%;\
+    /let new=%;\
+    /let left=%;\
+    /let right=%;\
+    /test old:={1}%;\
+    /test new:={2}%;\
+    /test right:={-2}%;\
+    /while /let i=$[strstr(right, old)]%; /@test i >= 0%; /do \
+         /@test left := strcat(left, substr(right, 0, i), new)%;\
+         /@test right := substr(right, i + strlen(old))%;\
+    /done%;\
+    /result strcat(left, right)
 
 
 ;;; /loadhist [-lig] [-w<world>] file
@@ -600,8 +653,12 @@
 
 ;;; constants
 
-/set pi=3.141592654
-/set e=2.718281828
+/eval /set pi=$[2 * acos(0)]
+/eval /set e=$[exp(1)]
+
+/eval /if (MAILPATH !~ "") \
+    /set TFMAILPATH=$[replace(":", " ", MAILPATH)]%; \
+/endif
 
 ;;; Help for newbies
 /def -i -h'SEND help' -Fq send_help = \

@@ -1,6 +1,6 @@
 ;;;; Miscellaneous useful macros.
 
-/~loaded tools.tf
+/loaded __TFLIB__/tools.tf
 /require lisp.tf
 
 

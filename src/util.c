@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.c,v 35004.46 1998/04/11 20:16:58 hawkeye Exp $ */
+/* $Id: util.c,v 35004.51 1998/06/25 02:14:42 hawkeye Exp $ */
 
 
 /*
@@ -38,13 +38,21 @@ typedef struct RegInfo {
     short temp;
 } RegInfo;
 
-static TIME_T mail_mtime;	/* mail file modification time */
-static long mail_size;		/* mail file size */
 static RegInfo top_reginfo = { NULL, NULL, FALSE };
 static RegInfo *reginfo = &top_reginfo;
 
+typedef struct mail_info_s {	/* mail file information */
+    char *name;			/* file name */
+    int flag;			/* new mail? */
+    TIME_T mtime;		/* file modification time */
+    long size;			/* file size */
+    struct mail_info_s *next;
+} mail_info_t;
+
+static mail_info_t *maillist = NULL;
+
 TIME_T mail_update = 0;		/* next mail update (0==immediately) */
-int mail_flag = 0;
+int mail_count = 0;
 char tf_ctype[0x100];
 
 static char *FDECL(cmatch,(CONST char *pat, int ch));
@@ -475,6 +483,10 @@ int init_pattern_mflag(pat, mflag)
     if (mflag == MATCH_GLOB) {
         if (smatch_check(pat->str)) return 1;
     } else if (mflag == MATCH_REGEXP) {
+        char *s = pat->str;
+        while (*s == '(' || *s == '^') s++;
+        if (strncmp(s, ".*", 2) == 0)
+            eprintf("Warning: leading \".*\" in a regexp is extremely inefficient.");
         if ((pat->re = regcomp((char*)pat->str))) return 1;
     } else if (mflag == MATCH_SIMPLE) {
         return 1;
@@ -758,16 +770,34 @@ char nextopt(arg, num)
     if ((is_digit(opt) || opt == ':') && strchr(options, '@')) {
         *num = parsetime(&argp, NULL);
         return '@';
+    }
 
     /* numeric option */
-    } else if (is_digit(opt) && strchr(options, '0')) {
+    if (is_digit(opt) && strchr(options, '0')) {
         *num = strtoint(&argp);
         return '0';
     }
 
-    /* other options */
+    /* invalid options */
     if (opt == '@' || opt == ':' || opt == '#' || !(q = strchr(options, opt))) {
-        eprintf("invalid option: %c", opt);
+        int dash=1;
+        CONST char *p;
+        STATIC_BUFFER(helpbuf);
+        Stringzero(helpbuf);
+        if (opt != '?') eprintf("invalid option: %c", opt);
+        for (p = options; *p; p++) {
+            switch (*p) {
+            case '@': Stringcat(helpbuf, " -<time>"); dash=1; break;
+            case '0': Stringcat(helpbuf, " -<number>"); dash=1; break;
+            default:
+                if (dash || p[1]==':' || p[1]=='#') Stringcat(helpbuf, " -");
+                Stringadd(helpbuf, *p);
+                dash=0;
+                if (p[1] == ':') { Stringcat(helpbuf,"<string>"); p++; dash=1; }
+                if (p[1] == '#') { Stringcat(helpbuf,"<number>"); p++; dash=1; }
+            }
+        }
+        eprintf("options:%S", helpbuf);
         return '?';
     }
 
@@ -848,12 +878,46 @@ int ch_maildelay()
 
 int ch_mailfile()
 {
-    if (MAIL) {
-        mail_mtime = -2;
-        mail_size = -2;
-        ch_maildelay();
+    mail_info_t *info, **oldp, *newlist = NULL;
+    char *path, *name;
+    CONST char *end;
+
+    path = (TFMAILPATH && *TFMAILPATH) ? TFMAILPATH : MAIL;
+    while (*(name = stringarg(&path, &end))) {
+        for (oldp = &maillist; *oldp; oldp = &(*oldp)->next) {
+            if (strncmp(name, (*oldp)->name, end-name) == 0 &&
+                !(*oldp)->name[end-name])
+                    break;
+        }
+        if (*oldp) {
+            info = *oldp;
+            *oldp = (*oldp)->next;
+        } else {
+            info = XMALLOC(sizeof(mail_info_t));
+            info->name = strncpy(XMALLOC(end-name+1), name, end-name);
+	    info->name[end-name] = '\0';
+            info->mtime = -2;
+            info->size = -2;
+            info->flag = 0;
+        }
+        info->next = newlist;
+        newlist = info;
     }
+    free_maillist();
+    maillist = newlist;
+    ch_maildelay();
     return 1;
+}
+
+void free_maillist()
+{
+    mail_info_t *info;
+    while (maillist) {
+        info = maillist;
+        maillist = maillist->next;
+        FREE(info->name);
+        FREE(info);
+    }
 }
 
 void init_util2()
@@ -863,12 +927,12 @@ void init_util2()
 
     ch_locale();
 
-    if (MAIL) {  /* was imported from environment */
+    if (MAIL || TFMAILPATH) {  /* was imported from environment */
         ch_mailfile();
 #ifdef MAILDIR
     } else if ((name = getvar("LOGNAME")) || (name = getvar("USER"))) {
         Sprintf(Stringinit(path), 0, "%s/%s", MAILDIR, name);
-        setvar("MAIL", path->s, FALSE);
+        set_var_by_id(VAR_MAIL, 0, path->s);
         Stringfree(path);
 #endif
     } else {
@@ -909,44 +973,66 @@ void check_mail()
 {
     struct stat buf;
     static int depth = 0;
+    int old_mail_count = mail_count;
+    mail_info_t *info;
 
     if (depth) return;                         /* don't allow recursion */
     depth++;
 
-    if (!MAIL || !*MAIL || maildelay <= 0 ||
-        stat(expand_filename(MAIL), &buf) < 0)
-    {
-        /* Checking disabled, or there is no mail file. */
-        if (mail_flag) { mail_flag = 0; update_status_field(NULL, STAT_MAIL); }
-        buf.st_mtime = -1;
-        buf.st_size = -1;
+    if (!maillist || maildelay <= 0) {
+        if (mail_count) { mail_count = 0; update_status_field(NULL, STAT_MAIL); }
+        depth--;
+        return;
+    }
 
-    } else if (buf.st_size == 0) {
-        /* There is no mail (the file exists, but is empty). */
-        if (mail_flag) { mail_flag = 0; update_status_field(NULL, STAT_MAIL); }
-    } else if (mail_size == -2) {
-        /* There is mail, but this is the first time we've checked.
-         * There is no way to tell if it has been read yet; assume it has. */
-        if (mail_flag) { mail_flag = 0; update_status_field(NULL, STAT_MAIL); }
-        oprintf("%% You have mail in %s", MAIL);  /* not "new", so not a hook */
-    } else if (buf.st_mtime > buf.st_atime) {
-        /* There is unread mail. */
-        if (!mail_flag) { mail_flag = 1; update_status_field(NULL, STAT_MAIL); }
-        if (buf.st_mtime > mail_mtime)
-            do_hook(H_MAIL, "%% You have new mail in %s", "%s", MAIL);
-    } else if (mail_size < 0 && buf.st_mtime == buf.st_atime) {
-        /* File did not exist last time; assume new mail is unread. */
-        if (!mail_flag) { mail_flag = 1; update_status_field(NULL, STAT_MAIL); }
-        do_hook(H_MAIL, "%% You have new mail in %s", "%s", MAIL);
-    } else if (buf.st_mtime > mail_mtime || buf.st_mtime < buf.st_atime) {
-        /* Mail has been read. */
-        if (mail_flag) { mail_flag = 0; update_status_field(NULL, STAT_MAIL); }
-    } /* else {
-        There has been no change since the last check.  Do nothing.
-    } */
+    mail_count = 0;
+    for (info = maillist; info; info = info->next) {
+        if (stat(expand_filename(info->name), &buf) < 0) {
+            /* Error, or file does not exist. */
+            info->flag = 0;
+            if (errno != ENOENT && info->flag >= 0) {
+                eprintf("%s: %s", info->name, strerror(errno));
+                info->flag = -1; /* remember error */
+            }
+            buf.st_mtime = -1;
+            buf.st_size = -1;
+        } else if (buf.st_mode & S_IFDIR) {
+            /* Directory. */
+            if (info->flag >= 0)
+                eprintf("%s: %s", info->name, strerror(EISDIR));
+            info->flag = -1; /* remember error */
+        } else if (buf.st_size == 0) {
+            /* There is no mail (the file exists, but is empty). */
+            info->flag = 0;
+        } else if (info->size == -2) {
+            /* There is mail, but this is the first time we've checked.
+             * There is no way to tell if it has been read; assume it has. */
+            info->flag = 0;
+            oprintf("%% You have mail in %s", info->name);  /* not "new" */
+        } else if (buf.st_mtime > buf.st_atime) {
+            /* There is unread mail. */
+            info->flag = 1; mail_count++;
+            if (buf.st_mtime > info->mtime)
+                do_hook(H_MAIL, "%% You have new mail in %s", "%s", info->name);
+        } else if (info->size < 0 && buf.st_mtime == buf.st_atime) {
+            /* File did not exist last time; assume new mail is unread. */
+            info->flag = 1; mail_count++;
+            do_hook(H_MAIL, "%% You have new mail in %s", "%s", info->name);
+        } else if (buf.st_mtime > info->mtime || buf.st_mtime < buf.st_atime) {
+            /* Mail has been read. */
+            info->flag = 0;
+        } else if (info->flag >= 0) {
+            /* There has been no change since the last check. */
+            mail_count += info->flag;
+        }
 
-    mail_mtime = buf.st_mtime;
-    mail_size = buf.st_size;
+        info->mtime = buf.st_mtime;
+        info->size = buf.st_size;
+    }
+
+    if (!mail_count != !old_mail_count)
+        update_status_field(NULL, STAT_MAIL);
+
     depth--;
 }
 

@@ -9,7 +9,7 @@
 ;;;; enabled, typing "ne3ses" will send "n", "e", "s", "s", "s", "e", "s".
 
 
-/~loaded spedwalk.tf
+/loaded __TFLIB__/spedwalk.tf
 
 /eval \
     /def -i speedwalk = \

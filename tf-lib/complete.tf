@@ -35,7 +35,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-/~loaded complete.tf
+/loaded __TFLIB__/complete.tf
 
 /require lisp.tf
 
@@ -189,13 +189,13 @@
         /complete_macroname %1%;\
     /elseif (regmatch("-w(.+)$$", head)) \
         /complete_worldname %P1%;\
-    /elseif (head =/ "*{/[sl]et|/setenv|/unset} {*}") \
+    /elseif (head =/ "*{/[sl]et|/setenv|/unset|/edvar} {*}") \
         /complete_variable %1%;\
     /elseif (head =/ "*{/load*|/save*|/lcd|/cd|/log} {*}") \
         /complete_filename %1%;\
-    /elseif (head =/ "*{/def|/edit|/reedit|/undef|/list} {*}") \
+    /elseif (head =/ "*{/def|/edit|/edmac|/reedit|/undef|/list} {*}") \
         /complete_macroname %1%;\
-;   /elseif (head =/ "*{wh|page|tel*|kill} {*}") \
+;   /elseif (head =/ "{wh*|page|tel*|kill} {*}") \
 ;       /complete_playername %1%;\
     /elseif (regmatch(`/quote .*'("?)(.+)$$`, head)) \
         /let completion_suffix=%P1%;\
@@ -206,7 +206,7 @@
     /elseif (regmatch('/quote .*`("?)(.+)$$', head)) \
         /let completion_suffix=%P1%;\
         /complete_macroname %P2%;\
-    /elseif (head =/ "*{/world|/connect|/fg} {*}") \
+    /elseif (head =/ "*{/world|/connect|/fg|/edworld} {*}") \
         /complete_worldname %1%;\
     /elseif (head =/ "*{/telnet} {*}") \
         /complete_hostname %1%;\

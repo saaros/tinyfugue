@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: command.c,v 35004.50 1998/04/15 04:33:22 hawkeye Exp $ */
+/* $Id: command.c,v 35004.56 1998/06/30 06:00:14 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -22,7 +22,7 @@
 #include "command.h"
 #include "world.h"	/* World, find_world() */
 #include "socket.h"	/* openworld() */
-#include "output.h"	/* oflush(), bell() */
+#include "output.h"	/* oflush(), dobell() */
 #include "macro.h"
 #include "keyboard.h"	/* find_key(), find_efunc() */
 #include "expand.h"     /* process_macro(), breaking */
@@ -53,7 +53,6 @@ static HANDLER (handle_save_command);
 static HANDLER (handle_set_command);
 static HANDLER (handle_setenv_command);
 static HANDLER (handle_sh_command);
-static HANDLER (handle_substitute_command);
 static HANDLER (handle_suspend_command);
 static HANDLER (handle_trigger_command);
 static HANDLER (handle_trigpc_command);
@@ -117,7 +116,6 @@ static CONST Command cmd_table[] =
   { "SETENV"      , handle_setenv_command      },
   { "SH"          , handle_sh_command          },
   { "SHIFT"       , handle_shift_command       },
-  { "SUBSTITUTE"  , handle_substitute_command  },
   { "SUSPEND"     , handle_suspend_command     },
   { "TEST"        , handle_test_command        },  
   { "TRIGGER"     , handle_trigger_command     },  
@@ -198,20 +196,35 @@ static struct Value *handle_trigger_command(args)
     return newint(result);
 }
 
-static struct Value *handle_substitute_command(args)
-    char *args;
+int handle_substitute_func(string, attrstr, inline_flag)
+    CONST char *string, *attrstr;
+    int inline_flag;
 {
-    Aline *old;
+    Aline *aline;
+    attr_t attrs;
 
     if (!incoming_text) {
         eprintf("not called from trigger");
-        return newint(0);
+        return 0;
     }
-    old = incoming_text;
-    (incoming_text = new_aline(args, old->attrs))->links = 1;
-    incoming_text->time = old->time;
-    free_aline(old);
-    return newint(1);
+
+    attrs = parse_attrs((char **)&attrstr);
+    if (attrs < 0) return 0;
+
+    (aline = new_aline(string, incoming_text->attrs))->links++;
+    aline->time = incoming_text->time;
+    add_attr(aline->attrs, attrs);
+
+    if (inline_flag) {
+        if (handle_inline_attr(aline, attrs) < 0) {
+            free_aline(aline);
+            return 0;
+        }
+    }
+
+    free_aline(incoming_text);
+    incoming_text = aline;
+    return 1;
 }
 
 /**********
@@ -438,6 +451,7 @@ int do_file_load(args, tinytalk)
     int old_loadline = loadline;
     int old_loadstart = loadstart;
     int last_cmd_line = 0;
+    CONST char *path, *end;
     STATIC_BUFFER(libfile);
 
     if (!loadfile)
@@ -445,13 +459,20 @@ int do_file_load(args, tinytalk)
 
     file = tfopen(expand_filename(args), "r");
     if (!file && !tinytalk && errno == ENOENT && !is_absolute_path(args)) {
-        /* Relative file was not found, so look in %TFLIBDIR. */
-        if (!TFLIBDIR || !*TFLIBDIR || !is_absolute_path(TFLIBDIR)) {
-            eprintf("warning: invalid value for %%TFLIBDIR");
-        } else {
-            Sprintf(libfile, 0, "%s/%s", TFLIBDIR, args);
-            file = tfopen(expand_filename(libfile->s), "r");
-        }
+        /* Relative file was not found, so look in TFPATH or TFLIBDIR. */
+        path = TFPATH && *TFPATH ? TFPATH : TFLIBDIR;
+        do {
+            while (isspace(*path)) ++path;
+            if (!*path) break;
+            for (end = path; *end && !isspace(*end); ++end);
+            if (!is_absolute_path(path)) {
+                eprintf("warning: %.*s: invalid path value", end - path, path);
+            } else {
+                Sprintf(libfile, 0, "%.*s/%s", end - path, path, args);
+                file = tfopen(expand_filename(libfile->s), "r");
+            }
+            path = end;
+        } while (!file && (path = end) && *path);
     }
 
     if (!file) {
@@ -469,6 +490,7 @@ int do_file_load(args, tinytalk)
     loadstart = loadline = 0;
     loadfile = file;  /* if this were done earlier, error msgs would be wrong */
     while (!done) {
+        char *p;
         if (exiting) {
             --exiting;
             break;
@@ -481,15 +503,14 @@ int do_file_load(args, tinytalk)
         done = !tfgetS(line, loadfile);
         loadline++;
         if (new_cmd) loadstart = loadline;
-        if (line->len) {
-            char *p;
+        for (p = line->s; is_space(*p); p++);     /* strip leading space */
+        if (*p) {
             if (line->s[0] == ';') continue;         /* skip comment lines */
             if (new_cmd && is_space(line->s[0]) && last_cmd_line > 0)
                 tfprintf(tferr,
                     "%% %s: line %d: warning: possibly missing trailing \\",
                     loadfile->name, last_cmd_line);
             last_cmd_line = loadline;
-            for (p = line->s; is_space(*p); p++);     /* strip leading space */
             Stringcat(cmd, p);
             if (line->s[line->len - 1] == '\\') {
                 if (line->len < 2 || line->s[line->len - 2] != '%') {
@@ -503,13 +524,15 @@ int do_file_load(args, tinytalk)
                 if (*p == '\\')
                     eprintf("warning: whitespace following final '\\'");
             }
+        } else {
+            last_cmd_line = 0;
         }
         new_cmd = 1;
         if (!cmd->len) continue;
         if (*cmd->s == '/') {
             tinytalk = FALSE;
             /* Never use SUB_FULL here.  Libraries will break. */
-            process_macro(cmd->s, NULL, SUB_KEYWORD);
+            process_macro(cmd->s, NULL, SUB_KEYWORD, "\bLOAD");
         } else if (tinytalk) {
             Macro *addworld = find_macro("addworld");
             if (addworld) do_macro(addworld, cmd->s);
@@ -548,11 +571,11 @@ static struct Value *handle_beep_command(args)
     int n = 0;
 
     if (!*args) n = 3;
-    else if (cstrcmp(args, "on") == 0) setivar("beep", 1, FALSE);
-    else if (cstrcmp(args, "off") == 0) setivar("beep", 0, FALSE);
+    else if (cstrcmp(args, "on") == 0) set_var_by_id(VAR_beep, 1, NULL);
+    else if (cstrcmp(args, "off") == 0) set_var_by_id(VAR_beep, 0, NULL);
     else if (is_digit(*args) && (n = atoi(args)) < 0) return newint(0);
 
-    bell(n);
+    dobell(n);
     return newint(1);
 }
 
@@ -642,7 +665,7 @@ static struct Value *handle_hilite_command(args)
     char *args;
 {
     if (!*args) {
-        setvar("hilite", "1", FALSE);
+        set_var_by_id(VAR_hilite, 1, NULL);
         oputs("% Hilites enabled.");
         return newint(0);
     } else {
@@ -661,7 +684,7 @@ static struct Value *handle_gag_command(args)
     char *args;
 {
     if (!*args) {
-        setvar("gag", "1", FALSE);
+        set_var_by_id(VAR_gag, 1, NULL);
         oputs("% Gags enabled.");
         return newint(0);
     } else {
@@ -711,8 +734,8 @@ static struct Value *handle_hook_command(args)
     char *args;
 {
     if (!*args) oprintf("%% Hooks %sabled", hookflag ? "en" : "dis");
-    else if (cstrcmp(args, "off") == 0) setvar("hook", "0", FALSE);
-    else if (cstrcmp(args, "on") == 0) setvar("hook", "1", FALSE);
+    else if (cstrcmp(args, "off") == 0) set_var_by_id(VAR_hook, 0, NULL);
+    else if (cstrcmp(args, "on") == 0) set_var_by_id(VAR_hook, 1, NULL);
     else {
         split_args(args);
         return newint(add_hook(pattern, body));

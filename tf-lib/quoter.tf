@@ -13,7 +13,7 @@
 ;;; <prefix> is prepended to each generated line.  The default prefix is ":|",
 ;;; but can be changed in /qdef, /qmac, /qworld, and /qfile.
 
-/~loaded quoter.tf
+/loaded __TFLIB__/quoter.tf
 
 /require lisp.tf
 /require pcmd.tf
@@ -21,7 +21,11 @@
 /def -i _qdef = /send - %prefix %-2
 /def -i qdef = /let prefix=%{-L-%{qdef_prefix-:|}}%; /quote -S /_qdef `/list -i %{L-@}
 
-/set _qmac_files=%{HOME}/.tfrc *.tf tiny.* %{TFLIBDIR}/*.tf
+/def -i ~qmac_files = \
+    /echo %{HOME}/.tfrc%; \
+    /echo *.tf%; \
+    /echo tiny.*%; \
+    /while ({#}) /echo %{1}/*.tf%; /shift%; /done
 
 ; On some systems, nawk works better.
 /set _qmac_awk=awk
@@ -32,7 +36,7 @@
       { if (f) print \$0; } \
       /^[^;].*[^\\\\]\$/ { f = 0; }%;\
   /eval /quote -S %{-L-%{qmac_prefix-:|}} !\
-      %{_qmac_awk} "\\\$prog" `ls %{_qmac_files} 2>/dev/null`
+      %{_qmac_awk} "\\\$prog" `ls $(/~qmac_files %TFLIBDIR %TFPATH) 2>/dev/null`
 
 /def -i qworld = /quote -S %{-L-%{qworld_prefix-:|}} `/listworlds %{L-@}
 

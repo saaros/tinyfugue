@@ -9,7 +9,7 @@
 ;;; /tickset		Reset and start the tick counter.
 ;;; /ticksize <n>	Set the tick length to <n> seconds (default is 75).
 
-/~loaded tick.tf
+/loaded __TFLIB__/tick.tf
 
 /set ticksize=75
 /set next_tick=0

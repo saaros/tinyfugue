@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: main.c,v 35004.39 1998/04/10 20:30:05 hawkeye Exp $ */
+/* $Id: main.c,v 35004.45 1998/06/25 02:14:13 hawkeye Exp $ */
 
 
 /***********************************************
@@ -44,7 +44,7 @@ CONST char sysname[] = UNAME;
  * to the version number, and put a brief description of the modifications
  * in the mods[] string.
  */
-CONST char version[] = "TinyFugue version 4.0 alpha 7";
+CONST char version[] = "TinyFugue version 4.0 alpha 10";
 CONST char mods[] = "";
 
 CONST char copyright[] =
@@ -152,13 +152,13 @@ int main(argc, argv)
     if (configfile) FREE(configfile);
 
     if (command) {
-        process_macro(command, NULL, sub);
+        process_macro(command, NULL, sub, "\bSTART");
         FREE(command);
     }
 
     /* If %visual was not explicitly set, set it now. */
     if (getintvar(VAR_visual) < 0 && !no_tty)
-        setivar("visual", autovisual, FALSE);
+        set_var_by_id(VAR_visual, autovisual, NULL);
 
     if (argc > 0 || worldflag) {
         if (autologin < 0) autologin = login;
@@ -190,6 +190,7 @@ int main(argc, argv)
     free_expand();
     free_expr();
     free_help();
+    free_maillist();
     free_reserve();
     debug_mstats("tf");
 #endif

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: search.c,v 35004.7 1998/01/02 09:41:44 hawkeye Exp $ */
+/* $Id: search.c,v 35004.8 1998/06/23 23:49:07 hawkeye Exp $ */
 
 
 /**********************************************
@@ -140,7 +140,7 @@ ListEntry *inlist(datum, list, where)
 {
     ListEntry *node;
 
-    palloc(node, ListEntry, nodepool, next);
+    palloc(node, ListEntry, nodepool, next, __FILE__, __LINE__);
     node->datum = datum;
     if (where) {
         node->next = where->next;

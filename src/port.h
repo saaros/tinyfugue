@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: port.h,v 35004.21 1998/01/02 09:41:43 hawkeye Exp $ */
+/* $Id: port.h,v 35004.24 1998/06/30 06:00:15 hawkeye Exp $ */
 
 #ifndef PORT_H
 #define PORT_H
@@ -90,7 +90,7 @@
 
 #include <errno.h>
 #ifndef errno
-extern int errno;  /* Some systems don't define errno in errno.h. Duh. */
+extern int errno;  /* Some systems don't declare errno in errno.h. Duh. */
 #endif
 
 #include <stdio.h>
@@ -136,12 +136,12 @@ extern void free();
 # endif
 #endif
 
-#ifdef HAVE_memset
+#ifndef HAVE_bzero
   /* We don't use the nonstandard bzero(), but some stupid sys/select.h do */
 # define bzero(ptr, size)    memset((ptr), '\0', (size))
 #endif
 
-/* We use memcpy(), so we must define it if it doesn't exist. */
+/* We use the standard memcpy(), so we must define it if it doesn't exist. */
 #ifndef HAVE_memcpy
 # ifdef HAVE_bcopy
 #  define memcpy(dst, src, len) bcopy((src), (dst), (len))
@@ -204,8 +204,8 @@ extern char *sys_errlist[];
 # define lcase(x)  tolower((unsigned char)(x))
 # define ucase(x)  toupper((unsigned char)(x))
 #else
-  extern int lcase(x);
-  extern int ucase(x);
+  extern int lcase(int x);
+  extern int ucase(int x);
   /* This expression evaluates its argument more than once:
    *  (is_upper(x) ? tolower(x) : (x))
    * This expression has no sequence points:

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: variable.c,v 35004.43 1998/04/10 20:30:06 hawkeye Exp $ */
+/* $Id: variable.c,v 35004.48 1998/06/20 23:55:58 hawkeye Exp $ */
 
 
 /**************************************
@@ -28,8 +28,9 @@
 
 static Var   *FDECL(findlevelvar,(CONST char *name, List *level));
 static Var   *FDECL(findlocalvar,(CONST char *name));
-static int    FDECL(set_special_var,(Var *var, CONST char *val, Toggler **fpp, CONST char **oldvaluep));
-static Var   *FDECL(newglobalvar,(CONST char *name, CONST char *value));
+static int    FDECL(set_special_var,(Var *var, long ivalue, CONST char *val,
+                    Toggler **fpp, CONST char **oldvaluep));
+static Var   *FDECL(newvar,(CONST char *name, CONST char *value));
 static char  *FDECL(new_env,(Var *var));
 static void   FDECL(replace_env,(char *str));
 static void   FDECL(append_env,(char *str));
@@ -38,7 +39,8 @@ static void   FDECL(remove_env,(CONST char *str));
 static int    FDECL(listvar,(CONST char *name, CONST char *value,
                     int mflag, int exportflag, int shortflag));
 
-#define findglobalvar(name)   (Var *)hash_find(name, var_table)
+#define newglobalvar(name, value)	newvar(name, value)
+#define findglobalvar(name)		(Var *)hash_find(name, var_table)
 #define findspecialvar(name) \
         (Var *)binsearch((GENERIC*)(name), (GENERIC*)special_var, NUM_VARS, \
             sizeof(Var), strstructcmp)
@@ -68,20 +70,22 @@ CONST char *enum_color[]= { "black", "red", "green", "yellow",
 
 extern char **environ;
 
-#define VARINT     001	/* type: nonnegative integer */
-#define VARPOS     002	/* type: positive integer */
-#define VARENUM    004	/* type: enumerated */
-#define VARSTR     010	/* type: string */
-#define VARSPECIAL 020	/* has special meaning to tf */
-#define VAREXPORT  040	/* exported to environment */
+#define VARINT     0001	/* type: nonnegative integer */
+#define VARPOS     0002	/* type: positive integer */
+#define VARENUM    0004	/* type: enumerated */
+#define VARSTR     0010	/* type: string */
+#define VARSPECIAL 0020	/* has special meaning to tf */
+#define VAREXPORT  0040	/* exported to environment */
+#define VARAUTOX   0100	/* automatically exported to environment */
+#define VARSTRX    VARSTR | VARAUTOX	/* automatically exported string */
 
 
 /* Special variables. */
 Var special_var[] = {
 #define varcode(id, name, val, type, enums, ival, func) \
     { name, val, 0, type, enums, ival, func, NULL, NULL }
-    /* Some lame compilers choke on  (val ? sizeof(val)-1 : 0)  so we
-     * have to initialize len at runtime.
+    /* Some lame compilers (eg, HPUX cc) choke on  (val ? sizeof(val)-1 : 0)
+     * so we have to initialize len at runtime.
      */
 #include "varlist.h"
 #undef varcode
@@ -142,7 +146,7 @@ void init_variables()
             var->node = hash_insert((GENERIC*)var, var_table);
         } else {
             /* overwrite a pre-defined special variable */
-            set_special_var(var, value ? value : "", NULL, NULL);
+            set_special_var(var, 0, value ? value : "", NULL, NULL);
             /* We do NOT call the var->func here, because the modules they
              * reference have not been initialized yet.  The init_*() calls
              * in main.c should call the funcs in the appropraite order.
@@ -158,11 +162,11 @@ void init_variables()
     Stringinit(scratch);
     if (!findglobalvar("TFLIBRARY")) {
         Sprintf(scratch, 0, "%s/stdlib.tf", TFLIBDIR);
-        setvar("TFLIBRARY", scratch->s, 0);
+        set_var_by_name("TFLIBRARY", scratch->s, 0);
     }
     if (!findglobalvar("TFHELP")) {
         Sprintf(scratch, 0, "%s/tf-help", TFLIBDIR);
-        setvar("TFHELP", scratch->s, 0);
+        set_var_by_name("TFHELP", scratch->s, 0);
     }
     Stringfree(scratch);
 }
@@ -261,9 +265,26 @@ Var *setnearestvar(name, value)
         }
     } else {
         setting_nearest++;
-        var = setvar(name, value, FALSE);
+        var = set_var_by_name(name, value, FALSE);
         setting_nearest--;
     }
+    return var;
+}
+
+static Var *newvar(name, value)
+    CONST char *name, *value;
+{
+    Var *var;
+
+    var = (Var *)XMALLOC(sizeof(Var));
+    var->node = NULL;
+    var->name = STRDUP(name);
+    var->len = strlen(value);
+    var->value = STRNDUP(value, var->len);
+    var->flags = VARSTR;
+    /* var->ival = atol(value); */ /* never used */
+    var->func = NULL;
+    var->status = NULL;
     return var;
 }
 
@@ -272,36 +293,11 @@ Var *newlocalvar(name, value)
 {
     Var *var;
 
-    var = (Var *)XMALLOC(sizeof(Var));
-    var->node = NULL;
-    var->name = STRDUP(name);
-    var->len = strlen(value);
-    var->value = STRNDUP(value, var->len);
-    var->flags = VARSTR;
-    /* var->ival = atol(value); */ /* never used */
-    var->func = NULL;
-    var->status = NULL;
+    var = newvar(name, value);
     inlist((GENERIC *)var, (List*)(localvar->head->datum), NULL);
     if (findglobalvar(name)) {
         do_hook(H_SHADOW, "!Warning:  Local variable \"%s\" overshadows global variable of same name.", "%s", name);
     }
-    return var;
-}
-
-static Var *newglobalvar(name, value)
-    CONST char *name, *value;
-{
-    Var *var;
-
-    var = (Var *)XMALLOC(sizeof(Var));
-    var->node = NULL;
-    var->name = STRDUP(name);
-    var->len = strlen(value);
-    var->value = STRNDUP(value, var->len);
-    var->flags = VARSTR;
-    /* var->ival = atol(value); */ /* never used */
-    var->func = NULL;
-    var->status = NULL;
     return var;
 }
 
@@ -378,17 +374,18 @@ static void remove_env(str)
  * Interfaces with rest of program.
  */
 
-Var *setvar(name, value, exportflag)
+Var *setvar(var, name, ivalue, value, exportflag)
+    Var *var;
     CONST char *name, *value;
+    long ivalue;
     int exportflag;
 {
-    Var *var;
     Toggler *func = NULL;
     CONST char *oldvalue = NULL;
     static int depth = 0;
 
-    if ((var = findspecialvar(name))) {
-        if (!set_special_var(var, value, &func, &oldvalue))
+    if (var || (var = findspecialvar(name))) {
+        if (!set_special_var(var, ivalue, value, &func, &oldvalue))
             return NULL;
     } else if ((var = findglobalvar(name))) {
         if (value != var->value) {
@@ -406,7 +403,7 @@ Var *setvar(name, value, exportflag)
 
     if (var->flags & VAREXPORT) {
         replace_env(new_env(var));
-    } else if (exportflag) {
+    } else if (exportflag || var->flags & VARAUTOX) {
         append_env(new_env(var));
         var->flags |= VAREXPORT;
     }
@@ -415,7 +412,7 @@ Var *setvar(name, value, exportflag)
         if (!(*func)()) {
             /* restore old value (bug: doesn't un-export or un-set) */
             depth++;
-            setvar(name, oldvalue ? oldvalue : "", exportflag);
+            setvar(var, NULL, 0, oldvalue ? oldvalue : "", exportflag);
             depth--;
         }
     }
@@ -425,16 +422,6 @@ Var *setvar(name, value, exportflag)
         FREE(oldvalue);
 
     return var;
-}
-
-void setivar(name, value, exportflag)
-    CONST char *name;
-    long value;
-    int exportflag;
-{
-    char buf[20];
-    sprintf(buf, "%ld", value);
-    setvar(name, buf, exportflag);
 }
 
 int do_set(args, exportflag, localflag)
@@ -484,7 +471,7 @@ int do_set(args, exportflag, localflag)
         }
     }
 
-    if (!localflag) return !!setvar(args, value, exportflag);
+    if (!localflag) return !!set_var_by_name(args, value, exportflag);
 
     if (!localvar->head) {
         eprintf("illegal at top level.");
@@ -508,7 +495,7 @@ struct Value *handle_listvar_command(args)
 
     mflag = matching;
 
-    startopt(args, "m:gxs");
+    startopt(args, "m:gxsv");
     while ((opt = nextopt(&args, NULL))) {
         switch (opt) {
             case 'm':
@@ -522,6 +509,9 @@ struct Value *handle_listvar_command(args)
                 break;
             case 's':
                 shortflag = 1;
+                break;
+            case 'v':
+                shortflag = 2;
                 break;
             default:
                 return newint(0);
@@ -596,11 +586,11 @@ struct Value *handle_unset_command(name)
 /*********/
 
 /* Set a special variable, with proper coersion of the value. */
-static int set_special_var(var, value, fpp, oldvaluep)
+static int set_special_var(var, ivalue, value, fpp, oldvaluep)
     Var *var;
-    CONST char *value;
+    long ivalue;
+    CONST char *value, **oldvaluep;
     Toggler **fpp;
-    CONST char **oldvaluep;
 {
     static char buffer[20];
     long oldival = var->ival;
@@ -609,7 +599,8 @@ static int set_special_var(var, value, fpp, oldvaluep)
     oflush();   /* flush buffer now, in case variable affects flushing */
 
     if (var->flags & VARENUM) {
-        if ((var->ival = enum2int(value, var->enumvec, var->name)) < 0) {
+        var->ival = value ? enum2int(value, var->enumvec, var->name) : ivalue;
+        if (var->ival < 0) {
             /* error. restore values and abort. */
             var->ival = oldival;
             var->value = oldvalue;
@@ -625,16 +616,20 @@ static int set_special_var(var, value, fpp, oldvaluep)
         if (fpp) *fpp = var->func;
 
     } else /* integer */ {
-        while (is_space(*value)) value++;
-        var->ival=atol(value);
-        if (!is_digit(*value) || var->ival < !!(var->flags & VARPOS)) {
-            eprintf("%s must be an integer greater than or equal to %d",
-                var->name, !!(var->flags & VARPOS));
-            var->ival = oldival;
-            if (fpp) *fpp = NULL;
-            return 0;
+        if (value) {
+            while (is_space(*value)) value++;
+            var->ival=atol(value);
+            if (!is_digit(*value) || var->ival < !!(var->flags & VARPOS)) {
+                eprintf("%s must be an integer greater than or equal to %d",
+                    var->name, !!(var->flags & VARPOS));
+                var->ival = oldival;
+                if (fpp) *fpp = NULL;
+                return 0;
+            }
+        } else {
+            var->ival = ivalue;
         }
-        sprintf(buffer, "%ld", var->ival=atol(value));
+        sprintf(buffer, "%ld", var->ival);
         value = buffer;
         if (fpp) *fpp = (var->ival != oldival) ? var->func : NULL;
     }
@@ -680,12 +675,14 @@ static int listvar(name, value, mflag, exportflag, shortflag)
                 if (exportflag >= 0 && !(var->flags & VAREXPORT) != !exportflag)                    continue;
                 if (name && !patmatch(&pname, var->name)) continue;
                 if (value && !patmatch(&pvalue, var->value)) continue;
-                if (shortflag)
-                    oprintf("%s", var->name);
-                else
+                switch (shortflag) {
+                case 1:  oprintf("%s", var->name);   break;
+                case 2:  oprintf("%s", var->value);  break;
+                default:
                     oprintf("/%s %s=%s",
                         (var->flags & VAREXPORT) ? "setenv" : "set",
                         var->name, var->value);
+                }
                 count++;
             }
         }

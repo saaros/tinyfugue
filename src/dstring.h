@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: dstring.h,v 35004.9 1998/01/02 09:41:32 hawkeye Exp $ */
+/* $Id: dstring.h,v 35004.10 1998/06/24 04:41:01 hawkeye Exp $ */
 
 #ifndef DSTRING_H
 #define DSTRING_H
@@ -15,13 +15,20 @@
 typedef struct String {
     char *s;
     unsigned int len, size;
+#ifdef DMALLOC
+    int is_static;
+#endif
 } String, Stringp[1];          /* Stretchybuffer */
 
 /* This saves time, but can't be used in reentrant functions.
  * Pre-ANSI C didn't allow initialization of automatic aggregates,
  * so we can only use this technique for static and nonlocal buffers.
  */
+#ifdef DMALLOC
+#define STATIC_BUFFER(name)	static Stringp (name) = { { NULL, 0, 0, 1 } }
+#else
 #define STATIC_BUFFER(name)	static Stringp (name) = { { NULL, 0, 0 } }
+#endif
 
 #define Stringzero(str)		((void)((str->s = NULL), str->len = str->size = 0))
 #define Stringinit(str)		dSinit(str, ALLOCSIZE, __FILE__, __LINE__)

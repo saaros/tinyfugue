@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expr.c,v 35004.21 1998/04/15 03:57:47 hawkeye Exp $ */
+/* $Id: expr.c,v 35004.29 1998/06/27 23:56:53 hawkeye Exp $ */
 
 
 /********************************************************************
@@ -62,7 +62,8 @@ static Value *valpool = NULL;		/* freelist */
 
 
 #ifndef NO_FLOAT
-static Value *FDECL(newfloat,(double f));
+# define newfloat(f)  newfloat_fl(f, __FILE__, __LINE__)
+static Value *FDECL(newfloat_fl,(double f, CONST char *file, int line));
 static double FDECL(valfloat,(Value *val));
 static int    FDECL(mathtype,(Value *val));
 #endif /* NO_FLOAT */
@@ -142,7 +143,7 @@ void evalexpr(dest, args)
 
     ip = args;
     if (expr()) {
-        if (*ip) parse_error("expression", "operand");
+        if (*ip) parse_error("expression", "operator");
         Stringcpy(dest, opdstr(1));
         freeval(stack[--stacktop]);
     }
@@ -151,13 +152,15 @@ void evalexpr(dest, args)
 
 
 #ifndef NO_FLOAT
-static Value *newfloat(f)
+static Value *newfloat_fl(f, file, line)
     double f;
+    CONST char *file;
+    int line;
 {
     Value *val;
 
     if (breaking || !evalflag || !condition) return NULL;
-    palloc(val, Value, valpool, u.next);
+    palloc(val, Value, valpool, u.next, file, line);
     val->count = 1;
     val->type = TYPE_FLOAT;
     val->u.fval = f;
@@ -194,13 +197,15 @@ static int mathtype(val)
 }
 #endif /* NO_FLOAT */
 
-Value *newint(i)
+Value *newint_fl(i, file, line)
     long i;
+    CONST char *file;
+    int line;
 {
     Value *val;
 
     if (breaking || !evalflag || !condition) return NULL;
-    palloc(val, Value, valpool, u.next);
+    palloc(val, Value, valpool, u.next, file, line);
     val->count = 1;
     val->type = TYPE_INT;
     val->u.ival = i;
@@ -216,7 +221,7 @@ Value *newstrid(str, len, type, file, line)
     char *new;
 
     if (breaking || !evalflag || !condition) return NULL;
-    palloc(val, Value, valpool, u.next);
+    palloc(val, Value, valpool, u.next, file, line);
     val->count = 1;
     val->type = type;
     if (len < 0) len = strlen(str);
@@ -230,7 +235,7 @@ Value *newstrid(str, len, type, file, line)
 void freeval(val)
     Value *val;
 {
-    if (!val) return;   /* val may have been placeholder for short-circuit */
+    if (!val) return;
     if (--val->count) return;
     if (val->type == TYPE_STR || val->type == TYPE_ID) FREE(val->u.sval);
     pfree(val, valpool, u.next);
@@ -487,7 +492,7 @@ static int reduce(op, n)
         case '!':       val = newint(!opdint(1));                        break;
         case OP_FUNC:   val = do_function(n);                            break;
         default:        internal_error(__FILE__, __LINE__);
-                        eprintf("%% internal error: reduce: bad op %#o", op);
+                        eprintf("internal error: reduce: bad op %#o", op);
                         break;
         }
     }
@@ -554,6 +559,12 @@ static Value *function_switch(symbol, n, parent)
             return newint(handle_echo_func(opdstr(n),
                 (n >= 2) ? opdstr(n-1) : "",
                 i, (n >= 4) ? opdstr(n-3) : "o"));
+
+        case FN_SUBSTITUTE:
+            i = (n>=3) ? enum2int(opdstr(n-2), enum_flag, "arg 3 (inline)") : 0;
+            if (i < 0) return newint(0);
+            return newint(handle_substitute_func(opdstr(n),
+                (n >= 2) ? opdstr(n-1) : "",  i));
 
         case FN_SEND:
             j = n>2 ? enum2int(opdstr(n-2), enum_flag, "arg 3 (send_nl)") : 1;
@@ -715,7 +726,10 @@ static Value *function_switch(symbol, n, parent)
         case FN_IDLE:
             return newint((int)((n == 0) ?
                 (time(NULL) - keyboard_time) :
-                sockidle(opdstr(1))));
+                sockidle(opdstr(1), SOCK_RECV)));
+
+        case FN_SIDLE:
+            return newint((int)(sockidle(n>0 ? opdstr(1) : "", SOCK_SEND)));
 
         case FN_FILENAME:
             str = expand_filename(opdstr(1));
@@ -725,8 +739,8 @@ static Value *function_switch(symbol, n, parent)
             return ((str=fgname())) ? newstr(str, -1) : newstr("", 0);
 
         case FN_WORLDINFO:
-            ptr = opdstr(1);
-            str = world_info(n<2 ? NULL : opdstr(2), ptr);
+            ptr = n>=1 ? opdstr(1) : NULL;
+            str = world_info(n>=2 ? opdstr(2) : NULL, ptr);
             if (!str) {
                 str = "";
                 eprintf("illegal field name '%s'", ptr);
@@ -914,7 +928,7 @@ static Value *function_switch(symbol, n, parent)
             return newint(log_count);
 
         case FN_NMAIL:
-            return newint(mail_flag);
+            return newint(mail_count);
 
         case FN_SYSTYPE:
 
@@ -1034,9 +1048,7 @@ static Value *do_function(n)
                 (Stringcpy(scratch, n ? opdstr(1) : "")->s));
         }
 
-        if (user_result)
-            user_result->count++;
-        return user_result;
+        return_user_result();
     }
 
     eprintf("%s: no such function", id);
@@ -1154,7 +1166,10 @@ static int relational_expr()
             if      (ip[1] == '~') op = OP_STREQ;
             else if (ip[1] == '/') op = OP_MATCH;
             else if (ip[1] == '=') op = OP_EQUAL;
-            else op = '=';
+            else {
+                if (pedantic) eprintf("suggestion: use == instead of =");
+                op = '=';
+            }
         } else if (ip[0] == '!') {
             if      (ip[1] == '~') op = OP_STRNEQ;
             else if (ip[1] == '/') op = OP_NMATCH;
@@ -1290,15 +1305,10 @@ static int primary_expr()
         Stringfree(buffer);
         if (!result) return 0;
     } else if (*ip == '{') {
-        if (!varsub(NULL)) return 0;
+        if (!varsub(NULL, 0)) return 0;
     } else if (*ip == '%') {
-        static int warned = 0;
-        if (!warned || pedantic) {
-            eprintf("warning: %%... substitution in expression is legal, but can be confusing.  Try using {...} instead.");
-            warned = 1;
-        }
         ++ip;
-        if (!varsub(NULL)) return 0;
+        if (!varsub(NULL, 1)) return 0;
     } else if (*ip == '(') {
         ++ip;
         if (!comma_expr()) return 0;

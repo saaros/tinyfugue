@@ -4,7 +4,7 @@
 ;; bug:  barfs on suspend (^Z) because SHELL is really a child of /bin/sh,
 ;; which doesn't have job control.  Workaround:  don't ^Z during /psh.
 
-/~loaded psh.tf
+/loaded __TFLIB__/psh.tf
 
 /def -i psh = \
     /if ( ({#} > 0) & (SHELL !~ "") & (SHELL !~ "/bin/sh") ) \

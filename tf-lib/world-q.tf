@@ -10,7 +10,7 @@
 ;;; empty, ``ESC w'' will switch you to the last world you visited that is
 ;;; still connected.
 
-/~loaded world-q.tf
+/loaded __TFLIB__/world-q.tf
 
 /require stack-q.tf
 /require lisp.tf

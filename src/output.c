@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.c,v 35004.67 1998/01/29 06:28:48 hawkeye Exp $ */
+/* $Id: output.c,v 35004.72 1998/06/30 05:13:14 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -98,6 +98,7 @@ TERMCODE (insert_char,		NULL,		"\033[@",	"\033[@")
 #endif
 TERMCODE (insert_start,		NULL,		NULL,		"\033[4h")
 TERMCODE (insert_end,		NULL,		NULL,		"\033[4l")
+TERMCODE (bell,			"\007",		"\007",		"\007")
 TERMCODE (underline,		"\033[4m",	"\033[4m",	"\033[4m")
 TERMCODE (reverse,		"\033[7m",	"\033[7m",	"\033[7m")
 TERMCODE (flash,		"\033[5m",	"\033[5m",	"\033[5m")
@@ -156,7 +157,7 @@ static void  FDECL(attributes_off,(attr_t attrs));
 static void  FDECL(attributes_on,(attr_t attrs));
 static void  FDECL(color_on,(long color));
 static void  FDECL(hwrite,(Aline *line, int offset));
-static int   FDECL(set_attr_var,(int i));
+static int   FDECL(set_attr_var,(int idx, attr_t *attrp));
 static void  FDECL(set_attr,(Aline *aline, char *dest, attr_t *starting,
              attr_t *current));
 static int   NDECL(check_more);
@@ -221,6 +222,8 @@ static int output_disabled = 1;     /* is it safe to oflush()? */
 static int can_have_visual = FALSE;
 static List status_field_list[1];
 static int status_left = 0, status_right = 0;  /* size of status line pieces */
+static attr_t hiliteattr = 0;
+static attr_t status_attr = 0;
 
 #ifndef EMXANSI
 # define has_scroll_region (set_scroll_region != NULL)
@@ -232,7 +235,7 @@ typedef struct Keycode {
     CONST char *name, *capname, *code;
 } Keycode;
 
-static Keycode keycodes[] = {  /* this list is sorted! */
+static Keycode keycodes[] = {  /* this list is sorted by tolower(name)! */
 /*  { "Back Tab",	"kB", NULL }, */
     { "Backspace",	"kb", NULL },
 /*  { "Clear All Tabs",	"ka", NULL }, */
@@ -335,11 +338,11 @@ void crnl(n)
 }
 #endif
 
-void bell(n)
+void dobell(n)
     int n;
 {
     if (beep) {
-        bufputnc('\007', n);
+        while (n--) bufputs(bell);
         bufflush();
     }
 }
@@ -349,9 +352,9 @@ void bell(n)
 int change_term()
 {
     int old = visual;
-    if (old == 1) setvar("visual", "0", FALSE);
+    if (old == 1) set_var_by_id(VAR_visual, 0, NULL);
     init_term();
-    if (old == 1) setvar("visual", "1", FALSE);
+    if (old == 1) set_var_by_id(VAR_visual, 1, NULL);
     rebind_key_macros();
     return 1;
 }
@@ -408,7 +411,7 @@ static void init_term()
     set_scroll_region = insert_line = delete_line = NULL;
     delete_char = insert_char = insert_start = insert_end = NULL;
     enter_ca_mode = exit_ca_mode = cursor_address = NULL;
-    standout = underline = reverse = flash = dim = bold = NULL;
+    standout = underline = reverse = flash = dim = bold = bell = NULL;
     standout_off = underline_off = attr_off = NULL;
 
     if (!TERM || !*TERM) {
@@ -433,6 +436,7 @@ static void init_term()
         insert_line          = tgetstr("al", &area);
         delete_line          = tgetstr("dl", &area);
 
+        bell		= tgetstr("bl", &area);
         underline	= tgetstr("us", &area);
         reverse		= tgetstr("mr", &area);
         flash		= tgetstr("mb", &area);
@@ -442,6 +446,8 @@ static void init_term()
         underline_off	= tgetstr("ue", &area);
         standout_off	= tgetstr("se", &area);
         attr_off	= tgetstr("me", &area);
+
+        if (!bell) bell = "\007";
 
         if (!attr_off) {
             /* can't exit all attrs, but maybe can exit underline/standout */
@@ -455,7 +461,7 @@ static void init_term()
 #if 0
             fprintf(stderr, "(%2s) %-8s = %s\n",
                 keycodes[i].capname, keycodes[i].name,
-                ascii_to_print(keycodes[i].code));
+                keycodes[i].code ? ascii_to_print(keycodes[i].code) : "NULL");
 #endif
         }
 
@@ -483,11 +489,12 @@ static void init_term()
 
     if (columns <= 0) columns = DEFAULT_COLUMNS;
     if (lines   <= 0) lines   = DEFAULT_LINES;
-    setivar("wrapsize", columns - 1, FALSE);
+    set_var_by_id(VAR_wrapsize, columns - 1, NULL);
     outcount = lines;
     ix = 1;
     can_have_visual = (clear_screen || clear_to_eol) && cursor_address;
-    setivar("scroll", has_scroll_region||(insert_line&&delete_line), FALSE);
+    set_var_by_id(VAR_scroll,
+        has_scroll_region||(insert_line&&delete_line), NULL);
     have_attr = F_BELL;
     if (underline) have_attr |= F_UNDERLINE;
     if (reverse)   have_attr |= F_REVERSE;
@@ -599,7 +606,7 @@ void setup_screen(clearlines)
 #ifdef SCREEN
     } else {
         prompt = fgprompt();
-        if (isize > lines - 2) setivar("isize", lines - 2, FALSE);
+        if (isize > lines - 2) set_var_by_id(VAR_isize, lines - 2, NULL);
         ystatus = lines - isize;
         outcount = ystatus - 1;
         if (enter_ca_mode) tp(enter_ca_mode);
@@ -609,7 +616,7 @@ void setup_screen(clearlines)
             if (clearlines) crnl(clearlines);
         } else {
             if (clearlines > 0) clr();
-            if (scroll) setivar("scroll", 0, FALSE);
+            if (scroll) set_var_by_id(VAR_scroll, 0, NULL);
         }
         update_status_line();
         ix = iendx = oy = 1;
@@ -762,10 +769,12 @@ int ch_status_fields()
         column += field->width;
     }
     column = 0;
-    for (node = status_field_list->tail; node; node = node->prev) {
-        field = (StatusField*)node->datum;
-        if (field->width == 0) break;
-        status_right = -(field->column = (column -= field->width));
+    if (node) {
+        for (node = status_field_list->tail; node; node = node->prev) {
+            field = (StatusField*)node->datum;
+            if (field->width == 0) break;
+            status_right = -(field->column = (column -= field->width));
+        }
     }
 
     update_status_line();
@@ -931,10 +940,10 @@ int ch_visual()
         /* do nothing */
     } else if (visual && (!can_have_visual)) {
         eprintf("Visual mode is not supported on this terminal.");
-        setvar("visual", "0", FALSE);
+        set_var_by_id(VAR_visual, 0, NULL);
     } else if (visual && (lines < 3 || columns < status_left + status_right)) {
         eprintf("Screen is too small for visual mode.");
-        setvar("visual", "0", FALSE);
+        set_var_by_id(VAR_visual, 0, NULL);
         /* return 0 would work if called from setvar(), but not SIGWINCH. */
     } else {
         int addlines = isize;
@@ -1345,11 +1354,11 @@ int igoto(place)
 
     if (place < 0) {
         place = 0;
-        bell(1);
+        dobell(1);
     }
     if (place > keybuf->len) {
         place = keybuf->len;
-        bell(1);
+        dobell(1);
     }
     diff = place - keyboard_pos;
     keyboard_pos = place;
@@ -1543,7 +1552,7 @@ static void hwrite(line, offset)
     char c;
 
     if (line->attrs & F_BELL) {
-        bell(1);
+        dobell(1);
     }
 
     if (line->attrs & F_INDENT) {
@@ -1853,27 +1862,28 @@ static void output_scroll()
 
 int ch_hiliteattr()
 {
-    return set_attr_var(VAR_hiliteattr);
+    return set_attr_var(VAR_hiliteattr, &hiliteattr);
 }
 
 int ch_status_attr()
 {
-    if (!set_attr_var(VAR_status_attr)) return 0;
+    if (!set_attr_var(VAR_status_attr, &status_attr)) return 0;
     update_status_line();
     return 1;
 }
 
-static int set_attr_var(i)
-    int i;
+static int set_attr_var(idx, attrp)
+    int idx;
+    attr_t *attrp;
 {
     CONST char *str;
-    attr_t attrs;
+    attr_t attr;
 
-    if (!(str = getstrvar(i))) {
-        intvar(i) = 0;
+    if (!(str = getstrvar(idx))) {
+        *attrp = 0;
         return 1;
-    } else if ((attrs = parse_attrs((char **)&str)) >= 0) {
-        intvar(i) = attrs;
+    } else if ((attr = parse_attrs((char **)&str)) >= 0) {
+        *attrp = attr;
         return 1;
     } else {
         return 0;
@@ -1993,8 +2003,8 @@ attr_t handle_inline_attr(aline, attrs)
             s = end;
             if (new & F_FGCOLOR) attrs &= ~F_FGCOLORMASK;
             if (new & F_BGCOLOR) attrs &= ~F_BGCOLORMASK;
-            if (new == F_NORM) attrs &= ~F_HWRITE;
-            else if (off) attrs &= ~new;
+            if ((new & F_EXCLUSIVE) || (new & F_NONE)) attrs &= ~F_HWRITE;
+            if (off) attrs &= ~new;
             else attrs |= new;
             if (new & F_BELL) aline->attrs |= F_BELL;
 
