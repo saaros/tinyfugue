@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: macro.c,v 35004.133 2003/10/22 23:02:40 hawkeye Exp $";
+static const char RCSid[] = "$Id: macro.c,v 35004.135 2003/11/07 01:59:47 hawkeye Exp $";
 
 
 /**********************************************
@@ -81,7 +81,7 @@ typedef struct hookrec {
 } hookrec_t;
 
 static const hookrec_t hook_table[] = {
-#define gencode(a, b, c)  { b, c }
+#define gencode(id, type)  { #id, type }
 #include "hooklist.h"
 #undef gencode
 };
@@ -1618,8 +1618,8 @@ static void apply_attrs_of_match(
 	short start, end;
 	int *saved_ovector = NULL;
 	check_charattrs(line, line->len, 0, __FILE__, __LINE__);
-	for (x = 0; x < macro->nsubattr; x++) {
-	    do {
+	do {
+	    for (x = 0; x < macro->nsubattr; x++) {
 		if (macro->subattr[x].subexp == -1) {
 		    start = 0;
 		    end = ri->ovector[0];
@@ -1634,15 +1634,13 @@ static void apply_attrs_of_match(
 		    line->charattrs[i] =
 			adj_attr(line->charattrs[i], macro->subattr[x].attr);
 		offset = ri->ovector[1];
-		if (macro->subattr[x].subexp < 0)
-		    break; /* L and R can only match once */
-		if (!saved_ovector) {
-		    saved_ovector = ri->ovector;
-		    ri->ovector = NULL;
-		}
-	    } while (offset < line->len &&
-		tf_reg_exec(ri, text, NULL, offset) > 0);
-	}
+	    }
+	    if (!saved_ovector) {
+		saved_ovector = ri->ovector;
+		ri->ovector = NULL;
+	    }
+	} while (offset < line->len &&
+	    tf_reg_exec(ri, text, NULL, offset) > 0);
 	/* restore original startp/endp */
 	if (saved_ovector) {
 	    if (ri->ovector) FREE(ri->ovector);

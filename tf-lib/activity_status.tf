@@ -49,16 +49,15 @@
 	/let abbr=$[status_abbr_hook({*})]%; \
 	/if (abbr !~ "") /result abbr%; /endif%; \
     /endif%; \
+    /let n=$[status_width('activity_status') / $(/length %active_worlds) - 4]%;\
+    /if (strlen({*}) <= n) \
+	/result {*}%; \
+    /endif%; \
     /let abbr=%; \
     /test abbr:=status_abbr_$[textencode({*})]%; \
     /if (abbr !~ "") \
 	/result abbr%; \
-    /elseif (strlen({*}) <= 2) \
-        /result {*}%; \
-    /elseif (regmatch("^\\(unnamed(\\d+)\\)$$", {*})) \
-        /result strcat('u', {P1})%; \
     /endif%; \
-    /let n=$[status_width('activity_status') / $(/length %active_worlds) - 4]%;\
 ;   Abbreviate the name only as much as necessary to fit in n characters.
 ;   Try to keep capitals, beginnings of words, and digits; discard everything
 ;   else as needed.

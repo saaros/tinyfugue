@@ -14,6 +14,13 @@ Perl Compatible Regular Expression (PCRE) documentation is not yet integrated
   into /help; you can find it in src/pre-2.08/pcre.3.html in the section
   "REGULAR EXPRESSION DETAILS".
 
+5.0 alpha 14 (2003-11-06)
+------------
+/paste -h invokes send hooks; plain /paste does not.
+Fixed sometimes fatal bug in /def -P with multiple arguments.
+Fixed compile error for systems with getaddrinfo() but without AI_ADDRCONFIG.
+Fixed: executable was stripped even if configured with --enable-core.
+
 5.0 alpha 13 (2003-10-30)
 ------------
 If called from foreground, /connect foregrounds the new socket immediately,

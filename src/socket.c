@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: socket.c,v 35004.212 2003/10/31 01:57:33 hawkeye Exp $";
+static const char RCSid[] = "$Id: socket.c,v 35004.214 2003/11/07 02:03:26 hawkeye Exp $";
 
 
 /***************************************************************
@@ -107,12 +107,6 @@ struct sockaddr_in {
 
 #include NETDB_H
 
-#if HAVE_H_ERRNO
-  /* extern int h_errno; */ /* this could conflict */
-#else
-# define h_errno 1
-#endif
-
 #if !HAVE_GETADDRINFO
 /* Partial implementation of getaddrinfo() and friends */
 # define addrinfo tfaddrinfo
@@ -173,6 +167,12 @@ static const char *h_errlist[] = {
 };
 #  define hstrerror(err)  ((err) <= 4 ? h_errlist[(err)] : "unknown error")
 # endif /* !HAVE_HSTRERROR */
+
+#if HAVE_H_ERRNO
+  /* extern int h_errno; */ /* this could conflict */
+#elif !defined(h_errno)
+# define h_errno 1
+#endif
 
 # define gai_strerror(err) ((err) < 0 ? tf_gai_errlist[-(err)] : hstrerror(err))
 
@@ -1257,7 +1257,9 @@ static int opensock(World *world, int flags)
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = PF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
+#ifdef AI_ADDRCONFIG
 	hints.ai_flags = AI_ADDRCONFIG;
+#endif
 	err = getaddrinfo(xsock->myhost, NULL, &hints, &xsock->myaddr);
 
 	if (err) {
@@ -1661,7 +1663,10 @@ static int get_host_address(Sock *sock, const char **what, int *errp)
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = PF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_NUMERICHOST | AI_ADDRCONFIG;
+    hints.ai_flags = AI_NUMERICHOST;
+#ifdef AI_ADDRCONFIG
+    hints.ai_flags |= AI_ADDRCONFIG;
+#endif
     *errp = getaddrinfo(sock->host, sock->port, &hints, &sock->addrs);
     *what = NULL;
     if (*errp == 0) return 0;

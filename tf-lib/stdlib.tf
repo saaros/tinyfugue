@@ -6,7 +6,7 @@
 ;;;; General Public License.  See the file "COPYING" for details.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-/set tf_stdlib_id=$Id: stdlib.tf,v 35000.75 2003/10/29 20:04:27 hawkeye Exp $
+/set tf_stdlib_id=$Id: stdlib.tf,v 35000.76 2003/11/07 07:06:23 hawkeye Exp $
 
 ;;; TF macro library
 
@@ -224,9 +224,9 @@
 
 ;; cut-and-paste tool
 
-; paste [-w<world>] [-spxtqn] [-e<end>] [-a<abort>] [prefix]
+; paste [-w<world>] [-spxtqnh] [-e<end>] [-a<abort>] [prefix]
 /def -i paste = \
-    /if (!getopts("spnxtqw:e:a:", "")) /return 0%; /endif%; \
+    /if (!getopts("spnxtqhw:e:a:", "")) /return 0%; /endif%; \
     /if (opt_p & opt_t) \
         /echo -e %% %0: Options -p and -t are mutually exclusive.%; \
 	/return 0%; \
@@ -296,7 +296,7 @@
 	/test eval({*}, 0)%; \
     /else \
 ;	send (preserving leading spaces, and invoking send hooks)
-	/test send({*}, _world, "h")%; \
+	/test send({*}, _world, opt_h ? "h" : "")%; \
     /endif
 ;   /recordline -i - %*
 ; A /recordline here would allow history browsing during the paste, but do we

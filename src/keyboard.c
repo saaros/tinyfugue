@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: keyboard.c,v 35004.72 2003/05/27 01:09:22 hawkeye Exp $";
+static const char RCSid[] = "$Id: keyboard.c,v 35004.73 2003/11/01 17:35:09 hawkeye Exp $";
 
 /**************************************************
  * Fugue keyboard handling.
@@ -56,15 +56,15 @@ int keyboard_pos = 0;                   /* current position in buffer */
  * so all operations can be performed with "/dokey_foo".
  */
 enum {
-#define bicode(a, b)  a
+#define gencode(id) DOKEY_##id
 #include "keylist.h"
-#undef bicode
+#undef gencode
 };
 
 static const char *efunc_table[] = {
-#define bicode(a, b)  b
+#define gencode(id) #id
 #include "keylist.h"
-#undef bicode
+#undef gencode
 };
 
 #define kbnumval	(kbnum ? atoi(kbnum->data) : 1)

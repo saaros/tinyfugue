@@ -2517,6 +2517,7 @@ mapping
           without this option, interrupt (^C) will always work.  
   -q      quiet: do not print "Entering paste mode" message.  
   -s      strip trailing spaces from each pasted line 
+  -h      invoke matching [1mSEND hooks[22;0m for each line sent by [1m/paste[22;0m.  
 
   Note that [1m/endpaste[22;0m is not actually a command, but a "magic cookie" 
   recognized by [1m/paste[22;0m.  "[1m/Endpaste[22;0m", ".", and SIGINT (^C) are the only ways 
@@ -5999,9 +6000,9 @@ Binding keys
   terminals that are otherwise similar (e.g., vt100 and xterm share many 
   display codes, but the key definitions are different), so setting [1m%TERM[22;0m 
   incorrectly will interfere with the operation of named keys.  Xterm users 
-  should also note that since 3.5 alpha 17, tf ignores xterm's ti and te 
-  capabilities that sometimes interfered with the operation of the scrollbar, 
-  so tricking tf with [1mTERM[22;0m=vt100 is no longer necessary.  
+  should also note that since 5.0, tf has its own [1mscrollback[22;0m, and xterm's 
+  scrollback will not work properly even if you try to trick tf with 
+  [1mTERM[22;0m=vt100.  
 
 Special keys
 
@@ -7983,9 +7984,10 @@ Special global variables
           terminal (typically 80).  Output is not wrapped if [1m%{emulation}[22;0m is 
           "raw".  See also: [1m%wrap[22;0m, [1m%wrappunct[22;0m, [1m%wrapspace[22;0m, [1mcolumns()[22;0m.  
 
-#indent
-#%indent
 #wrapspace
+#indent
+#indentation
+#%wrapspace
   [1mwrapspace[22m=4 
           Wrapped text is indented by this many spaces.  See also: [1m%wrap[22;0m, 
           [1m%wrapsize[22;0m.  
@@ -8474,10 +8476,9 @@ Regexp subexpressions.
   then the following expansions will be available until the [1mmacro[22;0m exits: PL = 
   "Jabba the Hutt"; P0 = " goes east."; P1 = "east".  
 
-  The number <[4mn[24m> can be anything from 0 to 9; other values will be silently 
-  ignored.  If there is no subexpression corresponding to <[4mn[24m>, the 
-  substitution will be ignored.  When parentheses are nested, <[4mn[24m> refers to 
-  the order of the opening parentheses.  
+  The number <[4mn[24m> can be any nonnegative number.  If there is no subexpression 
+  corresponding to <[4mn[24m>, the substitution will be ignored.  When parentheses 
+  are nested, <[4mn[24m> refers to the order of the opening parentheses.  
 
   The [1m%P[4mn[24m[22;0m subs will always refer to the first [1mregexp[22;0m match on the line, even 
   if a partial [1mhilite[22;0m ([1m/def -P[22;0m) causes the [1mregexp[22;0m to be applied more than 
