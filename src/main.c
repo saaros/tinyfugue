@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1998 Ken Keys
+ *  Copyright (C) 1993 - 1999 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: main.c,v 35004.51 1998/09/19 01:20:32 hawkeye Exp $ */
+/* $Id: main.c,v 35004.55 1999/01/31 00:27:47 hawkeye Exp $ */
 
 
 /***********************************************
@@ -44,11 +44,11 @@ CONST char sysname[] = UNAME;
  * to the version number, and put a brief description of the modifications
  * in the mods[] string.
  */
-CONST char version[] = "TinyFugue version 4.0 beta 3";
+CONST char version[] = "TinyFugue version 4.0 stable 1";
 CONST char mods[] = "";
 
 CONST char copyright[] =
-    "Copyright (C) 1993 - 1998 Ken Keys (hawkeye@tcp.com)";
+    "Copyright (C) 1993 - 1999 Ken Keys (hawkeye@tcp.com)";
 
 CONST char contrib[] =
 #ifdef PLATFORM_OS2

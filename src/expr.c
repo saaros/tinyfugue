@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1998 Ken Keys
+ *  Copyright (C) 1993 - 1999 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expr.c,v 35004.36 1998/09/19 01:20:30 hawkeye Exp $ */
+/* $Id: expr.c,v 35004.40 1999/01/31 00:27:42 hawkeye Exp $ */
 
 
 /********************************************************************
@@ -328,7 +328,9 @@ CONST char *valstr(val)
         case TYPE_ID:   return (str=getnearestvar(val->u.sval,NULL)) ? str : "";
 #ifndef NO_FLOAT
         case TYPE_FLOAT:
-            sprintf(buffer, "%.16g", val->u.fval);
+            /* Note: with more than 15 significant figures, rounding errors
+             * become visible. */
+            sprintf(buffer, "%.15g", val->u.fval);
             if (!strchr(buffer, '.'))
                 strcat(buffer, ".0");
             return buffer;
@@ -350,6 +352,7 @@ int pushval(val)
 {
     if (stacktop == STACKSIZE) {
         eprintf("expression stack overflow");
+        freeval(val);
         return 0;
     }
     stack[stacktop++] = val;
@@ -511,8 +514,7 @@ static int reduce(op, n)
 
     stacktop -= n;
     while (n) freeval(stack[stacktop + --n]);
-    if (val) pushval(val);
-    return !!val;
+    return val ? pushval(val) : 0;
 }
 
 static Value *function_switch(symbol, n, parent)
@@ -539,12 +541,6 @@ static Value *function_switch(symbol, n, parent)
             }
 
             str = opdstr(n-0);  /* name */
-            if (*str == '(' || !*str) {
-                /* we can't allow user assigned names like "(unnamed1)" or "" */
-                eprintf("illegal world name: %s", str);
-                return newint(0);
-            }
-
             i = 1;  /* use_proxy */
             if (n > 7) {
                 i = enum2int(opdstr(n-7), enum_flag, "arg 8 (use_proxy)");

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1998 Ken Keys
+ *  Copyright (C) 1993 - 1999 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: signals.c,v 35004.26 1998/07/23 22:59:15 hawkeye Exp $ */
+/* $Id: signals.c,v 35004.29 1999/01/31 00:27:52 hawkeye Exp $ */
 
 /* Signal handling, core dumps, job control, and interactive shells */
 
@@ -185,7 +185,7 @@ void init_signals()
     setsighandler(SIGILL  , core_handler);
     setsighandler(SIGTRAP , core_handler);
     setsighandler(SIGABRT , core_handler);
-    setsighandler(SIGFPE  , core_handler);
+    setsighandler(SIGFPE  , SIG_IGN);
     setsighandler(SIGBUS  , core_handler);
     setsighandler(SIGSEGV , core_handler);
     setsighandler(SIGPIPE , SIG_IGN);
@@ -335,6 +335,9 @@ static void coremsg()
     if (*sysname) fprintf(stderr, "> %s\r\n", sysname);
     fprintf(stderr,"> visual=%ld, emulation=%ld, lp=%ld, sub=%ld\r\n",
         visual, emulation, lpflag, sub);
+#ifdef SOCKS
+    fprintf(stderr,"> SOCKS %d\r\n", SOCKS);
+#endif
     fprintf(stderr,"> TERM=%.32s\r\n", TERM ? TERM : "(NULL)");
 }
 

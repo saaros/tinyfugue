@@ -1,7 +1,7 @@
 #!/bin/sh
 ########################################################################
 #  TinyFugue - programmable mud client
-#  Copyright (C) 1994 - 1998 Ken Keys
+#  Copyright (C) 1994 - 1999 Ken Keys
 #
 #  TinyFugue (aka "tf") is protected under the terms of the GNU
 #  General Public License.  See the file "COPYING" for details.
@@ -47,7 +47,6 @@ FLAGS=''
 GNU_C=0
 LIBDIR="${TFDEV_LIBDIR}"
 LIBS=''
-LIBSOCKS='-lsocks'
 MAILDIR=''
 # MAKE=''	;# Use the value from the environment if there is one.
 MANPAGE=''
@@ -766,17 +765,18 @@ if [ -n "$SOCKS" ]; then
         echo "Will link with -lresolv."
         LIBS="-lresolv $LIBS"
     fi
-    if eval "${LIBTEST} ${LIBSOCKS} ${LIBS} >/dev/null 2>&1" && test -f ${AOUT};
+    if eval "${LIBTEST} ${SOCKSLIBDIR} ${SOCKSLIB} ${LIBS} >/dev/null 2>&1" && test -f ${AOUT};
     then
-        echo "Will link with ${LIBSOCKS}."
-        LIBS="${LIBSOCKS} $LIBS"
-        echo "#define SOCKS" >&4
+        echo "Will link with ${SOCKSLIB}."
+        LIBS="${SOCKSLIBDIR} ${SOCKSLIB} $LIBS"
+        CCFLAGS="${CCFLAGS} ${SOCKSINCDIR}"
+        echo "#define SOCKS ${SOCKS}" >&4
         if [ -n "$SOCKS_NONBLOCK" ]; then
             echo "#define SOCKS_NONBLOCK" >&4
         fi
     else
-        echo "Can't find SOCKS library.  You may need to specify its location"
-        echo "  with an -L linker option in the LIBS line of unix/Config."
+        echo "Can't find SOCKS library.  You may need to edit the SOCKSLIBDIR"
+        echo "  line of unix/Config."
         exit 1
     fi
 fi

@@ -170,6 +170,9 @@
 /def -i complete_worldname = \
     /_complete_from_list %1 $(/listworlds -s %{1}*)
 
+/def -i complete_sockname = \
+    /_complete_from_list %1 $(/listsockets -s %{1}*)
+
 
 ;; /complete_context <word>
 ;; Uses context to determine which completion macro to use.
@@ -189,7 +192,7 @@
         /complete_macroname %1%;\
     /elseif (regmatch("-w(.+)$$", _head)) \
         /complete_worldname %P1%;\
-    /elseif (_head =/ "*{/[sl]et|/setenv|/unset|/edvar} {*}") \
+    /elseif (_head =/ "*{/[sl]et|/setenv|/unset|/listvar|/edvar} {*}") \
         /complete_variable %1%;\
     /elseif (_head =/ "*{/load*|/save*|/lcd|/cd|/log} {*}") \
         /complete_filename %1%;\
@@ -206,8 +209,10 @@
     /elseif (regmatch('/quote .*`("?)(.+)$$', _head)) \
         /let _completion_suffix=%P1%;\
         /complete_macroname %P2%;\
-    /elseif (_head =/ "*{/world|/connect|/fg|/edworld} {*}") \
+    /elseif (_head =/ "*{/world|/connect|/edworld} {*}") \
         /complete_worldname %1%;\
+    /elseif (_head =/ "*{/fg} {*}") \
+        /complete_sockname %1%;\
     /elseif (_head =/ "*{/telnet} {*}") \
         /complete_hostname %1%;\
     /elseif (_head =/ "*/quote *!*") \

@@ -1,6 +1,51 @@
 Only the most recent version will have detailed changes described.
 Some fixes are followed by the version in which the problem first appeared.
 
+4.0 stable 1 (3/6/1999)
+------------
+Workaround for solaris terminal driver bug that could disable keyboard.
+
+4.0 gamma 3 (1/31/1999)
+-----------
+The prefix for /paste can be a tf command.
+Recognizes '?' and '%' fields when copying MAILPATH to TFMAILPATH.
+Minimized performance impact of triggers when borg==off or defined with -c0.
+Fixed beginning cutoff of time range in /recall -g. (40b1)
+Fixed spurious warning for readable password when redefining a world.
+Fixed crash caused by beep on unsupported terminals.
+Fixed crash caused by closing unconnected socket with buffered output.
+Fixed problems related to failed nonblocking hostname resolution.
+Will not busy loop if tty closes without killing tf.
+Eliminiated warnings in /color_on.
+
+4.0 gamma 2 (11/15/1998)
+-----------
+Worlds without type or mfile now use corresponding field of "default" world.
+Improved prompt detection heuristics for typeless worlds.
+/addworld can reset fields other than host and port for "(unnamedN)" worlds.
+Clarified scope rules in "/help /for".
+Fixed fatal error when reconnecting in a DISCONNECT hook. (40g1)
+
+4.0 gamma 1 (11/10/1998)
+-----------
+Supports SOCKS5 in addition to SOCKS4.
+/edit can delete a macro's body.
+Improved prompt detection heuristics for typeless worlds.
+/relog (in relog.tf) preserves leading/trailing space, and is more efficient.
+Improved error messages for failed connection under SOCKS.
+Improved error messages for disconnected sockets on some systems.
+Avoids rounding error in displaying floating point numbers.
+Refuses telnet SUPPRESS-GO-AHEAD option.
+Fixed bug in using /connect in a world file; PROXY, CONNECT, or LOGIN hook;
+  or %status_int_world.
+Fixed fatal bug in redefining the "default" world.
+Fixed fatal bug in "/recall -t" when %time_format is unset. (40a9)
+Fixed: floating point exception caused crash on some systems.
+Fixed zombie processes left by failed nonblocking gethostbyname on unix.
+Fixed possible "Bad file number" and "crossed connections" when reconnecting
+  in a DISCONNECT hook.
+Fixed memory leak in expression stack overflow.
+
 4.0 beta 3 (10/5/1998)
 ----------
 Clarified documentation of function arguments (see "/help functions").

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996 - 1998 Ken Keys
+ *  Copyright (C) 1996 - 1999 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: funclist.h,v 35000.28 1998/07/23 22:55:22 hawkeye Exp $ */
+/* $Id: funclist.h,v 35000.29 1999/01/31 00:27:43 hawkeye Exp $ */
 
 /*	  Symbol	Name		Min	Max	*/
 /*					Args	Args	*/

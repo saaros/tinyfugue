@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1998 Ken Keys
+ *  Copyright (C) 1993 - 1999 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: macro.c,v 35004.71 1998/09/19 01:20:31 hawkeye Exp $ */
+/* $Id: macro.c,v 35004.75 1999/01/31 00:27:46 hawkeye Exp $ */
 
 
 /**********************************************
@@ -299,7 +299,7 @@ static Macro *macro_spec(args, xmflag, allowshort)
     if ((ptr = strchr(ptr, '='))) {
         *ptr++ = '\0';
         ptr = stripstr(ptr);
-        spec->body = (*ptr) ? STRDUP(ptr) : NULL;
+        spec->body = STRDUP(ptr);
     }
     name = stripstr(name);
     spec->name = *name ? STRDUP(name) : NULL;
@@ -1245,12 +1245,22 @@ int find_and_run_matches(text, hook, alinep, world, globalflag)
     for ( ; node && MAC(node)->pri >= lowerlimit; node = node->next) {
         macro = MAC(node);
         if (macro->flags & MACRO_DEAD) continue;
-        if (hook && !(macro->hook & hook)) continue;
+        if (!(
+	    (macro->trig.str && (
+		(borg && macro->body && (macro->prob > 0)) ||
+		(hilite && ((macro->attr & F_HILITE) || macro->subexp)) ||
+		(gag && (macro->attr & F_GAG)))) ||
+	    (hook && (macro->hook & hook))))
+	{
+	    continue;
+	}
         if (macro->world && macro->world != world) continue;
         if (!globalflag && !macro->world) continue;
         if (macro->wtype.str) {
+            CONST char *type;
             if (!world) continue;
-            if (!patmatch(&macro->wtype, world->type ? world->type : ""))
+            type = world_type(world);
+            if (!patmatch(&macro->wtype, type ? type : ""))
                 continue;
         }
         if (*macro->expr) {

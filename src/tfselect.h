@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1998 Ken Keys
+ *  Copyright (C) 1993 - 1999 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfselect.h,v 35000.4 1998/01/02 09:41:48 hawkeye Exp $ */
+/* $Id: tfselect.h,v 35000.6 1999/01/31 00:27:55 hawkeye Exp $ */
 
 #ifndef TFSELECT_H
 #define TFSELECT_H
@@ -30,16 +30,6 @@ VEC_TYPEDEF(fd_vector, FD_SETSIZE); /* in case fd_set is already typedef'd */
 extern int select();
 
 #endif /* ndef FD_ZERO */
-
-
-#ifdef SOCKS
-# define connect Rconnect
-# ifdef SOCKS_NONBLOCK
-#  define select Rselect
-# else
-#  undef TF_NONBLOCK
-# endif
-#endif
 
 
 extern int FDECL(tfselect,(int nfds, fd_set *readers, fd_set *writers,

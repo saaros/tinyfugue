@@ -75,7 +75,7 @@
 ; Simple commands to disable/enable color.  Resetting status_fields forces
 ; a redraw of the status line (with the new colors).
 
-/purge -mregexp ^color_(on|off)$
+/purge -i -mregexp ^color_(on|off)$
 
 /def -i color_on = \
     /load -q %TFLIBDIR/color.tf%; \

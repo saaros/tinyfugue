@@ -3,13 +3,14 @@
 ; Starts logging, and silently performs a /recall into the log file.
 
 /loaded __TFLIB__/relog.tf
+/require textutil.tf
 
 /def -i relog = \
-    /def -i -hlog -1 -ag = /echo %%% Recalling to log file %1%;\
-    /log %1%;\
-    /quote -S /_relog %1 #%-1%; \
-    /log off
-
-/def -i _relog = \
-    /test fwrite({1}, {-1})
+    /let out=%; \
+    /if ((out:=tfopen({1}, "a")) < 0) /return 0%; /endif%; \
+    /echo -e %% Recalling to log file %1%;\
+    /test tfflush(out, 0)%; \
+    /quote -S -decho #%-1 %| /copyio i %out%; \
+    /test tfclose(out)%; \
+    /log %1
 

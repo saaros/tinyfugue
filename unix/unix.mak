@@ -1,7 +1,7 @@
-# $Id: unix.mak,v 35004.20 1998/08/07 04:57:29 hawkeye Exp $
+# $Id: unix.mak,v 35004.22 1999/01/31 00:28:10 hawkeye Exp $
 ########################################################################
 #  TinyFugue - programmable mud client
-#  Copyright (C) 1994 - 1998 Ken Keys
+#  Copyright (C) 1994 - 1999 Ken Keys
 #
 #  TinyFugue (aka "tf") is protected under the terms of the GNU
 #  General Public License.  See the file "COPYING" for details.
@@ -144,7 +144,7 @@ dist: tf.1.catman ../tf-lib/tf-help.idx
 uninstall:
 	@echo "Remove $(LIBDIR) $(TF) $(MANPAGE)"
 	@echo "Is this okay? (y/n)"
-	@read response; test "$response" = "y"
+	@read response; test "$$response" = "y"
 	rm -f $(TF) $(MANPAGE)
 	rm -rf $(LIBDIR)
 

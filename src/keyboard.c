@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1998 Ken Keys
+ *  Copyright (C) 1993 - 1999 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: keyboard.c,v 35004.40 1998/07/23 22:55:22 hawkeye Exp $ */
+/* $Id: keyboard.c,v 35004.43 1999/03/06 22:34:48 hawkeye Exp $ */
 
 /**************************************************
  * Fugue keyboard handling.
@@ -132,7 +132,13 @@ int handle_keyboard_input(read_flag)
     static int place = 0;
     static int eof = 0;
 
-    if (!eof && read_flag) {
+    /* Solaris select() incorrectly reports the terminal as readable if
+     * the user typed LNEXT, when in fact there is nothing to read because
+     * the terminal is waiting for the next character.  So we wait for
+     * read() to return 0 TWICE in a row before deciding it's EOF.
+     */
+
+    if (eof < 2 && read_flag) {
         /* read a block of text */
         if ((count = read(STDIN_FILENO, buf, sizeof(buf))) < 0) {
             /* error or interrupt */
@@ -140,23 +146,23 @@ int handle_keyboard_input(read_flag)
             die("handle_keyboard_input: read", errno);
         } else if (count > 0) {
             /* something was read */
+	    eof = 0;
             keyboard_time = time(NULL);
         } else {
             /* nothing was read, and nothing is buffered */
-            if (no_tty) {
-                eof = 1;
-                /* Don't close stdin; we don't want the fd to be reused. */
+	    /* Don't close stdin; we don't want the fd to be reused. */
+	    eof++;
 #if 0
-            } else {
+            if (!no_tty) {
                 internal_error(__FILE__, __LINE__);
                 eputs("read 0 from stdin tty");
-#endif
             }
+#endif
         }
     }
 
     if (count == 0 && place == 0)
-        return !eof;
+        return eof < 2;
 
     for (i = 0; i < count; i++) {
         if (istrip) buf[i] &= 0x7F;
@@ -169,7 +175,7 @@ int handle_keyboard_input(read_flag)
     }
 
     s = current_input->s;
-    if (!s) return !eof; /* no good chars; current_input not yet allocated */
+    if (!s) return eof < 2; /* no good chars; current_input not yet allocated */
     while (place < current_input->len) {
         if (!keynode) keynode = keytrie;
         if ((pending_input = pending_line))
@@ -219,7 +225,7 @@ int handle_keyboard_input(read_flag)
     input_start = key_start;
     if (pending_line && !read_depth)
         handle_input_line();
-    return !eof;
+    return eof < 2;
 }
 
 /* Update the input window and keyboard buffer. */

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1998 Ken Keys
+ *  Copyright (C) 1993 - 1999 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: world.c,v 35004.35 1998/04/15 03:57:47 hawkeye Exp $ */
+/* $Id: world.c,v 35004.39 1999/01/31 00:27:58 hawkeye Exp $ */
 
 
 /********************************************************
@@ -34,7 +34,9 @@ static int  FDECL(list_worlds,(CONST Pattern *name, CONST Pattern *type,
 static void FDECL(free_world,(World *w));
 static World *NDECL(alloc_world);
 
-static World *hworld = NULL, *defaultworld = NULL;
+static World *hworld = NULL;
+
+World *defaultworld = NULL;
 
 
 static void free_world(w)
@@ -99,21 +101,24 @@ World *new_world(name, character, pass, host, port, mfile, type, flags)
     smallstr buffer;
     int is_redef = FALSE;
 
+    /* unnamed worlds can't be defined but can have other fields changed. */
+    if (name && *name == '(' && (*host || *port)) {
+        eprintf("illegal world name: %s", name);
+        return NULL;
+    }
+
     if (name && cstrcmp(name, "default") == 0) {
         if (defaultworld) {
-            FREE(result->name);
+            result = defaultworld;
+            FREE(defaultworld->name);
             is_redef = TRUE;
         } else {
-            if (!*character || !*pass) {
-                eprintf("Default world requires character and password.");
-                return NULL;
-            }
-            defaultworld = alloc_world();
+            result = defaultworld = alloc_world();
         }
-        result = defaultworld;
     } else if (name && (result = find_world(name))) {
         FREE(result->name);
         is_redef = TRUE;
+
     } else {
         World **pp;
         if (!*host || !*port) {
@@ -153,7 +158,7 @@ World *new_world(name, character, pass, host, port, mfile, type, flags)
 
 #ifdef PLATFORM_UNIX
 # ifndef __CYGWIN32__
-    if (result->pass && loadfile && (loadfile->mode & (S_IROTH | S_IRGRP)) &&
+    if (pass && *pass && loadfile && (loadfile->mode & (S_IROTH | S_IRGRP)) &&
         !loadfile->warned)
     {
         eprintf("Warning: file contains passwords and is readable by others.");
@@ -329,11 +334,6 @@ struct Value *handle_saveworld_command(args)
     result = list_worlds(NULL, NULL, file, 0);
     tfclose(file);
     return newint(result);
-}
-
-World *get_default_world()
-{
-    return defaultworld;
 }
 
 World *find_world(name)

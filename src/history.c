@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1998 Ken Keys
+ *  Copyright (C) 1993 - 1999 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: history.c,v 35004.57 1998/09/19 01:20:31 hawkeye Exp $ */
+/* $Id: history.c,v 35004.61 1999/01/31 00:27:44 hawkeye Exp $ */
 
 
 /****************************************************************
@@ -416,7 +416,10 @@ int do_recall(args)
             if (i == n0) want = 0;
             aline = hist->alines[i];
             /* globalhist isn't chronological, but we can optimize others. */
-            if (aline->tv.tv_sec < t0 && hist != globalhist) break;
+            if (aline->tv.tv_sec < t0) {
+                if (hist == globalhist) continue;
+                else break;
+            }
             if (t1 >=0 && aline->tv.tv_sec > t1) continue;
             if (gag && (aline->attrs & F_GAG & attrs)) continue;
             if (!patmatch(&pat, aline->str) == truth) continue;
@@ -652,13 +655,18 @@ struct Value *handle_recordline_command(args)
 {
     History *history = globalhist;
     char opt;
-    struct timeval timestamp = { -1, 0 };
+    struct timeval timestamp;
+    long sec;
     Aline *aline;
 
+    timestamp.tv_sec = sec = -1;
+    timestamp.tv_usec = 0;
+
     startopt(args, "lgiw:t#");
-    while ((opt = next_hist_opt(&args, &history, &timestamp.tv_sec))) {
+    while ((opt = next_hist_opt(&args, &history, &sec))) {
         if (opt != 't') return newint(0);
     }
+    timestamp.tv_sec = sec;
 
     nolog++;
     if (history == input) {

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1998 Ken Keys
+ *  Copyright (C) 1993 - 1999 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: socket.c,v 35004.109 1998/10/06 05:40:06 hawkeye Exp $ */
+/* $Id: socket.c,v 35004.120 1999/01/31 00:27:53 hawkeye Exp $ */
 
 
 /***************************************************************
@@ -269,6 +269,9 @@ STATIC_BUFFER(telbuf);
 #define TN_NAWS		'\037'	/* RFC 1073 - negotiate about window size */
 #define TN_TSPEED	'\040'	/* RFC 1079 - not used */
 #define TN_LINEMODE	'\042'	/* RFC 1184 - not used */
+/* Note: many telnet servers (incorrectly?) send DO ECHO and DO SGA together
+ * to mean character-at-a-time mode.
+ */
 
 /* TELNET special characters (RFC 854) */
 #define TN_EOR		'\357'	/* End-Of-Record */
@@ -483,7 +486,8 @@ void main_loop()
 
         if (count < 0) {
             /* select() must have exited due to error or interrupt. */
-            if (errno != EINTR) die("main_loop: select", errno);
+            if (errno != EINTR)
+                core(strerror(errno), __FILE__, __LINE__, 0);
             /* In case we're in a kb tfgetS(), clear things for parent loop. */
             FD_ZERO(&active);
             FD_ZERO(&connected);
@@ -635,9 +639,10 @@ static Sock *find_sock(name)
 static void wload(w)
     World *w;
 {
+    CONST char *mfile;
     if (restriction >= RESTRICT_FILE) return;
-    if (w->mfile || ((w = get_default_world()) && w->mfile))
-        do_file_load(w->mfile, FALSE);
+    if ((mfile = world_mfile(w)))
+        do_file_load(mfile, FALSE);
 }
 
 
@@ -782,7 +787,13 @@ int opensock(world, autologin, quietlogin)
         /* recycle existing Sock */
         dead_socks--;
         xsock = world->sock;
-        if (xsock->fd >= 0) close(xsock->fd);
+        if (xsock->fd >= 0) {
+            close(xsock->fd);
+            FD_CLR(xsock->fd, &readers);
+            FD_CLR(xsock->fd, &writers);
+        }
+        if (xsock->host) FREE(xsock->host);
+        if (xsock->port) FREE(xsock->port);
 
     } else {
         /* create and initialize new Sock */
@@ -807,7 +818,7 @@ int opensock(world, autologin, quietlogin)
     VEC_ZERO(&xsock->tn_will);
     xsock->flags = (autologin ? SOCKLOGIN : 0);
     xsock->time[SOCK_RECV] = xsock->time[SOCK_SEND] = time(NULL);
-    quietlogin = quietlogin && autologin && world->character;
+    quietlogin = quietlogin && autologin && world_character(world);
     xsock->numquiet = quietlogin ? MAXQUIET : 0;
 
     xsock->addr.sin_family = AF_INET;
@@ -893,6 +904,13 @@ static int openconn(sock)
             else
                 CONFAIL(xsock->world->name, xsock->host, hstrerror(err));
             close(xsock->fd);
+            xsock->fd = -1;
+# ifdef PLATFORM_UNIX
+	    if (xsock->pid >= 0)
+		if (waitpid(xsock->pid, NULL, 0) < 0)
+		    tfprintf(tferr, "waitpid %ld: %s", xsock->pid, strerror(errno));
+	    xsock->pid = -1;
+# endif /* PLATFORM_UNIX */
             killsock(xsock);
             return 0;
         }
@@ -901,7 +919,7 @@ static int openconn(sock)
 # ifdef PLATFORM_UNIX
         if (xsock->pid >= 0)
             if (waitpid(xsock->pid, NULL, 0) < 0)
-                tfprintf(tferr, "wait: %ld: %s", xsock->pid, strerror(errno));
+                tfprintf(tferr, "waitpid %ld: %s", xsock->pid, strerror(errno));
         xsock->pid = -1;
 # endif /* PLATFORM_UNIX */
     }
@@ -1150,47 +1168,58 @@ static int establish(sock)
          * well as SOCKS 4.2beta.  Problems: Some socket implementations
          * give the wrong errno; extra net traffic on failure.
          */
-        /* CURRENT METHOD:  Use getsockopt(SO_ERROR) to test for an error.
-         * If SO_ERROR is not available, try a second connect(); if it fails
-         * with EISCONN, the first connect() worked.  On the slim chance
-         * that the first failed, but the second worked, go with that.
-         * Otherwise, use read() to get the errno.  This method has not
-         * been widely tested, but is known to fix the incorrect errno
-         * from SO_ERROR on some systems (linux) under Old Method 2.
-         * Potential problem: some systems may not clear the SO_ERROR value
-         * for successful connect(); this needs to be tested.
-         * Tested on:  Linux, HP-UX, Solaris...
+        /* CURRENT METHOD:  If possible, use getsockopt(SO_ERROR) to test for
+         * an error.  This avoids the overhead of a second connect(), and the
+         * possibility of getting the error value from the second connect()
+         * (linux).  (Potential problem: it's possible that some systems
+         * don't clear the SO_ERROR value for successful connect().)
+         * If SO_ERROR is not available or we are using SOCKS, we try to read
+         * 0 bytes.  If it fails, the connect() must have failed.  If it
+         * succeeds, we can't know if it's because the connection really
+         * succeeded, or the read() did a no-op for the 0 size, so we try a
+         * second connect().  If the second connect() fails with EISCONN, the
+         * first connect() worked.  If it works (unlikely), use it.  Otherwise,
+         * use read() to get the errno.
+         * Tested on:  Linux, HP-UX, Solaris, Solaris with SOCKS5...
          */
         /* Alternative: replace second connect() with getpeername(), and
          * check for ENOTCONN.  Disadvantage: doesn't work with SOCKS, etc.
          */
 
 #ifdef SO_ERROR
+# ifndef SOCKS
+#  define USE_SO_ERROR
+# endif
+#endif
+
+#ifdef USE_SO_ERROR
         if (getsockopt(xsock->fd, SOL_SOCKET, SO_ERROR,
             (GENERIC*)&err, &len) < 0)
         {
             errmsg = "getsockopt";
             err = errno;
         }
+
+#else
+        {
+            char ch;
+            if (read(xsock->fd, &ch, 0) < 0) {
+                err = errno;
+                errmsg = "nonblocking connect/read";
+            } else if ((in_connect(xsock->fd, &xsock->addr) < 0) &&
+                errno != EISCONN)
+            {
+                read(xsock->fd, &ch, 1);   /* must fail */
+                err = errno;
+                errmsg = "nonblocking connect 2/read";
+            }
+        }
+#endif
         if (err != 0) {
             killsock(xsock);
             CONFAIL(xsock->world->name, errmsg, strerror(err));
             return 0;
         }
-
-#else
-        if ((in_connect(xsock->fd, &xsock->addr) < 0) && errno != EISCONN) {
-            {
-                char ch;
-                read(xsock->fd, &ch, 1);   /* must fail */
-            }
-            err = errno;
-            errmsg = "nonblocking connect/read";
-            killsock(xsock);
-            CONFAIL(xsock->world->name, errmsg, strerror(err));
-            return 0;
-        }
-#endif
 
         /* connect() worked.  Clear the pending stuff, and get on with it. */
         xsock->flags &= ~SOCKPENDING;
@@ -1203,31 +1232,32 @@ static int establish(sock)
     }
 #endif /* TF_NONBLOCK */
 
-    if (xsock->flags & SOCKPROXY) {
-        FREE(xsock->host);
-        FREE(xsock->port);
-        xsock->host = STRDUP(xsock->world->host);
-        xsock->port = STRDUP(xsock->world->port);
-        do_hook(H_PROXY, "", "%s", xsock->world->name);
+    FD_SET(xsock->fd, &readers);
+
+    /* atomicness ends here */
+
+    if (sock->flags & SOCKPROXY) {
+        FREE(sock->host);
+        FREE(sock->port);
+        sock->host = STRDUP(sock->world->host);
+        sock->port = STRDUP(sock->world->port);
+        do_hook(H_PROXY, "", "%s", sock->world->name);
     }
 
-    wload(xsock->world);
+    wload(sock->world);
 
-    if (!(xsock->flags & SOCKPROXY)) {
+    if (!(sock->flags & SOCKPROXY)) {
         do_hook(H_CONNECT, "%% Connection to %s established.", "%s",
-            xsock->world->name);
+            sock->world->name);
 
-        if (login && xsock->flags & SOCKLOGIN) {
-            World *w;
-            w = (xsock->world->character) ? xsock->world : get_default_world();
-            if (w && w->character)
-                do_hook(H_LOGIN, NULL, "%s %s %s", xsock->world->name,
-                    w->character, w->pass);
-            xsock->flags &= ~SOCKLOGIN;
+        if (login && sock->flags & SOCKLOGIN) {
+            if (world_character(sock->world) && world_pass(sock->world))
+                do_hook(H_LOGIN, NULL, "%s %s %s", sock->world->name,
+                    world_character(sock->world), world_pass(sock->world));
+            sock->flags &= ~SOCKLOGIN;
         }
     }
 
-    FD_SET(xsock->fd, &readers);
     return 1;
 }
 
@@ -1249,24 +1279,21 @@ static void nukesock(sock)
     }
     *((sock == hsock) ? &hsock : &sock->prev->next) = sock->next;
     *((sock == tsock) ? &tsock : &sock->next->prev) = sock->prev;
-    if (sock->fd > 0) {
+    if (sock->activity) {
+	--active_count;
+	update_status_field(NULL, STAT_ACTIVE);
+    }
+    if (sock->fd >= 0) {
         FD_CLR(sock->fd, &readers);
         FD_CLR(sock->fd, &writers);
         close(sock->fd);
-        if (sock->activity) {
-            --active_count;
-            update_status_field(NULL, STAT_ACTIVE);
-        }
 #ifdef NONBLOCKING_GETHOST
-        if (sock->flags & SOCKRESOLVING) {
 # ifdef PLATFORM_UNIX
-            if (sock->pid >= 0)
-                if (waitpid(sock->pid, NULL, 0) < 0)
-                    tfprintf(tferr, "waitpid: %ld: %s",
-                        sock->pid, strerror(errno));
-            sock->pid = -1;
+        if (sock->pid >= 0)
+            if (waitpid(sock->pid, NULL, 0) < 0)
+                tfprintf(tferr, "waitpid %ld: %s", sock->pid, strerror(errno));
+        sock->pid = -1;
 # endif /* PLATFORM_UNIX */
-        }
 #endif /* NONBLOCKING_GETHOST */
     }
     Stringfree(sock->buffer);
@@ -1303,7 +1330,8 @@ static void nuke_dead_socks()
         next = sock->next;
         if (sock->flags & SOCKDEAD) {
             if (sock->activity) {
-                FD_CLR(sock->fd, &readers);
+                if (sock->fd >= 0)
+		    FD_CLR(sock->fd, &readers);
             } else {
                 nukesock(sock);
                 dead_socks--;
@@ -1452,15 +1480,16 @@ static int transmit(str, numtowrite)
     CONST char *str;
     unsigned int numtowrite;
 {
-    int numwritten;
+    int numwritten, err;
 
     if (!xsock || xsock->flags & (SOCKDEAD | SOCKPENDING)) return 0;
     while (numtowrite) {
         numwritten = send(xsock->fd, str, numtowrite, 0);
         if (numwritten < 0) {
-            if (errno == EAGAIN
+            err = errno;
+            if (err == EAGAIN
 #ifdef EWOULDBLOCK
-                                || errno == EWOULDBLOCK
+                                || err == EWOULDBLOCK
 #endif
                                                        ) {
                 fd_set writefds;
@@ -1468,12 +1497,12 @@ static int transmit(str, numtowrite)
                 FD_ZERO(&writefds);
                 FD_SET(xsock->fd, &writefds);
                 if (select(xsock->fd + 1, NULL, &writefds, NULL, NULL) < 0)
-                    if (errno == EINTR) break;
+                    if (err == EINTR) break;
             } else {
                 killsock(xsock);
                 do_hook(H_DISCONNECT,
                     "%% Connection to %s closed: %s: %s", "%s %s %s",
-                    xsock->world->name, "send", strerror(errno));
+                    xsock->world->name, "send", strerror(err));
                 return 0;
             }
         }
@@ -1702,8 +1731,9 @@ static int handle_socket_input()
         do count = recv(xsock->fd, buffer, sizeof(buffer), 0);
             while (count < 0 && errno == EINTR);
         if (count <= 0) {
+            int err = errno;
 #ifdef SUNOS_5_4
-            if (errno == EAGAIN || errno == EINVAL) {
+            if (err == EAGAIN || err == EINVAL) {
                 /* workaround for bug in (unpatched) Solaris 2.4 */
                 static int warned = FALSE;
                 if (!warned)
@@ -1722,12 +1752,12 @@ static int handle_socket_input()
              * that's what happened, so we hook CONFAIL instead of DISCONNECT.
              */
             if (xsock->flags & SOCKPENDING)
-                CONFAIL(xsock->world->name, "recv", strerror(errno));
+                CONFAIL(xsock->world->name, "recv", strerror(err));
             else do_hook(H_DISCONNECT, (count < 0) ?
                     "%% Connection to %s closed: %s: %s" :
                     "%% Connection to %s closed by foreign host.",
                     (count < 0) ? "%s %s %s" : "%s",
-                    xsock->world->name, "recv", strerror(errno));
+                    xsock->world->name, "recv", strerror(err));
             return received;
         }
 
@@ -1794,8 +1824,10 @@ static int handle_socket_input()
                     DO(TN_SEND_EOR);
                 } else if (*place == TN_BINARY) {
                     DO(TN_BINARY);
+#if 0  /* many servers think DO SGA means character-at-a-time mode */
                 } else if (*place == TN_SGA) {
                     DO(TN_SGA);
+#endif
                 } else {
                     /* don't accept other WILL offers */
                     DONT(*place);
@@ -2052,10 +2084,10 @@ static void telnet_debug(dir, str, len)
                     Sprintf(buffer, SP_APPEND, " %s",
                         telnet_label[(UCHAR)str[i]]);
                 else
-                    Sprintf(buffer, SP_APPEND, " %d", (int)str[i]);
+                    Sprintf(buffer, SP_APPEND, " %d", (unsigned int)str[i]);
                 state = str[i];
             } else {
-                Sprintf(buffer, SP_APPEND, " %d", (int)str[i]);
+                Sprintf(buffer, SP_APPEND, " %d", (unsigned int)str[i]);
                 state = 0;
             }
         }
@@ -2113,31 +2145,30 @@ static void preferred_telnet_options()
 CONST char *world_info(worldname, fieldname)
     CONST char *worldname, *fieldname;
 {
-    World *world, *def;
+    World *world;
     CONST char *result;
  
     world = worldname ? find_world(worldname) : xworld();
     if (!world) return "";
-    if (!(def = get_default_world())) def = world;
  
     if (!fieldname || strcmp("name", fieldname) == 0) {
         result = world->name;
+    } else if (strcmp("type", fieldname) == 0) {
+        result = world_type(world);
     } else if (strcmp("character", fieldname) == 0) {
-        result = (world->character) ? world->character : def->character;
+        result = world_character(world);
     } else if (strcmp("password", fieldname) == 0) {
-        result = (world->pass) ? world->pass : def->pass;
+        result = world_pass(world);
     } else if (strcmp("host", fieldname) == 0) {
         result = worldname ? world->host : world->sock->host;
     } else if (strcmp("port", fieldname) == 0) {
         result = worldname ? world->port : world->sock->port;
     } else if (strcmp("mfile", fieldname) == 0) {
-        result = (world->mfile) ? world->mfile : def->mfile;
-    } else if (strcmp("type", fieldname) == 0) {
-        result = (world->type) ? world->type : def->type;
+        result = world_mfile(world);
     } else if (strcmp("login", fieldname) == 0) {
-        result = (world->sock && (world->sock->flags & SOCKLOGIN)) ? "1" : "0";
+        result = world->sock && world->sock->flags & SOCKLOGIN ? "1" : "0";
     } else if (strcmp("proxy", fieldname) == 0) {
-        result = (world->sock && (world->sock->flags & SOCKPROXY)) ? "1" : "0";
+        result = world->sock && world->sock->flags & SOCKPROXY ? "1" : "0";
     } else return NULL;
     return result ? result : "";
 }

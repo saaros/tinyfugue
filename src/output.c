@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1998 Ken Keys
+ *  Copyright (C) 1993 - 1999 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.c,v 35004.84 1998/09/19 00:59:51 hawkeye Exp $ */
+/* $Id: output.c,v 35004.87 1999/01/31 00:27:49 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -462,8 +462,6 @@ static void init_term()
         standout_off	= tgetstr("se", &area);
         attr_off	= tgetstr("me", &area);
 
-        if (!bell) bell = "\007";
-
         if (!attr_off) {
             /* can't exit all attrs, but maybe can exit underline/standout */
             reverse = flash = dim = bold = NULL;
@@ -488,6 +486,8 @@ static void init_term()
                 set_scroll_region = "\033[%i%d;%dr";
         }
     }
+
+    if (!bell) bell = "\007";
 
 #ifdef EMXANSI
     VioSetAnsi(1,0);                   /* ensure ansi-mode */
@@ -915,8 +915,11 @@ static void format_status_field(field, attrp)
     if (field->internal == STAT_MORE)
         need_more_refresh = 0;
     if (field->internal == STAT_CLOCK) {
+        struct tm *local;
         clock_update = time(NULL);
-        clock_update += 60 - (localtime(&clock_update))->tm_sec;
+        /* note: localtime()->tm_sec won't compile if prototype is missing */
+        local = localtime(&clock_update);
+        clock_update += 60 - local->tm_sec;
     }
 
     if (field->var && !field->var->status)   /* var was unset */

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996 - 1998 Ken Keys
+ *  Copyright (C) 1996 - 1999 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: varlist.h,v 35000.24 1998/06/22 20:36:31 hawkeye Exp $ */
+/* $Id: varlist.h,v 35000.25 1999/01/31 00:27:58 hawkeye Exp $ */
 
 /* It may not be easy to read in 80 columns, but it keeps the constants and
  * the array in the same place, so they can't get out of sync.

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993 - 1998 Ken Keys
+ *  Copyright (C) 1993 - 1999 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tf.h,v 35004.22 1998/10/06 05:23:50 hawkeye Exp $ */
+/* $Id: tf.h,v 35004.24 1999/01/31 00:27:55 hawkeye Exp $ */
 
 #ifndef TF_H
 #define TF_H
@@ -16,6 +16,16 @@
 #include <sys/time.h>	/* for struct timeval */
 #include "malloc.h"
 #include "globals.h"
+
+#ifdef SOCKS
+# if (SOCKS == 4)
+#  define connect Rconnect
+#  define select Rselect
+# else /* (SOCKS == 5) */
+#  include <socks.h>
+# endif
+#endif
+
 
 /*
  * TinyFugue global types and variables.

@@ -135,15 +135,23 @@ MAKE='make'
 ### SOCKS connection proxy for firewalls.
 # If you use rtelnet instead of telnet to connect to outside hosts, you
 # probably want SOCKS support.
-# Uncomment the SOCKS line below to enable SOCKS support.
-# If you have SOCKS 4.2beta (or later), you can also uncomment the
-# SOCKS_NONBLOCK line below to allow nonblocking connects.
-# Uncomment and redefine LIBSOCKS if your SOCKS library is in a different
-# place.
+# Uncomment one set of SOCKS line below to enable SOCKS support.
+# If you have a SOCKS version earlier than 4.2beta or later, do not uncomment
+# the SOCKS_NONBLOCK line below to allow nonblocking connects.
+# You may need to edit SOCKSLIBDIR and SOCKSINCDIR.
 
-# SOCKS='yes'
+### SOCKS version 5
+# SOCKS='5'
+# SOCKSLIB='-lsocks5'
+# SOCKSLIBDIR='-L/usr/local/lib'
+# SOCKSINCDIR='-I/usr/local/include'
 # SOCKS_NONBLOCK='yes'
-# LIBSOCKS='-lsocks'
+
+### SOCKS version 4
+# SOCKS='4'
+# SOCKSLIB='-lsocks'
+# SOCKSLIBDIR='-L/usr/local/lib'
+# SOCKS_NONBLOCK='yes'
 
 
 ###

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996 - 1998 Ken Keys
+ *  Copyright (C) 1996 - 1999 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: enumlist.h,v 35000.7 1998/03/28 20:36:57 hawkeye Exp $ */
+/* $Id: enumlist.h,v 35000.8 1999/01/31 00:27:40 hawkeye Exp $ */
 
 /* It may not be easy to read, but it keeps the constants and the array in the
  * same place, so they can't get out of sync.

@@ -1,12 +1,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; TinyFugue - programmable mud client
-;;;; Copyright (C) 1994 Ken Keys
+;;;; Copyright (C) 1994 - 1999 Ken Keys
 ;;;;
 ;;;; TinyFugue (aka "tf") is protected under the terms of the GNU
 ;;;; General Public License.  See the file "COPYING" for details.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;; $Id: stdlib.tf,v 35000.42 1998/10/06 05:29:17 hawkeye Exp $
+;;; $Id: stdlib.tf,v 35000.46 1999/01/24 22:32:31 hawkeye Exp $
 
 ;;; TF macro library
 
@@ -235,7 +235,7 @@
     /endif
 
 /def -i ~paste = \
-    /send - %*%; \
+    /eval -s0 - %*%; \
     /recordline -i - %*
 
 
@@ -284,22 +284,32 @@
 
 ;; Heuristics to detect worlds that use prompts, but have not been classified
 ;; as such by the user's /addworld definition.
-
-/def -iFmregexp -h'PROMPT [Ll]ogin:( *)$' -T'^$' ~detect_worldtype_1 = \
-    /@test prompt(strcat({*}, {P1}))%;\
-    /addworld -Ttelnet ${world_name}%;\
-    /set lp=1%;\
-    /localecho on%;\
-    /echo %% This looks like a telnet world, so I'm redefining it as one.%;\
-    /echo %% You should use /addworld -T to explicitly set it yourself.
-
-/def -iFmregexp -h'PROMPT ^By what name .* be known\\? *$' -T^$ \
-  ~detect_worldtype_2 = \
-    /@test prompt({P0})%; \
-    /addworld -Tlp ${world_name}%; \
-    /set lp=1%; \
-    /echo %% This looks like an lp-prompt world, so I'm redefining it as one.%;\
-    /echo %% You should use /addworld -T to explicitly set it yourself.
+/def -iFp1 -mglob -T'{}' -hCONNECT ~detect_worldtype_hook = \
+; telnet prompt
+    /def -ip1 -n1 -w -mregexp -h'PROMPT [Ll]ogin: *$$' \
+    ~detect_worldtype_telnet_${world_name} = \
+        /echo -e %%% This looks like a telnet world, so I'm redefining it as \
+            one.  You should explicitly set the type with the -T option of \
+            /addworld.%%;\
+        /addworld -Ttelnet ${world_name}%%;\
+        /set lp=1%%;\
+        /localecho on%%; \
+        /@test prompt(strcat({PL}, {P0}))%%;\
+        /purge -i ~detect_worldtype_*_${world_name}%; \
+; generic prompt
+    /def -ip0 -n1 -w -mregexp -h'PROMPT ...[?:] *$$' \
+    ~detect_worldtype_prompt_${world_name} = \
+        /echo -e %%% This looks like an unterminated-prompt world, so I'm \
+            redefining it as one.  You should explicitly set the type with the \
+            -T option of /addworld.%%;\
+        /addworld -Tprompt ${world_name}%%; \
+        /set lp=1%%; \
+        /@test prompt(strcat({PL}, {P0}))%%; \
+        /purge -i ~detect_worldtype_*_${world_name}%; \
+; If there's no prompt in the first 60s, assume this is not a prompting world,
+; and undefine the hooks to avoid false positives later.
+    /repeat -60 1 \
+        /purge -i -mglob ~detect_worldtype_*_${world_name}
 
 
 ;; Default worldtype hook: tiny login format (for backward compatibility),
@@ -664,9 +674,21 @@
 /eval /set pi=$[2 * acos(0)]
 /eval /set e=$[exp(1)]
 
+
+;;; Copy shell's MAILPATH to tf's TFMAILPATH
+; MAILPATH is a colon-separated list of fields; each field is a filename and
+; an optional '?' or '%' followed by a message.
+
 /eval /if (MAILPATH !~ "") \
-    /set TFMAILPATH=$[replace(":", " ", MAILPATH)]%; \
+    /let _head=%; \
+    /let _tail=%{MAILPATH}%; \
+    /while (regmatch("^([^?%%:]+)([?%%][^:]+)?:?", {_tail}))%; \
+        /let _head=%{_head} %{P1}%; \
+        /let _tail=%{PR}%; \
+    /done%; \
+    /set TFMAILPATH=%{_head}%; \
 /endif
+
 
 ;;; Help for newbies
 /def -i -h'SEND help' -Fq send_help = \
