@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: history.c,v 35004.34 1997/11/16 22:04:57 hawkeye Exp $ */
+/* $Id: history.c,v 35004.36 1997/12/14 21:24:42 hawkeye Exp $ */
 
 
 /****************************************************************
@@ -317,6 +317,7 @@ int do_recall(args)
     }
     if (!hist) hist = world ? world->history : globalhist;
     if ((numbers = (args && *args == '#'))) args++;
+    while(isspace(*args)) args++;
 
     t0 = 0;
     t1 = now;
@@ -629,7 +630,7 @@ struct Value *handle_log_command(args)
     History dummy;
     TFILE *logfile = NULL;
 
-    if (restrict >= RESTRICT_FILE) {
+    if (restriction >= RESTRICT_FILE) {
         eprintf("restricted");
         return newint(0);
     }

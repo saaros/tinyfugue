@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: keyboard.c,v 35004.27 1997/11/16 22:04:58 hawkeye Exp $ */
+/* $Id: keyboard.c,v 35004.29 1997/12/11 07:11:22 hawkeye Exp $ */
 
 /**************************************************
  * Fugue keyboard handling.
@@ -120,7 +120,8 @@ void unbind_key(macro)
 }
 
 /* returns 0 at EOF, 1 otherwise */
-int handle_keyboard_input(int read_flag)
+int handle_keyboard_input(read_flag)
+    int read_flag;
 {
     char buf[64];
     CONST char *s;
@@ -385,6 +386,7 @@ int do_kbmatch()
 int handle_input_line()
 {
     String *line;
+    int result;
 
     SStringcpy(scratch, keybuf);
     Stringterm(keybuf, keyboard_pos = 0);
@@ -404,7 +406,10 @@ int handle_input_line()
 
     if (kecho) tfprintf(tferr, "%s%S", kprefix, line);
     record_input(line->s);
-    return process_macro(line->s, NULL, sub);
+    readsafe = 1;
+    result = process_macro(line->s, NULL, sub);
+    readsafe = 0;
+    return result;
 }
 
 #ifdef DMALLOC

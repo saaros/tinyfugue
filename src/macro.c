@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: macro.c,v 35004.45 1997/11/20 08:42:45 hawkeye Exp $ */
+/* $Id: macro.c,v 35004.47 1997/12/09 05:50:34 hawkeye Exp $ */
 
 
 /**********************************************
@@ -885,6 +885,12 @@ static String *attr2str(attrs)
     if (attrs & F_BOLD)      Stringadd(buffer, 'B');
     if (attrs & F_BELL)      Stringadd(buffer, 'b');
     if (attrs & F_HILITE)    Stringadd(buffer, 'h');
+    if (attrs & F_FGCOLOR)
+        Sprintf(buffer, SP_APPEND, "C%s", enum_color[attr2fgcolor(attrs)]);
+    if (attrs & F_BGCOLOR) {
+        if (buffer->len) Stringadd(buffer, ',');
+        Sprintf(buffer, SP_APPEND, "C%s", enum_color[attr2bgcolor(attrs)]);
+    }
     return buffer;
 }
 
@@ -948,7 +954,7 @@ static int list_defs(file, spec, mflag)  /* list all specified macros */
             if (!file) Sprintf(buffer, 0, "%% %d: /def ", p->num);
             else Stringcpy(buffer, "/def ");
             if (p->invis) Stringcat(buffer, "-i ");
-            if ((p->trig.str || p->hook) && p->pri)
+            if ((p->trig.str || p->hook) && (p->pri || p->fallthru))
                 Sprintf(buffer, SP_APPEND, "-%sp%d ",
                     p->fallthru ? "F" : "", p->pri);
             if (p->trig.str && p->prob != 100)
@@ -958,21 +964,12 @@ static int list_defs(file, spec, mflag)  /* list all specified macros */
                 if (p->attr & F_NOHISTORY)  Stringadd(buffer, 'G');
                 Stringadd(buffer, ' ');
             } else if (p->attr & ~F_NORM) {
-                if (p->attr & ~F_COLORS) Sprintf(buffer, SP_APPEND, "-a%S ",
-                    attr2str(p->attr));
-                if (p->attr & F_FGCOLOR) Sprintf(buffer, SP_APPEND, "-aC%s ",
-                    enum_color[attr2fgcolor(p->attr)]);
-                if (p->attr & F_BGCOLOR) Sprintf(buffer, SP_APPEND, "-aC%s ",
-                    enum_color[attr2bgcolor(p->attr)]);
+                Sprintf(buffer, SP_APPEND, "-a%S ", attr2str(p->attr));
             }
             if (p->subattr & ~F_NORM) {
-              mflag = MATCH_REGEXP;
-              if (p->subattr & ~F_COLORS) Sprintf(buffer, SP_APPEND, "-P%d%S ",
-                  (int)p->subexp, attr2str(p->subattr));
-              if (p->subattr & F_BGCOLOR) Sprintf(buffer, SP_APPEND, "-P%dC%s ",
-                  (int)p->subexp, enum_color[attr2bgcolor(p->subattr)]);
-              if (p->subattr & F_FGCOLOR) Sprintf(buffer, SP_APPEND, "-P%dC%s ",
-                  (int)p->subexp, enum_color[attr2fgcolor(p->subattr)]);
+                mflag = MATCH_REGEXP;
+                Sprintf(buffer, SP_APPEND, "-P%d%S ", (int)p->subexp,
+                    attr2str(p->subattr));
             }
             if (p->shots)
                 Sprintf(buffer, SP_APPEND, "-n%d ", p->shots);
@@ -1196,6 +1193,7 @@ int find_and_run_matches(text, hook, alinep, world, globalflag)
      * new macro just after itself in triglist/hooklist.
      */
 
+    recur_count++;
     node = hook ? hooklist->head : triglist->head;
     for ( ; node && MAC(node)->pri >= lowerlimit; node = node->next) {
         macro = MAC(node);
@@ -1226,14 +1224,13 @@ int find_and_run_matches(text, hook, alinep, world, globalflag)
     }
 
     /* run exactly one of the non fall-thrus. */
-    recur_count++;
     if (num > 0) {
         for (num = RRAND(0, num-1); num; num--)
             first = first->tnext;
         ran += run_match(first, text, hook, alinep ? *alinep : NULL);
     }
-    recur_count--;
 
+    recur_count--;
     return ran;
 }
 

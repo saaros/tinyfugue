@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.c,v 35004.56 1997/11/20 07:16:32 hawkeye Exp $ */
+/* $Id: output.c,v 35004.64 1997/12/23 04:34:50 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -31,7 +31,8 @@
 #include "search.h"
 #include "tty.h"	/* init_tty(), get_window_wize() */
 #include "variable.h"
-#include "expand.h"	/* evalexpr() */
+#include "expand.h"	/* current_command */
+#include "expr.h"	/* evalexpr() */
 #include "keyboard.h"	/* keyboard_pos */
 
 #ifdef EMXANSI
@@ -133,6 +134,8 @@ typedef struct status_field {
     attr_t attrs;
 } StatusField;
 
+#define true_status_pad (status_pad && *status_pad ? *status_pad : ' ')
+
 static void  NDECL(init_term);
 static int   FDECL(fbufputc,(int c));
 static void  NDECL(bufflush);
@@ -148,11 +151,12 @@ static void  FDECL(scroll_input,(int n));
 static void  FDECL(ictrl_put,(CONST char *s, int n));
 static int   FDECL(ioutputs,(CONST char *str, int len));
 static void  FDECL(ioutall,(int kpos));
-static void  FDECL(format_status_field,(StatusField *field));
+static void  FDECL(format_status_field,(StatusField *field, attr_t *attrp));
 static void  FDECL(attributes_off,(attr_t attrs));
 static void  FDECL(attributes_on,(attr_t attrs));
 static void  FDECL(color_on,(long color));
 static void  FDECL(hwrite,(Aline *line, int offset));
+static int   FDECL(set_attr_var,(int i));
 static void  FDECL(set_attr,(Aline *aline, char *dest, attr_t *starting,
              attr_t *current));
 static int   NDECL(check_more);
@@ -373,7 +377,7 @@ void init_output()
     (moreprompt = new_aline("--More--", more_attrs))->links++;
 
     init_term();
-    ch_hilite();
+    ch_hiliteattr();
     setup_screen(-1);
     output_disabled = 0;
 }
@@ -586,6 +590,7 @@ void setup_screen(clearlines)
 {
     top_margin = 1;
     bottom_margin = lines;
+    if (clearlines < 0 || screen_mode != 1) clearlines = isize;
     screen_mode = visual;
     output_disabled++;
 
@@ -602,9 +607,9 @@ void setup_screen(clearlines)
     
         if (scroll && (has_scroll_region || (insert_line && delete_line))) {
             xy(1, lines);
-            if (clearlines) crnl(clearlines > 0 ? clearlines : isize);
+            if (clearlines) crnl(clearlines);
         } else {
-            if (clearlines) clr();
+            if (clearlines > 0) clr();
             if (scroll) setivar("scroll", 0, FALSE);
         }
         update_status_line();
@@ -631,8 +636,8 @@ int redraw()
 
 int ch_status_fields()
 {
-    char *name, *s, *t;
-    int width, column, varfound = 0;
+    char *s, *t, save;
+    int width, column, i = 0, varfound = 0;
     STATIC_BUFFER(scratch);
     ListEntry *last = status_field_list->tail;
     StatusField *field;
@@ -644,61 +649,75 @@ int ch_status_fields()
     width = 0;
     while (1) {
         field = NULL;
-        name = stringarg(&s, NULL);
-        if (!*name) break;
+        while(isspace(*s)) s++;
+        if (!*s) break;
         field = XMALLOC(sizeof(*field));
+        field->name = NULL;
         field->var = NULL;
         field->attrs = 0;
         field->rightjust = 0;
-        field->width = -1;
+        field->width = 0;
         field->internal = -1;
-        if ((t = strchr(name, ':'))) {
-            *t++ = '\0';
-            if (isdigit(*t)) {
-                field->width = atoi(t);
-                if ((field->rightjust = field->width < 0))
-                    field->width = -field->width;
-                while (isdigit(*t)) t++;
-            }
-            if (*t == ':') {
-                t++;
-                if ((field->attrs = parse_attrs(&t)) < 0)
-                    goto ch_status_fields_error;
-            }
-            if (*t) {
-                eprintf("Field %s followed by garbage: %s", name, t);
-                goto ch_status_fields_error;
-            }
-        }
+        i++;
 
-        if (*name == '@') {                                /* internal */
-            name++;
-            field->internal = enum2int(name, enum_status, "status_fields");
-            if (field->internal < 0)
-                goto ch_status_fields_error;
-            field->name = STRDUP(name);
-        } else if (is_quote(*name)) {                      /* string literal */
+        if (is_quote(*s)) {                                /* string literal */
             STATIC_BUFFER(buffer);
-            if (!stringliteral(buffer, &name)) {
+            if (!stringliteral(buffer, &s)) {
                 eprintf("%S in status_fields", buffer);
                 goto ch_status_fields_error;
             }
             field->name = STRDUP(buffer->s);
-            if (field->width < 0)
-                field->width = strlen(field->name);
-        } else if (*name) {                                /* variable */
-            field->var = ffindglobalvar(name);
+        } else if (*s == '@') {                            /* internal */
+            for (t = ++s; isalnum(*s) || *s == '_'; s++);
+            save = *s;
+            *s = '\0';
+            field->internal = enum2int(t, enum_status,
+                "status_fields internal status");
+            if (field->internal < 0)
+                goto ch_status_fields_error;
+            field->name = STRDUP(t);
+            *s = save;
+        } else if (isalnum(*s) || *s == '_') {             /* variable */
+            for (t = s++; isalnum(*s) || *s == '_'; s++);
+            save = *s;
+            *s = '\0';
+            field->name = STRDUP(t);
+            *s = save;
+            field->var = ffindglobalvar(field->name);
             if (!field->var) {
-                eprintf("ignoring nonexistant variable %s.", name);
-                continue;
+                eprintf("variable '%s' is not defined.", field->name);
+                goto ch_status_fields_error;
             }
-            field->name = STRDUP(name);
         } else {                                           /* blank */
             field->name = NULL;
         }
-        inlist(field, status_field_list, status_field_list->tail);
 
-        if (field->width < 0) {
+        if (*s == ':') {
+            s++;
+            field->width = strtoint(&s);
+            if ((field->rightjust = field->width < 0))
+                field->width = -field->width;
+        }
+
+        if (*s == ':') {
+            for (t = s + 1; *s && !isspace(*s); s++);
+            save = *s;
+            *s = '\0';
+            field->attrs = parse_attrs(&t);
+            *s = save;
+            if (field->attrs < 0)
+                goto ch_status_fields_error;
+        }
+
+        if (*s && !isspace(*s)) {
+            eprintf("status_fields: garbage in field %d: %.8s", i, s);
+            goto ch_status_fields_error;
+        }
+
+        if (!field->width && !field->var && field->internal < 0 && field->name)
+            field->width = strlen(field->name);
+
+        if (field->width == 0) {
             if (varfound) {
                 eprintf("Only one variable width field is allowed.");
                 goto ch_status_fields_error;
@@ -707,7 +726,10 @@ int ch_status_fields()
         } else {
             width += field->width;
         }
+
+        inlist(field, status_field_list, status_field_list->tail);
     }
+
     if (width > columns) {
         eprintf("status width %d would be larger than screen", width);
         goto ch_status_fields_error;
@@ -737,23 +759,24 @@ int ch_status_fields()
     for (node = status_field_list->head; node; node = node->next) {
         field = (StatusField*)node->datum;
         status_left = field->column = column;
-        if (field->width < 0) break;
+        if (field->width == 0) break;
         column += field->width;
     }
     column = 0;
     for (node = status_field_list->tail; node; node = node->prev) {
         field = (StatusField*)node->datum;
-        if (field->width < 0) break;
-        field->column = column - field->width;
-        status_right = -(column -= field->width);
+        if (field->width == 0) break;
+        status_right = -(field->column = (column -= field->width));
     }
 
     update_status_line();
     return 1;
 
 ch_status_fields_error:
-    if (field)
+    if (field) {
+        if (field->name) FREE(field->name);
         FREE(field);
+    }
     /* delete new fields */
     if (last) {
         for (node = last->next; node; node = last) {
@@ -766,8 +789,9 @@ ch_status_fields_error:
     return 0;
 }
 
-static void format_status_field(field)
+static void format_status_field(field, attrp)
     StatusField *field;
+    attr_t *attrp;
 {
     STATIC_BUFFER(varname);
     STATIC_BUFFER(scratch);
@@ -781,19 +805,20 @@ static void format_status_field(field)
         Stringcat(varname, field->var ? "var_" : "int_");
         Stringcat(varname, field->name);
         expression = getnearestvar(varname->s, NULL);
+        old_command = current_command;
         if (expression) {
-            old_command = current_command;
             current_command = varname->s;
             evalexpr(scratch, expression);
-            current_command = old_command;
         } else if (field->var) {
+            current_command = field->name;
             evalexpr(scratch, field->name);
         }
+        current_command = old_command;
     } else if (field->name) {   /* string literal */
         Stringcpy(scratch, field->name);
     }
 
-    width = (field->width >= 0) ? field->width :
+    width = (field->width > 0) ? field->width :
         columns - status_right - status_left;
     if (width > columns - (cx - 1))
         width = columns - (cx - 1);
@@ -801,13 +826,31 @@ static void format_status_field(field)
         Stringterm(scratch, width);
 
     if (field->rightjust && scratch->len < width) {
-        bufputnc('_', width - scratch->len);  cx += width - scratch->len;
+        if (*attrp != status_attr) {
+            if (*attrp) attributes_off(*attrp);
+            if (status_attr) attributes_on(status_attr);
+            *attrp = status_attr;
+        }
+        bufputnc(true_status_pad, width - scratch->len);
+        cx += width - scratch->len;
     }
-    if (field->attrs) attributes_on(field->attrs);
+
+    if ((field->attrs | status_attr) != *attrp) {
+        if (*attrp) attributes_off(*attrp);
+        if ((field->attrs | status_attr))
+            attributes_on(field->attrs | status_attr);
+        *attrp = field->attrs | status_attr;
+    }
     bufputs(scratch->s);  cx += scratch->len;
-    if (field->attrs) attributes_off(field->attrs);
+
     if (!field->rightjust && scratch->len < width) {
-        bufputnc('_', width - scratch->len);  cx += width - scratch->len;
+        if (*attrp != status_attr) {
+            if (*attrp) attributes_off(*attrp);
+            if (status_attr) attributes_on(status_attr);
+            *attrp = status_attr;
+        }
+        bufputnc(true_status_pad, width - scratch->len);
+        cx += width - scratch->len;
     }
 
     if (field->internal == STAT_MORE)
@@ -828,6 +871,7 @@ void update_status_field(var, internal)
 {
     ListEntry *node;
     StatusField *field;
+    attr_t attrs;
 
     if (screen_mode < 1) return;
 
@@ -837,38 +881,48 @@ void update_status_field(var, internal)
         if (internal >= 0 && field->internal != internal) continue;
 
         xy((field->column < 0 ? columns : 0) + field->column + 1,  ystatus);
-        format_status_field(field);
+        attrs = 0;
+        format_status_field(field, &attrs);
+        if (attrs) attributes_off(attrs);
     }
 
     bufflush();
     set_refresh_pending(REF_PHYSICAL);
 }
 
-void update_status_line()
+int update_status_line()
 {
     ListEntry *node;
     StatusField *field;
     int right = 0;
+    attr_t attrs = 0;
 
-    if (screen_mode < 1) return;
+    if (screen_mode < 1) return 1;
 
     xy(1, ystatus);
 
     for (node = status_field_list->head; node; node = node->next) {
         field = (StatusField*)node->datum;
 
-        format_status_field(field);
+        format_status_field(field, &attrs);
         if (cx - 1 >= columns) break;
 
-        if (field->width < 0)
+        if (field->width == 0)
             right = 1;
     }
 
-    if (cx - 1 < columns)
-        bufputnc('_', columns - (cx - 1));
+    if (cx - 1 < columns) {
+        if (attrs != status_attr) {
+            if (attrs) attributes_off(attrs);
+            if (status_attr) attributes_on(status_attr);
+        }
+        bufputnc(true_status_pad, columns - (cx - 1));
+    }
+    if (attrs) attributes_off(attrs);
 
     bufflush();
     set_refresh_pending(REF_PHYSICAL);
+    return 1;
 }
 
 /* used by %{visual}, %{isize}, SIGWINCH */
@@ -1813,16 +1867,29 @@ static void output_scroll()
  * Interfaces with rest of program *
  ***********************************/
 
-int ch_hilite()
+int ch_hiliteattr()
+{
+    return set_attr_var(VAR_hiliteattr);
+}
+
+int ch_status_attr()
+{
+    if (!set_attr_var(VAR_status_attr)) return 0;
+    update_status_line();
+    return 1;
+}
+
+static int set_attr_var(i)
+    int i;
 {
     CONST char *str;
     attr_t attrs;
 
-    if (!(str = getstrvar(VAR_hiliteattr))) {
-        intvar(VAR_hiliteattr) = 0;
+    if (!(str = getstrvar(i))) {
+        intvar(i) = 0;
         return 1;
     } else if ((attrs = parse_attrs((char **)&str)) >= 0) {
-        intvar(VAR_hiliteattr) = attrs;
+        intvar(i) = attrs;
         return 1;
     } else {
         return 0;
@@ -1975,7 +2042,7 @@ void free_output()
     free_aline(moreprompt);
     while (status_field_list->head) {
         f = (StatusField*)unlist(status_field_list->head, status_field_list);
-        FREE(f->name);
+        if (f->name) FREE(f->name);
         FREE(f);
     }
 }

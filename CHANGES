@@ -1,8 +1,31 @@
 Only the most recent version will have detailed changes described.
 Some fixes are followed by the version in which the problem first appeared.
 
+4.0 alpha 4 (12/28/97)
+-----------
+Added /exit to abort a /load.
+Added %auto_fg, so automatic foreground after disconnect is optional.
+Function forms of tr(), replace(), and grab() preserve spaces in arguments.
+read() is obsolete.  Use tfread() instead.
+Reconnecting to a world with a "dead" Socket will re-use that Socket.
+Variables used in %status_fields can not be unset.
+ESC-w in world-q.tf does something useful after disconnect and /bg.
+Restored old undocumented behavior of | and & returning value of last operand.
+Eliminated spurious pedantic warning for string in integer context, for
+  special variables with value 0. (40a3)
+Workaround for limitation in some versions (HP-UX) of "make".
+Fixed "restrict" error under new gcc due to conflict with "C9X" draft.
+Fixed handling of mod() by zero.
+Fixed redraw bug for changing isize while visual=off (e.g., in .tfrc).
+Fixed use of %? after error in /return or /test.
+Fixed "/return variable" and "/test variable" returning an empty value.
+Fixed %status_fields: right justification, strings containing ":". (40a3)
+Fixed: interrupt during a tfread() from the keyboard disconnected sockets.
+Fixed handling of world_info() with illegal field name. (40a1)
+Fixed /list for macros with -Fp0.
+
 4.0 alpha 3 (11/20/97)
-----------
+-----------
 Blank space is not inserted automatically between fields of %status_fields.
 %status_fields may contain string literals.
 Added %pedantic to generate warnings about some potential problems in macros.
@@ -15,7 +38,7 @@ Fixed /unset status_fields. (40a1)
 Fixed setting of executable name in unix/tfconfig. (40a1)
 
 4.0 alpha 2 (11/6/97)
-----------
+-----------
 Fixed parameter subs for macro-as-command called by macro-as-function
   (including ismacro() and /more). (40a1)
 Fixed use of color in %status_fields. (40a1)
@@ -23,7 +46,7 @@ Eliminated unneeded 1s updates of visual more status. (40a1)
 Added warnings for new 4.0 semantics of old code.
 
 4.0 alpha 1 (11/5/97)
-----------
+-----------
 Ported to Win32 (requires Cygwin Development Kit).
 %clock is no longer used.  See "/help %clock".
 %0 is the name of the executing macro.  This will break all existing code

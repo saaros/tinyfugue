@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: commands.h,v 35004.10 1997/11/16 22:04:56 hawkeye Exp $ */
+/* $Id: commands.h,v 35004.11 1997/11/23 23:03:56 hawkeye Exp $ */
 
 #ifndef COMMANDS_H
 #define COMMANDS_H
@@ -26,6 +26,7 @@ extern HANDLER (handle_dc_command);
 extern HANDLER (handle_def_command);
 extern HANDLER (handle_dokey_command);
 extern HANDLER (handle_edit_command);
+extern HANDLER (handle_exit_command);
 extern HANDLER (handle_export_command);
 extern HANDLER (handle_fg_command);
 extern HANDLER (handle_help_command);

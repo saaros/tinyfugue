@@ -64,7 +64,7 @@ TF tf$(X):     $(OBJS) $(BUILDERS)
 #	@# ULTRIX's sh errors here if strip isn't found, despite "true".
 	-test -z "$(STRIP)" || $(STRIP) tf$(X) || true
 
-$(TF): tf$(X) $(BUILDERS)
+install_TF $(TF): tf$(X) $(BUILDERS)
 	-@rm -f $(TF)
 	cp tf$(X) $(TF)
 	chmod $(MODE) $(TF)

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: process.c,v 35004.20 1997/11/16 22:04:58 hawkeye Exp $ */
+/* $Id: process.c,v 35004.23 1997/12/23 04:34:51 hawkeye Exp $ */
 
 /************************
  * Fugue processes.     *
@@ -28,7 +28,7 @@
 #include "commands.h"
 #include "output.h"  /* oflush() */
 
-#define P_REPEAT     '\0'
+#define P_REPEAT     'R'
 #define P_QFILE      '\''
 #define P_QSHELL     '!'
 #define P_QRECALL    '#'
@@ -72,16 +72,15 @@ static int  FDECL(procopt,(CONST char *opts, char **argp, TIME_T *ptime,
     struct World **world, int *disp));
 
 TIME_T proctime = 0;              /* when next process should be run */
-int runall_depth = 0;
 
+static int runall_depth = 0;
 static Proc *proclist = NULL;     /* procedures to execute */
 
 struct Value *handle_ps_command(args)
     char *args;
 {
     Proc *p;
-    char obuf[18];
-    char nbuf[10];
+    char obuf[18], nbuf[10];
     TIME_T now, next;
     int opt, shortflag = FALSE;
 
@@ -447,7 +446,7 @@ struct Value *handle_quote_command(args)
 
     switch (type) {
     case P_QFILE:
-        if (restrict >= RESTRICT_FILE) {
+        if (restriction >= RESTRICT_FILE) {
             eprintf("files restricted");
             return newint(0);
         }
@@ -458,7 +457,7 @@ struct Value *handle_quote_command(args)
         }
         break;
     case P_QSHELL:
-        if (restrict >= RESTRICT_SHELL) {
+        if (restriction >= RESTRICT_SHELL) {
             eprintf("shell restricted");
             return newint(0);
         }

@@ -83,7 +83,7 @@ help ./tf-lib/tf-help: _always_
 
 tar ../tf-$(TFVER).tar: ./src/*.[ch] srcdist distclean
 	@-cd ./src; echo Possible garbage in src: \
-	    `ls *in *out *err *foo* *bar* *.new *.old *.ok *.c.* *.tf \
+	    `ls *in *out *err *foo* *bar* *.new *.old *.ok *.c.* *.tf *[0-9] \
 	    2>/dev/null`
 	@-echo Possible garbage in top: \
 	    `ls *.gz *.Z *.zip 2>/dev/null`

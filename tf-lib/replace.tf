@@ -10,10 +10,13 @@
 /~loaded replace.tf
 
 /def -i replace = \
-    /let old=%1%;\
-    /let new=%2%;\
+    /let old=%;\
+    /let new=%;\
     /let left=%;\
-    /let right=%-2%;\
+    /let right=%;\
+    /test old:={1}%;\
+    /test new:={2}%;\
+    /test right:={-2}%;\
     /while /let i=$[strstr(right, old)]%; /@test i >= 0%; /do \
          /@test left := strcat(left, substr(right, 0, i), new)%;\
          /@test right := substr(right, i + strlen(old))%;\

@@ -12,14 +12,17 @@
 /~loaded tr.tf
 
 /def -i tr = \
-    /let old=%1%;\
-    /let new=%2%;\
-    /let tail=%-2%;\
+    /let old=%;\
+    /let new=%;\
+    /let tail=%;\
+    /test old:={1}%;\
+    /test new:={2}%;\
+    /test tail:={-2}%;\
     /let dest=%;\
     /while /let i=$[strchr(tail, old)]%; /@test i >= 0%; /do \
         /let j=$[strchr(old, substr(tail, i, 1))]%;\
-        /let dest=$[strcat(dest, substr(tail,0,i), substr(new, j, 1))]%;\
-        /let tail=$[substr(tail,i+1)]%;\
+        /test dest:=strcat(dest, substr(tail,0,i), substr(new, j, 1))%;\
+        /test tail:=substr(tail,i+1)%;\
     /done%;\
     /echo -- %{dest}%{tail}
 

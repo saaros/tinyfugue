@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tf.h,v 35004.12 1997/11/13 08:46:50 hawkeye Exp $ */
+/* $Id: tf.h,v 35004.13 1997/12/14 21:24:43 hawkeye Exp $ */
 
 #ifndef TF_H
 #define TF_H
@@ -128,7 +128,7 @@ enum Hooks {
 
 /* externs */
 extern CONST char version[], sysname[], copyright[], contrib[], mods[];
-extern int restrict;
+extern int restriction;
 
 
 #endif /* TF_H */

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.c,v 35004.33 1997/11/20 07:17:48 hawkeye Exp $ */
+/* $Id: tfio.c,v 35004.35 1997/12/14 21:24:43 hawkeye Exp $ */
 
 
 /***********************************
@@ -52,7 +52,8 @@
 
 TFILE *loadfile = NULL; /* currently /load'ing file */
 int loadline = 0;       /* line number of currently /load'ing file */
-int read_depth = 0;     /* nesting level of user reads of keyboard */
+int read_depth = 0;     /* nesting level of user kb reads */
+int readsafe = 0;       /* safe to do a user kb read? */
 TFILE *tfkeyboard;      /* user input */
 TFILE *tfscreen;        /* text waiting to be displayed */
 TFILE *tfin;            /* pointer to current input queue */
@@ -206,7 +207,7 @@ TFILE *tfopen(name, mode)
     }
 
     /* If file did not exist, look for compressed copy. */
-    if (!fp && *mode == 'r' && errno == ENOENT && restrict < RESTRICT_SHELL &&
+    if (!fp && *mode == 'r' && errno == ENOENT && restriction < RESTRICT_SHELL &&
         (suffix = macro_body("compress_suffix")) && *suffix &&
         (prog = macro_body("compress_read")) && *prog)
     {
@@ -664,10 +665,9 @@ String *tfgetS(str, file)
          * quirks, like the odd handling of /dokey newline.
          */
         TFILE *oldtfout, *oldtfin;
-        extern int runall_depth;
 
-        if (runall_depth) {
-            eprintf("can't read keyboard from a process.");
+        if (!readsafe) {
+            eprintf("keyboard can only be read from a command line command.");
             return NULL;
         }
         if (read_depth) eprintf("warning: nested keyboard read");
@@ -675,9 +675,11 @@ String *tfgetS(str, file)
         oldtfin = tfin;
         tfout = tfscreen;
         tfin = tfkeyboard;
+        readsafe = 0;
         read_depth++; update_status_field(NULL, STAT_READ);
         main_loop();
         read_depth--; update_status_field(NULL, STAT_READ);
+        readsafe = 1;
         tfout = oldtfout;
         tfin = oldtfin;
         if (interrupted())

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: main.c,v 35004.29 1997/11/17 08:34:11 hawkeye Exp $ */
+/* $Id: main.c,v 35004.32 1997/12/14 21:24:42 hawkeye Exp $ */
 
 
 /***********************************************
@@ -34,6 +34,7 @@
 #include "variable.h"
 #include "tty.h"	/* no_tty */
 #include "expand.h"
+#include "expr.h"
 #include "process.h"
 #include "search.h"
 
@@ -43,7 +44,7 @@ CONST char sysname[] = UNAME;
  * to the version number, and put a brief description of the modifications
  * in the mods[] string.
  */
-CONST char version[] = "TinyFugue version 4.0 alpha 3";
+CONST char version[] = "TinyFugue version 4.0 alpha 4";
 CONST char mods[] = "";
 
 CONST char copyright[] =
@@ -56,7 +57,7 @@ CONST char contrib[] =
     "";
 #endif
 
-int restrict = 0;
+int restriction = 0;
 
 static void FDECL(read_configuration,(CONST char *fname));
 int FDECL(main,(int argc, char **argv));
@@ -176,6 +177,7 @@ int main(argc, argv)
     free_keyboard();
     free_search();
     free_expand();
+    free_expr();
     free_help();
     free_reserve();
     debug_mstats("tf");

@@ -5,12 +5,14 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: command.h,v 35004.4 1997/11/16 22:04:56 hawkeye Exp $ */
+/* $Id: command.h,v 35004.5 1997/11/23 23:03:56 hawkeye Exp $ */
 
 #ifndef COMMAND_H
 #define COMMAND_H
 
 typedef struct Value *FDECL((Handler),(char *args));
+
+extern int exiting;
 
 extern int      FDECL(handle_command,(String *cmd_line));
 extern Handler *FDECL(find_command,(CONST char *cmd));

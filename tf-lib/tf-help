@@ -240,7 +240,7 @@
   enclosing [1m/WHILE[22m loops.  If used outside a [1m/WHILE[22m loop, the [1mmacro[22m evaluation 
   is terminated.  
 
-  See: [1m/while[22m, [1mevaluation[22m 
+  See: [1m/while[22m, [1m/return[22m, [1m/exit[22m, [1mevaluation[22m 
 
 &/cat
 
@@ -472,7 +472,7 @@
           is omitted it defaults to 0, i.e.  the text matched by the entire 
           [1mregexp[22m.  If there are multiple matches in the text, the [1mattributes[22m 
           will be applied to all of them.  Implies [1m-m[22mregexp.  Only one [1m-P[22m 
-          option is allowed.  
+          option is allowed.  See "[1mattributes[22m".  
 
 #-f
   -f      Same as [1m-a[22m, for backward compatibility.  
@@ -682,8 +682,8 @@
 
   -a<[4mattrs[24m> 
           Echo <[4mtext[24m> with the [1mattributes[22m given by <[4mattrs[24m>.  
-  -p      Interpet @{<[4mattr[24m>} sequences as commands to set [1mattributes[22m 
-          inline.  
+  -p      Interpet @{<[4mattr[24m>} strings as commands to set [1mattributes[22m 
+          inline.  "@@" strings are interpreted as "@".  
   -w<[4mworld[24m> 
           Echo <[4mtext[24m> to the <[4mworld[24m> [1mstream[22m instead of the default [1mtfout 
           stream[22m (see [1mtfio[22m).  If "-w" is given with no <[4mworld[24m>, the [1mcurrent[22m 
@@ -824,6 +824,22 @@
   which may be undesirable.  
 
   See: [1mevaluation[22m 
+
+&/exit
+
+/exit
+
+  Usage: 
+
+  [1m/EXIT[22m [<[4mn[24m>]
+  ____________________________________________________________________________
+
+  When called directly or indirectly during a [1m/load[22m, [1m/exit[22m aborts execution of 
+  all enclosing macro bodies, and aborts <[4mn[24m> (default 1) enclosing [1m/load[22m's.  
+
+  When called outside of a [1m/load[22m, [1m/exit[22m has no effect.  
+
+  See: [1m/load[22m, [1m/return[22m, [1m/break[22m 
 
 &/export
 
@@ -1275,24 +1291,24 @@ index
   Commands marked with '+' are new in the current version.  Commands marked 
   with '*' have changed in the current version.  
 
-   [1mADDWORLD[22m       [1mFINGER[22m        +[1mLISTVAR[22m        [1mSAVE[22m           [1mTRIGGER[22m       
-   [1mBAMF[22m           [1mFOR[22m           *[1mLISTWORLDS[22m     [1mSAVEWORLD[22m      [1mUNBIND[22m        
-   [1mBEEP[22m           [1mGAG[22m            [1mLOAD[22m          *[1mSEND[22m          *[1mUNDEF[22m         
-   [1mBIND[22m           [1mGETFILE[22m        [1mLOCALECHO[22m      [1mSET[22m            [1mUNDEFN[22m        
-   [1mBREAK[22m          [1mGRAB[22m           [1mLOG[22m            [1mSETENV[22m         [1mUNDEFT[22m        
-   [1mCAT[22m            [1mGREP[22m           [1mmapping[22m        [1mSH[22m             [1mUNHOOK[22m        
-   [1mCHANGES[22m        [1mHELP[22m           [1mNOHILITE[22m       [1mSHIFT[22m          [1mUNSET[22m         
-   [1mCONNECT[22m        [1mHILITE[22m         [1mPARTIAL[22m        [1mspelling[22m       [1mUNTRIG[22m        
-   [1mDC[22m             [1mHISTSIZE[22m       [1mPASTE[22m          [1mSUB[22m           *[1mUNWORLD[22m       
-   [1mDEF[22m            [1mHOOK[22m           [1mPS[22m             [1mSUBSTITUTE[22m     [1mVERSION[22m       
-   [1mDOKEY[22m          [1mIF[22m             [1mPURGE[22m          [1mSUSPEND[22m        [1mWATCHDOG[22m      
-  *[1mECHO[22m           [1mINPUT[22m         *[1mPURGEWORLD[22m     [1mTELNET[22m         [1mWATCHNAME[22m     
-   [1mEDIT[22m           [1mKILL[22m           [1mPUTFILE[22m        [1mTEST[22m           [1mWHILE[22m         
-   [1mESCAPE[22m         [1mLCD[22m            [1mQUIT[22m           [1mTICK[22m           [1mWORLD[22m         
-   [1mEVAL/NOT[22m       [1mLET[22m            [1mQUOTE[22m          [1mTIME[22m                         
+   [1mADDWORLD[22m       [1mFG[22m            *[1mLISTSOCKETS[22m   +[1mRETURN[22m         [1mTRIG[22m          
+   [1mBAMF[22m           [1mFINGER[22m        +[1mLISTVAR[22m        [1mSAVE[22m           [1mTRIGGER[22m       
+   [1mBEEP[22m           [1mFOR[22m           *[1mLISTWORLDS[22m     [1mSAVEWORLD[22m      [1mUNBIND[22m        
+   [1mBIND[22m           [1mGAG[22m            [1mLOAD[22m          *[1mSEND[22m          *[1mUNDEF[22m         
+   [1mBREAK[22m          [1mGETFILE[22m        [1mLOCALECHO[22m      [1mSET[22m            [1mUNDEFN[22m        
+   [1mCAT[22m            [1mGRAB[22m           [1mLOG[22m            [1mSETENV[22m         [1mUNDEFT[22m        
+   [1mCHANGES[22m        [1mGREP[22m           [1mmapping[22m        [1mSH[22m             [1mUNHOOK[22m        
+   [1mCONNECT[22m        [1mHELP[22m           [1mNOHILITE[22m       [1mSHIFT[22m          [1mUNSET[22m         
+   [1mDC[22m             [1mHILITE[22m         [1mPARTIAL[22m        [1mspelling[22m       [1mUNTRIG[22m        
+   [1mDEF[22m            [1mHISTSIZE[22m       [1mPASTE[22m          [1mSUB[22m           *[1mUNWORLD[22m       
+   [1mDOKEY[22m          [1mHOOK[22m           [1mPS[22m             [1mSUBSTITUTE[22m     [1mVERSION[22m       
+  *[1mECHO[22m           [1mIF[22m             [1mPURGE[22m          [1mSUSPEND[22m        [1mWATCHDOG[22m      
+   [1mEDIT[22m           [1mINPUT[22m         *[1mPURGEWORLD[22m     [1mTELNET[22m         [1mWATCHNAME[22m     
+   [1mESCAPE[22m         [1mKILL[22m           [1mPUTFILE[22m        [1mTEST[22m           [1mWHILE[22m         
+   [1mEVAL/NOT[22m       [1mLCD[22m            [1mQUIT[22m           [1mTICK[22m           [1mWORLD[22m         
+  +[1mEXIT[22m           [1mLET[22m            [1mQUOTE[22m          [1mTIME[22m                         
    [1mEXPORT[22m         [1mlist commands[22m  [1mRECALL[22m         [1mTOGGLE[22m                       
    [1mEXPR[22m           [1mLIST[22m           [1mRECORDLINE[22m     [1mTR[22m                           
-   [1mFG[22m            *[1mLISTSOCKETS[22m   +[1mRETURN[22m         [1mTRIG[22m                         
 
   See also: [1mintro[22m, [1mtopics[22m 
 
@@ -1351,6 +1367,9 @@ index
   For each <[4mpid[24m> given, [1m/kill[22m terminates the corresponding [1mprocess[22m ([1m/quote[22m or 
   [1m/repeat[22m command).  The pid of a [1mprocess[22m can be determined from the return 
   value of the [1m/quote[22m or [1m/repeat[22m, the [1m/ps[22m command, or a PROCESS [1mhook[22m.  
+
+  Bug: [1m/kill[22m on a pending [1m/quote[22m ! will block until the shell process exits.  
+  The block can be broken with an interrupt.  
 
   See: [1mprocesses[22m, [1m/quote[22m, [1m/repeat[22m, [1m/ps[22m 
 
@@ -1420,21 +1439,22 @@ index
   -s      List [1mmacros[22m in short format.  
   -m<[4mmatching[24m> 
           Determines matching style used for comparison of string fields 
-          ([1mtrigger[22m, binding, keyname, [1mhook[22m, worldtype, name, and body).  This 
-          is NOT compared against the -m options of other [1mmacros[22m.  If omitted, 
-          the style is determined by [1m%{matching}[22m.  
+          ([1mtrigger[22m, keybinding, keyname, [1mhook[22m, worldtype, name, and body).  
+          This is NOT compared against the -m options of other [1mmacros[22m.  If 
+          omitted, the style is determined by [1m%{matching}[22m.  
   -t<[4mpattern[24m> 
-          Matches [1mmacros[22m with [1mtriggers[22m matching <[4mpattern[24m>.  "-t" with no 
-          pattern matches all non-empty [1mtriggers[22m; a "{}" [1mglob[22m pattern or "^$" 
-          [1mregexp[22m can be used to match empty [1mtriggers[22m (i.e., no [1mtrigger[22m).  
   -b<[4mpattern[24m> 
-          Matches [1mmacros[22m with bindings matching <[4mpattern[24m>.  "-b" with no 
-          pattern matches all non-empty bindings; a "{}" [1mglob[22m pattern or "^$" 
-          [1mregexp[22m can be used to match empty bindings (i.e., no binding).  
-  -h<[4mpattern[24m> 
-          Matches [1mmacros[22m with [1mhooks[22m matching <[4mpattern[24m>.  "-h" by itself 
-          matches all non-empty [1mhooks[22m; "-h0" matches only [1mmacros[22m without 
-          [1mhooks[22m.  
+  -B<[4mpattern[24m> 
+  -T<[4mpattern[24m> 
+          Matches [1mmacros[22m with a corresponding [1m/def[22m option whose 
+          option-argument matches <[4mpattern[24m>.  <[4mpattern[24m>.  An option with no 
+          pattern matches all [1mmacros[22m that have that option, regardless of the 
+          option-argument.  A "{}" [1mglob[22m pattern or "^$" [1mregexp[22m can be used to 
+          match [1mmacros[22m that [1mdon't[22m have that option, 
+  -h["<[4mevent[24m>[ <[4mpattern[24m>]"] 
+          Matches [1mmacros[22m with [1mhooks[22m matching <[4mevent[24m> and <[4mpattern[24m>.  "-h" by 
+          itself matches all non-empty [1mhooks[22m; "-h0" matches only [1mmacros[22m 
+          without [1mhooks[22m.  
   -a<[4mattrs[24m> 
           Matches [1mmacros[22m having one or more of the display [1mattributes[22m in 
           <[4mattrs[24m>.  
@@ -1451,7 +1471,8 @@ index
 
 #
 
-  The -p, -c, -F, and -n options are strightforward comparisons.  
+  Other options allowed by [1m/def[22m may be used with [1m/list[22m, and are compared 
+  directly to macros.  
 
   The return value of [1m/list[22m is the number of the last [1mmacro[22m listed, or 0 if no 
   [1mmacros[22m were listed (because of error or none matched the specified options).  
@@ -1674,6 +1695,8 @@ list commands
   [1m%{TFLIBDIR}[22m.  If the COMPRESS_SUFFIX and COMPRESS_READ [1mmacros[22m are defined, 
   the file will be automatically uncompressed if needed.  
 
+  A [1m/load[22m may be aborted early with the [1m/exit[22m command.  
+
   Loaded files may be given any name, but names ending in ".tf" are 
   recommended.  
 
@@ -1681,7 +1704,7 @@ list commands
   [1m/loadhilite[22m, [1m/loadgag[22m, [1m/loadtrig[22m, [1m/loadhook[22m, and [1m/loadworld[22m.  These [1mmacros[22m 
   will load from a [1mdefault file[22m if no file is specified.  
 
-  See: [1mmacros[22m, [1mlibrary[22m, [1m/def[22m, [1m/save[22m, [1m/require[22m, [1m/lcd[22m, [1mfilenames[22m 
+  See: [1mmacros[22m, [1mlibrary[22m, [1m/exit[22m, [1m/def[22m, [1m/save[22m, [1m/lcd[22m, [1mfilenames[22m 
 
 &%always_echo
 &always_echo
@@ -2483,20 +2506,26 @@ Quoter Commands
 
   Usage: 
 
-  [1m/RETURN[22m <[4m[1mexpression[22m[24m>
+  [1m/RETURN[22m [<[4m[1mexpression[22m[24m>]
   ____________________________________________________________________________
 
-  [1m/return[22m stops execution of the macro body that called it, and causes the 
+  [1m/return[22m stops execution of the [1mmacro[22m body that called it, and causes the 
   macro to return the value of <[4m[1mexpression[22m[24m> (which can be any type, not just 
-  integer).  
+  integer).  If the <[4m[1mexpression[22m[24m> is omitted, the return value of the [1mmacro[22m is 
+  the empty string.  
 
-  This example defines several [1mmacros[22m intended to be called as a [1mfunctions[22m: 
-  [1m/def[22m square = [1m/return[22m [1mpow[22m({1}, 2) 
-  [1m/def[22m hypot = [1m/return[22m [1msqrt[22m(square({1}) + square({2})) 
-  [1m/def[22m strreverse = [1m/return[22m [1mstrcat[22m( [1mstrlen[22m({*})>1 ? strreverse([1msubstr[22m({*},1)): 
-  "", [1msubstr[22m({*},0,1)) 
+  These examples define several [1mmacros[22m intended to be called as a [1mfunctions[22m: 
 
-  See: [1m/if[22m, [1m/while[22m, [1m/test[22m, [1m/break[22m, [1mexpressions[22m, [1mevaluation[22m, [1mvariables[22m 
+    [1m/def[22m square = [1m/return[22m [1mpow[22m({1}, 2)
+
+    [1m/def[22m hypot = [1m/return[22m [1msqrt[22m(square({1}) + square({2}))
+
+    [1m/def[22m strrev = \
+        /let len=$[[1mstrlen[22m({*})]%; \
+        [1m/return[22m (len <= 1) ? {*} : \
+            [1mstrcat[22m(strrev([1msubstr[22m({*},len/2)), strrev([1msubstr[22m({*},0,len/2)))
+
+  See: [1m/if[22m, [1m/while[22m, [1m/test[22m, [1m/break[22m, [1m/exit[22m, [1mexpressions[22m, [1mevaluation[22m, [1mvariables[22m 
 
 &mudwho
 &rwho.tf
@@ -3484,6 +3513,7 @@ completion
   ESC /   filename completion.  
   ESC @   hostname completion.  
   ESC %   [1mvariable[22m name completion.  
+  ESC $   [1mmacro[22m name completion.  
   ESC ^W  world name completion.  
 
   To use them, type part of a word, type one of the keybindings, and the rest 
@@ -3734,14 +3764,17 @@ Operators
           value of [4mb[24m.  Only useful if [4ma[24m has some side effect.  
 
   The comparison operators return 0 for false, nonzero for true.  The boolean 
-  operators stop evaluating as soon as the value of the [1mexpression[22m is known 
-  ("short-circuit").  This does not affect the value of the [1mexpression[22m, but is 
+  operators (& and |) stop evaluating as soon as the value of the [1mexpression[22m 
+  is known ("short-circuit"), and return the value of the last operand 
+  evaluated.  This does not affect the value of the [1mexpression[22m, but is 
   important when the second operand performs side effects.  
 #
 
   All operands will be automatically converted to the type expected by the 
   operator.  
 
+    * Integer to boolean: 0 is false, nonzero is true.  
+    * Other to boolean: converted to integer, then to boolean.  
     * String to numeric: leading signs, digits, and exponents are 
       interpreted as a numeric value; e.g., "12abc" becomes 12, "12.3junk" 
       becomes 12.3, and "xyz" becomes 0.  
@@ -3750,9 +3783,9 @@ Operators
     * Float to integer: the fractional part is truncated.  
     * Float to string: decimal notation if the exponent is greater than -5 
       and less than 10, otherwise exponential notation.  
-    * [1mEnumerated variable[22m to string: straightforward.  
+    * [1mEnumerated variable[22m to string: straightforward string value.  
     * [1mEnumerated variable[22m to integer: one integer stands for each of the 
-      allowed values.  "Off" is always 0, "on" is always "1", etc.  This makes 
+      allowed values.  "Off" is always 0, "on" is always 1, etc.  This makes 
       (![1mvisual[22m) and ([1mvisual[22m == 0) the same as ([1mvisual[22m =~ 'off').  
     * Other (non-enumerated) [1mvariables[22m are treated as strings, which are 
       converted to another type if needed.  
@@ -3898,6 +3931,7 @@ Mathematical functions
           (int) Random number in the range [0, <[4mj[24m> - 1].  
   [1mrand[22m([4mi[24m,[4mj[24m) 
           (int) Random number in the range [<[4mi[24m>, <[4mj[24m>].  
+#
 
 Input/output functions
 
@@ -3911,9 +3945,9 @@ Input/output functions
           (int) Sends string <[4ms[24m> to world <[4mt[24m>, or the [1mcurrent[22m world if <[4mworld[24m> 
           is blank.  An end-of-line will be appended unless <[4mi[24m> is 0.  
   [1msend[22m([4ms[24m, [4mt[24m) 
-          Equivilent to [1msend[22m([4ms[24m, [4mt[24m, 1).  
+          Equivilent to [1msend[22m([4ms[24m, <[4mt[24m>, 1).  
   [1msend[22m([4ms[24m) 
-          Equivilent to [1msend[22m([4ms[24m, "", 1).  
+          Equivilent to [1msend[22m(<[4ms[24m>, "", 1).  
 #fwrite
 #fwrite()
   [1mfwrite[22m([4ms[24m,[4mt[24m) 
@@ -3924,7 +3958,7 @@ Input/output functions
 #tfopen()
   [1mtfopen[22m([4ms[24m, [4mt[24m) 
   [1mtfopen[22m() 
-          (int) Open a [1mtfio stream[22m.  See [1mtfio[22m.  
+          (int) Open a [1mtfio stream[22m using file <[4ms[24m> and mode <[4mt[24m>.  See [1mtfio[22m.  
 #tfclose
 #tfclose()
   [1mtfclose[22m([4mi[24m) 
@@ -3940,11 +3974,20 @@ Input/output functions
   [1mtfwrite[22m([4mi[24m, [4ms[24m) 
   [1mtfwrite[22m([4ms[24m) 
           (int) Write <[4ms[24m> to the [1mstream[22m indicated by handle <[4mi[24m>.  See [1mtfio[22m.  
+#read
+#read()
+  [1mread[22m()  Obsolete.  Use [1mtfread[22m() instead.  
 #
-  [1mread[22m()  (str) Reads a line from keyboard input.  See seperate 
-          "[1mread[22m()" topic.  
 
 String functions
+
+  String positions are always counted from 0.  Therefore the first character 
+  of a string <[4ms[24m> is [1msubstr[22m(s, 0, 1), and the last character is [1msubstr[22m(s, 
+  [1mstrlen[22m(s)-1).  
+
+  Range checking is done on string positions.  Any position given outside the 
+  allowed range will be silently forced to the closest value that is in the 
+  range.  
 
 #ascii
 #ascii()
@@ -4025,6 +4068,7 @@ String functions
           If <[4mj[24m> is omitted, it defaults to the remaining length of <[4ms[24m>.  If 
           <[4mi[24m> or <[4mj[24m> is negative, they are counted as absolute values from the 
           end of <[4ms[24m>.  
+#
 
 Keyboard buffer functions
 
@@ -4075,6 +4119,7 @@ Keyboard buffer functions
           (str) String generated by typing the key labelled <[4ms[24m>, as defined in 
           the termcap entry corresponding to the value of [1m%TERM[22m.  See also: 
           [1mkeybindings[22m.  
+#
 
 Information functions
 
@@ -4141,6 +4186,7 @@ Information functions
 #systype()
   [1msystype[22m() 
           (str) System type, either "unix" or "os/2".  
+#
 
 Other functions
 
@@ -4164,23 +4210,16 @@ Other functions
           (int) Parse macro options according to format <[4ms[24m>.  See "[1mgetopts[22m()".  
 #
 
-  String positions are always counted from 0.  Therefore the first character 
-  of a string <[4ms[24m> is [1msubstr[22m(s, 0, 1), and the last character is [1msubstr[22m(s, 
-  [1mstrlen[22m(s)-1).  
-
-  Range checking is done on string positions.  Any position given outside the 
-  allowed range will be silently forced to the closest value that is in the 
-  range.  
 #macro
 #function syntax
 
   [1mMacros[22m and builtin commands can be called using function syntax, unless 
-  there is a builtin function with the same name.  "[4mname[24m([4mparm1[24m, ...  [4mparmN[24m)".  
-  A builtin command called as a function can have 0 or 1 arguments, e.g.  
-  def("-t'{*} has arrived.' greet = :waves.").  A macro called as a function 
-  can be called with any number of arguments; each argument corresponds to one 
-  of the [1mpositional parameters[22m ([1m%1[22m, [1m%2[22m, etc.).  A macro can set its return 
-  value using [1m/return[22m.  
+  there is a builtin function with the same name.  The syntax is "[4mname[24m([4mparm1[24m, 
+  ...  [4mparmN[24m)".  A builtin command called as a function can have 0 or 1 
+  arguments, e.g.  def("-t'{*} has arrived.' greet = :waves.").  A macro 
+  called as a function can be called with any number of arguments; each 
+  argument corresponds to one of the [1mpositional parameters[22m ([1m%1[22m, [1m%2[22m, etc.).  A 
+  macro can set its return value using [1m/return[22m.  
 #
 
   To evaluate a function for its "side effect" only, you can call it from 
@@ -4214,7 +4253,7 @@ getopts()
   expected to have a string argument, and if a letter is followed by "#" the 
   option will be expected to have a numeric argument.  The option syntax 
   accepted by [1mgetopts[22m() is the same as that accepted by builtin tf commands, 
-  as described under "options".  
+  as described under "[1moptions[22m".  
 
   When an option is found, [1mgetopts[22m() creates a new local [1mvariable[22m named 
   "opt_X", where "X" is the letter of the option.  If an argument is expected, 
@@ -4242,7 +4281,7 @@ getopts()
 
 
     [1m/def[22m foo = \
-        [1m/if[22m (!getopts("abns:", "")) [1m/break[22m%; [1m/endif[22m%; \
+        [1m/if[22m (!getopts("abns:", "")) [1m/return[22m 0%; [1m/endif[22m%; \
         [1m/echo[22m option a:  %{opt_a}%;\
         [1m/echo[22m option b:  %{opt_b}%;\
         [1m/echo[22m option n:  %{opt_n}%;\
@@ -4427,8 +4466,8 @@ hooks
   [1mhook[22m if one is defined.  Thus a [1mhook[22m with a [1mgag[22m [1mattribute[22m will suppress the 
   display of the message.  
 
-  [1mHook[22m may be have [1mmulti-shots[22m, in which case it and the [1mmacro[22m it is 
-  associated with is removed after executing a specified number of times.  
+  [1mHook[22m may have [1mmulti-shots[22m, in which case it and the [1mmacro[22m it is associated 
+  with is removed after executing a specified number of times.  
 
       Event Name  Arguments       Default Message or Action
       ----------  ---------       -------------------------
@@ -5728,54 +5767,6 @@ quoter.tf
 
   See: [1m/quote[22m, [1m/list[22m, [1m/listworlds[22m, [1m/sh[22m, [1mtfrc[22m 
 
-&read
-&read()
-
-read()
-
-  Expression usage: 
-
-  [1mread[22m()
-  ____________________________________________________________________________
-
-  In an [1mexpression[22m, [1mread[22m() reads a line of input from the keyboard until the 
-  newline key is pressed or "[1m/dokey[22m newline" is executed.  During [1mread[22m(), all 
-  existing [1mkeybindings[22m continue to work normally.  
-
-  Any text already in the input buffer is not cleared when [1mread[22m() starts.  
-  Text entered after [1mread[22m() starts is appended to the existing text, and when 
-  the [1mread[22m() ends, its result is the entire input buffer.  Lines entered 
-  during a [1mread[22m() are not saved in the input [1mhistory[22m (but you can use 
-  "[1m/recordline[22m -i" to save them explicitly).  
-
-  [1mread[22m() (and the [1mmacro[22m that called it) can be interrupted with a SIGINT, 
-  normally generated by typing CTRL-C.  
-
-  As an example, here's a simplified version of [1m/cat[22m: 
-
-    [1m/def[22m mycat = \
-        [1m/let[22m line=%; \
-        [1m/let[22m all=%; \
-        [1m/while[22m ((line:=[1mread[22m()) !~ ".") \
-            [1m/test[22m all:=[1mstrcat[22m(all, line)%; \
-        [1m/done[22m%; \
-        [1m/eval[22m %{all}
-
-  Executing "/mycat" will repeatedly read lines from the keyboard, and assign 
-  them to %line.  If the line matches ".", the loop ends.  Each %line is 
-  appended onto %all.  After the loop ends, the contents of %all are 
-  evaluated.  
-
-  Caveat: during a [1mread[22m(), if a [1mmacro[22m calls [1m/dokey[22m newline, the newline will 
-  not be executed immediately, but will be held until the rest of the commands 
-  in the [1mmacro[22m are processed.  For example, consider the keybinding "[1m/def[22m 
-  [1m-b[22m'^[^M' = /dokey newline%; /send go".  Normally, typing ^[^M would execute 
-  the current input buffer, then send "go" to the server.  But during a 
-  [1mread[22m(), typing ^[^M would send "go" first, and then do the newline that 
-  completes the [1mread[22m().  
-
-  See: [1minterface[22m, [1m/input[22m, [1mexpressions[22m, [1mnread()[22m, [1mfunctions[22m 
-
 &redirection
 
 redirection
@@ -5993,6 +5984,12 @@ Special global variables
           system documentation for tzset(3) or environ(5).  This is usually 
           inherited from the environment when tf starts.  
 
+#auto_fg
+#%auto_fg
+  [1mauto_fg[22m=on 
+          (flag) If on when the [1mforeground[22m [1msocket[22m disconnects, tf will 
+          automatically bring another [1msocket[22m into the [1mforeground[22m.  
+
 #background
 #%background
   [1mbackground[22m=on 
@@ -6050,9 +6047,9 @@ Special global variables
 #clock
 #%clock
   [1mclock[22m   This variable is no longer supported.  To disable the clock, 
-          remove the "@clock" field from the [1m%status_fields[22m variable; to make 
-          the clock display in 24-hour format, /set 
-          status_int_clock=ftime("%H:%M", time()).  
+          remove the "@clock" field from the [1m%status_fields[22m variable, or /set 
+          status_int_clock=''; to make the clock display in 24-hour format, 
+          /set status_int_clock=ftime("%H:%M", time()).  
 
 #connect
 #%connect
@@ -6375,6 +6372,21 @@ Special global variables
           The code that should be sent to your terminal to produce [1mcolor[22m 
           <[4mname[24m>.  See: [1mcolor[22m.  
 
+#
+  [1mstatus_attr[22m=_ 
+          The [1mattributes[22m used to display the [1mstatus line[22m in [1mvisual mode[22m.  See: 
+          [1mstatus line[22m.  
+
+#
+  [1mstatus_fields[22m 
+          The list of fields displayed on the [1mstatus line[22m in [1mvisual mode[22m.  
+          See: [1mstatus line[22m.  
+
+#
+  [1mstatus_pad[22m 
+          The padding character used in displaying the [1mstatus line[22m in [1mvisual 
+          mode[22m.  See: [1mstatus line[22m.  
+
 #tab
 #%tab
 #tabs
@@ -6477,6 +6489,10 @@ Special global variables
 &status
 &status_fields
 &%status_fields
+&status_attr
+&%status_attr
+&status_pad
+&%status_pad
 &status bar
 &status line
 
@@ -6506,21 +6522,24 @@ Configuring the status line
     * an optional ":" and number indicating the field width 
     * an optional ":" and [1mattribute[22m 
 
-  Fields without names are used to indicate blank space between named fields.  
+  Fields without names are used to indicate padding between named fields.  
   Field names enclosed in quotes (", ', or `) are displayed literally; use the 
   \ character to escape a quote inside the string.  Field names beginning with 
   "@" correspond to internal states.  Other field names correspond to the 
-  variable with the same name.  TF will monitor the internal state or [1mvariable[22m 
-  corresponding to each internal and variable field, and update those fields 
+  [1mvariable[22m with the same name.  TF will monitor the internal state or [1mvariable[22m 
+  corresponding to each internal and [1mvariable[22m field, and update those fields 
   whenever the monitored item changes.  Also, the entire status line will be 
   updated whenever the screen is redrawn or the [1mstatus_fields[22m [1mvariable[22m is 
   modified.  
 
-  The actual format of an internal or variable field displayed on the status 
+  The actual format of an internal or [1mvariable[22m field displayed on the status 
   line is determined by evaluating the [1mexpression[22m contained in the [1mvariable[22m 
   status_int_<[4mname[24m> (for internal state @<[4mname[24m>) or status_var_<[4mname[24m> (for 
-  variable <[4mname[24m>).  Also, for variable fields, if status_var_<[4mname[24m> is not 
-  set, the value of the variable will be displayed directly.  
+  variable <[4mname[24m>).  Also, for [1mvariable[22m fields, if status_var_<[4mname[24m> is not 
+  set, the value of the [1mvariable[22m will be displayed directly.  Changing a 
+  format variable will not cause the status line to update; to force an 
+  update, you can "[1mdokey[22m redraw" (^L), or "[1mtest[22m [1mstatus_fields[22m := 
+  [1mstatus_fields[22m".  
 
   A field's width determines how many columns it will take up on the screen.  
   If the width of a string literal field field is omitted, it defaults to the 
@@ -6532,9 +6551,10 @@ Configuring the status line
   fit within the specified width.  Fields may also be truncated if they would 
   not fit on the screen.  
 
-  The [1mattributes[22m are applied to the text when it is displayed.  
+  The [1mattributes[22m are applied to the field text when it is displayed, but are 
+  not applied to the padding used to bring the field to the specified width.  
 
-  Any variable may be monitored, but there is a fixed list of internal 
+  Any [1mvariable[22m may be monitored, but there is a fixed list of internal 
   statuses.  The internal statuses available are: 
 
   @more   Updated when the number of unseen lines changes.  
@@ -6545,6 +6565,15 @@ Configuring the status line
   @log    Updated when the number of open [1mlog[22m files changes.  
   @mail   Updated when mail arrives (See [1m%MAIL[22m).  
   @clock  Updated every minute, at 0 seconds past the minute.  
+
+  The entire status line, including padding, is displayed with the [1mattributes[22m 
+  given by [1m%status_attr[22m, which is none by default.  Individual field 
+  [1mattributes[22m are combined with %[1mstatus_attr[22m [1mattributes[22m.  
+
+  To bring fields up to their specified width, they are padded with 
+  [1m%status_pad[22m, which is "_" by default.  By setting [1mstatus_pad[22m to " " and 
+  [1mstatus_attr[22m to "r", you can create a status line that looks more like the 
+  one in emacs or the irc client.  
 
   All this may sound rather complex, so an example might help.  The default 
   value of [1mstatus_fields[22m is: 
@@ -6576,17 +6605,17 @@ Configuring the status line
   "More:12345" and then have it truncated to "More:123" because of the field 
   width of 8.  
 
-  Since the "@world" field has no width, it uses variable width.  The fields 
-  on its left are pushed to the left side of the screen, the fields on its 
-  right are pushed to the right side of the screen, and the "@world" field 
-  uses whatever space remains in the middle.  
+  Since the "@world" field has no width, it uses dynamic width.  The fields on 
+  its left are pushed to the left side of the screen, the fields on its right 
+  are pushed to the right side of the screen, and the "@world" field uses 
+  whatever space remains in the middle.  
 
-  The unnamed fields with width 1 are used to display a blank space between 
+  The unnamed fields with width 1 are used to display a pad character between 
   the named fields.  
 
   Another example: Say your mud has a [1mprompt[22m like "H:42 M:17> " that shows 
   your hit points and mana, and you want it displayed on the status line like 
-  " 42, 17".  To do this, add "hp_mana:7" to the [1mstatus_fields[22m variable, and 
+  " 42, 17".  To do this, add "hp_mana:7" to the [1mstatus_fields[22m [1mvariable[22m, and 
   define a [1mprompt[22m [1mhook[22m: 
 
     [1m/def[22m [1m-mregexp[22m [1m-h[22m"PROMPT H:([^ ]*) M:([^ ]*)> " hp_mana_hook = \
@@ -6915,12 +6944,13 @@ tfio
   TF normally does its output through "streams", which are analagous to the 
   streams of C stdio.  
 
-  Output from most tf commands, including [1m/echo[22m, are output to "[1mtfout[22m", which 
-  is normally attached to the screen.  [1mtfout[22m may be redirected with a [1mcommand 
-  /quote[22m, [1m$() command substitution[22m, or [1m%| pipe[22m.  
+  Output from most tf commands, including [1m/echo[22m, are output to the "[1mtfout[22m" 
+  stream, which is normally attached to the screen.  [1mtfout[22m may be redirected 
+  with a [1mcommand /quote[22m, [1m$() command substitution[22m, or [1m%| pipe[22m.  
 
   Tf error messages, hook messages, and the output of "[1m/echo -e[22m" are output to 
-  "[1mtferr[22m", which is always attached to the screen, and may not be redirected.  
+  the "[1mtferr[22m" stream, which is always attached to the screen, and may not be 
+  redirected.  
 
   Text from a world or "[1m/echo -w[22m" is sent to a [1mstream[22m for that world.  Text 
   sent to a world [1mstream[22m will be stored in the [1mhistory[22m of that world.  If that 
@@ -6928,10 +6958,11 @@ tfio
   otherwise, it will not be displayed until world is brought into the 
   [1mforeground[22m.  
 
-  Commands that read input (using [1mtfread()[22m, for example) read by default from 
-  "[1mtfin[22m", which is normally attached to the keyboard.  [1mtfin[22m may be redirected 
-  with a [1m%| pipe[22m.  
+  Commands that read input (using [1mtfread()[22m) read by default from "[1mtfin[22m", which 
+  is normally attached to the keyboard.  [1mtfin[22m may be redirected with a [1m%| 
+  pipe[22m.  
 
+tfopen
   The [1mtfopen[22m([4mname[24m, [4mmode[24m) function can be used to open arbitrary [1mstreams[22m.  If 
   called with no arguments, [1mtfopen[22m() opens a "q" mode [1mstream[22m.  The <[4mmode[24m> 
   argument describes the usage of the [1mstream[22m: 
@@ -6954,28 +6985,55 @@ tfio
   [1mtfread[22m(), [1mtfwrite[22m(), and [1mtfclose[22m().  If it fails, the [1mtfopen[22m() function 
   returns -1.  
 
+  A call to [1mtfwrite[22m() or [1mtfread[22m() on a [1mstream[22m opened with a mode that does not 
+  allow that operation will return -1.  
+
+tfclose
+  When a [1mstream[22m opened by [1mtfopen[22m() is no longer needed, it should be closed 
+  with [1mtfclose[22m().  
+
+tfwrite
+  The [1mtfwrite[22m([4mhandle[24m, [4mline[24m) function writes a <[4mline[24m> of text to the [1mstream[22m 
+  designated by <[4mhandle[24m>.  If <[4mhandle[24m> is omitted, the [1mtfout stream[22m is used 
+  (so [1mtfwrite[22m([4mline[24m) is equivalent to [1mecho[22m([4mline[24m)).  
+
+tfread
   The [1mtfread[22m([4mhandle[24m, [4mvariable[24m) function reads a line from the [1mstream[22m 
   designated by <[4mhandle[24m>.  If <[4mhandle[24m> is omitted, the [1mtfin stream[22m is used.  
   If successful, the line is assigned to <[4mvariable[24m>, and [1mtfread[22m() returns the 
   (non-negative) length of the line.  If <[4mvariable[24m> did not already exist, it 
   is created at the global level, as if by [1m/set[22m.  If there are no lines 
-  available to read, [1mtfread[22m() returns -1.  For "r" and "p" mode [1mstreams[22m, a -1 
-  return value indicates end-of-file; the only valid operation on the [1mstream[22m 
-  after that is [1mtfclose[22m().  But for a "q" mode [1mstream[22m, a -1 return value just 
-  means there are currently no lines in the queue; more lines may be added by 
-  [1mtfwrite[22m(), and then [1mtfread[22m() will be able to read them.  
+  available to read, or an error occurs, [1mtfread[22m() returns -1.  For "r" and "p" 
+  mode [1mstreams[22m, a -1 return value indicates end-of-file; the only valid 
+  operation on the [1mstream[22m after that is [1mtfclose[22m().  But for a "q" mode [1mstream[22m, 
+  a -1 return value may just mean there are currently no lines in the queue; 
+  more lines may be added by [1mtfwrite[22m(), and then [1mtfread[22m() will be able to read 
+  them.  
 
-  The [1mtfwrite[22m([4mhandle[24m, [4mline[24m) function writes a <[4mline[24m> of text to the [1mstream[22m 
-  designated by <[4mhandle[24m>.  If <[4mhandle[24m> is omitted, the [1mtfout stream[22m is used 
-  (so [1mtfwrite[22m([4mline[24m) is equivalent to [1mecho[22m([4mline[24m)).  
+Keyboard Reading
+  [1mtfread[22m() from the keyboard is special.  It can only be done from a command 
+  line command; trying to do it directly or indirectly from a trigger, hook, 
+  keybinding, or process is an error, and will make the [1mtfread[22m() return -1.  
+  It reads a line of input from the keyboard until the newline key is pressed 
+  or "[1m/dokey[22m newline" is executed.  During the read, all existing [1mkeybindings[22m 
+  continue to work normally.  Any text already in the input buffer is not 
+  cleared when the read starts.  Text entered after the read starts is 
+  appended to the existing text, and when the read ends, its result is the 
+  entire input buffer.  Lines entered during a read are not saved in the input 
+  [1mhistory[22m (but you can use "[1m/recordline[22m -i" to save them explicitly).  
 
-  A call to [1mtfwrite[22m() or [1mtfread[22m() on a [1mstream[22m opened with a mode that does not 
-  allow that operation will return -1.  
+  A read from the keyboard (and the [1mmacro[22m that called it) can be interrupted 
+  with a SIGINT, normally generated by typing CTRL-C.  
 
-  When a [1mstream[22m opened by [1mtfopen[22m() is no longer needed, it should be closed 
-  with [1mtfclose[22m().  
+  During a keyboard read, if a [1mmacro[22m calls [1m/dokey[22m newline, the newline will 
+  not be executed immediately, but will be held until the rest of the commands 
+  in the [1mmacro[22m are processed.  For example, consider the keybinding "[1m/def[22m 
+  [1m-b[22m'^[^M' = /dokey newline%; /send go".  Normally, typing ^[^M would execute 
+  the current input buffer, then send "go" to the server.  But during a 
+  keyboard read, typing ^[^M would send "go" first, and then do the newline 
+  that completes the read.  
 
-  See also: [1minterface[22m, [1msubstitution[22m, [1m/quote[22m.  
+  See: [1minterface[22m, [1m/input[22m, [1mexpressions[22m, [1mnread()[22m, [1mfunctions[22m 
 
 &config
 &configuration
@@ -7152,6 +7210,8 @@ triggers
 &/tick
 &/watch
 &worldqueue
+&world-q
+&esc-w
 &utilities
 
 utilities

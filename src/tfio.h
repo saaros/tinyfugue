@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.h,v 35004.21 1997/11/20 07:17:48 hawkeye Exp $ */
+/* $Id: tfio.h,v 35004.22 1997/11/22 09:42:20 hawkeye Exp $ */
 
 #ifndef TFIO_H
 #define TFIO_H
@@ -75,7 +75,8 @@ extern TFILE *tfout;       /* tf output queue */
 extern TFILE *tferr;       /* tf error queue */
 extern TFILE *tfkeyboard;  /* keyboard, where tfin usually points */
 extern TFILE *tfscreen;    /* screen queue, where tfout & tferr usually point */
-extern int    read_depth;
+extern int    read_depth;  /* depth of user kb reads */
+extern int    readsafe;    /* safe to to a user kb read? */
 
 #define operror(str)  eprintf("%s: %s", str, strerror(errno))
 #define oputa(aline)  tfputa(aline, tfout)

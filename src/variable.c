@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: variable.c,v 35004.30 1997/11/17 09:33:59 hawkeye Exp $ */
+/* $Id: variable.c,v 35004.33 1997/11/29 22:53:31 hawkeye Exp $ */
 
 
 /**************************************
@@ -80,7 +80,7 @@ extern char **environ;
 /* Special variables. */
 Var special_var[] = {
 #define varcode(id, name, val, type, enums, ival, func) \
-    { name, val, 0, type, enums, ival, func, NULL, NULL }
+    { name, val, val ? sizeof(val)-1 : 0, type, enums, ival, func, NULL, NULL }
 #include "varlist.h"
 #undef varcode
 };
@@ -101,10 +101,8 @@ void init_variables()
     for (var = special_var; var->name; var++) {
         var->flags |= VARSPECIAL;
         if (var->flags & VARSTR) {
-            if (var->value) {
-                var->len = strlen(var->value);
+            if (var->value)
                 var->value = STRNDUP(var->value, var->len);
-            }
             var->ival = !!var->value;
         } else if (var->flags & VARENUM) {
             var->value = var->enumvec[var->ival >= 0 ? var->ival : 0];
@@ -234,9 +232,9 @@ CONST char *getnearestvar(name, np)
     Var *var;
     STATIC_BUFFER(buf);
 
-    if (np) *np = 0;
+    if (np) *np = -1;
     if (((var = findlocalvar(name))) || ((var = findglobalvar(name)))) {
-        if (np) *np = (var->flags & VARSTR) ? 0 : var->ival;
+        if (np && !(var->flags & VARSTR)) *np = var->ival;
         return var->value;
     }
     if (ucase(name[0]) == 'P') {
@@ -572,15 +570,14 @@ struct Value *handle_unset_command(name)
         eprintf("%s must a positive integer, so can not be unset.", var->name);
         return newint(0);
     }
+    if (var->status) {
+        eprintf("%s is used in %%status_fields, so can not be unset.", var->name);
+        return newint(0);
+    }
 
     hash_remove(var->node, var_table);
     if (var->flags & VAREXPORT) remove_env(name);
     FREE(var->value);
-
-    if (var->status) {
-        var->status = NULL;
-        update_status_field(var, -1);
-    }
 
     if (!(var->flags & VARSPECIAL)) {
         FREE(var->name);

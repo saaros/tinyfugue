@@ -6,7 +6,7 @@
 ;;;; General Public License.  See the file "COPYING" for details.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;; $Id: stdlib.tf,v 35000.23 1997/11/19 07:27:13 hawkeye Exp $
+;;; $Id: stdlib.tf,v 35000.25 1997/11/26 08:59:46 hawkeye Exp $
 
 ;;; TF macro library
 
@@ -80,7 +80,7 @@
 
 ;;; /send [-nW] [-T<type>] [-w<world>] text
 /def -i send = \
-    /if (!getopts("nWT:w:", "")) /break%; /endif%; \
+    /if (!getopts("nWT:w:", "")) /return 0%; /endif%; \
     /let text=%{*}%; \
     /if (opt_W) \
         /~send $(/listsockets -s)%; \
@@ -127,7 +127,7 @@
 
 
 ;; for loop.
-; syntax:  /for <var> <start> <end> <command>
+; syntax:  /for <var> <min> <max> <command>
 
 /def -i for	= \
     /@eval \
@@ -147,7 +147,7 @@
 /def -i expr	= /@test echo((%*))
 
 ;; replace text in input buffer.
-/def -i grab	= /@test kblen() & dokey("dline")%; /input %*
+/def -i grab	= /@test kblen() & dokey("dline")%; /test input({*})
 
 ;; partial hilites.
 /def -i partial = /def -F -p%{hpri-0} -Ph -t"$(/escape " %*)"
@@ -179,9 +179,9 @@
 
 ;; cut-and-paste tool
 /def -i paste = \
-    /echo -e %% Entering paste mode.  Type "/endpaste" to end.%; \
+    /echo -ep %% Entering paste mode.  Type "@{B}/endpaste@{n}" to end.%; \
     /let line=%; \
-    /while ((line:=read()) !/ "/endpaste") \
+    /while ((tfread(line) >= 0) & (line !/ "/endpaste")) \
         /if (line =/ "/quit" | line =/ "/help*") \
             /echo -e %% Type "/endpaste" to end /paste.%; \
         /endif%; \
@@ -395,12 +395,13 @@
 /def -i ~loaded = \
     /if /@test _loaded_libs !/ "*{%{1}}*"%; /then \
         /set _loaded_libs=%{_loaded_libs} %{1}%;\
+    /elseif (_required) \
+        /exit%; \
     /endif
 
 /def -i require = \
-    /if /@test _loaded_libs !/ "*{%{L}}*"%; /then \
-        /load %{-L} %{TFLIBDIR}/%{L}%;\
-    /endif
+    /let _required=1%; \
+    /load %{-L} %{TFLIBDIR}/%{L}%;\
 
 ;; meta-character quoter
 ;; /escape <metachars> <string>
@@ -484,7 +485,7 @@
     /echo -e %% Entering cat mode.  Type "." to end.%; \
     /let line=%; \
     /let all=%; \
-    /while ((line:=read()) !~ ".") \
+    /while ((tfread(line) >= 0) & (line !~ ".")) \
         /if (line =/ "/quit") \
             /echo -e %% Type "." to end /cat.%; \
         /endif%; \

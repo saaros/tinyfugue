@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: world.c,v 35004.27 1997/11/16 22:05:01 hawkeye Exp $ */
+/* $Id: world.c,v 35004.28 1997/12/14 21:24:43 hawkeye Exp $ */
 
 
 /********************************************************
@@ -152,7 +152,7 @@ struct Value *handle_addworld_command(args)
     int error = 0;
     int flags = 0;
 
-    if (restrict >= RESTRICT_WORLD) {
+    if (restriction >= RESTRICT_WORLD) {
         eprintf("restricted");
         return newint(0);
     }
@@ -323,7 +323,7 @@ struct Value *handle_saveworld_command(args)
     char *name;
     int result;
 
-    if (restrict >= RESTRICT_FILE) {
+    if (restriction >= RESTRICT_FILE) {
         eprintf("restricted");
         return newint(0);
     }

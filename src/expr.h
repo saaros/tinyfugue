@@ -5,16 +5,16 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tty.h,v 35004.4 1997/07/30 08:56:31 hawkeye Exp $ */
+/* $Id: expr.h,v 35004.3 1997/12/04 08:57:45 hawkeye Exp $ */
 
-#ifndef TTY_H
-#define TTY_H
+#ifndef EXPR_H
+#define EXPR_H
 
-extern void NDECL(init_tty);
-extern void NDECL(cbreak_noecho_mode);
-extern void NDECL(reset_tty);
-extern int  NDECL(get_window_size);
+extern void   FDECL(evalexpr,(Stringp dest, CONST char *args));
+extern int    NDECL(expr);
 
-extern int no_tty;
+#ifdef DMALLOC
+extern void   NDECL(free_expr);
+#endif
 
-#endif /* TTY_H */
+#endif /* EXPR_H */

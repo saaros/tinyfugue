@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: command.c,v 35004.36 1997/11/20 07:29:45 hawkeye Exp $ */
+/* $Id: command.c,v 35004.38 1997/12/14 21:24:41 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -25,10 +25,12 @@
 #include "output.h"	/* oflush(), bell() */
 #include "macro.h"
 #include "keyboard.h"	/* find_key(), find_efunc() */
-#include "expand.h"     /* process_macro() */
+#include "expand.h"     /* process_macro(), breaking */
 #include "search.h"
 #include "signals.h"    /* suspend(), shell() */
 #include "variable.h"
+
+int exiting = 0;
 
 static char *pattern, *body;
 static int quietload = 0;
@@ -82,6 +84,7 @@ static CONST Command cmd_table[] =
   { "ECHO"        , handle_echo_command        },
   { "EDIT"        , handle_edit_command        },
   { "EVAL"        , handle_eval_command        },
+  { "EXIT"        , handle_exit_command        },
   { "EXPORT"      , handle_export_command      },
   { "FG"          , handle_fg_command          },
   { "GAG"         , handle_gag_command         },
@@ -307,7 +310,7 @@ static struct Value *handle_sh_command(args)
     char c;
     int quiet = 0;
 
-    if (restrict >= RESTRICT_SHELL) {
+    if (restriction >= RESTRICT_SHELL) {
         eprintf("restricted");
         return newint(0);
     }
@@ -435,15 +438,15 @@ static struct Value *handle_restrict_command(args)
         { "none", "shell", "file", "world", NULL };
 
     if (!*args) {
-        oprintf("%% restriction level: %s", enum_restrict[restrict]);
-        return newint(restrict);
+        oprintf("%% restriction level: %s", enum_restrict[restriction]);
+        return newint(restriction);
     } else if ((level = enum2int(args, enum_restrict, "/restrict")) < 0) {
         return newint(0);
-    } else if (level < restrict) {
+    } else if (level < restriction) {
         oputs("% Restriction level can not be lowered.");
         return newint(0);
     }
-    return newint(restrict = level);
+    return newint(restriction = level);
 }
 
 
@@ -460,6 +463,9 @@ int do_file_load(args, tinytalk)
     TFILE *old_file = loadfile;
     int old_lineno = loadline;
     STATIC_BUFFER(libfile);
+
+    if (!loadfile)
+        exiting = 0;
 
     loadfile = tfopen(expand_filename(args), "r");
     if (!loadfile && !tinytalk && errno == ENOENT && !is_absolute_path(args)) {
@@ -487,6 +493,10 @@ int do_file_load(args, tinytalk)
     Stringninit(cmd, 192);
     loadline = 0;
     while (!done) {
+        if (exiting) {
+            --exiting;
+            break;
+        }
         if (interrupted()) {
             eprintf("file load interrupted.");
             error = 1;
@@ -532,6 +542,12 @@ int do_file_load(args, tinytalk)
         eputs("load: unknown error reading file");
     loadfile = old_file;
     loadline = old_lineno;
+
+    if (!loadfile)
+        exiting = 0;
+    if (!exiting)
+        breaking = 0;
+
     return !error;
 }
 
@@ -573,7 +589,7 @@ static struct Value *handle_undef_command(args)        /* Undefine a macro. */
 static struct Value *handle_save_command(args)
     char *args;
 {
-    if (restrict >= RESTRICT_FILE) {
+    if (restriction >= RESTRICT_FILE) {
         eprintf("restricted");
         return newint(0);
     }
@@ -582,13 +598,22 @@ static struct Value *handle_save_command(args)
     return newint(0);
 }
 
+struct Value *handle_exit_command(args)
+    char *args;
+{
+    if (!loadfile) return 0;
+    if ((exiting = atoi(args)) <= 0) exiting = 1;
+    breaking = -1;
+    return newint(1);
+}
+
 static struct Value *handle_load_command(args)
     char *args;
 {                   
     int quiet = 0, result = 0;
     char c;
 
-    if (restrict >= RESTRICT_FILE) {
+    if (restriction >= RESTRICT_FILE) {
         eprintf("restricted");
         return newint(0);
     }

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: varlist.h,v 35000.16 1997/11/17 09:33:59 hawkeye Exp $ */
+/* $Id: varlist.h,v 35000.18 1997/11/23 01:56:55 hawkeye Exp $ */
 
 /* It may not be easy to read in 80 columns, but it keeps the constants and
  * the array in the same place, so they can't get out of sync.
@@ -25,6 +25,7 @@ varcode(VAR_MAIL       , "MAIL"         , NULL   , VARSTR , NULL      , 0     , 
 varcode(VAR_TERM       , "TERM"         , NULL   , VARSTR , NULL      , 0     , change_term),
 varcode(VAR_TFLIBDIR   , "TFLIBDIR"     , LIBDIR , VARSTR , NULL      , 0     , NULL),
 varcode(VAR_TZ         , "TZ"           , NULL   , VARSTR , NULL      , 0     , NULL),
+varcode(VAR_auto_fg    , "auto_fg"      , NULL   , VARENUM, enum_flag , TRUE  , NULL),
 varcode(VAR_background , "background"   , NULL   , VARENUM, enum_flag , TRUE  , tog_bg),
 varcode(VAR_backslash  , "backslash"    , NULL   , VARENUM, enum_flag , TRUE  , NULL),
 varcode(VAR_bamf       , "bamf"         , NULL   , VARENUM, enum_bamf , FALSE , NULL),
@@ -43,7 +44,7 @@ varcode(VAR_async_name , "gethostbyname", NULL   , VARENUM, enum_block, FALSE , 
 #endif
 varcode(VAR_gpri       , "gpri"         , NULL   , VARINT , NULL      , 0     , NULL),
 varcode(VAR_hilite     , "hilite"       , NULL   , VARENUM, enum_flag , TRUE  , NULL),
-varcode(VAR_hiliteattr , "hiliteattr"   , "B"    , VARSTR , NULL      , 0     , ch_hilite),
+varcode(VAR_hiliteattr , "hiliteattr"   , "B"    , VARSTR , NULL      , 0     , ch_hiliteattr),
 varcode(VAR_histsize   , "histsize"     , NULL   , VARPOS , NULL      , 1000  , NULL),
 varcode(VAR_hook       , "hook"         , NULL   , VARENUM, enum_flag , TRUE  , NULL),
 varcode(VAR_hpri       , "hpri"         , NULL   , VARINT , NULL      , 0     , NULL),
@@ -80,7 +81,9 @@ varcode(VAR_scroll     , "scroll"       , NULL   , VARENUM, enum_flag , FALSE , 
 varcode(VAR_shpause    , "shpause"      , NULL   , VARENUM, enum_flag , FALSE , NULL),
 varcode(VAR_snarf      , "snarf"        , NULL   , VARENUM, enum_flag , FALSE , NULL),
 varcode(VAR_sockmload  , "sockmload"    , NULL   , VARENUM, enum_flag , FALSE , NULL),
+varcode(VAR_status_attr, "status_attr"  , NULL   , VARSTR , NULL      , 0     , ch_status_attr),
 varcode(VAR_status_fields, "status_fields", NULL , VARSTR , NULL      , 0     , ch_status_fields),
+varcode(VAR_status_pad , "status_pad"   , "_"    , VARSTR , NULL      , 0     , update_status_line),
 varcode(VAR_sub        , "sub"          , NULL   , VARENUM, enum_sub  , SUB_KEYWORD , NULL),
 varcode(VAR_tabsize    , "tabsize"      , NULL   , VARPOS , NULL      , 8     , NULL),
 varcode(VAR_telopt     , "telopt"       , NULL   , VARENUM, enum_flag , FALSE , NULL),

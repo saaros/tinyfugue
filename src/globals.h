@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: globals.h,v 35000.10 1997/11/17 09:33:59 hawkeye Exp $ */
+/* $Id: globals.h,v 35000.12 1997/11/23 01:56:54 hawkeye Exp $ */
 
 #ifndef GLOBALS_H
 #define GLOBALS_H
@@ -50,6 +50,7 @@ enum Vars {
 #define MAIL		getstrvar(VAR_MAIL)
 #define TERM		getstrvar(VAR_TERM)
 #define TFLIBDIR	getstrvar(VAR_TFLIBDIR)
+#define auto_fg		getintvar(VAR_auto_fg)
 #define background	getintvar(VAR_background)
 #define backslash	getintvar(VAR_backslash)
 #define bamf		getintvar(VAR_bamf)
@@ -102,7 +103,9 @@ enum Vars {
 #define shpause		getintvar(VAR_shpause)
 #define snarf		getintvar(VAR_snarf)
 #define sockmload	getintvar(VAR_sockmload)
+#define status_attr	getintvar(VAR_status_attr)
 #define status_fields	getstrvar(VAR_status_fields)
+#define status_pad	getstrvar(VAR_status_pad)
 #define sub		getintvar(VAR_sub)
 #define tabsize		getintvar(VAR_tabsize)
 #define telopt		getintvar(VAR_telopt)

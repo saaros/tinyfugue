@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.h,v 35004.21 1997/11/17 08:34:11 hawkeye Exp $ */
+/* $Id: output.h,v 35004.22 1997/11/23 01:56:55 hawkeye Exp $ */
 
 #ifndef OUTPUT_H
 #define OUTPUT_H
@@ -43,7 +43,7 @@ extern int  NDECL(tog_more);
 extern int  NDECL(ch_visual);
 extern int  NDECL(ch_status_fields);
 extern void FDECL(update_status_field,(Var *var, int internal));
-extern void NDECL(update_status_line);
+extern int  NDECL(update_status_line);
 extern void NDECL(fix_screen);
 extern void NDECL(panic_fix_screen);
 extern void FDECL(iput,(int len));
@@ -61,7 +61,8 @@ extern void NDECL(reset_outcount);
 extern void FDECL(screenout,(Aline *aline));
 extern void FDECL(update_prompt,(Aline *newprompt));
 extern int  FDECL(wraplen,(CONST char *str, int len, int indent));
-extern int  NDECL(ch_hilite);
+extern int  NDECL(ch_hiliteattr);
+extern int  NDECL(ch_status_attr);
 extern attr_t      FDECL(handle_inline_attr,(Aline *aline, attr_t attrs));
 extern attr_t      FDECL(handle_ansi_attr,(Aline *aline, attr_t attrs));
 extern CONST char *FDECL(get_keycode,(CONST char *name));

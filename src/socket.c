@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: socket.c,v 35004.75 1997/11/16 22:04:59 hawkeye Exp $ */
+/* $Id: socket.c,v 35004.82 1997/12/23 04:34:51 hawkeye Exp $ */
 
 
 /***************************************************************
@@ -219,8 +219,7 @@ static void  FDECL(do_naws,(Sock *sock));
 static void  FDECL(telnet_debug,(CONST char *dir, CONST char *str, int len));
 static void  NDECL(preferred_telnet_options);
 
-#define killsock(s) \
-    (((s)->flags |= SOCKDEAD), ((s)->world->sock = NULL), dead_socks++)
+#define killsock(s)  (((s)->flags |= SOCKDEAD), dead_socks++)
 
 #ifndef CONN_WAIT
 #define CONN_WAIT 400000
@@ -463,6 +462,9 @@ void main_loop()
         if (count < 0) {
             /* select() must have exited due to error or interrupt. */
             if (errno != EINTR) die("main_loop: select", errno);
+            /* In case we're in a kb tfgetS(), clear things for parent loop. */
+            FD_ZERO(&active);
+            FD_ZERO(&connected);
 
         } else {
             if (count == 0) {
@@ -525,8 +527,11 @@ void main_loop()
             break;
         }
 
+        if (dead_socks && (!fsock || fsock->flags & SOCKDEAD)) {
+            if (auto_fg) fg_live_sock();
+            else fg_sock(NULL, FALSE);
+        }
         /* garbage collection */
-        if (dead_socks) fg_live_sock();
         if (depth == 1) {
             if (sock && sock->flags & SOCKDEAD) sock = NULL;
             if (dead_socks) nuke_dead_socks(); /* at end in case of quitdone */
@@ -609,7 +614,7 @@ static Sock *find_sock(name)
 static void wload(w)
     World *w;
 {
-    if (restrict >= RESTRICT_FILE) return;
+    if (restriction >= RESTRICT_FILE) return;
     if (*w->mfile || ((w = get_default_world()) && *w->mfile))
         do_file_load(w->mfile, FALSE);
 }
@@ -728,7 +733,7 @@ int openworld(name, port, autologin, quietlogin)
             else
                 do_hook(H_WORLD, "---- No world ----", "");
     } else {
-        if (restrict >= RESTRICT_WORLD)
+        if (restriction >= RESTRICT_WORLD)
             eprintf("arbitrary connections restricted");
         else {
             world = new_world(NULL, "", "", name, port, "", "", WORLD_TEMP);
@@ -746,32 +751,39 @@ int opensock(world, autologin, quietlogin)
     int herr;
 
     if (world->sock) {
-        eprintf("socket to %s already exists", world->name);
-        return 0;
-    }
+        if (!(world->sock->flags & SOCKDEAD)) {
+            eprintf("socket to %s already exists", world->name);
+            return 0;
+        }
+        /* recycle existing Sock */
+        dead_socks--;
+        xsock = world->sock;
+        if (xsock->fd >= 0) close(xsock->fd);
 
-    /* create and initialize new Sock */
-    if (!(xsock = world->sock = (Sock *) MALLOC(sizeof(struct Sock)))) {
-        eprintf("opensock: not enough memory");
-        return 0;
+    } else {
+        /* create and initialize new Sock */
+        if (!(xsock = world->sock = (Sock *) MALLOC(sizeof(struct Sock)))) {
+            eprintf("opensock: not enough memory");
+            return 0;
+        }
+        xsock->world = world;
+        xsock->prev = tsock;
+        tsock = *(tsock ? &tsock->next : &hsock) = xsock;
+        xsock->activity = 0;
+        Stringinit(xsock->buffer);
+        xsock->prompt = NULL;
+        init_queue(xsock->queue = (Queue *)XMALLOC(sizeof(Queue)));
+        xsock->next = NULL;
     }
-    xsock->world = world;
-    xsock->prev = tsock;
-    tsock = *(tsock ? &tsock->next : &hsock) = xsock;
     xsock->fd = -1;
     xsock->state = '\0';
     xsock->attrs = 0;
     VEC_ZERO(&xsock->tn_do);
     VEC_ZERO(&xsock->tn_will);
     xsock->flags = (autologin ? SOCKLOGIN : 0);
-    xsock->activity = 0;
     xsock->time = time(NULL);
     quietlogin = quietlogin && autologin && *world->character;
     xsock->numquiet = quietlogin ? MAXQUIET : 0;
-    Stringinit(xsock->buffer);
-    xsock->prompt = NULL;
-    init_queue(xsock->queue = (Queue *)XMALLOC(sizeof(Queue)));
-    xsock->next = NULL;
 
     xsock->addr.sin_family = AF_INET;
 
@@ -793,7 +805,7 @@ int opensock(world, autologin, quietlogin)
 #endif
     } else {
         CONFAIL(world->name, xsock->port, "no such service");
-        nukesock(xsock);
+        killsock(xsock);  /* can't nukesock(), this may be a recycled Sock. */
         return 0;
     }
 
@@ -810,7 +822,7 @@ int opensock(world, autologin, quietlogin)
             CONFAIL(world->name, xsock->host, hstrerror(herr));
         else
             CONFAIL(world->name, xsock->host, "name resolution failed");
-        nukesock(xsock);
+        killsock(xsock);  /* can't nukesock(), this may be a recycled Sock. */
         return 0;
     } else {
         /* The name lookup is pending.  We wait for it for a fraction of a
@@ -1294,7 +1306,7 @@ struct Value *handle_listsockets_command(args)
     if (error) goto listsocket_error;
 
     if (!hsock) {
-        eprintf("Not connected to any sockets.");
+        if (!shortflag) eprintf("Not connected to any sockets.");
         goto listsocket_error;
     }
 
@@ -1485,7 +1497,9 @@ void world_output(world, aline)
 {
     aline->links++;
     recordline(world->history, aline);
-    if (world->sock && !(gag && (aline->attrs & F_GAG))) {
+    if (world->sock && !(world->sock->flags & SOCKDEAD) &&
+        !(gag && (aline->attrs & F_GAG)))
+    {
         if (world->sock == fsock) {
             record_global(aline);
             screenout(aline);
@@ -1879,7 +1893,7 @@ static int is_bamf(str)
 
     callingsock = xsock;
 
-    if (!bamf || restrict >= RESTRICT_WORLD) return 0;
+    if (!bamf || restriction >= RESTRICT_WORLD) return 0;
     if (sscanf(str,
         "#### Please reconnect to %64[^ @]@%64s (%*64[^ )]) port %64s ####",
         name, host, port) != 3)
