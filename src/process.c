@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: process.c,v 35004.18 1997/09/14 05:04:36 hawkeye Exp $ */
+/* $Id: process.c,v 35004.20 1997/11/16 22:04:58 hawkeye Exp $ */
 
 /************************
  * Fugue processes.     *
@@ -58,10 +58,11 @@ typedef struct Proc {
     struct Proc *next, *prev;
 } Proc;
 
-static int  FDECL(newproc,(int type, int FDECL((*func),(Proc *proc)),
+static struct Value *FDECL(newproc,(int type, int FDECL((*func),(Proc *proc)),
                  int count, CONST char *pre, CONST char *suf, TFILE *input,
                  struct World *world, CONST char *cmd, TIME_T ptime, int disp));
-static int  FDECL(killproc,(Proc *proc));
+static struct Value *FDECL(killproc,(Proc *proc, int needresult));
+
 static void FDECL(nukeproc,(Proc *proc));
 static int  FDECL(runproc,(Proc *proc));
 static int  FDECL(do_repeat,(Proc *proc));
@@ -73,11 +74,9 @@ static int  FDECL(procopt,(CONST char *opts, char **argp, TIME_T *ptime,
 TIME_T proctime = 0;              /* when next process should be run */
 int runall_depth = 0;
 
-extern int restrict;
-
 static Proc *proclist = NULL;     /* procedures to execute */
 
-int handle_ps_command(args)
+struct Value *handle_ps_command(args)
     char *args;
 {
     Proc *p;
@@ -90,7 +89,7 @@ int handle_ps_command(args)
     while ((opt = nextopt(&args, NULL))) {
         switch(opt) {
         case 's': shortflag = TRUE; break;
-        default:  return 0;
+        default:  return newint(0);
         }
     }
 
@@ -134,10 +133,10 @@ int handle_ps_command(args)
                 p->cmd, p->suf);
         }
     }
-    return 1;
+    return newint(1);
 }
 
-static int newproc(type, func, count, pre, suf, input, world, cmd, ptime, disp)
+static struct Value *newproc(type, func, count, pre, suf, input, world, cmd, ptime, disp)
     int type, count, disp;
     TIME_T ptime;
     int FDECL((*func),(Proc *proc));
@@ -147,11 +146,10 @@ static int newproc(type, func, count, pre, suf, input, world, cmd, ptime, disp)
 {
     Proc *proc;
     static int hipid = 0;
-    int result;
 
     if (!(proc = (Proc *) MALLOC(sizeof(Proc)))) {
         eprintf("newproc: not enough memory");
-        return 0;
+        return newint(0);
     }
 
     proc->disp = disp;
@@ -168,7 +166,6 @@ static int newproc(type, func, count, pre, suf, input, world, cmd, ptime, disp)
     proc->world = world;
     Stringzero(proc->buffer);
 
-    result = proc->pid;
     if (proclist) proclist->prev = proc;
     proc->next = proclist;
     proc->prev = NULL;
@@ -178,21 +175,21 @@ static int newproc(type, func, count, pre, suf, input, world, cmd, ptime, disp)
     if (ptime == -2) {  /* synch */
         oflush();  /* flush now, process might take a while */
         while (runproc(proc));
-        result = killproc(proc);
-        /* nukeproc(proc); */
-    } else if (lpquote) {
+        return killproc(proc, 1);  /* no nuke! */
+    }
+    if (lpquote) {
         proctime = time(NULL);
     } else if (proctime == 0 || proc->timer < proctime) {
         proctime = proc->timer;
     }
-    return result;
+    return newint(proc->pid);
 }
 
-static int killproc(proc)
+static struct Value *killproc(proc, needresult)
     Proc *proc;
+    int needresult;
 {
     int result = 1;
-    extern int user_result;
 
     proc->state = PROC_DEAD;
     do_hook(H_KILL, NULL, "%d", proc->pid);
@@ -201,9 +198,10 @@ static int killproc(proc)
     if (proc->input) result = tfclose(proc->input);
 
     if (proc->type == P_QFILE) result = result + 1;
-    if (proc->type == P_QLOCAL || proc->type == P_REPEAT) result = user_result;
 
-    return result;
+    if (!needresult) return NULL;
+    if (proc->type == P_QLOCAL || proc->type == P_REPEAT) return user_result;
+    else return newint(result);
 }
 
 static void nukeproc(proc)
@@ -250,11 +248,11 @@ void kill_procs_by_world(world)
     Proc *proc;
 
     for (proc = proclist; proc; proc = proc->next) {
-        if (proc->world == world) killproc(proc);
+        if (proc->world == world) killproc(proc, 0);
     }
 }
 
-int handle_kill_command(args)
+struct Value *handle_kill_command(args)
     char *args;
 {
     Proc *proc;
@@ -267,10 +265,10 @@ int handle_kill_command(args)
             eprintf("no process %d", pid);
             error++;
         } else {
-            killproc(proc);
+            killproc(proc, 0);
         }
     }
-    return !error;
+    return newint(!error);
 }
 
 /* Run all processes that should be run, and set proctime to the time
@@ -289,14 +287,14 @@ int runall()
         if (proc->type == P_QSHELL) {
             if (is_active(fileno(proc->input->u.fp))) {
                 if (!(resched = runproc(proc)))
-                    killproc(proc);  /* no nuke! */
+                    killproc(proc, 0);  /* no nuke! */
             } else if (lpquote || (proc->timer <= now)) {
                 resched = FALSE;
                 readers_set(fileno(proc->input->u.fp));
             } else resched = TRUE;
         } else if (lpquote || (proc->timer <= now)) {
             if (!(resched = runproc(proc)))
-                killproc(proc);  /* no nuke! */
+                killproc(proc, 0);  /* no nuke! */
         } else resched = TRUE;
 
         if (resched && !lpquote && (!proctime || (proc->timer < proctime))) {
@@ -312,7 +310,6 @@ static int runproc(p)
 {
     int done;
     struct Sock *oldsock;
-    extern struct Sock *xsock;
 
     oldsock = xsock;
     if (p->world) xsock = p->world->sock;
@@ -410,7 +407,7 @@ static int procopt(opts, argp, ptime, world, disp)
     return TRUE;
 }
 
-int handle_quote_command(args)
+struct Value *handle_quote_command(args)
     char *args;
 {
     char *pre, *cmd, *suf = NULL;
@@ -421,14 +418,15 @@ int handle_quote_command(args)
     int disp = -1;
     struct World *world;
 
-    if (!*args || !procopt("@Sw:d:", &args, &ptime, &world, &disp)) return 0;
+    if (!*args || !procopt("@Sw:d:", &args, &ptime, &world, &disp))
+        return newint(0);
 
     pre = args;
     while (*args != '\'' && *args != '!' && *args != '#' && *args != '`') {
         if (*args == '\\') args++;
         if (!*args) {
             eprintf("missing command character");
-            return 0;
+            return newint(0);
         }
         args++;
     }
@@ -451,18 +449,18 @@ int handle_quote_command(args)
     case P_QFILE:
         if (restrict >= RESTRICT_FILE) {
             eprintf("files restricted");
-            return 0;
+            return newint(0);
         }
         cmd = expand_filename(cmd);
         if ((input = tfopen(cmd, "r")) == NULL) {
             operror(cmd);
-            return 0;
+            return newint(0);
         }
         break;
     case P_QSHELL:
         if (restrict >= RESTRICT_SHELL) {
             eprintf("shell restricted");
-            return 0;
+            return newint(0);
         }
         /* null input, and capture stderr */
 #ifdef PLATFORM_UNIX
@@ -473,7 +471,7 @@ int handle_quote_command(args)
 #endif
         if ((input = tfopen(newcmd->s, "p")) == NULL) {
             operror(cmd);
-            return 0;
+            return newint(0);
         }
         break;
 #ifndef NO_HISTORY
@@ -482,12 +480,12 @@ int handle_quote_command(args)
         olderr = tferr;
         tfout = input = tfopen(NULL, "q");
         /* tferr = input; */
-        result = handle_recall_command(cmd);
+        result = do_recall(cmd);
         tferr = olderr;
         tfout = oldout;
         if (!result) {
             tfclose(input);
-            return 0;
+            return newint(0);
         }
         break;
 #endif
@@ -501,13 +499,13 @@ int handle_quote_command(args)
         tfout = oldout;
         break;
     default:    /* impossible */
-        return 0;
+        return newint(0);
     }
-    return newproc(type, do_quote, -1, pre, suf, input, world, cmd, ptime,
-        (disp >= 0) ? disp : (*pre ? DISP_EXEC : DISP_SEND));
+    return newproc(type, do_quote, -1, pre, suf, input, world, cmd,
+        ptime, (disp >= 0) ? disp : (*pre ? DISP_EXEC : DISP_SEND));
 }
 
-int handle_repeat_command(args)
+struct Value *handle_repeat_command(args)
     char *args;
 {
     int count;
@@ -518,8 +516,8 @@ int handle_repeat_command(args)
     if (!*args || !procopt("@Sw:", &args, &ptime, &world, &disp)) return 0;
     if ((count = numarg(&args)) <= 0) return 0;
     if (disp < 0) disp = DISP_ECHO;
-    return newproc(P_REPEAT, do_repeat, count, "", "", NULL, world, args, ptime,
-        disp);
+    return newproc(P_REPEAT, do_repeat, count, "", "", NULL, world, args,
+        ptime, disp);
 }
 
 #endif /* NO_PROCESS */

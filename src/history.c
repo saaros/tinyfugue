@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: history.c,v 35004.31 1997/10/18 21:55:51 hawkeye Exp $ */
+/* $Id: history.c,v 35004.34 1997/11/16 22:04:57 hawkeye Exp $ */
 
 
 /****************************************************************
@@ -30,6 +30,8 @@
 #include "macro.h"		/* add_macro(), new_macro() */
 #include "commands.h"
 #include "search.h"		/* List in recall_history() */
+#include "keyboard.h"		/* keybuf */
+#include "variable.h"		/* setvar() */
 
 #define GLOBALSIZE    1000	/* global history size */
 #define LOCALSIZE      100	/* local history size */
@@ -56,17 +58,18 @@ static void     FDECL(save_to_log,(History *hist, CONST char *str));
 static void     FDECL(hold_input,(CONST char *str));
 static void     FDECL(listlog,(World *world));
 static void     FDECL(stoplog,(World *world));
+static int      FDECL(do_watch,(char *args, CONST char *name, int *wlines,
+                      int *wmatch, int flag));
+
 
 static Aline blankline[1] = { BLANK_ALINE };
 static int norecord = 0;         /* supress history (but not log) recording */
 static int nolog = 0;            /* supress log (but not history) recording */
 static struct History input[1];
+static int wnmatch = 4, wnlines = 5, wdmatch = 2, wdlines = 5;
 
 struct History globalhist[1], localhist[1];
 int log_count = 0;
-
-extern int restrict;
-extern Stringp keybuf;
 
 struct History *init_history(hist, maxsize)
     History *hist;
@@ -193,8 +196,6 @@ void recordline(hist, aline)
 static void hold_input(str)
     CONST char *str;
 {
-    extern int sockecho;
-
     free_aline(input->alines[input->last]);
     input->alines[input->last] = new_aline(str, sockecho ? 0 : F_GAG);
     input->alines[input->last]->links++;
@@ -265,7 +266,13 @@ Aline *recall_input(dir, searchflag)
     return input->alines[i];
 }
 
-int handle_recall_command(args)
+struct Value *handle_recall_command(args)
+    char *args;
+{
+    return newint(do_recall(args));
+}
+
+int do_recall(args)
     char *args;
 {
     int n0, n1, istime, i, ii, mflag = matching, want, count, truth = !0;
@@ -279,7 +286,6 @@ int handle_recall_command(args)
     World *world = xworld();
     History *hist = NULL;
     Aline *aline;
-    extern CONST char *enum_match[];
     static List stack[1] = {{ NULL, NULL }};
     STATIC_BUFFER(buffer);
     static Aline *startmsg = NULL, *endmsg = NULL;
@@ -429,11 +435,50 @@ int handle_recall_command(args)
     return count;
 }
 
+static int do_watch(args, name, wlines, wmatch, flag)
+    char *args;
+    CONST char *name;
+    int *wlines, *wmatch, flag;
+{
+    int out_of, match;
+
+    if (!*args) {
+        oprintf("%% %s %sabled.", name, flag ? "en" : "dis");
+        return 1;
+    } else if (cstrcmp(args, "off") == 0) {
+        setvar(name, "0", FALSE);
+        oprintf("%% %s disabled.", name);
+        return 1;
+    } else if (cstrcmp(args, "on") == 0) {
+        /* do nothing */
+    } else {
+        if ((match = numarg(&args)) < 0) return 0;
+        if ((out_of = numarg(&args)) < 0) return 0;
+        *wmatch = match;
+        *wlines = out_of;
+    }
+    setvar(name, "1", FALSE);
+    oprintf("%% %s enabled, searching for %d out of %d lines",
+        name, *wmatch, *wlines);
+    return 1;
+}
+
+struct Value *handle_watchdog_command(args)
+    char *args;
+{
+    return newint(do_watch(args, "watchdog", &wdlines, &wdmatch, watchdog));
+}
+
+struct Value *handle_watchname_command(args)
+    char *args;
+{
+    return newint(do_watch(args, "watchname", &wnlines, &wnmatch, watchname));
+}
+
 int is_watchname(hist, aline)
     History *hist;
     Aline *aline;
 {
-    extern int wnmatch, wnlines;
     int nmatches = 1, i;
     CONST char *line, *end;
     STATIC_BUFFER(buf);
@@ -459,7 +504,6 @@ int is_watchdog(hist, aline)
     History *hist;
     Aline *aline;
 {
-    extern int wdmatch, wdlines;
     int nmatches = 0, i;
     CONST char *line;
 
@@ -549,7 +593,7 @@ static int next_hist_opt(argp, histp, nump)
     return c;
 }
 
-int handle_recordline_command(args)
+struct Value *handle_recordline_command(args)
     char *args;
 {
     History *history = globalhist;
@@ -559,7 +603,7 @@ int handle_recordline_command(args)
 
     startopt(args, "lgiw:t#");
     while ((opt = next_hist_opt(&args, &history, &timestamp))) {
-        if (opt != 't') return 0;
+        if (opt != 't') return newint(0);
     }
 
     nolog++;
@@ -575,10 +619,10 @@ int handle_recordline_command(args)
         recordline(history, aline);
     }
     nolog--;
-    return 1;
+    return newint(1);
 }
 
-int handle_log_command(args)
+struct Value *handle_log_command(args)
     char *args;
 {
     History *history;
@@ -587,13 +631,13 @@ int handle_log_command(args)
 
     if (restrict >= RESTRICT_FILE) {
         eprintf("restricted");
-        return 0;
+        return newint(0);
     }
 
     history = &dummy;
     startopt(args, "lgiw:");
     if (next_hist_opt(&args, &history, NULL))
-        return 0;
+        return newint(0);
 
     if (history == &dummy && !*args) {
         if (log_count) {
@@ -609,7 +653,7 @@ int handle_log_command(args)
         } else {
             oputs("% Logging disabled.");
         }
-        return 1;
+        return newint(1);
     } else if (cstrcmp(args, "OFF") == 0) {
         if (history == &dummy) {
             if (log_count) {
@@ -629,17 +673,17 @@ int handle_log_command(args)
             --log_count;
             update_status_field(NULL, STAT_LOGGING);
         }
-        return 1;
+        return newint(1);
     } else if (cstrcmp(args, "ON") == 0 || !*args) {
         if (!(args = tfname(NULL, "LOGFILE")))
-            return 0;
+            return newint(0);
         logfile = tfopen(args, "a");
     } else {
         logfile = tfopen(expand_filename(args), "a");
     }
     if (!logfile) {
         operror(args);
-        return 0;
+        return newint(0);
     }
     if (history == &dummy) history = globalhist;
     if (history->logfile) {
@@ -651,14 +695,14 @@ int handle_log_command(args)
     history->logfile = logfile;
     log_count++;
     update_status_field(NULL, STAT_LOGGING);
-    return 1;
+    return newint(1);
 }
 
 #define histname(hist) \
         (hist == globalhist ? "global" : (hist == localhist ? "local" : \
         (hist == input ? "input" : "world")))
 
-int handle_histsize_command(args)
+struct Value *handle_histsize_command(args)
     char *args;
 {
     History *hist;
@@ -668,18 +712,18 @@ int handle_histsize_command(args)
     hist = globalhist;
     startopt(args, "lgiw:");
     if (next_hist_opt(&args, &hist, NULL))
-        return 0;
+        return newint(0);
     if (*args) {
-        if ((maxsize = numarg(&args)) <= 0) return 0;
+        if ((maxsize = numarg(&args)) <= 0) return newint(0);
         if (maxsize > 100000) {
             eprintf("%d lines?  Don't be ridiculous.", maxsize);
-            return 0;
+            return newint(0);
         }
         alines =
             (Aline**)dmalloc(maxsize * sizeof(Aline *), __FILE__, __LINE__);
         if (!alines) {
             eprintf("not enough memory for %d lines.", maxsize);
-            return 0;
+            return newint(0);
         }
         first = nmod(hist->total, maxsize);
         last = nmod(hist->total - 1, maxsize);
@@ -704,7 +748,7 @@ int handle_histsize_command(args)
         histname(hist), maxsize ? "changed to" : "is",
         hist->maxsize ? hist->maxsize : histsize);
     hist->index = hist->last;
-    return hist->maxsize;
+    return newint(hist->maxsize);
 }
 
 void sync_input_hist()

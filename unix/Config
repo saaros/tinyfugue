@@ -33,7 +33,7 @@
 #   even if an old version is currently in use.  You can remove
 #   the old version manually later when it is no longer in use.
 
-# EXE="/usr/local/bin/tf-${TFVER}"
+# TF="/usr/local/bin/tf-${TFVER}"
 # LIBDIR="/usr/local/lib/tf-${TFVER}-lib"
 # SYMLINK="/usr/local/bin/tf"
 

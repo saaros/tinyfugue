@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: main.c,v 35004.25 1997/11/07 05:51:16 hawkeye Exp $ */
+/* $Id: main.c,v 35004.29 1997/11/17 08:34:11 hawkeye Exp $ */
 
 
 /***********************************************
@@ -33,6 +33,9 @@
 #include "keyboard.h"
 #include "variable.h"
 #include "tty.h"	/* no_tty */
+#include "expand.h"
+#include "process.h"
+#include "search.h"
 
 CONST char sysname[] = UNAME;
 
@@ -40,7 +43,7 @@ CONST char sysname[] = UNAME;
  * to the version number, and put a brief description of the modifications
  * in the mods[] string.
  */
-CONST char version[] = "TinyFugue version 4.0 alpha 2";
+CONST char version[] = "TinyFugue version 4.0 alpha 3";
 CONST char mods[] = "";
 
 CONST char copyright[] =
@@ -192,10 +195,12 @@ static void read_configuration(fname)
         return;
     }
 
-    do_file_load("~/.tfrc", TRUE) ||
-    do_file_load("~/tfrc", TRUE) ||
-    do_file_load("./.tfrc", TRUE) ||
-    do_file_load("./tfrc", TRUE);
+    (void)(   /* ignore value of expression */
+        do_file_load("~/.tfrc", TRUE) ||
+        do_file_load("~/tfrc", TRUE) ||
+        do_file_load("./.tfrc", TRUE) ||
+        do_file_load("./tfrc", TRUE)
+    );
 
     /* support for old fashioned .tinytalk files */
     do_file_load((fname = getvar("TINYTALK")) ? fname : "~/.tinytalk", TRUE);

@@ -47,7 +47,7 @@ socket.$O: socket.c config.h port.h dstring.h $(TF_H) util.h tfio.h tfselect.h \
 tfio.$O: tfio.c config.h port.h dstring.h $(TF_H) util.h tfio.h tfselect.h \
 	output.h macro.h history.h search.h signals.h variable.h $(BUILDERS)
 tty.$O: tty.c config.h port.h $(TF_H) dstring.h util.h tty.h output.h macro.h \
-	search.h variable.h $(BUILDERS)
+	search.h variable.h expand.h $(BUILDERS)
 util.$O: util.c config.h port.h dstring.h $(TF_H) util.h tfio.h output.h tty.h \
 	signals.h variable.h $(BUILDERS)
 variable.$O: variable.c config.h port.h dstring.h $(TF_H) util.h tfio.h \

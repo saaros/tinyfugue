@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: world.h,v 35004.9 1997/03/27 01:04:58 hawkeye Exp $ */
+/* $Id: world.h,v 35004.10 1997/11/17 08:34:13 hawkeye Exp $ */
 
 #ifndef WORLD_H
 #define WORLD_H
@@ -37,5 +37,9 @@ extern int    FDECL(nuke_world,(World *w));
 extern World *NDECL(get_default_world);
 extern World *FDECL(find_world,(CONST char *name));
 extern void   FDECL(mapworld,(void FDECL((*func),(struct World *world))));
+
+#ifdef DMALLOC
+extern void   NDECL(free_worlds);
+#endif
 
 #endif /* WORLD_H */

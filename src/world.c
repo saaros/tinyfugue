@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: world.c,v 35004.23 1997/10/18 21:55:53 hawkeye Exp $ */
+/* $Id: world.c,v 35004.27 1997/11/16 22:05:01 hawkeye Exp $ */
 
 
 /********************************************************
@@ -28,8 +28,6 @@
 #define LW_HIDE		001
 #define LW_UNNAMED	002
 #define LW_SHORT	004
-
-extern int restrict;
 
 static int  FDECL(list_worlds,(CONST Pattern *name, CONST Pattern *type,
     struct TFILE *file, int flags));
@@ -63,6 +61,7 @@ static void free_world(w)
     FREE(w);
 }
 
+#ifdef DMALLOC
 void free_worlds()
 {
     World *next;
@@ -74,6 +73,7 @@ void free_worlds()
         free_world(hworld);
     }
 }
+#endif
 
 /* A NULL name means unnamed; world will be given a temp name. */
 World *new_world(name, character, pass, host, port, mfile, type, flags)
@@ -84,7 +84,6 @@ World *new_world(name, character, pass, host, port, mfile, type, flags)
     static int unnamed = 1;
     smallstr buffer;
     int is_redef = FALSE;
-    extern TFILE *loadfile;
  
     if (name && cstrcmp(name, "default") == 0) {
         if (defaultworld) {
@@ -143,7 +142,7 @@ World *new_world(name, character, pass, host, port, mfile, type, flags)
     return result;
 }
 
-int handle_addworld_command(args)
+struct Value *handle_addworld_command(args)
     char *args;
 {
     int count;
@@ -155,7 +154,7 @@ int handle_addworld_command(args)
 
     if (restrict >= RESTRICT_WORLD) {
         eprintf("restricted");
-        return 0;
+        return newint(0);
     }
 
     startopt(args, "pT:");
@@ -169,7 +168,7 @@ int handle_addworld_command(args)
             flags |= WORLD_NOPROXY;
             break;
         default:
-            return 0;
+            return newint(0);
         }
     }
     if (!type) type = STRNDUP("", 0);
@@ -204,7 +203,7 @@ int handle_addworld_command(args)
             count == 4 ? fields[3] : "", type, flags);
     }
     FREE(type);
-    return !error;
+    return newint(!error);
 }
 
 /* should not be called for defaultworld */
@@ -226,7 +225,7 @@ int nuke_world(w)
     return 1;
 }
 
-int handle_unworld_command(args)
+struct Value *handle_unworld_command(args)
     char *args;
 {
     World *w;
@@ -243,16 +242,15 @@ int handle_unworld_command(args)
             eprintf("No world %s", name);
         }
     }
-    return result;
+    return newint(result);
 }
 
 
-int handle_listworlds_command(args)
+struct Value *handle_listworlds_command(args)
     char *args;
 {
     int flags = LW_HIDE, mflag = matching, error = 0, result;
     char c;
-    extern CONST char *enum_match[];
     Pattern type, name;
 
     init_pattern_str(&type, NULL);
@@ -268,17 +266,17 @@ int handle_listworlds_command(args)
             case 'c':  flags &= ~LW_HIDE; break;
             case 'm':  error = ((mflag = enum2int(args, enum_match, "-m")) < 0);
                        break;
-            default:   return 0;
+            default:   return newint(0);
         }
     }
-    if (error) return 0;
+    if (error) return newint(0);
     init_pattern_mflag(&type, mflag);
     if (*args) error += !init_pattern(&name, args, mflag);
-    if (error) return 0;
+    if (error) return newint(0);
     result = list_worlds(*args?&name:NULL, type.str?&type:NULL, NULL, flags);
     free_pattern(&name);
     free_pattern(&type);
-    return result;
+    return newint(result);
 }
 
 static int list_worlds(name, type, file, flags)
@@ -316,7 +314,7 @@ static int list_worlds(name, type, file, flags)
     return count;
 }
 
-int handle_saveworld_command(args)
+struct Value *handle_saveworld_command(args)
     char *args;
 {
     TFILE *file;
@@ -327,25 +325,25 @@ int handle_saveworld_command(args)
 
     if (restrict >= RESTRICT_FILE) {
         eprintf("restricted");
-        return 0;
+        return newint(0);
     }
 
     startopt(args, "a");
     while ((opt = nextopt(&args, NULL))) {
-        if (opt != 'a') return 0;
+        if (opt != 'a') return newint(0);
         mode = "a";
     }
     if ((name = tfname(args, "WORLDFILE")) == NULL)
-        return 0;
+        return newint(0);
     if ((file = tfopen(name, mode)) == NULL) {
         operror(args);
-        return 0;
+        return newint(0);
     }
     oprintf("%% %sing world definitions to %s", *mode == 'a' ? "Append" :
         "Writ", file->name);
     result = list_worlds(NULL, NULL, file, 0);
     tfclose(file);
-    return result;
+    return newint(result);
 }
 
 World *get_default_world()

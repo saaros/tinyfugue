@@ -13,6 +13,8 @@
 /require stack-q.tf
 /require lisp.tf
 
+/if (active_worlds =~ "") /set active_worlds=%; /endif
+
 /def -ib'^[w' = /to_active_or_prev_world
 
 /def -iFp1 -h"ACTIVITY" activity_queue_hook = \

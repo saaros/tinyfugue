@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: keyboard.c,v 35004.25 1997/10/22 07:28:59 hawkeye Exp $ */
+/* $Id: keyboard.c,v 35004.27 1997/11/16 22:04:58 hawkeye Exp $ */
 
 /**************************************************
  * Fugue keyboard handling.
@@ -129,7 +129,6 @@ int handle_keyboard_input(int read_flag)
     static int input_start = 0;
     static int place = 0;
     static int eof = 0;
-    extern int read_depth;
 
     if (!eof && read_flag) {
         /* read a block of text */
@@ -252,11 +251,11 @@ static void handle_input_string(input, len)
 }
 
 
-int handle_input_command(args)
+struct Value *handle_input_command(args)
     char *args;
 {
     handle_input_string(args, strlen(args));
-    return 1;
+    return newint(1);
 }
 
 
@@ -264,7 +263,7 @@ int handle_input_command(args)
  *  Builtin key functions.
  */
 
-int handle_dokey_command(args)
+struct Value *handle_dokey_command(args)
     char *args;
 {
     CONST char **ptr;
@@ -276,29 +275,30 @@ int handle_dokey_command(args)
 
     if (!ptr) {
         Stringcat(Stringcpy(buffer, "dokey_"), args);
-        if ((macro = find_macro(buffer->s))) return do_macro(macro, NULL);
+        if ((macro = find_macro(buffer->s)))
+            return newint(do_macro(macro, NULL));
         else eprintf("No editing function %s", args); 
-        return 0;
+        return newint(0);
     }
 
     switch (ptr - efunc_table) {
 
-    case DOKEY_FLUSH:      return screen_flush(FALSE);
-    case DOKEY_HPAGE:      return dokey_hpage();
-    case DOKEY_LINE:       return dokey_line();
-    case DOKEY_LNEXT:      return literal_next = TRUE;
-    case DOKEY_NEWLINE:    return dokey_newline();
-    case DOKEY_PAGE:       return dokey_page();
-    case DOKEY_RECALLB:    return replace_input(recall_input(-1, FALSE));
-    case DOKEY_RECALLBEG:  return replace_input(recall_input(-2, FALSE));
-    case DOKEY_RECALLEND:  return replace_input(recall_input(2, FALSE));
-    case DOKEY_RECALLF:    return replace_input(recall_input(1, FALSE));
-    case DOKEY_REDRAW:     return redraw();
-    case DOKEY_REFRESH:    return logical_refresh(), keyboard_pos;
-    case DOKEY_SEARCHB:    return replace_input(recall_input(-1, TRUE));
-    case DOKEY_SEARCHF:    return replace_input(recall_input(1, TRUE));
-    case DOKEY_SELFLUSH:   return screen_flush(TRUE);
-    default:               return 0; /* impossible */
+    case DOKEY_FLUSH:      return newint(screen_flush(FALSE));
+    case DOKEY_HPAGE:      return newint(dokey_hpage());
+    case DOKEY_LINE:       return newint(dokey_line());
+    case DOKEY_LNEXT:      return newint(literal_next = TRUE);
+    case DOKEY_NEWLINE:    return newint(dokey_newline());
+    case DOKEY_PAGE:       return newint(dokey_page());
+    case DOKEY_RECALLB:    return newint(replace_input(recall_input(-1,FALSE)));
+    case DOKEY_RECALLBEG:  return newint(replace_input(recall_input(-2,FALSE)));
+    case DOKEY_RECALLEND:  return newint(replace_input(recall_input(2,FALSE)));
+    case DOKEY_RECALLF:    return newint(replace_input(recall_input(1,FALSE)));
+    case DOKEY_REDRAW:     return newint(redraw());
+    case DOKEY_REFRESH:    return newint((logical_refresh(), keyboard_pos));
+    case DOKEY_SEARCHB:    return newint(replace_input(recall_input(-1,TRUE)));
+    case DOKEY_SEARCHF:    return newint(replace_input(recall_input(1,TRUE)));
+    case DOKEY_SELFLUSH:   return newint(screen_flush(TRUE));
+    default:               return newint(0); /* impossible */
     }
 }
 

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: socket.c,v 35004.70 1997/10/22 07:27:06 hawkeye Exp $ */
+/* $Id: socket.c,v 35004.75 1997/11/16 22:04:59 hawkeye Exp $ */
 
 
 /***************************************************************
@@ -232,16 +232,6 @@ static void  NDECL(preferred_telnet_options);
 
 #define SPAM (4*1024)		/* break loop if this many chars are received */
 
-extern int restrict;
-extern int sockecho;		/* echo input? */
-extern int need_refresh;	/* Does input need refresh? */
-extern int need_more_refresh;	/* Does visual more prompt need refresh? */
-#ifndef NO_PROCESS
-extern TIME_T proctime;		/* when next process should run */
-#else
-# define proctime 0
-#endif
-
 static fd_set readers;		/* input file descriptors */
 static fd_set active;		/* active file descriptors */
 static fd_set writers;		/* pending connections */
@@ -308,8 +298,6 @@ STATIC_BUFFER(telbuf);
 Sock *xsock = NULL;		/* current (transmission) socket */
 int quit_flag = FALSE;		/* Are we all done? */
 int active_count = 0;		/* # of (non-current) active sockets */
-TIME_T mail_update = 0;		/* next mail check (0==immediately) */
-TIME_T clock_update = 0;	/* next clock update (0==immediately) */
 Aline *incoming_text = NULL;
 
 #define CONFAIL(where, what, why) \
@@ -376,9 +364,6 @@ void main_loop()
     static int depth = 0;
     struct timeval tv, *tvp;
     struct timeval refresh_tv;
-    extern int pending_line, pending_input;
-    extern int read_depth;
-    extern int low_memory_warning;
 
     depth++;
     while (!quit_flag) {
@@ -679,7 +664,7 @@ static int fg_sock(sock, quiet)
     return 1;
 }
 
-int handle_fg_command(args)
+struct Value *handle_fg_command(args)
     char *args;
 {
     int opt, nosock = FALSE, noerr = FALSE, dir = 0, quiet = FALSE;
@@ -694,12 +679,12 @@ int handle_fg_command(args)
         case 'q':  quiet = TRUE; break;
         case '<':  dir = -1;  break;
         case '>':  dir =  1;  break;
-        default:   return 0;
+        default:   return newint(0);
         }
     }
 
     if (nosock) {
-        return fg_sock(NULL, quiet);
+        return newint(fg_sock(NULL, quiet));
 
     } else if (dir) {
         Sock *stop;
@@ -709,15 +694,15 @@ int handle_fg_command(args)
             sock = (dir > 0) ? (sock->next ? sock->next : hsock) :
                                (sock->prev ? sock->prev : tsock);
         } while ((sock->flags & SOCKPENDING) && sock != stop);
-        return fg_sock(sock, quiet);
+        return newint(fg_sock(sock, quiet));
     }
 
     sock = (!*args) ? hsock : find_sock(args);
     if (!sock || sock->flags & SOCKPENDING) {
         if (!noerr) eprintf("not connected to '%s'", args);
-        return 0;
+        return newint(0);
     }
-    return fg_sock(sock, quiet);
+    return newint(fg_sock(sock, quiet));
 }
 
 /* openworld
@@ -1244,7 +1229,7 @@ static void nuke_dead_socks()
 }
 
 /* disconnect a socket */
-int handle_dc_command(args)
+struct Value *handle_dc_command(args)
     char *args;
 {
     Sock *s;
@@ -1252,7 +1237,7 @@ int handle_dc_command(args)
     if (!*args) {
         if (!xsock) {
             eprintf("no current socket");
-            return 0;
+            return newint(0);
         }
         killsock(xsock);
         oprintf ("%% Connection to %s closed.", xsock->world->name);
@@ -1264,14 +1249,14 @@ int handle_dc_command(args)
             oprintf ("%% Connection to %s closed.", s->world->name);
         } else {
             eprintf("Not connected to %s", args);
-            return 0;
+            return newint(0);
         }
     }
-    return 1;
+    return newint(1);
 }
 
 /* display list of open sockets and their state. */
-int handle_listsockets_command(args)
+struct Value *handle_listsockets_command(args)
     char *args;
 {
     Sock *sock;
@@ -1281,7 +1266,6 @@ int handle_listsockets_command(args)
     int t, opt;
     int count = 0, error = 0, shortflag = FALSE, mflag = matching;
     Pattern pat_name, pat_type;
-    extern CONST char *enum_match[];
 
     init_pattern_str(&pat_name, NULL);
     init_pattern_str(&pat_type, NULL);
@@ -1310,7 +1294,7 @@ int handle_listsockets_command(args)
     if (error) goto listsocket_error;
 
     if (!hsock) {
-        oputs("% Not connected to any sockets.");
+        eprintf("Not connected to any sockets.");
         goto listsocket_error;
     }
 
@@ -1357,7 +1341,7 @@ listsocket_error:
     free_pattern(&pat_name);
     free_pattern(&pat_type);
 
-    return count;
+    return newint(count);
 }
 
 int handle_send_function(text, world, eol_flag)
@@ -1550,11 +1534,11 @@ int tog_lp()
     return 1;
 }
 
-int handle_prompt_command(args)
+struct Value *handle_prompt_command(args)
     char *args;
 {
     if (xsock) handle_prompt(args, TRUE);
-    return !!xsock;
+    return newint(!!xsock);
 }
 
 static void handle_prompt(str, confirmed)

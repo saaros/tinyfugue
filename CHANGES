@@ -1,7 +1,20 @@
 Only the most recent version will have detailed changes described.
 Some fixes are followed by the version in which the problem first appeared.
 
-4.0 alpha 2 (11/7/97)
+4.0 alpha 3 (11/20/97)
+----------
+Blank space is not inserted automatically between fields of %status_fields.
+%status_fields may contain string literals.
+Added %pedantic to generate warnings about some potential problems in macros.
+Attribute lists can now contain multiple colors, using a comma separator.
+Eliminated misleading warning for "/more on". (40a2)
+Fixed use of %0 in trigger, hook, or keybinding. (40a1)
+Fixed bug in regexp triggers causing segfault at macro.c:1249, problems
+  with /dokey selfush (^[J), et al.
+Fixed /unset status_fields. (40a1)
+Fixed setting of executable name in unix/tfconfig. (40a1)
+
+4.0 alpha 2 (11/6/97)
 ----------
 Fixed parameter subs for macro-as-command called by macro-as-function
   (including ismacro() and /more). (40a1)
@@ -9,7 +22,7 @@ Fixed use of color in %status_fields. (40a1)
 Eliminated unneeded 1s updates of visual more status. (40a1)
 Added warnings for new 4.0 semantics of old code.
 
-4.0 alpha 1 (11/6/97)
+4.0 alpha 1 (11/5/97)
 ----------
 Ported to Win32 (requires Cygwin Development Kit).
 %clock is no longer used.  See "/help %clock".

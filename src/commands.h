@@ -5,12 +5,21 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: commands.h,v 35004.8 1997/10/18 17:26:07 hawkeye Exp $ */
+/* $Id: commands.h,v 35004.10 1997/11/16 22:04:56 hawkeye Exp $ */
 
 #ifndef COMMANDS_H
 #define COMMANDS_H
 
-#define HANDLER(name) int FDECL(name,(char *args))
+extern struct Value *FDECL(newint,(long i));
+extern struct Value *FDECL(newstrid,(CONST char *str, int len, int type,
+              CONST char *file, int line));
+
+#define newstrliteral(s)  (newstrid(s, sizeof(s), TYPE_STR, __FILE__, __LINE__))
+#define newstr(s,l)       (newstrid(s, l, TYPE_STR, __FILE__, __LINE__))
+#define newid(s,l)        (newstrid(s, l, TYPE_ID, __FILE__, __LINE__))
+
+
+#define HANDLER(name) struct Value *FDECL(name,(char *args))
 
 extern HANDLER (handle_addworld_command);
 extern HANDLER (handle_dc_command);
@@ -50,11 +59,15 @@ extern HANDLER (handle_histsize_command);
 extern HANDLER (handle_log_command);
 extern HANDLER (handle_recall_command);
 extern HANDLER (handle_recordline_command);
+extern HANDLER (handle_watchdog_command);
+extern HANDLER (handle_watchname_command);
 #else
 # define handle_histsize_command     NULL
 # define handle_log_command          NULL
 # define handle_recall_command       NULL
 # define handle_recordline_command   NULL
+# define handle_watchdog_command     NULL
+# define handle_watchname_command    NULL
 #endif
 
 #endif /* COMMANDS_H */

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: help.c,v 35004.11 1997/11/06 06:12:42 hawkeye Exp $ */
+/* $Id: help.c,v 35004.13 1997/11/20 07:17:48 hawkeye Exp $ */
 
 /*
  * Fugue help handling
@@ -29,7 +29,7 @@ STATIC_BUFFER(indexfname);
 
 #define HELPLEN  (240+1)	/* maximum length of lines in help file */
 
-int handle_help_command(args) 
+struct Value *handle_help_command(args) 
     char *args;
 {
     char buf0[HELPLEN], buf1[HELPLEN], buf2[HELPLEN];
@@ -38,13 +38,14 @@ int handle_help_command(args)
     CONST char *name;
     TFILE *helpfile, *indexfile;
     long offset = -1;
+    attr_t attrs;  /* for carrying attributes to next line */
 
     Stringterm(indexfname, 0);
 
     name = expand_filename(getvar("TFHELP"));
     if ((helpfile = tfopen(name, "r")) == NULL) {
         operror(name);
-        return 0;
+        return newint(0);
     }
 
 #ifndef __CYGWIN32__
@@ -54,7 +55,7 @@ int handle_help_command(args)
         if ((indexfile = tfopen(indexfname->s, "r")) == NULL) {
             operror(indexfname->s);
             tfclose(helpfile);
-            return 0;
+            return newint(0);
         }
     } else
 #endif
@@ -100,7 +101,7 @@ int handle_help_command(args)
     if (offset < 0) {
         oprintf("%% Help on subject %s not found.", name);
         tfclose(helpfile);
-        return 0;
+        return newint(0);
     }
 
     if (indexfile != helpfile)
@@ -132,9 +133,12 @@ int handle_help_command(args)
         tfprintf(tfout, "Help on: %s", major_topic);
     }
 
+    attrs = 0;
     while (*input != '&') {
-        if (*input != '#') tfputansi(input, tfout);
-        else if (*minor_buffer) break;
+        if (*input != '#')
+            attrs = tfputansi(input, tfout, attrs);
+        else if (*minor_buffer)
+            break;
         if (fgets(input, HELPLEN, helpfile->u.fp) == NULL) break;
         if (*input) input[strlen(input)-1] = '\0';
     }
@@ -144,7 +148,7 @@ int handle_help_command(args)
             major_topic);
 
     tfclose(helpfile);
-    return 1;
+    return newint(1);
 }
 
 #ifdef DMALLOC

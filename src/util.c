@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.c,v 35004.36 1997/10/25 23:38:29 hawkeye Exp $ */
+/* $Id: util.c,v 35004.42 1997/11/20 07:17:00 hawkeye Exp $ */
 
 
 /*
@@ -38,13 +38,12 @@ typedef struct RegInfo {
     short temp;
 } RegInfo;
 
-extern TIME_T mail_update;
-
 static TIME_T mail_mtime;	/* mail file modification time */
 static long mail_size;		/* mail file size */
 static RegInfo top_reginfo = { NULL, NULL, FALSE };
 static RegInfo *reginfo = &top_reginfo;
 
+TIME_T mail_update = 0;		/* next mail update (0==immediately) */
 int mail_flag = 0;
 char tf_ctype[0x100];
 
@@ -327,6 +326,32 @@ char *stringarg(str, end)
     if (**str)
         while (isspace(**str)) ++*str;
     return start;
+}
+
+int stringliteral(dest, str)
+    String *dest;
+    char **str;
+{
+    char quote;
+
+    Stringterm(dest, 0);
+    quote = **str;
+    for (++*str; **str && **str != quote; ++*str) {
+        if (**str == '\\') {
+            if ((*str)[1] == quote || (*str)[1] == '\\')
+                ++*str;
+            else if ((*str)[1] && pedantic)
+                eprintf("warning: the only legal escapes within this quoted string are \\\\ and \\%c.  \\\\%c is the correct way to write a literal \\%c inside a quoted string.", quote, (*str)[1], (*str)[1]);
+
+        }
+        Stringadd(dest, isspace(**str) ? ' ' : **str);
+    }
+    if (!**str) {
+        Sprintf(dest, 0, "unmatched %c", quote);
+        return 0;
+    }
+    ++*str;
+    return 1;
 }
 
 int regexec_in_scope(re, str)
@@ -705,7 +730,7 @@ char nextopt(arg, num)
     char **arg;
     long *num;
 {
-    char *q, opt, quote;
+    char *q, opt;
     STATIC_BUFFER(buffer);
 
     if (!inword) {
@@ -751,15 +776,13 @@ char nextopt(arg, num)
         Stringterm(buffer, 0);
         ++argp;
         if (is_quote(*argp)) {
-            quote = *argp;
-            for (argp++; *argp && *argp != quote; Stringadd(buffer, *argp++))
-                if (*argp == '\\' && (argp[1] == quote || argp[1] == '\\'))
-                    argp++;
-            if (!*argp) {
-                eprintf("unmatched %c in %c option", quote, opt);
+            if (!stringliteral(buffer, &argp)) {
+                eprintf("%S in %c option", buffer, opt);
                 return '?';
-            } else argp++;
-        } else while (*argp && !isspace(*argp)) Stringadd(buffer, *argp++);
+            }
+        } else {
+            while (*argp && !isspace(*argp)) Stringadd(buffer, *argp++);
+        }
         *arg = buffer->s;
 
     /* option takes a numeric argument */
@@ -1000,7 +1023,6 @@ void internal_error(file, line)
     CONST char *file;
     int line;
 {
-    extern CONST char version[];
     eprintf("Internal error at %s:%d, %s.  %s", file, line, version,
         "Please report this to the author, and describe what you did.");
 }

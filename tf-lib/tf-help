@@ -355,7 +355,8 @@
   [1m/connect[22m returns 0 on error or failure, 1 on success, or 2 if the connection 
   is pending.  
 
-  See: [1mworlds[22m, [1msockets[22m, [1m/world[22m, [1m/addworld[22m, [1m/fg[22m, [1m%login[22m, [1m%gethostbyname[22m, [1mhooks[22m 
+  See: [1mworlds[22m, [1msockets[22m, [1m/world[22m, [1m/addworld[22m, [1m/fg[22m, [1m/retry[22m, [1m%login[22m, 
+  [1m%gethostbyname[22m, [1mhooks[22m 
 
 &disconnect
 &close
@@ -634,7 +635,7 @@
 #hpage
     HPAGE         ^[h               Scroll half page ("[1mmore[22m")
 #line
-    LINE          ^[l               Scroll 1 line ("[1mmore[22m")
+    LINE          ^[L               Scroll 1 line ("[1mmore[22m")
 #flush
     FLUSH         ^[j               Discard all queued lines. 
 #selflush
@@ -699,6 +700,8 @@
     Result:  [1m[4mHello[24m, world![22m
 
   (with "Hello" underlined, and the whole line bold).  
+
+  Echoed text is not matched against [1mtriggers[22m.  To do that, use [1m/trigger[22m.  
 
   See: [1mattributes[22m, [1mworlds[22m, [1mecho()[22m, [1mfwrite()[22m, [1mpad()[22m, [1mtfio[22m 
 
@@ -1851,17 +1854,15 @@ mapping
   will Jump to the end of the text, skipping all text which has been received 
   but not yet displayed.  
 
-  In [1mvisual mode[22m, if there are more than 20 logical lines pending, the number 
-  of lines is displayed with the More prompt.  To avoid "spamming", the number 
-  is not updated for every new line, but only in increments of 20 or when the 
-  screen is updated for some other reason.  If the number of pending lines is 
-  10000 or more, no number will be displayed and the prompt will just say 
-  "MuchMore".  
+  In [1mvisual mode[22m, with the default setting of [1mstatus_fields[22m, the number of 
+  pending lines is displayed with the More prompt.  If the number of pending 
+  lines is 10000 or more, no number will be displayed and the prompt will just 
+  say "MuchMore".  
 
   If your terminal can't scroll in [1mvisual mode[22m, TF will start over at the top 
   of the output window instead.  
 
-  See: [1m/dokey[22m, [1m%more[22m, [1mmoresize()[22m 
+  See: [1m/dokey[22m, [1m%more[22m, [1mmoresize()[22m, [1mstatus_fields[22m 
 
 &/nogag
 
@@ -2172,7 +2173,7 @@ mapping
   The [1mlibrary[22m file [1mquoter.tf[22m defines some useful [1mquoter commands[22m that are 
   shortcuts for some common uses of [1mquote[22m.  
 
-  The following is a list of some nearly equivilent pairs of commands: 
+  The following is a list of some nearly equivalent pairs of commands: 
 
   [1m/quote[22m -S -dexec '<[4mfile[24m> 
           [1m/load[22m <[4mfile[24m> 
@@ -2486,11 +2487,14 @@ Quoter Commands
   ____________________________________________________________________________
 
   [1m/return[22m stops execution of the macro body that called it, and causes the 
-  macro to return the value of <[4m[1mexpression[22m[24m>.  
+  macro to return the value of <[4m[1mexpression[22m[24m> (which can be any type, not just 
+  integer).  
 
   This example defines several [1mmacros[22m intended to be called as a [1mfunctions[22m: 
   [1m/def[22m square = [1m/return[22m [1mpow[22m({1}, 2) 
   [1m/def[22m hypot = [1m/return[22m [1msqrt[22m(square({1}) + square({2})) 
+  [1m/def[22m strreverse = [1m/return[22m [1mstrcat[22m( [1mstrlen[22m({*})>1 ? strreverse([1msubstr[22m({*},1)): 
+  "", [1msubstr[22m({*},0,1)) 
 
   See: [1m/if[22m, [1m/while[22m, [1m/test[22m, [1m/break[22m, [1mexpressions[22m, [1mevaluation[22m, [1mvariables[22m 
 
@@ -2657,7 +2661,7 @@ Quoter Commands
 
   Usage: 
 
-  [1m/SH[22m [<[4mcommand[24m>]
+  [1m/SH[22m [-q] [<[4mcommand[24m>]
   [1m/PSH[22m [<[4mcommand[24m>]
   ____________________________________________________________________________
 
@@ -2669,6 +2673,9 @@ Quoter Commands
 
   In [1mvisual mode[22m, [1m/sh[22m and [1m/psh[22m will fix the screen first, and restore it after 
   executing the shell.  [1m/Sys[22m does not.  
+
+  If the -q option is given, /sh will be quiet: the [1mSHELL[22m [1mhook[22m will not be 
+  called, and the "Executing" line will not be printed.  
 
   If the [1m%{shpause}[22m flag is on, Fugue will wait for a keypress before 
   returning.  
@@ -3365,15 +3372,14 @@ spelling checker
 
 attributes
 
-  Many TF commands take an [1mattribute[22m argument containing one or more of the 
-  letters "ngGurfdBbhC", which stand for: normal, [1mgag[22m, norecord, underline, 
-  reverse, flash, dim, Bold, bell, [1mhilite[22m, and [1mColor[22m.  These [1mattributes[22m are 
-  used to display text associated with the command.  
-
-  It is also possible to apply [1mattributes[22m to a part of a line, using [1m/partial[22m 
-  or the [1m-P[22m option of [1m/def[22m.  If two or more partial [1mattributes[22m overlap, their 
-  effects will be combined.  For example, overlapping bold and reverse will 
-  appear bold and reverse; overlapping blue and red will appear magenta.  
+  Many TF commands take an argument to specifiy an [1mattribute[22m list, containing 
+  one or more of: n, g, G, u, r, f, d, B, b, h, C<[4mcolor[24m>.  The attribute codes 
+  stand for: normal, [1mgag[22m, norecord, underline, reverse, flash, dim, Bold, 
+  bell, [1mhilite[22m, and [1mColor[22m.  These [1mattributes[22m are used to display text 
+  associated with the command.  Use commas to separate attributes within an 
+  attribute list; commas may be omitted between single-letter attributes.  For 
+  example, "BuCred,Cbgyellow" means bold underlined red text on a yellow 
+  background.  
 
   Norecord ("G") prevents the line from being recorded in [1mhistory[22m (however, if 
   [1mlogging[22m is enabled, the line will be [1mlogged[22m).  
@@ -3396,6 +3402,11 @@ attributes
   combined with other [1mattributes[22m: combining 'g' and 'B', for example, will [1mgag[22m 
   the text initially, but will display it as bold if is is recalled with 
   [1m/recall[22m -ag.) 
+
+  It is possible to apply [1mattributes[22m to a part of a line, using [1m/partial[22m or 
+  the [1m-P[22m option of [1m/def[22m.  If two or more partial [1mattributes[22m overlap, their 
+  effects will be combined.  For example, overlapping bold and reverse will 
+  appear bold and reverse; overlapping blue and red will appear magenta.  
 
   Ansi [1mattribute[22m codes sent by the server will be interpreted by tf if 
   [1m%{emulation}[22m is set to "ansi_attr".  See: [1m%emulation[22m.  
@@ -3630,7 +3641,7 @@ expressions
 
   [1mExpressions[22m apply operators to numeric and string operands, and return a 
   result.  They can be used in [1m$[...] expression subs[22m, the condition of [1m/if[22m 
-  and [1m/while[22m statements, and in [1m/test[22m.  
+  and [1m/while[22m statements, and as arguments to [1m/return[22m and [1m/test[22m commands.  
 
 #float
 #integer
@@ -4231,7 +4242,7 @@ getopts()
 
 
     [1m/def[22m foo = \
-        [1m/if[22m (!getopts("abcs:", "")) [1m/break[22m%; [1m/endif[22m%; \
+        [1m/if[22m (!getopts("abns:", "")) [1m/break[22m%; [1m/endif[22m%; \
         [1m/echo[22m option a:  %{opt_a}%;\
         [1m/echo[22m option b:  %{opt_b}%;\
         [1m/echo[22m option n:  %{opt_n}%;\
@@ -4340,10 +4351,11 @@ hints
       problems if [1m%1[22m contains any special characters.  But by using a [1mvariable[22m 
       reference you can avoid this problem; for example, "[1m/test[22m {1}".  
 
-    *  Debugging: "[1m/set[22m [1mmecho[22m=on" to see what commands are being executed, 
-      or "[1m/connect[22m localhost echo" to see what you're sending to the [1msocket[22m.  
-      "[1m/set[22m [1memulation[22m=debug" and "[1mtelopt[22m=on" to see exactly what the socket is 
-      sending to tf.  
+    *  Debugging: "[1m/set[22m [1mpedantic[22m=on" to make tf generate warnings about 
+      some potential problems.  "[1m/set[22m [1mmecho[22m=on" to see what commands are being 
+      executed, or "[1m/connect[22m localhost echo" to see what you're sending to the 
+      [1msocket[22m.  "[1m/set[22m [1memulation[22m=debug" and "[1mtelopt[22m=on" to see exactly what the 
+      socket is sending to tf.  
 
 &scrollback
 &history
@@ -4908,8 +4920,12 @@ Save commands:
 
   See: [1m/save[22m 
 
-#compression
 #compress
+#COMPRESS_READ
+#$COMPRESS_READ
+#COMPRESS_SUFFIX
+#$COMPRESS_SUFFIX
+#compression
 File compression:
 
   The helpfile, personal config file, and files read with [1m/load[22m may be stored 
@@ -6263,6 +6279,12 @@ Special global variables
           only slashes at the beginning of a body are handled specially.  You 
           are encouraged to turn this off.  (See: [1mevaluation[22m) 
 
+#pedantic
+#%pedantic
+  [1mpedantic[22m=off 
+          (flag) If on, tf will generate warnings about some potential 
+          problems in your macro code.  
+
 #prompt_sec
 #%prompt_sec
 #prompt_usec
@@ -6480,27 +6502,30 @@ Configuring the status line
   The [1mstatus_fields[22m [1mvariable[22m contains a list of descriptions of fields to be 
   displayed on the status line.  Each description consists of: 
 
-    * an optional "@", indicating an internal state 
-    * a field name 
+    * an optional field name 
     * an optional ":" and number indicating the field width 
     * an optional ":" and [1mattribute[22m 
 
-  If the description starts with "@", TF will monitor the internal state 
-  corresponding to the field name, and update the field whenever that state 
-  changes.  Otherwise, TF will monitor the [1mvariable[22m corresponding to the field 
-  name.  Also, the entire status line will be updated whenever the screen is 
-  redrawn or the [1mstatus_fields[22m [1mvariable[22m is modified.  
+  Fields without names are used to indicate blank space between named fields.  
+  Field names enclosed in quotes (", ', or `) are displayed literally; use the 
+  \ character to escape a quote inside the string.  Field names beginning with 
+  "@" correspond to internal states.  Other field names correspond to the 
+  variable with the same name.  TF will monitor the internal state or [1mvariable[22m 
+  corresponding to each internal and variable field, and update those fields 
+  whenever the monitored item changes.  Also, the entire status line will be 
+  updated whenever the screen is redrawn or the [1mstatus_fields[22m [1mvariable[22m is 
+  modified.  
 
-  The actual format of a field displayed on the status line is determined by 
-  evaluating the [1mexpression[22m contained in the [1mvariable[22m status_int_<[4mname[24m> (for 
-  internal state <[4mname[24m>) or status_var_<[4mname[24m> (for variable <[4mname[24m>).  Also, 
-  for variable fields, if status_var_<[4mname[24m> is not set, the value of the 
-  variable will be displayed directly.  The formatted fields are separated by 
-  a "_" character.  
+  The actual format of an internal or variable field displayed on the status 
+  line is determined by evaluating the [1mexpression[22m contained in the [1mvariable[22m 
+  status_int_<[4mname[24m> (for internal state @<[4mname[24m>) or status_var_<[4mname[24m> (for 
+  variable <[4mname[24m>).  Also, for variable fields, if status_var_<[4mname[24m> is not 
+  set, the value of the variable will be displayed directly.  
 
   A field's width determines how many columns it will take up on the screen.  
-  One field may give a width of 0, which means it will use whatever columns 
-  are unused by the other fields.  An omitted field width is assumed to be 0.  
+  If the width of a string literal field field is omitted, it defaults to the 
+  length of the string literal.  One other field width may be ommitted, which 
+  means that field will use whatever columns are unused by the other fields.  
   Normally, fields are left-justified within the width, but a negative field 
   width will right-justify the field within the absolute value of the width.  
   If the formatted text is wider than the field width, it will be truncated to 
@@ -6509,20 +6534,22 @@ Configuring the status line
 
   The [1mattributes[22m are applied to the text when it is displayed.  
 
-  The internal statuses available are: 
+  Any variable may be monitored, but there is a fixed list of internal 
+  statuses.  The internal statuses available are: 
 
-  more    Updated when the number of unseen lines changes.  
-  world   Updated when when the [1mforeground[22m [1mworld[22m changes.  
-  read    Updated when entering or exiting a [1mread()[22m function call.  
-  active  Updated when the number of active [1mworlds[22m changes.  
-  log     Updated when the number of open [1mlog[22m files changes.  
-  mail    Updated when mail arrives (See [1m%MAIL[22m).  
-  clock   Updated every minute.  
+  @more   Updated when the number of unseen lines changes.  
+  @world  Updated when when the [1mforeground[22m [1mworld[22m changes.  
+  @read   Updated when entering or exiting a [1mread()[22m function call.  
+  @active 
+          Updated when the number of active [1mworlds[22m changes.  
+  @log    Updated when the number of open [1mlog[22m files changes.  
+  @mail   Updated when mail arrives (See [1m%MAIL[22m).  
+  @clock  Updated every minute, at 0 seconds past the minute.  
 
   All this may sound rather complex, so an example might help.  The default 
   value of [1mstatus_fields[22m is: 
 
-    @more:8:Br @world @read:6 @active:11 @log:5 @mail:6 insert:6 @clock:5
+    @more:8:Br :1 @world :1 @read:6 :1 @active:11 :1 @log:5 :1 @mail:6 :1 insert:6 :1 @clock:5
     
 
   and the corresponding format [1mvariables[22m are: 
@@ -6549,10 +6576,13 @@ Configuring the status line
   "More:12345" and then have it truncated to "More:123" because of the field 
   width of 8.  
 
-  Since the "@world" field has 0 width, it uses variable width.  The fields on 
-  its left are pushed to the left side of the screen, the fields on its right 
-  are pushed to the right side of the screen, and the "@world" field uses 
-  whatever space remains in the middle.  
+  Since the "@world" field has no width, it uses variable width.  The fields 
+  on its left are pushed to the left side of the screen, the fields on its 
+  right are pushed to the right side of the screen, and the "@world" field 
+  uses whatever space remains in the middle.  
+
+  The unnamed fields with width 1 are used to display a blank space between 
+  the named fields.  
 
   Another example: Say your mud has a [1mprompt[22m like "H:42 M:17> " that shows 
   your hit points and mana, and you want it displayed on the status line like 
@@ -6630,10 +6660,12 @@ Command substitution.
 $([4mcommand[24m)
 
   <[4mCommand[24m> is [1mevaluated[22m as if it were the body of a [1mmacro[22m: it goes through 
-  [1msubstitution[22m, and is executed in a new [1mscope[22m.  The echoed output of 
-  <[4mcommand[24m> is substituted in place of the $(...) construct (much like `...` 
-  in most shells).  If <[4mcommand[24m> produces more than one line of output, they 
-  will be concatenated, with a space between each, to form one line.  
+  [1msubstitution[22m, and is executed in a new [1mscope[22m.  If <[4mcommand[24m> contains any ')' 
+  characters, they must be escaped by preceeding them with '\' so they are not 
+  interpreted as the end of the substitution.  The echoed output of <[4mcommand[24m> 
+  is substituted in place of the $(...) construct (much like `...` in most 
+  shells).  If <[4mcommand[24m> produces more than one line of output, they will be 
+  concatenated, with a space between each, to form one line.  
 
   Example: 
 
@@ -6925,12 +6957,13 @@ tfio
   The [1mtfread[22m([4mhandle[24m, [4mvariable[24m) function reads a line from the [1mstream[22m 
   designated by <[4mhandle[24m>.  If <[4mhandle[24m> is omitted, the [1mtfin stream[22m is used.  
   If successful, the line is assigned to <[4mvariable[24m>, and [1mtfread[22m() returns the 
-  (non-negative) length of the line.  If there are no lines available to read, 
-  [1mtfread[22m() returns -1.  For "r" and "p" mode [1mstreams[22m, a -1 return value 
-  indicates end-of-file; the only valid operation on the [1mstream[22m after that is 
-  [1mtfclose[22m().  But for a "q" mode [1mstream[22m, a -1 return value just means there 
-  are currently no lines in the queue; more lines may be added by [1mtfwrite[22m(), 
-  and then [1mtfread[22m() will be able to read them.  
+  (non-negative) length of the line.  If <[4mvariable[24m> did not already exist, it 
+  is created at the global level, as if by [1m/set[22m.  If there are no lines 
+  available to read, [1mtfread[22m() returns -1.  For "r" and "p" mode [1mstreams[22m, a -1 
+  return value indicates end-of-file; the only valid operation on the [1mstream[22m 
+  after that is [1mtfclose[22m().  But for a "q" mode [1mstream[22m, a -1 return value just 
+  means there are currently no lines in the queue; more lines may be added by 
+  [1mtfwrite[22m(), and then [1mtfread[22m() will be able to read them.  
 
   The [1mtfwrite[22m([4mhandle[24m, [4mline[24m) function writes a <[4mline[24m> of text to the [1mstream[22m 
   designated by <[4mhandle[24m>.  If <[4mhandle[24m> is omitted, the [1mtfout stream[22m is used 
@@ -6989,7 +7022,9 @@ timing
   [1m/time[22m.  
 &tools
 &/reedit
-&/reset
+&/edmac
+&/edvar
+&/edworld
 &/name
 &/getline
 &/xtitle
@@ -7240,7 +7275,7 @@ worlds
 #$world_mfile
 #$world_type
 #fields
-  Fugue stores a list of "worlds" that it knows about.  Each world has six 
+  Fugue stores a list of "worlds" that it knows about.  Each world has several 
   fields associated with it: 
 
   name    a label used to refer to the world 

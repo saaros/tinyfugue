@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: signals.c,v 35004.18 1997/10/22 07:29:35 hawkeye Exp $ */
+/* $Id: signals.c,v 35004.19 1997/11/13 08:46:48 hawkeye Exp $ */
 
 /* Signal handling, core dumps, job control, and interactive shells */
 
@@ -327,7 +327,6 @@ void crash(internal, fmt, file, line, n)
 
 static void coremsg()
 {
-    extern CONST char version[], sysname[];
     fputs("Please report the following message verbatim to hawkeye@tf.tcp.com.\n", stderr);
     fputs("Also describe what you were doing in tf when this\n", stderr);
     fputs("occured, and whether you can repeat it.\n\n", stderr);

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.c,v 35004.47 1997/11/07 05:55:57 hawkeye Exp $ */
+/* $Id: output.c,v 35004.56 1997/11/20 07:16:32 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -32,6 +32,7 @@
 #include "tty.h"	/* init_tty(), get_window_wize() */
 #include "variable.h"
 #include "expand.h"	/* evalexpr() */
+#include "keyboard.h"	/* keyboard_pos */
 
 #ifdef EMXANSI
 # define INCL_VIO
@@ -197,10 +198,7 @@ static void  NDECL(output_scroll);
 #define moremin 1
 #define morewait 50
 
-extern int keyboard_pos;            /* position of logical cursor in keybuf */
-extern Stringp keybuf;              /* input buffer */
-extern TIME_T clock_update;         /* when clock needs to be updated */
-extern CONST char *enum_status[];
+TIME_T clock_update = 0;            /* when clock needs to be updated */
 
 STATIC_BUFFER(outbuf);              /* output buffer */
 static int top_margin = -1, bottom_margin = -1;	/* scroll region */
@@ -348,9 +346,9 @@ void bell(n)
 int change_term()
 {
     int old = visual;
-    setvar("visual", "0", FALSE);
+    if (old == 1) setvar("visual", "0", FALSE);
     init_term();
-    if (old) setvar("visual", "1", FALSE);
+    if (old == 1) setvar("visual", "1", FALSE);
     rebind_key_macros();
     return 1;
 }
@@ -634,14 +632,14 @@ int redraw()
 int ch_status_fields()
 {
     char *name, *s, *t;
-    int width, column, zerofound = 0;
+    int width, column, varfound = 0;
     STATIC_BUFFER(scratch);
     ListEntry *last = status_field_list->tail;
     StatusField *field;
     ListEntry *node;
 
     /* validate and insert new fields */
-    Stringcpy(scratch, status_fields);
+    Stringcpy(scratch, status_fields ? status_fields : "");
     s = scratch->s;
     width = 0;
     while (1) {
@@ -649,11 +647,19 @@ int ch_status_fields()
         name = stringarg(&s, NULL);
         if (!*name) break;
         field = XMALLOC(sizeof(*field));
+        field->var = NULL;
         field->attrs = 0;
+        field->rightjust = 0;
+        field->width = -1;
+        field->internal = -1;
         if ((t = strchr(name, ':'))) {
             *t++ = '\0';
-            field->width = atoi(t);
-            while (isdigit(*t)) t++;
+            if (isdigit(*t)) {
+                field->width = atoi(t);
+                if ((field->rightjust = field->width < 0))
+                    field->width = -field->width;
+                while (isdigit(*t)) t++;
+            }
             if (*t == ':') {
                 t++;
                 if ((field->attrs = parse_attrs(&t)) < 0)
@@ -663,37 +669,44 @@ int ch_status_fields()
                 eprintf("Field %s followed by garbage: %s", name, t);
                 goto ch_status_fields_error;
             }
-        } else {
-            field->width = 0;
         }
-        if ((field->rightjust = field->width < 0))
-            field->width = -field->width;
-        if (field->width == 0) {
-            if (zerofound) {
-                eprintf("Only one zero width field is allowed.");
-                goto ch_status_fields_error;
-            }
-            zerofound++;
-        } else {
-            width += field->width + 1;
-        }
-        if (*name == '@') {
+
+        if (*name == '@') {                                /* internal */
             name++;
-            field->var = NULL;
             field->internal = enum2int(name, enum_status, "status_fields");
-            if (field->internal < 0) {
+            if (field->internal < 0)
+                goto ch_status_fields_error;
+            field->name = STRDUP(name);
+        } else if (is_quote(*name)) {                      /* string literal */
+            STATIC_BUFFER(buffer);
+            if (!stringliteral(buffer, &name)) {
+                eprintf("%S in status_fields", buffer);
                 goto ch_status_fields_error;
             }
-        } else {
-            field->internal = -1;
+            field->name = STRDUP(buffer->s);
+            if (field->width < 0)
+                field->width = strlen(field->name);
+        } else if (*name) {                                /* variable */
             field->var = ffindglobalvar(name);
             if (!field->var) {
-                eprintf("%s: no such global variable, ignored.", name);
+                eprintf("ignoring nonexistant variable %s.", name);
                 continue;
             }
+            field->name = STRDUP(name);
+        } else {                                           /* blank */
+            field->name = NULL;
         }
-        field->name = STRDUP(name);
         inlist(field, status_field_list, status_field_list->tail);
+
+        if (field->width < 0) {
+            if (varfound) {
+                eprintf("Only one variable width field is allowed.");
+                goto ch_status_fields_error;
+            }
+            varfound++;
+        } else {
+            width += field->width;
+        }
     }
     if (width > columns) {
         eprintf("status width %d would be larger than screen", width);
@@ -706,7 +719,8 @@ int ch_status_fields()
         field = (StatusField*)unlist(node, status_field_list);
         if (field->var)
             field->var->status = NULL;
-        FREE(field->name);
+        if (field->name)
+            FREE(field->name);
         FREE(field);
     }
 
@@ -723,15 +737,15 @@ int ch_status_fields()
     for (node = status_field_list->head; node; node = node->next) {
         field = (StatusField*)node->datum;
         status_left = field->column = column;
-        if (field->width == 0) break;
-        column += field->width + 1;
+        if (field->width < 0) break;
+        column += field->width;
     }
     column = 0;
     for (node = status_field_list->tail; node; node = node->prev) {
         field = (StatusField*)node->datum;
-        if (field->width == 0) break;
+        if (field->width < 0) break;
         field->column = column - field->width;
-        status_right = -(column -= (field->width + 1));
+        status_right = -(column -= field->width);
     }
 
     update_status_line();
@@ -745,7 +759,7 @@ ch_status_fields_error:
         for (node = last->next; node; node = last) {
             last = node->next;
             field = (StatusField*)unlist(node, status_field_list);
-            FREE(field->name);
+            if (field->name) FREE(field->name);
             FREE(field);
         }
     }
@@ -758,25 +772,28 @@ static void format_status_field(field)
     STATIC_BUFFER(varname);
     STATIC_BUFFER(scratch);
     CONST char *expression, *old_command;
-    extern CONST char *current_command;
     int width;
 
     output_disabled++;
     Stringterm(scratch, 0);
-    Stringcpy(varname, "status_");
-    Stringcat(varname, field->var ? "var_" : "int_");
-    Stringcat(varname, field->name);
-    expression = getnearestvar(varname->s, NULL);
-    if (expression) {
-        old_command = current_command;
-        current_command = varname->s;
-        evalexpr(scratch, expression);
-        current_command = old_command;
-    } else if (field->var) {
-        evalexpr(scratch, field->name);
+    if (field->internal >= 0 || field->var) {
+        Stringcpy(varname, "status_");
+        Stringcat(varname, field->var ? "var_" : "int_");
+        Stringcat(varname, field->name);
+        expression = getnearestvar(varname->s, NULL);
+        if (expression) {
+            old_command = current_command;
+            current_command = varname->s;
+            evalexpr(scratch, expression);
+            current_command = old_command;
+        } else if (field->var) {
+            evalexpr(scratch, field->name);
+        }
+    } else if (field->name) {   /* string literal */
+        Stringcpy(scratch, field->name);
     }
 
-    width = field->width ? field->width :
+    width = (field->width >= 0) ? field->width :
         columns - status_right - status_left;
     if (width > columns - (cx - 1))
         width = columns - (cx - 1);
@@ -840,20 +857,10 @@ void update_status_line()
     for (node = status_field_list->head; node; node = node->next) {
         field = (StatusField*)node->datum;
 
-        if (right) {
-            bufputc('_'); cx++;
-            if (cx - 1 >= columns) break;
-        }
-
         format_status_field(field);
         if (cx - 1 >= columns) break;
 
-        if (!right && field->width > 0) {
-            bufputc('_'); cx++;
-            if (cx - 1 >= columns) break;
-        }
-
-        if (field->width == 0)
+        if (field->width < 0)
             right = 1;
     }
 
@@ -1457,7 +1464,6 @@ static void attributes_on(attrs)
 static void color_on(color)
     long color;
 {
-    extern CONST char *enum_color[];
     CONST char *cmd;
     smallstr buf;
 

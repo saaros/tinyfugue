@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.h,v 35004.15 1997/10/18 21:55:52 hawkeye Exp $ */
+/* $Id: util.h,v 35004.17 1997/11/19 08:12:52 hawkeye Exp $ */
 
 #ifndef UTIL_H
 #define UTIL_H
@@ -47,6 +47,8 @@ typedef struct Pattern {
 #define IS_MULT		0040
 #define IS_ADDITIVE	0100
 
+extern TIME_T mail_update;
+extern int mail_flag;
 extern char tf_ctype[];
 
 #define is_quote(c)	(tf_ctype[(unsigned char)c] & IS_QUOTE)
@@ -75,6 +77,7 @@ extern char  *FDECL(cstrchr,(CONST char *s, int c));
 extern char  *FDECL(estrchr,(CONST char *s, int c, int e));
 extern int    FDECL(numarg,(char **str));
 extern char  *FDECL(stringarg,(char **str, CONST char **end));
+extern int    FDECL(stringliteral,(struct String *dest, char **str));
 extern void   FDECL(restore_reg_scope,(void *old));
 extern int    FDECL(regexec_in_scope,(regexp *re, CONST char *str));
 extern void  *FDECL(new_reg_scope,(regexp *re, CONST char *str));

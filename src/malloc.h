@@ -5,10 +5,12 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: malloc.h,v 35004.5 1997/03/27 01:04:35 hawkeye Exp $ */
+/* $Id: malloc.h,v 35004.7 1997/11/17 08:34:11 hawkeye Exp $ */
 
 #ifndef MALLOC_H
 #define MALLOC_H
+
+extern int low_memory_warning;
 
 #define XMALLOC(size) xmalloc((size), __FILE__, __LINE__)
 #define XREALLOC(ptr, size) xrealloc((ptr), (size), __FILE__, __LINE__)
@@ -42,7 +44,17 @@ extern void      NDECL(init_malloc);
     ((pool) ? \
       ((item) = (pool), (pool) = pool->next) : \
       ((item) = (type *)XMALLOC(sizeof(type))))
-#define pfree(item, pool, next)  (item->next = (pool), (pool) = (item))
 
+#ifndef DMALLOC
+#define pfree(item, pool, next)  (item->next = (pool), (pool) = (item))
+#else
+#define pfree(item, pool, next)  FREE(item)
+#endif
+
+
+#ifdef DMALLOC
+extern void   NDECL(free_reserve);
+extern void   FDECL(debug_mstats,(CONST char *s));
+#endif
 
 #endif /* MALLOC_H */

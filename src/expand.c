@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expand.c,v 35004.67 1997/11/07 05:47:55 hawkeye Exp $ */
+/* $Id: expand.c,v 35004.79 1997/11/20 08:42:27 hawkeye Exp $ */
 
 
 /********************************************************************
@@ -35,6 +35,7 @@
 #include "command.h"
 #include "variable.h"
 #include "tty.h"	/* no_tty */
+#include "history.h"	/* log_count */
 
 
 /* keywords: must be sorted and numbered sequentially */
@@ -86,9 +87,10 @@ typedef struct Value {
 #define STACKSIZE 128
 
 Value *user_result = NULL;		/* result of last user command */
-Value *default_result = NULL;		/* result of empty list */
 int recur_count = 0;			/* expansion nesting count */
+CONST char *current_command = NULL;
 
+static Value *default_result = NULL;	/* result of empty list */
 static int argtop = 0;			/* top of function argument stack */
 static CONST char *argtext = NULL;	/* shifted argument text */
 static Arg *argv = NULL;		/* shifted argument vector */
@@ -110,9 +112,6 @@ static CONST char *keyword_table[] = {
 static int    NDECL(keyword);
 static int    FDECL(list,(Stringp dest, int subs));
 static int    FDECL(statement,(Stringp dest, int subs));
-static Value *FDECL(newint,(long i));
-static Value *FDECL(newstrid,(CONST char *str, int len, int type,
-              CONST char *file, int line));
 #ifndef NO_FLOAT
 static Value *FDECL(newfloat,(double f));
 static double FDECL(valfloat,(Value *val));
@@ -148,17 +147,16 @@ static Value *FDECL(do_function,(int n));
 static CONST char *NDECL(error_text);
 static void   FDECL(parse_error,(CONST char *type, CONST char *expect));
 
-#define set_user_result(val) \
-    do { freeval(user_result); user_result = val; } while(0)
-#define copy_user_result(val) \
-    do { freeval(user_result); (user_result = val)->count++; } while(0)
+#define set_user_result(val)  do { \
+      struct Value *v = val;  /* only evaluate (val) once */ \
+      if (v != user_result) { freeval(user_result); user_result = v; } \
+    } while(0)
+#define copy_user_result(val) do { \
+      freeval(user_result); (user_result = val)->count++; \
+    } while(0)
 
 #define dollarsub(dest) \
     ((*ip == '[') ? exprsub(dest) : (*ip == '(') ? cmdsub(dest) : macsub(dest))
-
-#define newstrliteral(s)  (newstrid(s, sizeof(s), TYPE_STR, __FILE__, __LINE__))
-#define newstr(s,l)       (newstrid(s, l, TYPE_STR, __FILE__, __LINE__))
-#define newid(s,l)        (newstrid(s, l, TYPE_ID, __FILE__, __LINE__))
 
 #define is_end_of_statement(p) ((p)[0] == '%' && is_statend((p)[1]))
 #define is_end_of_cmdsub(p) (cmdsub_count && *(p) == ')')
@@ -188,10 +186,6 @@ enum func_id {
 #undef funccode
 };
 
-
-extern CONST char *current_command;
-extern int read_depth;
-extern int invis_flag;
 
 
 void init_expand()
@@ -239,30 +233,29 @@ void evalexpr(dest, args)
     ip = saved_ip;
 }
 
-int handle_test_command(args)
+struct Value *handle_test_command(args)
     char *args;
 {
     CONST char *saved_ip = ip;
-    long result = 0;
+    struct Value *result = NULL;
 
     ip = args;
     if (expr()) {
         if (*ip) {
             parse_error("expression", "operand");
-            set_user_result(NULL);
+            result = NULL;
         } else {
-            copy_user_result(stack[--stacktop]);
-            freeval(stack[stacktop]);
+            result = stack[--stacktop];
         }
     }
     ip = saved_ip;
     return result;
 }
 
-int handle_return_command(args)
+struct Value *handle_return_command(args)
     char *args;
 {
-    int result;
+    struct Value *result;
 
     result = handle_test_command(args);
     breaking = -1;
@@ -281,7 +274,6 @@ int handle_command(cmd_line)
     Macro *macro = NULL;
     int error = 0, truth = 1;
     char *str, *end;
-    extern int pending_line, read_depth;
 
     str = cmd_line->s + 1;
     if (!*str || isspace(*str)) return 0;
@@ -312,12 +304,8 @@ int handle_command(cmd_line)
     if (macro) {
         error = !do_macro(macro, str);
     } else if (handler) {
-        int result = (*handler)(str);
-        if (handler != handle_test_command &&    /* set their own results */
-            handler != handle_return_command)
-        {
-            set_user_result(newint(result));
-        }
+        Value *result = ((*handler)(str));
+        set_user_result(result);
     }
 
     current_command = NULL;
@@ -850,7 +838,7 @@ static int mathtype(val)
 }
 #endif /* NO_FLOAT */
 
-static Value *newint(i)
+Value *newint(i)
     long i;
 {
     Value *val;
@@ -864,7 +852,7 @@ static Value *newint(i)
     return val;
 }
 
-static Value *newstrid(str, len, type, file, line)
+Value *newstrid(str, len, type, file, line)
     CONST char *str, *file;
     int len, type, line;
 {
@@ -909,6 +897,7 @@ static long valint(val)
     CONST char *str;
     long result;
 
+    if (!val) return 0;
     if (val->type == TYPE_INT) return val->u.ival;
 #ifndef NO_FLOAT
     if (val->type == TYPE_FLOAT) return (int)val->u.fval;
@@ -920,7 +909,10 @@ static long valint(val)
     }
     while (isspace(*str)) ++str;
     if (*str == '-' || *str == '+') return atol(str);
-    return (isdigit(*str)) ? parsetime((char **)&str, NULL) : 0;
+    if (isdigit(*str)) return parsetime((char **)&str, NULL);
+    if (*str && pedantic)
+        eprintf("warning: text string value used in numeric context");
+    return 0;
 }
 
 #ifndef NO_FLOAT
@@ -932,6 +924,7 @@ static double valfloat(val)
     double result;
     long i;
 
+    if (!val) return 0.0;
     errno = 0;
     if (val->type == TYPE_FLOAT) return val->u.fval;
     if (val->type == TYPE_INT) return (double)val->u.ival;
@@ -952,6 +945,7 @@ static CONST char *valstr(val)
     CONST char *str;
     static char buffer[16];
 
+    if (!val) return "";
     switch (val->type) {
         case TYPE_INT:  sprintf(buffer, "%ld", val->u.ival); return buffer;
         case TYPE_STR:  return val->u.sval;
@@ -971,6 +965,7 @@ static CONST char *valstr(val)
 static int vallen(val)
     Value *val;
 {
+    if (!val) return 0;
     return (val->type == TYPE_STR) ? val->len : strlen(valstr(val));
 }
 
@@ -1152,9 +1147,6 @@ static Value *function_switch(symbol, n, parent)
     long i, j, len;
     char c;
     CONST char *str, *ptr;
-    extern Stringp keybuf;
-    extern int keyboard_pos, log_count, mail_flag;
-    extern TIME_T keyboard_time;
     regexp *re;
     FILE *file;
     TFILE *tfile;
@@ -1544,7 +1536,6 @@ static Value *do_function(n)
         return NULL;
     }
     id = opd(n--)->u.sval;
-    old_command = current_command;
 
     funcrec = (ExprFunc *)binsearch((GENERIC*)id, (GENERIC*)functab,
         sizeof(functab)/sizeof(ExprFunc), sizeof(ExprFunc), strstructcmp);
@@ -1554,6 +1545,7 @@ static Value *do_function(n)
             eprintf("%s: incorrect number of arguments", id);
             return NULL;
         }
+        old_command = current_command;
         current_command = id;
         errno = 0;
         val = function_switch(funcrec - functab, n, old_command);
@@ -1580,12 +1572,12 @@ static Value *do_function(n)
                 id);
             return NULL;
         }
-        current_command = id;
+        /* current_command = id; */
 
         if (macro) {
             static int warned = 0;
-            if (!warned && n == 1 && strchr(opdstr(1), ' ')) {
-                eprintf("warning: argument passing semantics for macros called as functions has changed in 4.0.  See ``/help functions''.");
+            if (!warned && !invis_flag && n == 1 && strchr(opdstr(1), ' ')) {
+                eprintf("warning: argument passing semantics for macros called as functions has changed in 4.0.  See '/help functions'.");
                 warned = 1;
             }
             saved_argtop = argtop;
@@ -1604,13 +1596,12 @@ static Value *do_function(n)
             argc = saved_argc;
             argv = saved_argv;
         } else if (handler) {
-            int result = (*handler)(Stringcpy(scratch, n ? opdstr(1) : "")->s);
-            if (handler != handle_test_command)
-                set_user_result(newint(result));
+            set_user_result((*handler)
+                (Stringcpy(scratch, n ? opdstr(1) : "")->s));
             user_result->count++;
         }
 
-        current_command = old_command;
+        /* current_command = old_command; */
         return user_result;
     }
 
@@ -1819,7 +1810,6 @@ static int unary_expr()
 static int primary_expr()
 {
     CONST char *end;
-    char quote;
     STATIC_BUFFER(static_buffer);
     int result;
     double d;
@@ -1846,31 +1836,34 @@ static int primary_expr()
         if (!pushval(newfloat(strtod(ip, (char**)&ip)))) return 0;
 #endif /* NO_FLOAT */
     } else if (is_quote(*ip)) {
-        Stringterm(static_buffer, 0);
-        quote = *ip;
-        for (ip++; *ip && *ip != quote; ip++) {
-            if (*ip == '\\' && (ip[1] == quote || ip[1] == '\\')) ip++;
-            Stringadd(static_buffer, isspace(*ip) ? ' ' : *ip);
-        }
-        if (!*ip) {
-            eprintf("unmatched %c in expression string", quote);
+        if (!stringliteral(static_buffer, (char**)&ip)) {
+            eprintf("%S in string literal", static_buffer);
             return 0;
         }
-        ip++;
         if (!pushval(newstr(static_buffer->s, static_buffer->len))) return 0;
     } else if (isalpha(*ip) || *ip == '_') {
         for (end = ip + 1; isalnum(*end) || *end == '_'; end++);
         if (!pushval(newid(ip, end - ip))) return 0;
         ip = end;
     } else if (*ip == '$') {
+        static int warned = 0;
         ++ip;
         Stringinit(buffer);
+        if ((!warned || pedantic) && *ip == '[') {
+            eprintf("warning: $[...] substitution in expression is redundant.  Try using (...) instead.");
+            warned = 1;
+        }
         result = dollarsub(buffer) && pushval(newstr(buffer->s, buffer->len));
         Stringfree(buffer);
         if (!result) return 0;
     } else if (*ip == '{') {
         if (!varsub(NULL)) return 0;
     } else if (*ip == '%') {
+        static int warned = 0;
+        if (!warned || pedantic) {
+            eprintf("warning: %%... substitution in expression can be confusing.  Try using {...} instead.");
+            warned = 1;
+        }
         ++ip;
         if (!varsub(NULL)) return 0;
     } else if (*ip == '(') {
@@ -2128,7 +2121,7 @@ static int varsub(dest)
             } else if (n == 0) {
                 static int warned = 0;
                 if (!warned) {
-                    eprintf("warning: as of version 4.0, ``%%0'' is no longer the same as ``%%*''.");
+                    eprintf("warning: as of version 4.0, '%%0' is no longer the same as '%%*'.");
                     warned = 1;
                 }
                 Stringcat(dest, current_command);
@@ -2244,21 +2237,21 @@ static void conditional_add(s, c)
         Stringadd(s, c);
 }
 
-int handle_shift_command(args)
+struct Value *handle_shift_command(args)
     char *args;
 {
     int count;
     int error;
 
     count = (*args) ? atoi(args) : 1;
-    if (count < 0) return 0;
+    if (count < 0) return newint(0);
     if ((error = (count > argc))) count = argc;
     argc -= count;
     if (argv) {  /* true if macro was called as command, not as function */
         argv += count;
         if (argc) argtext = argv[0].start;
     }
-    return !error;
+    return newint(!error);
 }
 
 #ifdef DMALLOC

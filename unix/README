@@ -43,7 +43,7 @@ file, edit the appropriate variable in unix/Config, using a full path
 name.
 
 If SYMLINK is set in unix/Config, its value will be used as the name of a
-symbolic link to the file named by EXE.  This is useful for giving
+symbolic link to the file named by TF.  This is useful for giving
 all the files a name that includes a version number, so they can be
 installed without problem even if old versions are currently in use.
 

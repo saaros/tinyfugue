@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: search.h,v 35004.6 1997/03/27 01:04:42 hawkeye Exp $ */
+/* $Id: search.h,v 35004.7 1997/11/17 08:34:12 hawkeye Exp $ */
 
 #ifndef SEARCH_H
 #define SEARCH_H
@@ -90,6 +90,11 @@ extern GENERIC  *FDECL(trie_find,(TrieNode *root, CONST unsigned char *key));
 extern GENERIC   *FDECL(binsearch,(CONST GENERIC *key, CONST GENERIC *base,
                       int nel, int size,
                       int FDECL((*cmp),(CONST GENERIC *, CONST GENERIC *))));
+#endif
+
+#ifdef DMALLOC
+extern void   NDECL(free_search);
+extern void   FDECL(free_hash,(HashTable *table));
 #endif
 
 #endif /* SEARCH_H */

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tf.h,v 35004.10 1997/09/01 08:42:12 hawkeye Exp $ */
+/* $Id: tf.h,v 35004.12 1997/11/13 08:46:50 hawkeye Exp $ */
 
 #ifndef TF_H
 #define TF_H
@@ -109,6 +109,9 @@ typedef struct Aline {         /* shared line, with attributes */
 #include "enumlist.h"
 #undef bicode
 
+extern CONST char *enum_sub[];
+extern CONST char *enum_color[];
+
 /* hook definitions */
 
 extern int VDECL(do_hook,(int indx, CONST char *fmt, CONST char *argfmt, ...))
@@ -121,5 +124,11 @@ enum Hooks {
 };
 
 #define ALL_HOOKS  (~(~0L << NUM_HOOKS))
+
+
+/* externs */
+extern CONST char version[], sysname[], copyright[], contrib[], mods[];
+extern int restrict;
+
 
 #endif /* TF_H */

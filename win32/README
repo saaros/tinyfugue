@@ -15,6 +15,7 @@ There are several known problems with the win32 version of tf, mostly due
 to shortcomings of cygwin:
  * Scrolling in visual mode is jumpy.
  * /quote ! (and code that calls it, like /sys) is not supported.
- * Compressed files are not supported.
+ * $COMPRESS_READ is not supported.
  * Nonblocking hostname resolution (%gethostbyname) is not supported.
+ * The flash attribute (-af) does not work.
 

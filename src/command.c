@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: command.c,v 35004.31 1997/10/30 06:28:15 hawkeye Exp $ */
+/* $Id: command.c,v 35004.36 1997/11/20 07:29:45 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -30,22 +30,9 @@
 #include "signals.h"    /* suspend(), shell() */
 #include "variable.h"
 
-#define ON (!cstrcmp(args, "on"))
-#define OFF (!cstrcmp(args, "off"))
-
-CONST char  *current_command = NULL;
-TFILE *loadfile = NULL;
-int    loadline = 0;
-int wnmatch = 4, wnlines = 5, wdmatch = 2, wdlines = 5;
-
-extern int restrict;
-extern int quit_flag;
-
 static char *pattern, *body;
 static int quietload = 0;
 
-static int  FDECL(do_watch,(char *args, CONST char *name, int *wlines,
-                  int *wmatch, int flag));
 static void FDECL(split_args,(char *args));
 
 static HANDLER (handle_beep_command);
@@ -75,8 +62,6 @@ static HANDLER (handle_undef_command);
 static HANDLER (handle_unhook_command);
 static HANDLER (handle_untrig_command);
 static HANDLER (handle_version_command);
-static HANDLER (handle_watchdog_command);
-static HANDLER (handle_watchname_command);
 
 typedef struct Command {
     CONST char *name;
@@ -164,7 +149,7 @@ Handler *find_command(name)
     return cmd ? cmd->func : (Handler *)NULL;
 }
 
-static int handle_trigger_command(args)
+static struct Value *handle_trigger_command(args)
     char *args;
 {
     World *world = NULL;
@@ -172,7 +157,7 @@ static int handle_trigger_command(args)
     long hook = 0;
     Aline *old_incoming_text;
 
-    if (!borg) return 0;
+    if (!borg) return newint(0);
 
     startopt(args, "gw:h:");
     while ((opt = nextopt(&args, NULL))) {
@@ -185,15 +170,15 @@ static int handle_trigger_command(args)
                 usedefault = FALSE;
                 if (!(world = (*args) ? find_world(args) : xworld())) {
                     eprintf("No world %s", args);
-                    return 0;
+                    return newint(0);
                 }
                 break;
             case 'h':
                 hook = parse_hook(&args);
-                if (hook < 0) return 0;
+                if (hook < 0) return newint(0);
                 break;
             default:
-                return 0;
+                return newint(0);
           }
     }
 
@@ -209,30 +194,30 @@ static int handle_trigger_command(args)
 
     free_aline(incoming_text);
     incoming_text = old_incoming_text;
-    return result;
+    return newint(result);
 }
 
-static int handle_substitute_command(args)
+static struct Value *handle_substitute_command(args)
     char *args;
 {
     Aline *old;
 
     if (!incoming_text) {
         eprintf("not called from trigger");
-        return 0;
+        return newint(0);
     }
     old = incoming_text;
     (incoming_text = new_aline(args, old->attrs))->links = 1;
     incoming_text->time = old->time;
     free_aline(old);
-    return 1;
+    return newint(1);
 }
 
 /**********
  * Worlds *
  **********/
 
-static int handle_connect_command(args)
+static struct Value *handle_connect_command(args)
     char *args;
 {
     char *port = NULL;
@@ -243,7 +228,7 @@ static int handle_connect_command(args)
         switch (opt) {
             case 'l':  autologin = FALSE; break;
             case 'q':  quietlogin = TRUE; break;
-            default:   return 0;
+            default:   return newint(0);
         }
     }
     for (port = args; *port && !isspace(*port); port++);
@@ -251,83 +236,92 @@ static int handle_connect_command(args)
         *port = '\0';
         while (isspace(*++port));
     }
-    return openworld(args, *port ? port : NULL, autologin, quietlogin);
+    return newint(openworld(args, *port ? port : NULL, autologin, quietlogin));
 }
 
-static int handle_localecho_command(args)
+static struct Value *handle_localecho_command(args)
     char *args;
 {
-    if (!*args) return local_echo(-1);
-    else if (ON) local_echo(1);
-    else if (OFF) local_echo(0);
-    return 1;
+    if (!*args) return newint(local_echo(-1));
+    else if (cstrcmp(args, "on") == 0) local_echo(1);
+    else if (cstrcmp(args, "off") == 0) local_echo(0);
+    return newint(1);
 }
 
 /*************
  * Variables *
  *************/
 
-static int handle_set_command(args)
+static struct Value *handle_set_command(args)
     char *args;
 {
-    return do_set(args, FALSE, FALSE);
+    return newint(do_set(args, FALSE, FALSE));
 }
 
-static int handle_setenv_command(args)
+static struct Value *handle_setenv_command(args)
     char *args;
 {
-    return do_set(args, TRUE, FALSE);
+    return newint(do_set(args, TRUE, FALSE));
 }
 
-static int handle_let_command(args)
+static struct Value *handle_let_command(args)
     char *args;
 {
-    return do_set(args, FALSE, TRUE);
+    return newint(do_set(args, FALSE, TRUE));
 }
 
 /********
  * Misc *
  ********/
 
-static int handle_eval_command(args)
+static struct Value *handle_eval_command(args)
     char *args;
 {
     int c, subflag = SUB_MACRO;
-    extern CONST char *enum_sub[];
 
     startopt(args, "s:");
     while ((c = nextopt(&args, NULL))) {
         switch (c) {
         case 's':
             if ((subflag = enum2int(args, enum_sub, "/eval -s")) < 0)
-                return 0;
+                return newint(0);
             break;
         default:
-            return 0;
+            return newint(0);
         }
     }
-    return process_macro(args, NULL, subflag);
+    return newint(process_macro(args, NULL, subflag));
 }
 
-static int handle_quit_command(args)
+static struct Value *handle_quit_command(args)
     char *args;
 {
-    return quit_flag = 1;
+    quit_flag = 1;
+    return newint(1);
 }
 
-static int handle_sh_command(args)
+static struct Value *handle_sh_command(args)
     char *args;
 {
     CONST char *cmd;
+    char c;
+    int quiet = 0;
 
     if (restrict >= RESTRICT_SHELL) {
         eprintf("restricted");
-        return 0;
+        return newint(0);
+    }
+
+    startopt(args, "q");
+    while ((c = nextopt(&args, NULL))) {
+        if (c == 'q') quiet++;
+        else return newint(0);
     }
 
     if (*args) {
         cmd = args;
-        do_hook(H_SHELL, "%% Executing %s: %s", "%s %s", "command", cmd);
+        if (!quiet)
+            do_hook(H_SHELL, "%% Executing %s: %s", "%s %s", "command", cmd);
     } else {
         /* Note: on unix, system("") does nothing, but SHELL should always be
          * defined, so it won't happen.  On os/2, SHELL usually isn't defined,
@@ -335,30 +329,30 @@ static int handle_sh_command(args)
          * will be used if defined, of course.
          */
         if ((cmd = getvar("SHELL")) == NULL) cmd = "";
-        do_hook(H_SHELL, "%% Executing %s: %s", "%s %s", "shell", cmd);
+        if (!quiet)
+            do_hook(H_SHELL, "%% Executing %s: %s", "%s %s", "shell", cmd);
     }
-    return shell(cmd);
+    return newint(shell(cmd));
 }
 
-static int handle_suspend_command(args)
+static struct Value *handle_suspend_command(args)
     char *args;
 {
-    return suspend();
+    return newint(suspend());
 }
 
-static int handle_version_command(args)
+static struct Value *handle_version_command(args)
     char *args;
 {
-    extern CONST char version[], sysname[], copyright[], contrib[], mods[];
     oprintf("%% %s.", version);
     oprintf("%% %s.", copyright);
     if (*contrib) oprintf("%% %s", contrib);
     if (*mods)    oprintf("%% %s", mods);
     if (*sysname) oprintf("%% Built for %s", sysname);
-    return 1;
+    return newint(1);
 }
 
-static int handle_lcd_command(args)
+static struct Value *handle_lcd_command(args)
     char *args;
 {
     char buffer[PATH_MAX + 1];
@@ -366,7 +360,7 @@ static int handle_lcd_command(args)
     args = expand_filename(args);
     if (*args && chdir(args) < 0) {
         operror(args);
-        return 0;
+        return newint(0);
     }
 
 #ifdef HAVE_getcwd
@@ -376,10 +370,10 @@ static int handle_lcd_command(args)
     oprintf("%% Current directory is %s", getwd(buffer));
 # endif
 #endif
-    return 1;
+    return newint(1);
 }
 
-static int handle_echo_command(args)
+static struct Value *handle_echo_command(args)
     char *args;
 {
     char c;
@@ -393,7 +387,7 @@ static int handle_echo_command(args)
     while ((c = nextopt(&args, NULL))) {
         switch (c) {
         case 'a': case 'f':
-            if ((attrs |= parse_attrs(&args)) < 0) return 0;
+            if ((attrs |= parse_attrs(&args)) < 0) return newint(0);
             break;
         case 'e':
             tfile = tferr;
@@ -401,7 +395,7 @@ static int handle_echo_command(args)
         case 'w':
             if (!(world = (*args) ? find_world(args) : xworld())) {
                 eprintf("No world %s", args);
-                return 0;
+                return newint(0);
             }
             break;
         case 'p':
@@ -411,7 +405,7 @@ static int handle_echo_command(args)
             raw = TRUE;
             break;
         default:
-            return 0;
+            return newint(0);
         }
     }
 
@@ -430,10 +424,10 @@ static int handle_echo_command(args)
         }
         free_aline(aline);
     }
-    return retval;
+    return newint(retval);
 }
 
-static int handle_restrict_command(args)
+static struct Value *handle_restrict_command(args)
     char *args;
 {
     int level;
@@ -442,14 +436,14 @@ static int handle_restrict_command(args)
 
     if (!*args) {
         oprintf("%% restriction level: %s", enum_restrict[restrict]);
-        return restrict;
+        return newint(restrict);
     } else if ((level = enum2int(args, enum_restrict, "/restrict")) < 0) {
-        return 0;
+        return newint(0);
     } else if (level < restrict) {
         oputs("% Restriction level can not be lowered.");
-        return 0;
+        return newint(0);
     }
-    return restrict = level;
+    return newint(restrict = level);
 }
 
 
@@ -546,58 +540,18 @@ int do_file_load(args, tinytalk)
  * Toggles with arguments *
  **************************/
 
-static int handle_beep_command(args)
+static struct Value *handle_beep_command(args)
     char *args;
 {
     int n = 0;
 
     if (!*args) n = 3;
-    else if (ON) setivar("beep", 1, FALSE);
-    else if (OFF) setivar("beep", 0, FALSE);
-    else if (isdigit(*args) && (n = atoi(args)) < 0) return 0;
+    else if (cstrcmp(args, "on") == 0) setivar("beep", 1, FALSE);
+    else if (cstrcmp(args, "off") == 0) setivar("beep", 0, FALSE);
+    else if (isdigit(*args) && (n = atoi(args)) < 0) return newint(0);
 
     bell(n);
-    return 1;
-}
-
-static int do_watch(args, name, wlines, wmatch, flag)
-    char *args;
-    CONST char *name;
-    int *wlines, *wmatch, flag;
-{
-    int out_of, match;
-
-    if (!*args) {
-        oprintf("%% %s %sabled.", name, flag ? "en" : "dis");
-        return 1;
-    } else if (OFF) {
-        setvar(name, "0", FALSE);
-        oprintf("%% %s disabled.", name);
-        return 1;
-    } else if (ON) {
-        /* do nothing */
-    } else {
-        if ((match = numarg(&args)) < 0) return 0;
-        if ((out_of = numarg(&args)) < 0) return 0;
-        *wmatch = match;
-        *wlines = out_of;
-    }
-    setvar(name, "1", FALSE);
-    oprintf("%% %s enabled, searching for %d out of %d lines",
-        name, *wmatch, *wlines);
-    return 1;
-}
-
-static int handle_watchdog_command(args)
-    char *args;
-{
-    return do_watch(args, "watchdog", &wdlines, &wdmatch, watchdog);
-}
-
-static int handle_watchname_command(args)
-    char *args;
-{
-    return do_watch(args, "watchname", &wnlines, &wnmatch, watchname);
+    return newint(1);
 }
 
 
@@ -605,7 +559,7 @@ static int handle_watchname_command(args)
  * Macros *
  **********/
 
-static int handle_undef_command(args)              /* Undefine a macro. */
+static struct Value *handle_undef_command(args)        /* Undefine a macro. */
     char *args;
 {
     char *name;
@@ -613,22 +567,22 @@ static int handle_undef_command(args)              /* Undefine a macro. */
 
     while (*(name = stringarg(&args, NULL)))
         result += remove_macro(name, 0, 0);
-    return result;
+    return newint(result);
 }
 
-static int handle_save_command(args)
+static struct Value *handle_save_command(args)
     char *args;
 {
     if (restrict >= RESTRICT_FILE) {
         eprintf("restricted");
-        return 0;
+        return newint(0);
     }
-    if (*args) return save_macros(args);
+    if (*args) return newint(save_macros(args));
     eprintf("missing filename");
-    return 0;
+    return newint(0);
 }
 
-static int handle_load_command(args)
+static struct Value *handle_load_command(args)
     char *args;
 {                   
     int quiet = 0, result = 0;
@@ -636,20 +590,20 @@ static int handle_load_command(args)
 
     if (restrict >= RESTRICT_FILE) {
         eprintf("restricted");
-        return 0;
+        return newint(0);
     }
 
     startopt(args, "q");
     while ((c = nextopt(&args, NULL))) {
         if (c == 'q') quiet = 1;
-        else return 0;
+        else return newint(0);
     }
 
     quietload += quiet;
     if (*args) result = do_file_load(args, FALSE);
     else eprintf("missing filename");
     quietload -= quiet;
-    return result;
+    return newint(result);
 }
 
 /*
@@ -673,17 +627,17 @@ static void split_args(args)
  * Hilites *
  ***********/
 
-static int handle_hilite_command(args)
+static struct Value *handle_hilite_command(args)
     char *args;
 {
     if (!*args) {
         setvar("hilite", "1", FALSE);
         oputs("% Hilites enabled.");
-        return 0;
+        return newint(0);
     } else {
         split_args(args);
-        return add_macro(new_macro(pattern, "", 0, NULL, body,
-            hpri, 100, F_HILITE, 0, matching));
+        return newint(add_macro(new_macro(pattern, "", 0, NULL, body,
+            hpri, 100, F_HILITE, 0, matching)));
     }
 }
 
@@ -692,17 +646,17 @@ static int handle_hilite_command(args)
  * Gags *
  ********/
 
-static int handle_gag_command(args)
+static struct Value *handle_gag_command(args)
     char *args;
 {
     if (!*args) {
         setvar("gag", "1", FALSE);
         oputs("% Gags enabled.");
-        return 0;
+        return newint(0);
     } else {
         split_args(args);
-        return add_macro(new_macro(pattern, "", 0, NULL, body,
-            gpri, 100, F_GAG, 0, matching));
+        return newint(add_macro(new_macro(pattern, "", 0, NULL, body,
+            gpri, 100, F_GAG, 0, matching)));
     }
 }
 
@@ -711,19 +665,19 @@ static int handle_gag_command(args)
  * Triggers *
  ************/
 
-static int handle_trigpc_command(args)
+static struct Value *handle_trigpc_command(args)
     char *args;
 {
     int pri, prob;
 
-    if ((pri = numarg(&args)) < 0) return 0;
-    if ((prob = numarg(&args)) < 0) return 0;
+    if ((pri = numarg(&args)) < 0) return newint(0);
+    if ((prob = numarg(&args)) < 0) return newint(0);
     split_args(args);
-    return add_macro(new_macro(pattern, "", 0, NULL, body, pri,
-        prob, F_NORM, 0, matching));
+    return newint(add_macro(new_macro(pattern, "", 0, NULL, body, pri,
+        prob, F_NORM, 0, matching)));
 }
 
-static int handle_untrig_command(args)
+static struct Value *handle_untrig_command(args)
     char *args;
 {
     char c;
@@ -731,10 +685,10 @@ static int handle_untrig_command(args)
 
     startopt(args, "a:");
     while ((c = nextopt(&args, NULL))) {
-        if (c != 'a') return 0;
-        if ((attrs |= parse_attrs(&args)) < 0) return 0;
+        if (c != 'a') return newint(0);
+        if ((attrs |= parse_attrs(&args)) < 0) return newint(0);
     }
-    return remove_macro(args, attrs ? attrs : F_NORM, 0);
+    return newint(remove_macro(args, attrs ? attrs : F_NORM, 0));
 }
 
 
@@ -742,24 +696,24 @@ static int handle_untrig_command(args)
  * Hooks *
  *********/
 
-static int handle_hook_command(args)
+static struct Value *handle_hook_command(args)
     char *args;
 {
     if (!*args) oprintf("%% Hooks %sabled", hookflag ? "en" : "dis");
-    else if (OFF) setvar("hook", "0", FALSE);
-    else if (ON) setvar("hook", "1", FALSE);
+    else if (cstrcmp(args, "off") == 0) setvar("hook", "0", FALSE);
+    else if (cstrcmp(args, "on") == 0) setvar("hook", "1", FALSE);
     else {
         split_args(args);
-        return add_hook(pattern, body);
+        return newint(add_hook(pattern, body));
     }
-    return 1;
+    return newint(1);
 }
 
 
-static int handle_unhook_command(args)
+static struct Value *handle_unhook_command(args)
     char *args;
 {
-    return remove_macro(args, 0, 1);
+    return newint(remove_macro(args, 0, 1));
 }
 
 
@@ -767,26 +721,26 @@ static int handle_unhook_command(args)
  * Keys *
  ********/
 
-static int handle_unbind_command(args)
+static struct Value *handle_unbind_command(args)
     char *args;
 {
     Macro *macro;
 
-    if (!*args) return 0;
+    if (!*args) return newint(0);
     if ((macro = find_key(print_to_ascii(args)))) kill_macro(macro);
     else eprintf("No binding for %s", args);
-    return !!macro;
+    return newint(!!macro);
 }
 
-static int handle_bind_command(args)
+static struct Value *handle_bind_command(args)
     char *args;
 {
     Macro *spec;
 
-    if (!*args) return 0;
+    if (!*args) return newint(0);
     split_args(args);
     spec = new_macro(NULL, print_to_ascii(pattern), 0, NULL, body,
         0, 0, 0, 0, 0);
-    return add_macro(spec);
+    return newint(add_macro(spec));
 }
 

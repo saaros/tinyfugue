@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: globals.h,v 35000.9 1997/08/26 07:16:33 hawkeye Exp $ */
+/* $Id: globals.h,v 35000.10 1997/11/17 09:33:59 hawkeye Exp $ */
 
 #ifndef GLOBALS_H
 #define GLOBALS_H
@@ -86,6 +86,7 @@ enum Vars {
 #define more		getintvar(VAR_more)
 #define mprefix		getstrvar(VAR_mprefix)
 #define oldslash	getintvar(VAR_oldslash)
+#define pedantic	getintvar(VAR_pedantic)
 #define prompt_sec	getintvar(VAR_prompt_sec)
 #define prompt_usec	getintvar(VAR_prompt_usec)
 #define proxy_host	getstrvar(VAR_proxy_host)

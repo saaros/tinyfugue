@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: macro.c,v 35004.37 1997/11/07 07:06:25 hawkeye Exp $ */
+/* $Id: macro.c,v 35004.45 1997/11/20 08:42:45 hawkeye Exp $ */
 
 
 /**********************************************
@@ -46,8 +46,6 @@ static String *FDECL(attr2str,(attr_t attrs)) PURE;
 static int     FDECL(rpricmp,(CONST Macro *m1, CONST Macro *m2));
 static void    FDECL(nuke_macro,(Macro *macro));
 
-extern CONST char *enum_match[];
-extern CONST char *enum_color[];
 
 #define HASH_SIZE 197
 
@@ -90,10 +88,12 @@ void init_macros()
 attr_t parse_attrs(argp)    /* convert attr string to bitfields */
     char **argp;
 {
-    attr_t attrs, color;
+    attr_t attrs = 0, color;
+    char *end;
 
-    for (attrs = 0; **argp; ++*argp) {
-        switch(**argp) {
+    while (**argp) {
+        ++*argp;
+        switch((*argp)[-1]) {
         case 'n':  attrs |= F_NORM;      break;
         case 'G':  attrs |= F_NOHISTORY; break;
         case 'g':  attrs |= F_GAG;       break;
@@ -105,10 +105,18 @@ attr_t parse_attrs(argp)    /* convert attr string to bitfields */
         case 'b':  attrs |= F_BELL;      break;
         case 'h':  attrs |= F_HILITE;    break;
         case 'C':
-            if ((color = enum2int(++*argp, enum_color, "color")) < 0)
-                return -1;
-            while (**argp) ++*argp;
-            return attrs | color2attr(color);
+            end = strchr(*argp, ',');
+            if (end) *end = '\0';
+            if ((color = enum2int(*argp, enum_color, "color")) < 0)
+                attrs = -1;
+            if (end) {
+                *end = ',';
+                *argp = end + 1;
+            } else
+                while (**argp) ++*argp;
+            if (attrs == -1) return -1;
+            attrs |= color2attr(color);
+            break;
         default:
             eprintf("invalid display attribute '%c'", **argp);
             return -1;
@@ -491,6 +499,9 @@ int add_macro(macro)
     if (macro->hook)
         macro->hooknode = sinsert((GENERIC *)macro, hooklist, (Cmp *)rpricmp);
     macro->flags &= ~MACRO_TEMP;
+    if (!*macro->name && (macro->trig.str || macro->hook) && macro->shots == 0 && pedantic) {
+        eprintf("warning: new macro (#%d) does not have a name.", macro->num);
+    }
     return macro->num;
 }
 
@@ -532,13 +543,13 @@ static int rpricmp(m1, m2)
     else return m2->fallthru - m1->fallthru;
 }
 
-int handle_def_command(args)
+struct Value *handle_def_command(args)
     char *args;
 {
     Macro *spec;
 
     if (!*args || !(spec = macro_spec(args, NULL, FALSE))) return 0;
-    return complete_macro(spec);
+    return newint(complete_macro(spec));
 }
 
 /* Fill in "don't care" fields with default values, and add_macro().
@@ -628,14 +639,14 @@ int add_hook(args, body)                  /* define a new Macro with hook */
  * renumbered.  We can't just re-use the old number, because the macro
  * would be out of order in maclist.
  */
-int handle_edit_command(args)
+struct Value *handle_edit_command(args)
     char *args;
 {
     Macro *spec, *macro = NULL;
     int error = 0;
 
     if (!*args || !(spec = macro_spec(args, NULL, FALSE))) {
-        return 0;
+        return newint(0);
     } else if (!spec->name) {
         eprintf("You must specify a macro.");
     } else if (spec->name[0] == '$') {
@@ -646,7 +657,7 @@ int handle_edit_command(args)
 
     if (!macro) {
         nuke_macro(spec);
-        return 0;
+        return newint(0);
     }
 
     kill_macro(macro);
@@ -680,7 +691,7 @@ int handle_edit_command(args)
 
     if (!error) {
         complete_macro(spec);
-        return spec->num;
+        return newint(spec->num);
     }
 
     /* Edit failed.  Resurrect original macro. */
@@ -688,7 +699,7 @@ int handle_edit_command(args)
     macro->flags &= ~MACRO_DEAD;
     dead_macros = macro->tnext;
     add_macro(macro);
-    return 0;
+    return newint(0);
 }
 
 
@@ -771,7 +782,7 @@ int remove_macro(str, flags, byhook)        /* delete a macro */
     return 1;
 }
 
-int handle_purge_command(args)                /* delete all specified macros */
+struct Value *handle_purge_command(args)      /* delete all specified macros */
     char *args;
 {
     Macro *spec;
@@ -780,7 +791,7 @@ int handle_purge_command(args)                /* delete all specified macros */
     int result = 1;
     int mflag;
 
-    if (!(spec = macro_spec(args, &mflag, FALSE))) return 0;
+    if (!(spec = macro_spec(args, &mflag, FALSE))) return newint(0);
     if (spec->name && *spec->name == '#') {
         spec->num = atoi(spec->name + 1);
         FREE(spec->name);
@@ -796,10 +807,10 @@ int handle_purge_command(args)                /* delete all specified macros */
     }
     /* regrelease(); */
     nuke_macro(spec);
-    return result;
+    return newint(result);
 }
 
-int handle_undefn_command(args)                 /* delete macro by number */
+struct Value *handle_undefn_command(args)          /* delete macro by number */
     char *args;
 {
     int num, result = 0;
@@ -811,7 +822,7 @@ int handle_undefn_command(args)                 /* delete macro by number */
             result++;
         }
     }
-    return result;
+    return newint(result);
 }
 
 Macro *find_num_macro(num)
@@ -1040,7 +1051,7 @@ int save_macros(args)              /* write specified macros to file */
     return result;
 }
 
-int handle_list_command(args)             /* list specified macros on screen */
+struct Value *handle_list_command(args)   /* list specified macros on screen */
     char *args;
 {
     Macro *spec;
@@ -1050,7 +1061,7 @@ int handle_list_command(args)             /* list specified macros on screen */
     if (!(spec = macro_spec(args, &mflag, TRUE))) result = 0;
     if (result) result = list_defs(NULL, spec, mflag);
     if (spec) nuke_macro(spec);
-    return result;
+    return newint(result);
 }
 
 
@@ -1063,11 +1074,21 @@ int do_macro(macro, args)       /* Do a macro! */
     CONST char *args;
 {
     int result, old_invis_flag;
+    CONST char *old_command;
+    char numbuf[16];
 
+    old_command = current_command;
+    if (*macro->name) {
+        current_command = macro->name;
+    } else {
+        sprintf(numbuf, "#%d", macro->num);
+        current_command = numbuf;
+    }
     old_invis_flag = invis_flag;
     invis_flag = macro->invis;
     result = process_macro(macro->body, args, SUB_MACRO);
     invis_flag = old_invis_flag;
+    current_command = old_command;
     return result;
 }
 
@@ -1164,7 +1185,6 @@ int find_and_run_matches(text, hook, alinep, world, globalflag)
     ListEntry *node;
     Pattern *pattern;
     Macro *macro;
-    extern int recur_count;
 
     /* Macros are sorted by decreasing priority, with fall-thrus first.
      * So, we search the list, running each matching fall-thru as we find it;
@@ -1225,7 +1245,6 @@ static int run_match(macro, text, hook, aline)
     Aline *aline;   /* aline to which attributes are applied */
 {
     int ran = 0;
-    extern struct Sock *xsock;
     struct Sock *callingsock = xsock;
     void *oldregscope;
 
@@ -1235,8 +1254,8 @@ static int run_match(macro, text, hook, aline)
     if (aline) {
         regexp *re = macro->trig.re;
         aline->attrs |= macro->attr;
-        if (!hook && macro->trig.mflag == MATCH_REGEXP && macro->subattr &&
-            aline->len && hilite && re->startp[0] < re->endp[0])
+        if (!hook && macro->trig.mflag == MATCH_REGEXP && aline->len && hilite
+            && (macro->subattr & ~F_NORM) && re->startp[0] < re->endp[0])
         {
             int i;
             short n = macro->subexp;

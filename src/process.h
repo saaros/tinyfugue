@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: process.h,v 35004.5 1997/09/14 05:04:36 hawkeye Exp $ */
+/* $Id: process.h,v 35004.6 1997/11/15 06:03:46 hawkeye Exp $ */
 
 #ifndef PROCESS_H
 #define PROCESS_H
@@ -17,12 +17,15 @@ extern void NDECL(kill_procs);
 extern void NDECL(nuke_dead_procs);
 extern int  NDECL(runall);
 
+extern TIME_T proctime;         /* when next process should run */
+
 # else
 
 #define kill_procs_by_world(world)     /* do nothing */
 #define kill_procs()                   /* do nothing */
 #define nuke_dead_procs()              /* do nothing */
 #define runall(now)                    /* do nothing */
+#define proctime 0
 
 # endif /* NO_PROCESS */
 

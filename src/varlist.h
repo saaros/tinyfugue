@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: varlist.h,v 35000.15 1997/09/10 07:04:57 hawkeye Exp $ */
+/* $Id: varlist.h,v 35000.16 1997/11/17 09:33:59 hawkeye Exp $ */
 
 /* It may not be easy to read in 80 columns, but it keeps the constants and
  * the array in the same place, so they can't get out of sync.
@@ -64,6 +64,7 @@ varcode(VAR_meta_esc   , "meta_esc"     , NULL   , VARENUM, enum_flag , TRUE  , 
 varcode(VAR_more       , "more"         , NULL   , VARENUM, enum_flag , FALSE , tog_more),
 varcode(VAR_mprefix    , "mprefix"      , "+"    , VARSTR , NULL      , 0     , NULL),
 varcode(VAR_oldslash   , "oldslash"     , NULL   , VARENUM, enum_flag , TRUE  , NULL),
+varcode(VAR_pedantic   , "pedantic"     , NULL   , VARENUM, enum_flag , FALSE , NULL),
 varcode(VAR_prompt_sec , "prompt_sec"   , NULL   , VARINT , NULL      , 0     , NULL),
 varcode(VAR_prompt_usec, "prompt_usec"  , NULL   , VARINT , NULL      , 250000, NULL),
 varcode(VAR_proxy_host , "proxy_host"   , NULL   , VARSTR , NULL      , 0     , NULL),

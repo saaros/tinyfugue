@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: socket.h,v 35004.18 1997/10/30 06:28:16 hawkeye Exp $ */
+/* $Id: socket.h,v 35004.19 1997/11/13 08:46:50 hawkeye Exp $ */
 
 #ifndef SOCKET_H
 #define SOCKET_H
@@ -13,6 +13,8 @@
 struct World   *world_decl;	/* declares struct World */
 
 extern Aline *incoming_text;
+extern int quit_flag;
+extern struct Sock *xsock;
 
 extern void    NDECL(main_loop);
 extern void    NDECL(init_sock);

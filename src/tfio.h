@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.h,v 35004.18 1997/08/27 11:04:34 hawkeye Exp $ */
+/* $Id: tfio.h,v 35004.21 1997/11/20 07:17:48 hawkeye Exp $ */
 
 #ifndef TFIO_H
 #define TFIO_H
@@ -68,11 +68,14 @@ typedef struct TFILE {
 #endif
 
 
+extern TFILE *loadfile;    /* currently /load'ing file */
+extern int loadline;       /* line number of currently /load'ing file */
 extern TFILE *tfin;        /* tf input queue */
 extern TFILE *tfout;       /* tf output queue */
 extern TFILE *tferr;       /* tf error queue */
 extern TFILE *tfkeyboard;  /* keyboard, where tfin usually points */
 extern TFILE *tfscreen;    /* screen queue, where tfout & tferr usually point */
+extern int    read_depth;
 
 #define operror(str)  eprintf("%s: %s", str, strerror(errno))
 #define oputa(aline)  tfputa(aline, tfout)
@@ -87,7 +90,7 @@ extern char  *FDECL(expand_filename,(CONST char *str));
 extern TFILE *FDECL(tfopen,(CONST char *name, CONST char *mode));
 extern int    FDECL(tfclose,(TFILE *file));
 extern void   FDECL(tfputs,(CONST char *str, TFILE *file));
-extern int    FDECL(tfputansi,(CONST char *str, TFILE *file));
+extern attr_t FDECL(tfputansi,(CONST char *str, TFILE *file, attr_t attrs));
 extern int    FDECL(tfputp,(CONST char *str, TFILE *file));
 extern void   FDECL(tfputa,(struct Aline *aline, TFILE *file));
 extern void   FDECL(vSprintf,(struct String *buf, int flags,

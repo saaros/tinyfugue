@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.c,v 35004.29 1997/09/16 07:38:19 hawkeye Exp $ */
+/* $Id: tfio.c,v 35004.33 1997/11/20 07:17:48 hawkeye Exp $ */
 
 
 /***********************************
@@ -47,15 +47,17 @@
 #include "search.h"	/* queues */
 #include "signals.h"	/* shell_status() */
 #include "variable.h"	/* getvar() */
+#include "keyboard.h"	/* keyboard_pos */
+#include "expand.h"	/* current_command */
 
+TFILE *loadfile = NULL; /* currently /load'ing file */
+int loadline = 0;       /* line number of currently /load'ing file */
 int read_depth = 0;     /* nesting level of user reads of keyboard */
 TFILE *tfkeyboard;      /* user input */
 TFILE *tfscreen;        /* text waiting to be displayed */
 TFILE *tfin;            /* pointer to current input queue */
 TFILE *tfout;           /* pointer to current output queue */
 TFILE *tferr;           /* pointer to current error queue */
-
-extern int restrict;
 
 static TFILE *filemap[FD_SETSIZE];
 static int selectable_tfiles = 0;
@@ -352,21 +354,21 @@ void tfputs(str, file)
 /* tfputansi
  * Print to a TFILE, with embedded ANSI display codes.
  */
-int tfputansi(str, file)
+attr_t tfputansi(str, file, attrs)
     CONST char *str;
     TFILE *file;
+    attr_t attrs;
 {
-    int ok = 1;
     Aline *aline;
 
     if (file->type != TF_NULL) {
         (aline = new_aline(str, 0))->links++;
-        ok = (handle_ansi_attr(aline, 0) >= 0);
-        if (ok)
+        attrs = handle_ansi_attr(aline, attrs);
+        if (attrs >= 0)
             tfputa(aline, file);
         free_aline(aline);
     }
-    return ok;
+    return attrs;
 }
 
 /* tfputp
@@ -611,9 +613,6 @@ void eprintf VDEF((CONST char *fmt, ...))
     CONST char *fmt;
 #endif
     STATIC_BUFFER(buffer);
-    extern CONST char *current_command;
-    extern TFILE *loadfile;
-    extern int loadline;
 
 #ifdef HAVE_STDARG
     va_start(ap, fmt);
@@ -665,8 +664,7 @@ String *tfgetS(str, file)
          * quirks, like the odd handling of /dokey newline.
          */
         TFILE *oldtfout, *oldtfin;
-        extern Stringp keybuf;
-        extern int keyboard_pos, runall_depth;
+        extern int runall_depth;
 
         if (runall_depth) {
             eprintf("can't read keyboard from a process.");
@@ -738,7 +736,6 @@ void flushout_queue(src, quiet)
     Queue *src;
     int quiet;
 {
-    extern unsigned int tfscreen_size;
     ListEntry *node;
     Queue *dest = tfscreen->u.queue;
 

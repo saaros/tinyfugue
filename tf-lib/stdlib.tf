@@ -6,7 +6,7 @@
 ;;;; General Public License.  See the file "COPYING" for details.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;; $Id: stdlib.tf,v 35000.20 1997/10/25 23:06:04 hawkeye Exp $
+;;; $Id: stdlib.tf,v 35000.23 1997/11/19 07:27:13 hawkeye Exp $
 
 ;;; TF macro library
 
@@ -30,7 +30,8 @@
 ;;; visual status bar
 
 /set status_fields \
-    @more:8:Br @world @read:6 @active:11 @log:5 @mail:6 insert:6 @clock:5
+    @more:8:Br :1 @world :1 \
+    @read:6 :1 @active:11 :1 @log:5 :1 @mail:6 :1 insert:6 :1 @clock:5
 
 /set status_int_more \
      moresize() == 0 ? "" : \
@@ -173,7 +174,8 @@
     /endif
 
 ;; macro existance test.
-/def -i ismacro = /@test $(/last $(/list -s -i %{*-@}%; /echo %?))
+/def -i ismacro = /list -s -i %{*-@} %| /return %?
+
 
 ;; cut-and-paste tool
 /def -i paste = \
@@ -296,7 +298,7 @@
     /def -mglob -T{telnet|telnet.*} -hLOGIN -iFp%{maxpri} ~login_hook_telnet = \
 	/send -- $${world_character}%%; \
 	/send -- $${world_password}%; \
-    /def -mregexp -T'^telnet(\\..*)?$$' -h'PROMPT [Pp]assword:( *)$$' \
+    /def -mregexp -T'^telnet(\\\\..*)?$$' -h'PROMPT [Pp]assword:( *)$$' \
     -iFp%{maxpri} ~telnet_passwd = \
 	/@test prompt(strcat({*}, P1))%%;\
 	/def -w -q -hSEND -iFn1p%{maxpri} ~echo_$${world_name} =\

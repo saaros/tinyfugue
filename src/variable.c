@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: variable.c,v 35004.26 1997/10/18 21:55:53 hawkeye Exp $ */
+/* $Id: variable.c,v 35004.30 1997/11/17 09:33:59 hawkeye Exp $ */
 
 
 /**************************************
@@ -49,6 +49,7 @@ static List localvar[1];          /* local variables */
 static HashTable var_table[1];    /* global variables */
 static int envsize;
 static int envmax;
+static int setting_nearest = 0;
 
 #define bicode(a, b)  b 
 #include "enumlist.h"
@@ -58,7 +59,7 @@ static CONST char *enum_flag[]	= { "off", "on", NULL };
 static CONST char *enum_mecho[]	= { "off", "on", "all", NULL };
 static CONST char *enum_block[] = { "blocking", "nonblocking", NULL };
 
-CONST char *enum_sub[]	= { "off", "on", "full", NULL };
+CONST char *enum_sub[]		= { "off", "on", "full", NULL };
 CONST char *enum_color[]= { "black", "red", "green", "yellow",
 			"blue", "magenta", "cyan", "white",
 			"8", "9", "10", "11", "12", "13", "14", "15",
@@ -89,7 +90,6 @@ Var special_var[] = {
 void init_variables()
 {
     char **oldenv, **p, *value, buf[20], *str;
-    extern CONST char *current_command;
     CONST char *oldcommand;
     Var *var;
     Stringp scratch;
@@ -262,10 +262,12 @@ Var *setnearestvar(name, value)
             var->len = strlen(value);
             var->value = STRNDUP(value, var->len);
         }
-        return var;
     } else {
-        return setvar(name, value, FALSE);
+        setting_nearest++;
+        var = setvar(name, value, FALSE);
+        setting_nearest--;
     }
+    return var;
 }
 
 Var *newlocalvar(name, value)
@@ -399,6 +401,9 @@ Var *setvar(name, value, exportflag)
         }
     } else {
         var = newglobalvar(name, value);
+        if (setting_nearest && pedantic) {
+            eprintf("warning: variable '%s' was not previously defined in any scope, so it has been created in the global scope.", name);
+        }
     }
     if (!var->node) var->node = hash_insert((GENERIC *)var, var_table);
 
@@ -497,7 +502,7 @@ int do_set(args, exportflag, localflag)
     return 1;
 }
 
-int handle_listvar_command(args)
+struct Value *handle_listvar_command(args)
     char *args;
 {
     int mflag, opt;
@@ -522,10 +527,10 @@ int handle_listvar_command(args)
                 shortflag = 1;
                 break;
             default:
-                return 0;
+                return newint(0);
           }
     }
-    if (error) return 0;
+    if (error) return newint(0);
 
     if (*args) {
         name = args;
@@ -538,34 +543,34 @@ int handle_listvar_command(args)
             value = NULL;
     }
 
-    return listvar(name, value, mflag, exportflag, shortflag);
+    return newint(listvar(name, value, mflag, exportflag, shortflag));
 }
 
-int handle_export_command(name)
+struct Value *handle_export_command(name)
     char *name;
 {
     Var *var;
 
     if (!(var = findglobalvar(name))) {
         eprintf("%s not defined.", name);
-        return 0;
+        return newint(0);
     }
     if (!(var->flags & VAREXPORT)) append_env(new_env(var));
     var->flags |= VAREXPORT;
-    return 1;
+    return newint(1);
 }
 
-int handle_unset_command(name)
+struct Value *handle_unset_command(name)
     char *name;
 {
     long oldval;
     Var *var;
 
-    if (!(var = findglobalvar(name))) return 0;
+    if (!(var = findglobalvar(name))) return newint(0);
 
     if (var->flags & VARPOS) {
         eprintf("%s must a positive integer, so can not be unset.", var->name);
-        return 0;
+        return newint(0);
     }
 
     hash_remove(var->node, var_table);
@@ -589,7 +594,7 @@ int handle_unset_command(name)
         if ((oldval || var->flags & VARSTR) && var->func)
             (*var->func)();
     }
-    return 1;
+    return newint(1);
 }
 
 /*********/

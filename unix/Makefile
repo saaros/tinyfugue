@@ -1,4 +1,4 @@
-# $Id: Makefile,v 35000.13 1997/11/07 07:18:00 hawkeye Exp $
+# $Id: Makefile,v 35000.14 1997/11/10 22:12:50 hawkeye Exp $
 ########################################################################
 #
 #  TinyFugue - programmable mud client
@@ -82,9 +82,11 @@ help ./tf-lib/tf-help: _always_
 	fi
 
 tar ../tf-$(TFVER).tar: ./src/*.[ch] srcdist distclean
-	@-cd ./src; echo Possible garbage in ./src/: \
+	@-cd ./src; echo Possible garbage in src: \
 	    `ls *in *out *err *foo* *bar* *.new *.old *.ok *.c.* *.tf \
 	    2>/dev/null`
+	@-echo Possible garbage in top: \
+	    `ls *.gz *.Z *.zip 2>/dev/null`
 	@wd=`pwd`; [ "`basename $$wd`" = "work" ] || \
 	    echo 'WARNING: You are not in the "work" directory.'
 	@echo 'Press return to archive tf-$(TFVER).'
