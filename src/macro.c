@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: macro.c,v 35004.123 2003/05/27 01:09:22 hawkeye Exp $";
+static const char RCSid[] = "$Id: macro.c,v 35004.124 2003/05/28 05:10:29 hawkeye Exp $";
 
 
 /**********************************************
@@ -718,7 +718,7 @@ int add_hook(char *args, const char *body)
     long hook;
 
     if ((hook = parse_hook(&args)) < 0) return 0;
-    if (!*args) args = NULL;
+    if (args && !*args) args = NULL;
     return add_macro(new_macro(NULL, "", hook, args, body, 0, 100, 0, 0,
         matching));
 }

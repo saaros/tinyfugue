@@ -1,7 +1,18 @@
 Only the most recent version will have detailed changes described.
 Some fixes are followed by the version in which the problem first appeared.
 
-5.0 alpha 10 (2003-05-??)
+5.0 alpha 11 (2003-05-27)
+------------
+Fixed fatal bug in /hook with no pattern.
+Fixed compilation problems on MacOS X (I think).
+Fixed: More prompt area (8 dashes) sometimes scrolled into output window
+  when switching worlds.
+Disabled IPv6 support by default, since it is broken on some systems, and
+  there really aren't any servers that require it anyway.  (To be fixed in
+  a future release).
+Installation process creates PREFIX/bin and PREFIX/lib if needed.
+
+5.0 alpha 10 (2003-05-26)
 ------------
 Added /dokey pause (^S)
 added "/clock <format>"
@@ -15,8 +26,8 @@ more compact /ps format leaves more room for long commands.
 %wrapspace=4 by default.
 /limit [-a] [-v] [-m<style>] <pattern>:  redraws window, showing only lines
     that match <pattern> and/or have attributes (-a).  With no args, returns
-    1 if limit is in effect, 0 if not.  Screen-specific.  Default @more status
-    counts only limited lines.
+    1 if limit is in effect, 0 if not.  Screen-specific.  Default @more
+    status counts only limited lines.
 /relimit repeats last limit
 ^[L (meta-shift-l) toggles last limit off and on.
 Various keys are bound to /dokey_pg{up,dn} which in turn calls
@@ -32,8 +43,8 @@ Note: some emulators (NiftyTelnet, TeraTerm) incorrectly send ^[[3~ for
     other bad things.
 If a multiply operation on integers would overflow, it is converted to real.
 replace() is an internal function.
-/listsockets shows number of old and new lines on each socket (total, not just
-    limited).
+/listsockets shows number of old and new lines on each socket (total, not
+    just limited).
 moresize() takes flags to request only limited, only new, or only new limited
     lines.
 @more status field counts physical lines (not logical lines); it shows both
@@ -44,9 +55,9 @@ bg_output and /fg -q mean jump-to-end when foregrounding
     fake_recv()).
 Some messages (activity/background/mail hooks, /limit error) appear as
     temporary "alerts" on the status bar.  %alert_time controls duration of
-    alert.  %alert_attr controls attrs of alert.  echo() to the "a" stream, or
-    /echo -A, displays arbitrary text as alert.
-status field attributes are modified by variable "status_attr_{int,var}_<name>"
+    alert.  %alert_attr controls attrs of alert.  echo() to the "a" stream,
+    or /echo -A, displays arbitrary text as alert.
+status field attrs are modified by variable "status_attr_{int,var}_<name>".
 Fixed 'illegal macro name ""' in '/edit #<N>'.
 Fixed: glob comparison of end of string against pattern "*{..." could give
     incorrect results. (35a16)
@@ -54,8 +65,8 @@ Fixed: glob comparison of end of string against pattern "*{..." could give
 UNDOCUMENTED
 Fixed expansion of line pushed by kbpush (50a9).
 Prints overflow error when converting too-large real to integer or time.
-fake_recv(string, [world, [flags]]); flags="r" means raw (no implicit newline,
-    before prompt processing)
+fake_recv(string, [world, [flags]]); flags="r" means raw (no implicit
+    newline, before prompt processing)
 
 5.0 alpha 9 (2002-03-12)
 -----------

@@ -118,11 +118,12 @@
   reference you can avoid this problem;
   for example, "<code><a href="../commands/test.html">/test</a> {1}</code>".
 
-<p>
-  <li> Debugging:
+<p><li>
   "<a href="../commands/set.html">/set</a>
   <a href="../topics/special_variables.html#pedantic">pedantic</a>=on" to
   make tf generate warnings about some potential problems.
+
+<p><li>
   "<a href="../commands/set.html">/set</a>
   <a href="../topics/special_variables.html#mecho">mecho</a>=on" to
   see what commands are being executed, or
@@ -130,10 +131,17 @@
   "<a href="../topics/sockets.html#connectionless">connectionless socket</a>"
   to see what you're sending to the
   <a href="../topics/sockets.html">socket</a>.
+
+<p><li>
   "<a href="../commands/set.html">/set</a>
   <a href="../topics/special_variables.html#emulation">emulation</a>=debug"
   and "<a href="../topics/special_variables.html#telopt">telopt</a>=on"
   to see exactly what the socket is sending to tf.
+
+<p><li>
+  Use the -n or -l option of <a href="../commands/trigger.html">/trigger</a>
+  to see a list of trigger macros that would match a given line.
+
   </ul>
 
 <p>

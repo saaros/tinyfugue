@@ -1,4 +1,4 @@
-# $Id: vars.mak.in,v 35004.3 2003/05/27 01:58:38 hawkeye Exp $
+# $Id: vars.mak.in,v 35004.5 2003/05/28 06:17:19 hawkeye Exp $
 ########################################################################
 #  TinyFugue - programmable mud client
 #  Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
@@ -19,6 +19,7 @@ TFVERSION  = @TFVERSION@
 X          = @EXEEXT@
 O          = @OBJEXT@
 @SET_MAKE@
+PREFIX     = @prefix@
 TF         = @prefix@/bin/@EXENAME@${X}
 LIBDIR     = @prefix@/lib/@LIBNAME@
 SYMLINK    = @SYMLINK@
@@ -30,6 +31,7 @@ CFLAGS     = @CFLAGS@
 CPPFLAGS   = @CPPFLAGS@
 STD_C      = @STD_C@
 STRIP      = @STRIP@
+RANLIB     = @RANLIB@
 LIBS       = @LIBS@
 OTHER_OBJS = @OTHER_OBJS@
 

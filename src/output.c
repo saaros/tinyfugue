@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: output.c,v 35004.146 2003/05/27 01:09:23 hawkeye Exp $";
+static const char RCSid[] = "$Id: output.c,v 35004.147 2003/05/28 06:55:51 hawkeye Exp $";
 
 
 /*****************************************************************
@@ -1068,22 +1068,26 @@ int redraw_window(Screen *screen, int already_clear)
     if (screen->viewsize) {
         PhysLine *pl;
 	ListEntry *node;
+	int first;
 
         if (visual) xy(1, ystatus - screen->viewsize);
 
 	node = screen->top;
+	first = 1;
 	while (1) {
 	    pl = node->datum;
 	    if (screen_filter(screen, pl->str)) {
+		if (!first) crnl(1);
+		first = 0;
 		hwrite(pl->str, pl->start,
 		    pl->len < Wrap - pl->indent ? pl->len : Wrap - pl->indent,
 		    pl->indent);
-		crnl(1);  cx = 1; cy++;
 	    }
 	    if (node == screen->bot)
 		break;
 	    node = node->next;
         }
+	cx = 1; cy = ystatus - 1;
     }
 
     bufflush();

@@ -24,17 +24,24 @@ Installing TinyFugue
   --enable-version        insert version number into name of tf executable
                           and library directory (implies --enable-symlink)
   --enable-symlink[=NAME] make a symlink NAME to the executable [PREFIX/bin/tf]
+  --enable-inet6          enable IPv6 support (may be broken)
   --disable-netdb         disable hostname resolution
   --disable-termcap       use hardcoded vt100 codes instead of termcap
   --enable-termcap=LIB    enable termcap with library LIB (e.g., ncurses)
                           (needed only if configure guesses incorrectly)
-  --disable-mail          disable mail checking
-  --enable-mail=DIR       enable checking for mail in directory DIR
+  --disable-mailcheck     disable mail checking
+  --enable-mailcheck=DIR  enable checking for mail in directory DIR
                           (needed only if configure guesses incorrectly)
   --enable-manpage        enable installation of man page
-  --disable-history       disable /recall
+  --enable-strip          strip debugging symbols from executable
+  --disable-history       disable /recall and other history features
   --disable-process       disable /quote and /repeat
   --disable-float         disable floating point arithmetic and functions
+  --with-incdirs=DIRS       search for include files in DIRS
+  --with-libdirs=DIRS       search for libraries in DIRS
+  --with-inclibdirs=DIRS    same as --with-incdirs=DIRS --with-libdirs=DIRS
+  --with-inclibprefix=DIRS  same, but appends '/include' and '/lib'
+
 
 The following environment variables are meaningful to configure.  Their
 default values are listed in brackets after the description.  They can
@@ -47,6 +54,11 @@ be set on the command line like this:
   CPPFLAGS	Options for C preprocessor (e.g. -I) [""]
   LIBS		"-l" and "-L" options for the linker (in addition to the ones
 		determined automatically by configure).
+
+Example:
+SSL libraries are typically installed in /usr/local/ssl/{lib,include}.
+To let TF find these, use the "--with-inclibprefix=/usr/local/ssl"
+option with configure.
 
 
 File Locations

@@ -1,4 +1,4 @@
-# $Id: unix.mak,v 35004.37 2003/05/27 03:44:18 hawkeye Exp $
+# $Id: unix.mak,v 35004.39 2003/05/28 06:17:19 hawkeye Exp $
 ########################################################################
 #  TinyFugue - programmable mud client
 #  Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
@@ -20,7 +20,7 @@ BUILDERS   = Makefile
 
 default: all
 
-install:  _failmsg _all $(TF) LIBRARY $(MANPAGE) $(SYMLINK)
+install:  _failmsg _all PREFIXDIRS $(TF) LIBRARY $(MANPAGE) $(SYMLINK)
 	@echo '#####################################################' > exitmsg
 	@echo '## TinyFugue installation successful.' >> exitmsg
 	@echo "## You can safely delete everything in `cd ..; pwd`". >> exitmsg
@@ -61,8 +61,10 @@ _failmsg:
 #	fi >> exitmsg
 
 pcre:
+# ranlib is required by MacOS X, maybe others
 	cd pcre-2.08 && \
-	    $(MAKE) CC='$(CC)' CFLAGS='-O' O=o libpcre.a
+	    $(MAKE) CC='$(CC)' CFLAGS='-O' O=o libpcre.a && \
+	    $(RANLIB) libpcre.a
 
 TF tf$(X):     $(OBJS) $(BUILDERS) pcre
 	$(CC) $(CFLAGS) -o tf$(X) $(OBJS) $(LIBS) -Lpcre-2.08 -lpcre
@@ -70,6 +72,10 @@ TF tf$(X):     $(OBJS) $(BUILDERS) pcre
 	@test -f "tf$(X)"
 #	@# ULTRIX's sh errors here if strip isn't found, despite "true".
 	-test -z "$(STRIP)" || $(STRIP) tf$(X) || true
+
+PREFIXDIRS:
+	test -d "$(PREFIX)/bin" || mkdir $(PREFIX)/bin
+	test -d "$(PREFIX)/lib" || mkdir $(PREFIX)/lib
 
 install_TF $(TF): tf$(X) $(BUILDERS)
 	-@rm -f $(TF)

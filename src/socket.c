@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: socket.c,v 35004.180 2003/05/27 01:09:24 hawkeye Exp $";
+static const char RCSid[] = "$Id: socket.c,v 35004.181 2003/05/28 05:55:00 hawkeye Exp $";
 
 
 /***************************************************************
@@ -87,6 +87,7 @@ struct sockaddr_in {
 #endif
 
 #if ENABLE_INET6
+# include <nameser.h>
 # include <resolv.h>
 # define TF_AF_INET AF_INET6
 # define TF_PF_INET PF_INET6

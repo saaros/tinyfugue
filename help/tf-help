@@ -1073,7 +1073,7 @@ echo()
 
   Usage: 
 
-  [1m/FG[22;0m [-nsq<>] [<[4mworld[24m>]
+  [1m/FG[22;0m [-nsq<>l] [-c<[4mN[24m>] [<[4mworld[24m>]
   [1m/BG[22;0m
   ____________________________________________________________________________
 
@@ -1086,8 +1086,8 @@ echo()
   -n      no [1msocket[22;0m: put all [1msockets[22;0m in the [1mbackground[22;0m.  
   -s      suppress error messages.  
   -<      previous [1msocket[22;0m in cycle.  
-  ->      next [1msocket[22;0m in cycle.  -c<[4mN[24m> 
-          Repeat the -< or -> option <[4mN[24m> times.  
+  ->      next [1msocket[22;0m in cycle.  
+  -c<[4mN[24m>   Repeat the -< or -> option <[4mN[24m> times.  
   -l      ignored.  
   -q      quiet: jump to the last screenful of text, instead of starting at 
           the same location you were at the last time the [1msocket[22;0m was current.  
@@ -1682,6 +1682,59 @@ index
   Note to lisp users: this is nothing like lisp's let.  
 
   See: [1m/set[22;0m, [1mvariables[22;0m 
+
+&/limit
+&/relimit
+&/unlimit
+
+/limit
+
+/relimit
+
+/unlimit
+
+  Usage: 
+
+  [1m/LIMIT[22;0m [-v] [-a] [-m<[4mstyle[24m>] n>] [-B<n>] [-C<n>] --> [<pattern>]
+  [1m/RELIMIT[22;0m
+  [1m/UNLIMIT[22;0m
+  ____________________________________________________________________________
+
+  /Limit redraws the window, showing only lines that match <[1mpattern[22;0m>.  It is 
+  then possible to scroll forward and backward within the "limited" window.  
+  The limit affects only the current screen, and stays in effect until 
+  [1m/unlimit[22;0m is called.  
+
+  /Limit [1moptions:[22;0m 
+  -v      show only lines that don't match <[1mpattern[22;0m> 
+  -a      show only lines that have attributes 
+  -m<style> 
+          use matching style ([1msimple[22;0m, [1mglob[22;0m, or [1mregexp[22;0m), instead of the default 
+          [1m%{matching}[22;0m.  -A<n> 
+                  Show <n> lines of context after each matching line.  
+          -B<n>   Show <n> lines of context before each matching line.  
+          -C<n>   Equivalent to -A<n> -B<n>.  --> 
+
+          If <[1mpattern[22;0m> is given, only lines in the given range that match 
+          <[1mpattern[22;0m> will be recalled.  The matching style is determined by the 
+          -m option if given, [1m%{matching}[22;0m otherwise.  By default, the @more 
+          [1mstatus field[22;0m does not count lines that are omitted by [1m/limit[22;0m.  
+
+          With no options or arguments, [1m/limit[22;0m returns 1 if a limit is in 
+          effect, 0 if not.  
+
+          [1m/unlimit[22;0m disables the [1m/limit[22;0m so all lines are displayed.  The 
+          bottommost line in the window stays put, and other lines are 
+          inserted as needed above it.  Thus, you can use [1m/limit[22;0m to find a 
+          line you are interested in, use the scrolling keys to position that 
+          line at the bottom of the window, then [1m/unlimit[22;0m to see the context 
+          of that line.  
+
+          [1m/relimit[22;0m repeats the last [1m/limit[22;0m.  
+
+          The default keybinding ^[L toggles the last limit off and on.  
+
+          See: [1m/recall[22;0m 
 
 &/listbind
 &/listdef
@@ -5199,11 +5252,17 @@ hints
       problems if [1m%1[22;0m contains any special characters.  But by using a [1mvariable[22;0m 
       reference you can avoid this problem; for example, "[1m/test[22;0m {1}".  
 
-    * Debugging: "[1m/set[22;0m [1mpedantic[22;0m=on" to make tf generate warnings about 
-      some potential problems.  "[1m/set[22;0m [1mmecho[22;0m=on" to see what commands are being 
-      executed, or [1m/connect[22;0m to a "[1mconnectionless socket[22;0m" to see what you're 
-      sending to the [1msocket[22;0m.  "[1m/set[22;0m [1memulation[22;0m=debug" and "[1mtelopt[22;0m=on" to see 
-      exactly what the socket is sending to tf.  
+    * "[1m/set[22;0m [1mpedantic[22;0m=on" to make tf generate warnings about some potential 
+      problems.  
+
+    * "[1m/set[22;0m [1mmecho[22;0m=on" to see what commands are being executed, or [1m/connect[22;0m 
+      to a "[1mconnectionless socket[22;0m" to see what you're sending to the [1msocket[22;0m.  
+
+    * "[1m/set[22;0m [1memulation[22;0m=debug" and "[1mtelopt[22;0m=on" to see exactly what the 
+      socket is sending to tf.  
+
+    * Use the -n or -l option of [1m/trigger[22;0m to see a list of trigger macros 
+      that would match a given line.  
 
 &history
 
