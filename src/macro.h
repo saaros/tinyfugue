@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: macro.h,v 33000.2 1994/03/19 22:41:01 hawkeye Exp $ */
+/* $Id: macro.h,v 33000.3 1994/04/26 08:56:29 hawkeye Exp $ */
 
 #ifndef MACRO_H
 #define MACRO_H

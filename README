@@ -144,16 +144,15 @@ Installation Problems
 ---------------------
 
 Autoconfig can usually figure out everything it needs to know.  But if
-it fails because it guessed incorrectly about your system, you may need
-to edit some lines in the Config file.  Try running "make" at least once
-before making any of these changes.
+it fails because your system is brain damaged, you may need to edit
+some lines in the Config file.  Try running "make" at least once before
+making any of these changes.
 
   Problem				   Possible Solution in "Config"
   -------				   -----------------------------
   Hostnames don't work on SunOS 4.0.x	   LIBS='-lresolv'
   ioctl() errors with gcc		   FLAGS='-traditional'
   Your system is Apollo Domain/OS.	   FLAGS='-U__STDC__'
-  termcap needs "index" on SunOS 5.x	   LIBS='-lucb -lelf'
 
 
 Last Resort

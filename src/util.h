@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.h,v 33000.3 1994/04/16 05:09:12 hawkeye Exp $ */
+/* $Id: util.h,v 33000.4 1994/04/23 23:30:44 hawkeye Exp $ */
 
 #ifndef UTIL_H
 #define UTIL_H
@@ -32,8 +32,10 @@ extern char lowercase_values[128], uppercase_values[128];
 
 #ifdef HAVE_STRTOL
 # define strtochr(sp)   (char)(strtol(*(sp), sp, 0) % 128)
+# define strtoi(sp)     (int)strtol(*(sp), sp, 10)
 #else
 extern char   FDECL(strtochr,(char **sp));
+extern char   FDECL(strtoi,(char **sp));
 #endif
 extern void   NDECL(init_util);
 extern void   NDECL(init_mail);

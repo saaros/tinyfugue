@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tty.c,v 33000.4 1994/04/16 05:10:09 hawkeye Exp $ */
+/* $Id: tty.c,v 33000.5 1994/04/26 08:56:29 hawkeye Exp $ */
 
 /*
  * TTY driver routines.
@@ -112,6 +112,7 @@ void init_tty()
     *dline = tty.c_cc[VKILL];
     *bword = chars.t_werasc;
     *refresh = chars.t_rprntc;
+    /* *lnext = chars.t_lnextc; */  /* Does this exist? Screw it, use default */
 #endif
 
 #ifdef USE_SGTTY
@@ -176,7 +177,7 @@ void cbreak_noecho_mode()
     tty.c_iflag &= ~ICRNL;
     tty.c_oflag &= ~OCRNL;
     /* Leave ONLCR on, so "write" and other things that blast onto the screen
-     * look at least somewhat sane.
+     * without asking look at least somewhat sane.
      */
     tty.c_cc[VMIN] = 0;
     tty.c_cc[VTIME] = 0;
@@ -187,7 +188,7 @@ void cbreak_noecho_mode()
     tty.c_iflag &= ~ICRNL;
     tty.c_oflag &= ~OCRNL;
     /* Leave ONLCR on, so "write" and other things that blast onto the screen
-     * look at least somewhat sane.
+     * without asking look at least somewhat sane.
      */
     tty.c_cc[VMIN] = 0;
     tty.c_cc[VTIME] = 0;

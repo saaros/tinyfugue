@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: main.c,v 33000.3 1994/04/16 05:10:40 hawkeye Exp $ */
+/* $Id: main.c,v 33000.4 1994/04/26 08:56:29 hawkeye Exp $ */
 
 
 /***********************************************
@@ -33,7 +33,7 @@
 #include "command.h"
 #include "keyboard.h"
 
-char version[] = "TinyFugue version 3.3 beta 4, Copyright (C) 1993, 1994 Ken Keys";
+char version[] = "TinyFugue version 3.3 beta 5, Copyright (C) 1993, 1994 Ken Keys";
 
 int restrict = 0;
 

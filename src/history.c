@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: history.c,v 33000.4 1994/04/18 21:52:11 hawkeye Exp $ */
+/* $Id: history.c,v 33000.5 1994/04/26 08:48:41 hawkeye Exp $ */
 
 
 /****************************************************************
@@ -300,8 +300,8 @@ int recall_history(args, file)
         if (colon) t1 = abstime(n_or_t);
         else n0 = n1 = hist->num - n_or_t;
     } else if (*arg == '/') {                                 /*  /x */
-        want = atoi(++arg);
-        while (isdigit(*arg)) arg++;
+        ++arg;
+        want = strtoi(&arg);
     } else if (isdigit(*arg)) {
         n_or_t = parsetime(&arg, &colon);
         if (n_or_t < 0) {

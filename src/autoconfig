@@ -588,17 +588,20 @@ else
 fi
 
 ### Look for strchr() or index().
+### Note:  Solaris brain damage:  libtermcap uses [r]index() instead of
+### str[r]chr().  So we check for index() even if we find strchr().
 
 if egrep '(^|[^a-z])strchr([^a-z]|$)' libc.list >/dev/null 2>&1; then
     echo "Found strchr() in your C library."
     echo "#define HAVE_STRCHR" >&4
-elif egrep '(^|[^a-z])index([^a-z]|$)' libc.list >/dev/null 2>&1; then
+else
+    echo "/* #define HAVE_STRCHR */" >&4
+fi
+if egrep '(^|[^a-z])index([^a-z]|$)' libc.list >/dev/null 2>&1; then
     echo "Found index() in your C library."
     echo "#define HAVE_INDEX" >&4
 else
-    echo "I can't find strchr() or index().  Good luck."
-    echo "    I'll assume you have strchr()."
-    echo "/* #define HAVE_STRCHR */" >&4
+    echo "/* #define HAVE_INDEX */" >&4
 fi
 
 ### Look for strstr().

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: malloc.h,v 33000.1 1994/03/14 20:55:45 hawkeye Exp $ */
+/* $Id: malloc.h,v 33000.2 1994/04/26 08:56:29 hawkeye Exp $ */
 
 #ifndef MALLOC_H
 #define MALLOC_H

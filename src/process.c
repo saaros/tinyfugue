@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: process.c,v 33000.2 1994/03/14 16:57:06 hawkeye Exp $ */
+/* $Id: process.c,v 33000.3 1994/04/26 08:56:29 hawkeye Exp $ */
 
 /*************************************************
  * Fugue processes.                              *

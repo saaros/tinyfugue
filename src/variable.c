@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: variable.c,v 33000.7 1994/04/16 05:12:43 hawkeye Exp $ */
+/* $Id: variable.c,v 33000.8 1994/04/22 06:05:07 hawkeye Exp $ */
 
 
 /**************************************
@@ -103,6 +103,7 @@ Var special_var[] = {
   {"lpquote"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
   {"maildelay"	,	NULL, VARINT , NULL	, 60   , ch_maildelay },
   {"matching"	,	NULL, VARENUM, enum_match,1    , NULL },
+  {"max_iter"	,	NULL, VARINT , NULL	, 1000 , NULL },
   {"max_recur"	,	NULL, VARINT , NULL	, 100  , NULL },
   {"mecho"	,	NULL, VARENUM, enum_mecho,0    , NULL },
   {"more"	,	NULL, VARENUM, enum_flag, FALSE, tog_more },

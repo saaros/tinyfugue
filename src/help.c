@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: help.c,v 33000.1 1994/03/14 20:53:44 hawkeye Exp $ */
+/* $Id: help.c,v 33000.2 1994/04/26 08:56:29 hawkeye Exp $ */
 
 /*
  * Fugue help handling

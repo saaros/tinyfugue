@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: macro.c,v 33000.12 1994/04/17 04:16:13 hawkeye Exp $ */
+/* $Id: macro.c,v 33000.13 1994/04/26 08:49:24 hawkeye Exp $ */
 
 
 /**********************************************
@@ -209,11 +209,8 @@ static Macro *macro_spec(args)
     while ((opt = nextopt(&ptr, &num))) {
         switch (opt) {
         case 'm':
-            if ((num = enum2int(ptr, enum_match, "-m")) < 0) {
+            if ((spec->mflag = enum2int(ptr, enum_match, "-m")) < 0)
                 error = TRUE;
-            } else {
-                spec->mflag = num;
-            }
             break;
         case 'p':
             spec->pri = num;
@@ -262,13 +259,12 @@ static Macro *macro_spec(args)
             if ((spec->attr |= parse_attrs(&ptr)) < 0) error = TRUE;
             break;
         case 'P':
-            spec->subexp = atoi(ptr);
+            spec->subexp = strtoi(&ptr);
             if (spec->subexp < 0 || spec->subexp >= NSUBEXP) {
                 tfprintf(tferr, "%S: -P number must be between 0 and %d.",
                     error_prefix(), NSUBEXP - 1);
                 error = TRUE;
             } else {
-                while (isdigit(*ptr)) ++ptr;
                 if ((spec->subattr |= parse_attrs(&ptr)) < 0) error = TRUE;
             }
             break;
@@ -276,7 +272,7 @@ static Macro *macro_spec(args)
             spec->shots = num;
             break;
         case '1':
-            if (*ptr && *(ptr + 1)) error = TRUE;
+            if (ptr[0] && ptr[1]) error = TRUE;
             else if (!*ptr || *ptr == '+') spec->shots = 1;
             else if (*ptr == '-') spec->shots = 0;
             else error = TRUE;
@@ -323,11 +319,6 @@ static int check_macro_patterns(spec)
     if (!init_pattern(&spec->wtype, spec->wtype.str, spec->mflag)) result = 0;
     return result;
 }
-
-
-/********************************
- * Routines for locating macros *
- ********************************/
 
 /* make_aux_pattern
  * Macro_match() needs to compare some string fields that aren't normally
@@ -1168,14 +1159,9 @@ int find_and_run_matches(text, hook, aline)
 
     /* run exactly one of the non fall-thrus. */
     if (num > 0) {
-        int i, r;
-        for (i = r = RRAND(0, num-1); i; i--) {
-            if (!first->tnext) {   /* debug */
-                tfprintf(tferr, "internal error: find_and_run_matches(): NULL at i=%d, num=%d, r=%d", i, num, r);
-                break;
-            }
-            first = first->tnext;
-        }
+        if (num > 1)
+            for (num = RRAND(0, num-1); num; num--)
+                first = first->tnext;
         /* use regexp of the selected macro, not the last matched macro */
         reghold(hook ? first->hargs.re : first->trig.re, text, FALSE);
         ran += run_match(first, text, hook, aline);

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.c,v 33000.3 1994/03/14 16:53:28 hawkeye Exp $ */
+/* $Id: tfio.c,v 33000.5 1994/04/26 08:54:35 hawkeye Exp $ */
 
 
 /***********************************
@@ -40,28 +40,25 @@ String *error_prefix()
     extern int current_lineno;
     STATIC_BUFFER(buffer);
 
+    Stringcpy(buffer, "% ");
     if (current_file)
-        Sprintf(buffer, 0, "%% %s, line %d: %s", current_file->name,
-            current_lineno, current_command ? current_command : "error");
-    else
-        Sprintf(buffer, 0, "%% %s",
-            current_command ? current_command : "error");
+        Sprintf(buffer, SP_APPEND, "%s, line %d: ", current_file->name,
+            current_lineno);
+    Stringcat(buffer, current_command ? current_command : "error");
     return buffer;
 }
 
 /* tfname
  * Use <name> if given, otherwise use body of <macro> as the name.
  * An initial '~' is expanded to the user's home directory.
- * tfname has no stdio counterpart.
  */
 char *tfname(name, macro)
     char *name, *macro;
 {
-    if (!name || !*name) 
-        if (!macro || !(name = macro_body(macro)) || !*name) {
-            tfputs("% Name of file unknown.", tferr);
-            return NULL;
-        }
+    if ((!name || !*name) && (!macro || !(name=macro_body(macro)) || !*name)) {
+        tfputs("% Name of file unknown.", tferr);
+        return NULL;
+    }
     return expand_filename(name);
 }
 
@@ -127,7 +124,7 @@ TFILE *tfopen(name, mode)
           Stringcat(Stringcpy(buffer, name), suffix);
           if ((fp = fopen(buffer->s, mode)) != NULL) {  /* test readability */
               fclose(fp);
-              Sprintf(buffer, 0, "%s %s%s", prog, name, suffix);
+              Sprintf(buffer, 0, "%s %s%s 2>/dev/null", prog, name, suffix);
               if ((fp = popen(buffer->s, mode))) {
                   type = TF_PIPE;
                   newname = (char*)MALLOC(strlen(name) + strlen(suffix) + 1);
@@ -254,11 +251,11 @@ void tfputa(aline, file)
 
 /* vSprintf
  * Similar to vsprintf, except:
- * second arg is a flag, third arg is format;
- * no length formating for %s;
- * %S is like %s, but takes a Stringp argument;
+ * second arg is a flag, third arg is format.
+ * no length formating for %s.
+ * %S is like %s, but takes a Stringp argument.
  * %q takes a char c and a string s; prints s, with \ before each c.
- * string arguments may be NULL;
+ * string arguments may be NULL.
  * newlines are not allowed in the format string (this is not enforced).
  */
 
@@ -274,25 +271,28 @@ void vSprintf(buf, flags, fmt, ap)
     String *Sval;
 
     if (!(flags & SP_APPEND)) Stringterm(buf, 0);
-    for (; *fmt; fmt++) {
+    while (*fmt) {
         if (*fmt != '%' || *++fmt == '%') {
             for (q = fmt + 1; *q && *q != '%'; q++);
             Stringncat(buf, fmt, q - fmt);
-            fmt = q - 1;
+            fmt = q;
             continue;
         }
+
         specptr = spec;
         *specptr++ = '%';
         while (*fmt && !isalpha(*fmt)) *specptr++ = *fmt++;
         /* if (*fmt == 'h' || ucase(*fmt) == 'L') fmt++; */
-        *specptr++ = *fmt;
-        *specptr = '\0';
-        switch (*fmt) {
+        *specptr = *fmt;
+        *++specptr = '\0';
+
+        switch (*fmt++) {
         case 'd':
         case 'i':
             sprintf(tempbuf, spec, va_arg(ap, int));
             Stringcat(buf, tempbuf);
             break;
+#if 0   /* not used */
         case 'x':
         case 'X':
         case 'u':
@@ -300,6 +300,8 @@ void vSprintf(buf, flags, fmt, ap)
             sprintf(tempbuf, spec, va_arg(ap, unsigned int));
             Stringcat(buf, tempbuf);
             break;
+#endif
+#if 0   /* not used */
         case 'f':
         case 'e':
         case 'E':
@@ -308,6 +310,7 @@ void vSprintf(buf, flags, fmt, ap)
             sprintf(tempbuf, spec, va_arg(ap, double));
             Stringcat(buf, tempbuf);
             break;
+#endif
         case 'c':
             Stringadd(buf, (char)va_arg(ap, int));
             break;
@@ -432,6 +435,7 @@ va_dcl
  * Input *
  *********/
 
+/* read one char from keyboard, with blocking */
 char igetchar()
 {
     char c;

@@ -15,7 +15,7 @@
 # Top level Makefile.
 #
 
-TFVER = 33b4
+TFVER = 33b5
 SHELL = /bin/sh
 MAKE  = make
 
@@ -68,12 +68,10 @@ dist: srcdist distclean
 	mkdir ../tf.$(TFVER)/src
 	mkdir ../tf.$(TFVER)/src/regexp
 	mkdir ../tf.$(TFVER)/tf.lib
-	-for f in *; do [ ! -d "$$f" ] && cp $$f ../tf.$(TFVER); done
-	-for f in src/*; do [ ! -d "$$f" ] && cp $$f ../tf.$(TFVER)/src; done
+	-cp * ../tf.$(TFVER)
+	-cp src/* ../tf.$(TFVER)/src
 	-cp src/regexp/* ../tf.$(TFVER)/src/regexp
-	-for f in tf.lib/*; do \
-	    [ ! -d "$$f" ] && cp $$f ../tf.$(TFVER)/tf.lib; \
-	done
+	-cp tf.lib/* ../tf.$(TFVER)/tf.lib
 	chmod ugo+r ../tf.$(TFVER)
 	chmod ugo+r ../tf.$(TFVER)/*
 	chmod ugo+r ../tf.$(TFVER)/src/*

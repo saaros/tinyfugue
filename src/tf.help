@@ -589,6 +589,8 @@ have changed since the last version.
   SOCKETB	^[b		  Switch to previous socket
 #socketf
   SOCKETF	^[f		  Switch to next socket
+#dword
+  DWORD		^[d		  Delete word
 #del
 #delete
 #dch
@@ -775,17 +777,21 @@ have changed since the last version.
 
   Format:
 
-  /FG <world>
-  /FG -n
+  /FG [-ns<>] [<world>]
   ___________
 
   Bring the socket associated with <world> into the foreground.  The
   <world> must already be connected with the /connect command.
 
-  The -n option brings no socket into the foreground; that is, it puts
-  all sockets in the background.
+  Options:
+  -n	no socket: put all sockets in background.
+  -s	silent: don't print error messages on failure.
+  -<	previous socket in cycle.
+  ->	next socket in cycle.
+  -l	ignored.
+  -q	ignored.
 
-  /fg returns 1 if successful, 0 if not.
+  /fg returns 0 on failure, nonzero otherwise.
 
   See: CONNECT, worlds, sockets
 
@@ -1153,13 +1159,12 @@ have changed since the last version.
   /LISTSOCKETS
   ___________
 
-  Lists	the sockets to which Fugue is connected, and notes which one
-  Fugue	is currently displaying.  For other sockets, it	will display
-  the state of the socket as "active" (ungagged	text has been
-  received but not yet displayed), "idle" (not active),	"dead" (the
-  socket was closed, but there is undisplayed activity), or "pending"
-  (a connection	to the socket was attempted but	has not	yet been
-  established).
+  Lists the sockets to which Fugue is connected.  Zero, one, or two
+  characters at the beginning of each line describe the state of each
+  socket:  current (*), dead (!), or pending (?).  Next, in square
+  brackets, there will be "foregnd", "idle", or a number indicating
+  how many undisplayed lines are in that socket's buffer.  This is
+  followed by the world name, host, and port.
 
   See: sockets,	BACKGROUND, WORLD
 
@@ -1996,8 +2001,9 @@ have changed since the last version.
   /TRIGGER <text>
   ___________
 
-  Searches for and executes trigger(s) that match <text>, just as if
-  <text> had come from a socket.
+  Searches for and executes macros with triggers that match <text>,
+  just as if <text> had come from a socket.  The return value of
+  /trigger is the number of macros that were executed.
 
   See: triggers, TRIG
 
@@ -2277,9 +2283,10 @@ have changed since the last version.
   At startup, TF will load commands from the standard macro library and
   your personal configuration file (~/.tfrc).  Then, TF will try to
   connect to <world>, or <host> <port>.  If no world is given, TF will
-  try to connect to the first world defined in the configuration
-  file(s).  If no worlds are defined, or TF can not connect to the
-  specified world, TF will start up in unconnected mode.
+  try to connect to the first world defined with /addworld in the
+  configuration file(s).  If no worlds are defined, or TF can not
+  connect to the specified world, TF will start up in unconnected
+  mode.
 
   Options:
     -f<file>	Load <file> instead of ~/.tfrc at startup.
@@ -2292,12 +2299,12 @@ have changed since the last version.
   will be used as the name of a	file to	load instead of	the default
   library.
 
-  See also:  intro, tfrc, library, worlds
+  See also:  intro, tfrc, library, worlds, ADDWORLD
 
-@tfrc
 @.tfrc
 @tinytalk
 @.tinytalk
+@tfrc
 
   At startup, TF attempts to load and execute commands from the	.tfrc
   configuration	file in	your home directory.  This file	can contain
@@ -2636,6 +2643,10 @@ have changed since the last version.
 		     "regexp" (2): regular expression.
 		     See also: patterns, regmatch, %Pn.
 
+#max_iter
+    max_iter	1000 Maximum number of iterations in a /while loop.
+		     A value of	0 will allow unlimited iterations.
+
 #max_recur
     max_recur	100  Maximum depth of recursive	macro calls or triggers.
 		     A value of	0 will allow unlimited recursion.
@@ -2746,6 +2757,11 @@ have changed since the last version.
 
 #watchname
     watchname	off  (flag) Gag	overactive players.  (See: WATCHNAME)
+
+#wordpunct
+    wordpunct	-_   List of punctuation that will be considered to be part
+		     of a word instead of delimiters, for kbwordleft() and
+		     kbwordright() (and therefore /dokey WLEFT, WRIGHT, etc).
 
 #wrap
     wrap	on   (flag) Enable wordwrap on the screen.  TF will attempt
@@ -3772,9 +3788,9 @@ Notes:
 #kbtail
   kbtail()	    (str) Return the current input after the cursor.
 #kbwordleft
-  kbwordleft()	    (int) Position of beginning of word.
+  kbwordleft()	    (int) Position of beginning of word.  (See wordpunct.)
 #kbwordright
-  kbwordright()	    (int) Position just past end of word.
+  kbwordright()	    (int) Position just past end of word.  (See wordpunct.)
 #mod
   mod(i, j)	    (int) Remainder of i divided by j.
 #rand
@@ -4233,5 +4249,5 @@ See also: prompts
   See:  mail, insert, clock, log, sockets
 
 @rcs
-  $Id: tf.help,v 33000.2 1994/04/07 01:02:02 hawkeye Exp $
+  $Id: tf.help,v 33000.3 1994/04/26 08:56:29 hawkeye Exp $
 @

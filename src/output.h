@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.h,v 33000.2 1994/03/26 04:51:55 hawkeye Exp $ */
+/* $Id: output.h,v 33000.3 1994/04/26 08:56:29 hawkeye Exp $ */
 
 #ifndef OUTPUT_H
 #define OUTPUT_H

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.c,v 33000.6 1994/04/03 22:25:49 hawkeye Exp $ */
+/* $Id: util.c,v 33000.8 1994/04/26 08:55:13 hawkeye Exp $ */
 
 
 /*
@@ -115,6 +115,16 @@ char strtochr(sp)
     }
     return (char)(c % 128);
 }
+
+int strtoi(**sp)
+    char **sp;
+{
+    int i;
+    while (isspace(**sp)) ++*sp;
+    i = atoi(*sp);
+    while (isdigit(**sp)) ++*sp;
+    return i;
+}
 #endif
 
 
@@ -147,6 +157,23 @@ char *estrchr(s, c, e)
     }
     return NULL;
 }
+
+#ifndef HAVE_INDEX
+/* On some broken Solaris 2.x systems, libtermcap calls index() and rindex().
+ * This takes care of them.  (I really hate catering to broken systems.)
+ */
+char *index(s, c)
+    char *s, c;
+{
+    return strchr(s, c);
+}
+
+char *rindex(s, c)
+    char *s, c;
+{
+    return strrchr(s, c);
+}
+#endif
 
 #ifndef HAVE_STRSTR
 char *STRSTR(s1, s2) 
@@ -192,8 +219,7 @@ int numarg(str)
         *str = NULL;
         return -1;
     }
-    result = atoi(*str);
-    while (isdigit(**str)) ++*str;
+    result = strtoi(str);
     while (isspace(**str)) ++*str;
     return result;
 }
@@ -565,13 +591,12 @@ char nextopt(arg, num)
 
     /* numeric option */
     } else if (isdigit(opt) && strchr(options, '0')) {
-        *num = atoi(argp);
-        while (isdigit(*++argp));
+        *num = strtoi(&argp);
         return '0';
     }
 
     /* other options */
-    if (!isalnum(opt) || !(q = strchr(options, opt))) {
+    if (opt == '@' || opt == ':' || opt == '#' || !(q = strchr(options, opt))) {
         tfprintf(tferr, "%S: invalid option: %c", error_prefix(), opt);
         return '?';
     }
@@ -601,8 +626,7 @@ char nextopt(arg, num)
                 error_prefix(), opt);
             return '?';
         }
-        *num = atoi(argp);
-        while (isdigit(*++argp));
+        *num = strtoi(&argp);
 
     /* option takes no argument */
     } else {
@@ -711,29 +735,28 @@ int parsetime(strp, colon)
     char **strp;
     int *colon;     /* return true if ':' found (i.e., can't be an int) */
 {
-    char *ptr;
     static int t;
 
     if (!isdigit(**strp) && **strp != ':') {
         cmderror("invalid or missing integer or time value");
         return -1;
     }
-    for (ptr = *strp; isdigit(*ptr); ptr++);
-    if (*ptr == ':') {
+    t = strtoi(strp);
+    if (**strp == ':') {
         if (colon) *colon = TRUE;
-        t = atoi(*strp) * 3600;
-        *strp = ++ptr;
-        t += atoi(*strp) * 60;
-        while (isdigit(*ptr)) ptr++;
-        if (*ptr == ':') {
-            *strp = ++ptr;
-            t += atoi(*strp);
+        t *= 3600;
+        ++*strp;
+        if (isdigit(**strp)) {
+            t += strtoi(strp) * 60;
+            if (**strp == ':') {
+                ++*strp;
+                if (isdigit(**strp))
+                    t += strtoi(strp);
+            }
         }
     } else {
         if (colon) *colon = FALSE;
-        t = atoi(*strp);
     }
-    while (isdigit(**strp)) ++*strp;
     return t;
 }
 

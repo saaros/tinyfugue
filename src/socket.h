@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: socket.h,v 33000.0 1994/03/05 09:34:14 hawkeye Exp $ */
+/* $Id: socket.h,v 33000.1 1994/04/26 08:52:52 hawkeye Exp $ */
 
 #ifndef SOCKET_H
 #define SOCKET_H
@@ -15,7 +15,6 @@
 #define SOCKDEAD     00001     /* connection dead */
 #define SOCKPENDING  00002     /* connection not yet established */
 #define SOCKLOGIN    00004     /* autologin requested by user */
-#define SOCKACTIVE   00010     /* text has arrived but not been displayed */
 #define SOCKEOR      00020     /* server will send EOR after prompts */
 #define SOCKECHO     00040     /* do local keyboard echo */
 #define SOCKEDIT     00100     /* do local editing (not used) */
@@ -33,6 +32,7 @@ typedef struct Sock {          /* an open connection to a server */
     Stringp prompt;            /* prompt from server */
     Stringp buffer;            /* buffer for incoming characters */
     struct Queue *queue;       /* buffer for undisplayed lines */
+    int activity;              /* number of undisplayed lines */
     unsigned char state;       /* state of parser finite state automaton */
 } Sock;
 
@@ -46,11 +46,8 @@ extern void NDECL(tog_bg);
 extern void FDECL(mapsock,(void FDECL((*func),(struct World *world))));
 extern struct World *NDECL(fworld);
 extern struct World *NDECL(xworld);
-extern void FDECL(background_hook,(char *line));
 extern int  FDECL(openworld,(char *name, char *port, int autologin, int quietlogin));
 extern int  FDECL(opensock,(struct World *w, int autologin, int quietlogin));
-extern int  FDECL(movesock,(int dir));
-extern void NDECL(no_sock);
 extern void NDECL(disconnect_all);
 extern void FDECL(world_output,(struct Sock *sock, Aline *aline));
 extern int  FDECL(send_line,(char *s, unsigned int len));

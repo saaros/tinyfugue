@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: port.h,v 33000.5 1994/04/16 05:11:49 hawkeye Exp $ */
+/* $Id: port.h,v 33000.7 1994/04/26 08:52:17 hawkeye Exp $ */
 
 #ifndef PORT_H
 #define PORT_H
@@ -96,15 +96,19 @@ extern void free();
  * If random() exists, use it, because it is better than rand().
  * If not, we'll have to use rand(); if RAND_MAX isn't defined,
  * we'll have to use the modulus method instead of the division method.
+ * Warning: RRAND() is undefined if (hi <= lo).
+ * Warning: on Solaris 2.x, libucb contains a non-ansi rand() that does
+ * not agree with RAND_MAX.
  */
 
 #ifdef HAVE_RANDOM
-# define RAND          random
-# define SRAND         srandom
-# define RRAND(lo,hi)  (RAND() % ((hi)-(lo)+1) + (lo))
+# include <math.h>
+# define RAND()         (int)random()
+# define SRAND(seed)    srandom(seed)
+# define RRAND(lo,hi)   (RAND() % ((hi)-(lo)+1) + (lo))
 #else
-# define RAND         rand
-# define SRAND        srand
+# define RAND()         rand()
+# define SRAND(seed)    srand(seed)
 # ifdef RAND_MAX
 #  define RRAND(lo,hi)  ((RAND() / (RAND_MAX / ((hi)-(lo)+1) + 1)) + (lo))
 # else

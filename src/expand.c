@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expand.c,v 33000.7 1994/04/15 05:46:02 hawkeye Exp $ */
+/* $Id: expand.c,v 33000.9 1994/04/26 08:47:59 hawkeye Exp $ */
 
 
 /********************************************************************
@@ -41,7 +41,7 @@
 /* get Nth operand from stack (counting backwards from top) */
 #define opd(N) (stack[stacktop-(N)])
 
-/* keywords: must be sorted, and numbered in incmrements of 1 */
+/* keywords: must be sorted, and numbered sequentially */
 #define BREAK    '\200'
 #define DO       '\201'
 #define DONE     '\202'
@@ -291,7 +291,8 @@ static int list(dest, subs)
     Stringp dest;
     int subs;
 {
-    int oneslash, oldcondition, oldevalflag, oldblock, failed = 0;
+    int oneslash, oldcondition, oldevalflag, oldblock;
+    int iterations = 0, failed = 0;
     char *start = NULL;
     STATIC_BUFFER(mprefix_deep);
 
@@ -360,6 +361,10 @@ static int list(dest, subs)
                     breaking = 0;
                     evalflag = 0;  /* don't eval any trailing garbage */
                     return statement(dest, subs);  /* parse end of statement */
+                } else if (++iterations > max_iter && max_iter) {
+                    cmderror("too many iterations");
+                    block = oldblock;
+                    return 0;
                 } else {
                     ip = start;
                     block = WHILE;
@@ -567,6 +572,7 @@ static int valint(val)
         str = getnearestvar(str, &result);
         if (result != 0 || !str) return result;
     }
+    while (isspace(*str)) ++str;
     if (*str == '-' || *str == '+') return atoi(str);
     return (isdigit(*str)) ? parsetime(&str, NULL) : 0;
 }
@@ -654,11 +660,9 @@ static int reduce(op, n)
     case OP_NMATCH: val = newint(smatch_check(valstr(opd(1))) &&
                         smatch(valstr(opd(1)),valstr(opd(2)))!=0);
                     break;
-    case '+':       if (n==1) val = newint(valint(opd(1)));
-                    else val = newint(valint(opd(2)) + valint(opd(1)));
+    case '+':       val = newint(((n>1) ? valint(opd(2)) : 0) + valint(opd(1)));
                     break;
-    case '-':       if (n==1) val = newint(-valint(opd(1)));
-                    else val = newint(valint(opd(2)) - valint(opd(1)));
+    case '-':       val = newint(((n>1) ? valint(opd(2)) : 0) - valint(opd(1)));
                     break;
     case '*':       val = newint(valint(opd(2)) * valint(opd(1)));
                     break;
@@ -728,8 +732,7 @@ static Value *do_function(n)
             i = (n==1) ? 0 : valint(opd(2));
             if (i < 0) i = 0;
             j = valint(opd(1)) - (n==1);
-            if (j < i) j = i;
-            return newint(RRAND(i, j));
+            return newint((j > i) ? RRAND(i, j) : i);
 
         case FN_REGMATCH:
             if (!(re = regcomp(valstr(opd(2))))) return newint(0);
@@ -909,11 +912,8 @@ static int additive_expr()
 {
     char op;
     if (!multiplicative_expr()) return 0;
-    while (*ip) {
-        if (ip[0] == '+') op = '+';
-        else if (ip[0] == '-' && ip[1] != '~') op = '-';
-        else break;
-        ip++;
+    while (*ip == '+' || *ip == '-') {
+        op = *ip++;
         if (!multiplicative_expr()) return 0;
         if (!reduce(op, 2)) return 0;
     }
@@ -925,8 +925,8 @@ static int multiplicative_expr()
     char op;
 
     if (!unary_expr()) return 0;
-    while ((op = *ip), (op == '*' || op == '/')) {
-        ++ip;
+    while (*ip == '*' || *ip == '/') {
+        op = *ip++;
         if (!unary_expr()) return 0;
         if (!reduce(op, 2)) return 0;
     }
@@ -1245,7 +1245,10 @@ static int varsub(dest)
         if (except) first = n, last = argc - 1;
         else first = last = n - 1;
     } else if (cstrcmp(selector->s, "R") == 0) {
-        if (argc > 0) { n = 1; first = last = RRAND(0, argc-1); }
+        if (argc > 0) {
+            n = 1;
+            first = last = (argc > 1) ? RRAND(0, argc-1) : 0;
+        }
         else if (buffer == defalt) SStringcat(dest, defalt);
     } else {
         value = getnearestvar(selector->s, NULL);

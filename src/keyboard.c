@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: keyboard.c,v 33000.3 1994/04/03 00:51:32 hawkeye Exp $ */
+/* $Id: keyboard.c,v 33000.5 1994/04/23 23:21:45 hawkeye Exp $ */
 
 /**************************************************
  * Fugue keyboard handling.
@@ -22,7 +22,6 @@
 #include "macro.h"		/* Macro, new_macro(), add_macro()... */
 #include "output.h"		/* iput(), idel(), redraw()... */
 #include "history.h"		/* history_sub() */
-#include "socket.h"		/* movesock() */
 #include "expand.h"		/* process_macro() */
 #include "search.h"
 #include "commands.h"
@@ -52,7 +51,7 @@ STATIC_BUFFER(current_input);           /* unprocessed keystrokes */
 static KeyNode *keytrie = NULL;         /* root of keybinding trie */
 
 Stringp keybuf;                         /* input buffer */
-unsigned int keyboard_pos = 0;          /* current position in buffer */
+int keyboard_pos = 0;                   /* current position in buffer */
 
 /*
  * Some dokey operations are implemented internally with names like
@@ -76,9 +75,7 @@ static char *efunc_table[] = {
     "REDRAW" ,
     "REFRESH",
     "SEARCHB",
-    "SEARCHF",
-    "SOCKETB",
-    "SOCKETF"
+    "SEARCHF"
 };
 
 enum {
@@ -94,9 +91,7 @@ enum {
     DOKEY_REDRAW ,
     DOKEY_REFRESH,
     DOKEY_SEARCHB,
-    DOKEY_SEARCHF,
-    DOKEY_SOCKETB,
-    DOKEY_SOCKETF
+    DOKEY_SEARCHF
 };
 
 void init_keyboard()
@@ -260,7 +255,6 @@ void handle_input_string(input, len)
             input[j++] = input[i];
     }
     len = j;
-    if (echoflag || always_echo) iput(input, len);
 
     if (keyboard_pos == keybuf->len) {                    /* add to end */
         Stringncat(keybuf, input, len);
@@ -276,6 +270,7 @@ void handle_input_string(input, len)
         Stringncat(keybuf, input, len);
     }                      
     keyboard_pos += len;
+    if (echoflag || always_echo) iput(input, len);
 }
 
 
@@ -324,8 +319,6 @@ int handle_dokey_command(args)
     case DOKEY_REFRESH:    return logical_refresh();
     case DOKEY_SEARCHB:    return recall_input(-1, TRUE);
     case DOKEY_SEARCHF:    return recall_input(1, TRUE);
-    case DOKEY_SOCKETB:    return movesock(-1);
-    case DOKEY_SOCKETF:    return movesock(1);
     default:               return 0; /* impossible */
     }
 }

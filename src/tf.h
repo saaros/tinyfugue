@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tf.h,v 33000.3 1994/04/19 23:47:28 hawkeye Exp $ */
+/* $Id: tf.h,v 33000.4 1994/04/26 08:56:29 hawkeye Exp $ */
 
 #ifndef TF_H
 #define TF_H
@@ -16,7 +16,6 @@
 
 #include <errno.h>
 extern int errno;           /* not all systems do this in <errno.h> */
-#include <math.h>           /* random() */
 #include "regexp/regexp.h"  /* Henry Spencer's regexp package */
 
 /*

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: command.c,v 33000.6 1994/03/23 01:48:53 hawkeye Exp $ */
+/* $Id: command.c,v 33000.7 1994/04/26 08:56:29 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -218,8 +218,7 @@ Handler *find_command(name)
 static int handle_trigger_command(args)
     char *args;
 {
-    if (borg) find_and_run_matches(args, 0, NULL);
-    return 1;
+    return (borg) ? find_and_run_matches(args, 0, NULL) : 0;
 }
 
 static int handle_substitute_command(args)

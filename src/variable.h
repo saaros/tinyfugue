@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: variable.h,v 33000.1 1994/03/23 00:14:40 hawkeye Exp $ */
+/* $Id: variable.h,v 33000.2 1994/04/22 06:05:07 hawkeye Exp $ */
 
 #ifndef VARIABLE_H
 #define VARIABLE_H
@@ -68,6 +68,7 @@ enum Vars {
     VAR_LPQUOTE     ,
     VAR_MAILDELAY   ,
     VAR_MATCHING    ,
+    VAR_MAX_ITER    ,
     VAR_MAX_RECUR   ,
     VAR_MECHO       ,
     VAR_MORE        ,
@@ -136,6 +137,7 @@ enum Vars {
 #define lpquote		((int)	special_var[ VAR_LPQUOTE	].ival)
 #define maildelay	((int)	special_var[ VAR_MAILDELAY	].ival)
 #define matching	((int)	special_var[ VAR_MATCHING	].ival)
+#define max_iter	((int)	special_var[ VAR_MAX_ITER	].ival)
 #define max_recur	((int)	special_var[ VAR_MAX_RECUR	].ival)
 #define mecho		((int)	special_var[ VAR_MECHO		].ival)
 #define more		((int)	special_var[ VAR_MORE		].ival)

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: socket.c,v 33000.7 1994/04/19 00:03:00 hawkeye Exp $ */
+/* $Id: socket.c,v 33000.10 1994/04/23 23:29:00 hawkeye Exp $ */
 
 
 /***************************************************************
@@ -20,7 +20,6 @@
 
 #include "config.h"
 #include <sys/types.h>
-/* #include <sys/stat.h> */
 #include <sys/time.h>
 #define SYS_TIME_H         /* prevent <time.h> in "port.h" */
 #include <ctype.h>
@@ -114,7 +113,6 @@ static void  NDECL(handle_socket_input);
 static int   FDECL(transmit,(char *s, unsigned int len));
 static void  FDECL(telnet_send,(int cmd, int opt));
 static void  FDECL(telnet_recv,(int cmd, int opt));
-static void  FDECL(special_hook,(Aline *aline));
 static int   FDECL(keep_quiet,(char *what));
 static int   FDECL(handle_portal,(char *what));
 
@@ -447,16 +445,20 @@ static void fg_sock(sock)
 {
     Sock *oldsock = xsock;
 
+    if (((fsock ? fsock->flags : 0) ^ (sock ? sock->flags : 0)) & SOCKECHO)
+        set_refresh_pending(REF_LOGICAL);
+
     xsock = fsock = sock;
     if (sock) {
         FD_SET(sock->fd, &readers);
-        if (sock->flags & SOCKACTIVE) {
+        if (sock->activity) {
             --active_count;
             status_bar(STAT_ACTIVE);
         }
-        sock->flags &= ~SOCKACTIVE;
+        sock->activity = 0;
         announce_world(sock);
         flushout_queue(sock->queue);
+        sock->activity = 0;
         echoflag = (sock->flags & SOCKECHO);
         tog_lp();
         update_prompt(sock->prompt);
@@ -475,57 +477,60 @@ static void bg_sock()
     fsock = NULL;
 }
 
-/* put all sockets in the background */
-void no_sock()
-{
-    if (fsock) {
-        bg_sock();
-        announce_world(NULL);
-    }
-}
-
 int handle_fg_command(args)
     char *args;
 {
-    int opt, nosock = FALSE, silent = FALSE;
+    int opt, nosock = FALSE, silent = FALSE, dir = 0;
     World *world;
+    Sock *sock;
 
-    startopt(args, "nlqs");
+    startopt(args, "nlqs<>");
     while ((opt = nextopt(&args, NULL))) {
         switch (opt) {
-        case 'n':
-            nosock = TRUE;
-            break;
-        case 's':
-            silent = TRUE;
-            break;
+        case 'n':  nosock = TRUE;  break;
+        case 's':  silent = TRUE;  break;
         case 'l':
-        case 'q':
-            break;  /* accepted and ignored, for use with /connect in /world */
-        default:
-            return 0;
+        case 'q':  break;  /* accepted and ignored */
+        case '<':  dir = -1;  break;
+        case '>':  dir =  1;  break;
+        default:   return 0;
         }
     }
 
     if (nosock) {
-        no_sock();
+        if (fsock) {
+            bg_sock();
+            announce_world(NULL);
+        }
         return 1;
     }
 
-    if (!(world = find_world(*args ? args : NULL))) {
+    if (dir) {
+        Sock *stop;
+        if (!hsock) return 0;
+        stop = sock = (fsock ? fsock : hsock);
+        do {
+            sock = (dir > 0) ? (sock->next ? sock->next : hsock) :
+                               (sock->prev ? sock->prev : tsock);
+        } while ((sock->flags & SOCKPENDING) && sock != stop);
+
+    } else if (!(world = find_world(*args ? args : NULL))) {
         if (!silent) tfprintf(tferr, "%S: no world %s", error_prefix(), args);
         return 0;
+
     } else if (!world->sock || world->sock->flags & SOCKPENDING) {
         if (!silent)
             tfprintf(tferr, "%S: not connected to %s", error_prefix(),
                 world->name);
         return 0;
+
+    } else {
+        sock = world->sock;
     }
 
-    if (world->sock == fsock) return 1;
-
+    if (sock == fsock) return 2;  /* already there */
     bg_sock();
-    fg_sock(world->sock);
+    fg_sock(sock);
     return 1;
 }
 
@@ -589,6 +594,7 @@ int opensock(world, autologin, quietlogin)
     sock->fd = -1;
     sock->state = '\0';
     sock->flags = SOCKECHO | SOCKEDIT | SOCKTRAP | (autologin ? SOCKLOGIN : 0);
+    sock->activity = 0;
     if (quietlogin && autologin && *sock->world->character)
         sock->numquiet = MAXQUIET;
     else
@@ -738,7 +744,6 @@ static int get_host_address(name, addr)
 static int establish(sock)
     Sock *sock;
 {
-    int was_pending = FALSE;
     Sock *oldsock;
 
 #ifdef EINPROGRESS
@@ -789,7 +794,6 @@ static int establish(sock)
         /* connect() worked.  Clear the pending stuff, and get on with it. */
         sock->flags &= ~SOCKPENDING;
         FD_CLR(sock->fd, &writers);
-        was_pending = TRUE;
     }
 #endif /* EINPROGRESS */
 
@@ -806,29 +810,6 @@ static int establish(sock)
     login_hook(xsock);
     xsock = oldsock;
     return 1;
-}
-
-/* Bring next or previous socket in list into foreground */
-int movesock(dir)
-    int dir;
-{
-    Sock *sock, *stop;
-
-    reset_outcount();  /* ??? */
-    if (!hsock) return 0;
-    stop = sock = (fsock ? fsock : hsock);
-    do {
-        if (dir > 0) sock = sock && sock->next ? sock->next : hsock;
-        else sock = sock && sock->prev ? sock->prev : tsock;
-    } while ((sock->flags & SOCKPENDING) && sock != stop);
-    if (sock != fsock) {
-        if (fsock && (sock->flags & SOCKECHO) != (fsock->flags & SOCKECHO))
-            set_refresh_pending(REF_LOGICAL);
-        bg_sock();
-        fg_sock(sock);
-        return 1;
-    }
-    return 0;
 }
 
 /* nukesock
@@ -854,7 +835,7 @@ static void nukesock(sock)
         FD_CLR(sock->fd, &readers);
         FD_CLR(sock->fd, &writers);
         close(sock->fd);
-        if (sock->flags & SOCKACTIVE) {
+        if (sock->activity) {
             --active_count;
             status_bar(STAT_ACTIVE);
         }
@@ -884,7 +865,7 @@ static void nuke_dead_socks()
     for (sock = hsock; sock; sock = next) {
         next = sock->next;
         if (sock->flags & SOCKDEAD) {
-            if (sock->flags & SOCKACTIVE) {
+            if (sock->activity) {
                 FD_CLR(sock->fd, &readers);
             } else {
                 nukesock(sock);
@@ -943,7 +924,7 @@ int handle_listsockets_command(args)
     char *args;
 {
     Sock *sock;
-    char *state, buffer[81];
+    char buffer[81];
 
     if (hsock == NULL) {
         oputs("% Not connected to any sockets.");
@@ -951,26 +932,18 @@ int handle_listsockets_command(args)
     }
 
     for (sock = hsock; sock != NULL; sock = sock->next) {
-        if (sock == xsock) state = "current";
-        else if (sock == fsock) state = "foregnd";
-        else if (sock->flags & SOCKPENDING) state = "pending";
-        else if (sock->flags & SOCKDEAD)    state = "dead";
-        else if (sock->flags & SOCKACTIVE)  state = "active";
-        else state = "idle";
-        sprintf(buffer, "%% [%7s]  %15s %30s %s", state,
+        sprintf(buffer, "%c%c",
+            (sock == xsock) ? '*' : ' ',
+            (sock->flags & SOCKPENDING) ? '?' :
+                ((sock->flags & SOCKDEAD) ? '!' : ' '));
+        if (sock == fsock)  strcpy(buffer+2, "[foregnd]");
+        else if (!sock->activity)  strcpy(buffer+2, "[   idle]");
+        else sprintf(buffer+2, "[%7d]", sock->activity);
+        sprintf(buffer+11, " %15s %30s %s",
             sock->world->name, sock->world->address, sock->world->port);
         oputs(buffer);
     }
     return 1;
-}
-
-/* call the background hook */
-void background_hook(line)
-    char *line;
-{
-    if (xsock != fsock)
-        do_hook(H_BACKGROUND, "%% Trigger in world %s", "%s %s",
-            xsock->world->name, line);
 }
 
 int handle_send_command(args)
@@ -1083,9 +1056,19 @@ static void handle_socket_line()
 {
     xsock->flags |= SOCKPROMPT;
     (incoming_text = new_aline(xsock->buffer->s, 0))->links = 1;
-    special_hook(incoming_text);
-    world_output(xsock, incoming_text);
     Stringterm(xsock->buffer, 0);
+
+    if (borg || hilite || gag)
+        if (find_and_run_matches(incoming_text->str, 0, incoming_text))
+            if (xsock != fsock)
+                do_hook(H_BACKGROUND, "%% Trigger in world %s", "%s %S",
+                    xsock->world->name, incoming_text);
+
+    if (keep_quiet(incoming_text->str))    incoming_text->attrs |= F_GAG;
+    if (is_suppressed(incoming_text->str)) incoming_text->attrs |= F_GAG;
+    if (handle_portal(incoming_text->str)) incoming_text->attrs |= F_GAG;
+
+    world_output(xsock, incoming_text);
     free_aline(incoming_text);
     incoming_text = NULL;
 }
@@ -1105,13 +1088,13 @@ void world_output(sock, aline)
                 aline->links++;
                 enqueue(sock->queue, aline);
             }
-            if (!(sock->flags & SOCKACTIVE) && !(aline->attrs & F_NOHISTORY)) {
-                sock->flags |= SOCKACTIVE;
+            if (!sock->activity) {
                 ++active_count;
                 status_bar(STAT_ACTIVE);
                 do_hook(H_ACTIVITY, "%% Activity in world %s", "%s",
                     sock->world->name);
             }
+            sock->activity++;
         }
     }
     free_aline(aline);
@@ -1193,8 +1176,10 @@ static void handle_socket_input()
 {
     unsigned char *place, buffer[1024];
     fd_set readfds;
-    int count;
+    int count, total = 0;
     struct timeval tv;
+
+#define SPAM 10240       /* break loop if this many chars are received */
 
     if (xsock->prompt->len && !(xsock->flags & SOCKPROMPT)) {
         /* We assumed last text was a prompt, but now we have more text.
@@ -1399,7 +1384,7 @@ static void handle_socket_input()
             }
         }
 
-    } while (count > 0 && !interrupted());
+    } while (count > 0 && !interrupted() && (total += count) < SPAM);
 
     /* If lpflag is on and we got a partial line from the fg world,
      * assume the line is a prompt.
@@ -1419,18 +1404,6 @@ static int keep_quiet(what)
         xsock->numquiet = 0;
     } else (xsock->numquiet)--;
     return TRUE;
-}
-
-static void special_hook(aline)
-    Aline *aline;
-{
-    if (borg || hilite || gag)
-        if (find_and_run_matches(aline->str, 0, aline))
-            background_hook(aline->str);
-
-    if (keep_quiet(aline->str))    aline->attrs |= F_GAG;
-    if (is_suppressed(aline->str)) aline->attrs |= F_GAG;
-    if (handle_portal(aline->str)) aline->attrs |= F_GAG;
 }
 
 static int handle_portal(what)

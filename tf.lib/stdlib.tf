@@ -182,8 +182,8 @@
 /def -i dokey_right	= /test kbgoto(kbpoint() + 1)
 /def -i dokey_searchb	= /dokey searchb
 /def -i dokey_searchf	= /dokey searchf
-/def -i dokey_socketb	= /dokey socketb
-/def -i dokey_socketf	= /dokey socketf
+/def -i dokey_socketb	= /fg -<
+/def -i dokey_socketf	= /fg ->
 /def -i dokey_up	= /test kbgoto(kbpoint() - wrapsize)
 /def -i dokey_wleft	= /test kbgoto(kbwordleft())
 /def -i dokey_wright	= /test kbgoto(kbwordright())

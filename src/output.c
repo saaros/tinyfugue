@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.c,v 33000.5 1994/04/10 00:59:46 hawkeye Exp $ */
+/* $Id: output.c,v 33000.7 1994/04/26 08:56:29 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -326,8 +326,8 @@ static void xy(x,y)
     int x, y;
 {
     if (x == cx && y == cy) return;                        /* no-op */
-    if (cx < 0 || cy < 0) {                                /* direct movement */
-        tpgoto(cursor_address, (x), (y));
+    if (cy < 0 || cx < 0 || cx > columns) {                /* direct movement */
+        tpgoto(cursor_address, x, y);
     } else if (x==1 && y==cy) {                            /* optimization */
         bufputc('\r');
     } else if (x == 1 && y >= cy && y < cy + 5) {          /* optimization */
@@ -337,7 +337,7 @@ static void xy(x,y)
     } else if (y == cy && x < cx && x > cx - 7) {          /* optimization */
         bufputnc('\010', cx - x);
     } else {                                               /* direct movement */
-        tpgoto(cursor_address, (x), (y));
+        tpgoto(cursor_address, x, y);
     }
     cx = x;  cy = y;
 }
@@ -646,15 +646,14 @@ void iput(s, len)
     char *s;
     int len;
 {
-    int i, j, end;
+    int i, j, end, scrolled = 0;
 
     if (!s[0]) return;
     if (!visual) {
-        int wrapped = 0;
         for (i = j = 0; j < len; j++) {
             if (++iendx > Wrap) iendx = Wrap;
             if (++ix > Wrap) {
-                wrapped++;
+                scrolled++;
                 bufputns(s + i, j - i + 1);
                 crnl();  cx = 1; cy++;
                 iendx = ix = 1;
@@ -666,7 +665,7 @@ void iput(s, len)
             cx += j - i;
         }
 
-        if (insert || wrapped) {
+        if (insert || scrolled) {
             iendx = ix;
             ioutputs(keybuf->s + keyboard_pos, keyboard_end - keyboard_pos);
             bufputnc('\010', iendx - ix);  cx -= (iendx - ix);
@@ -682,6 +681,7 @@ void iput(s, len)
     for (j = 0; j < len; j++) {
         if (ix == Wrap && iy == lines) {
             bufputc(s[j]);  cx++;
+            scrolled++;
             if (scroll && !clearfull) {
                 scroll_input(1);
                 ix = 1;
@@ -696,7 +696,7 @@ void iput(s, len)
         ix = iendx;
         iy = iendy;
     }
-    if (insert) {
+    if (insert || scrolled) {
         ioutputs(keybuf->s + keyboard_pos, keyboard_end - keyboard_pos);
         if (keyboard_pos != keyboard_end) ipos();
     } else {
