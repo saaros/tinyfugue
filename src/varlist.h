@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: varlist.h,v 35000.56 2003/12/11 01:12:41 hawkeye Exp $ */
+/* $Id: varlist.h,v 35000.57 2003/12/12 05:59:21 hawkeye Exp $ */
 
 /* This keeps the constants and the array in the same place, so they can't
  * get out of sync.
@@ -80,7 +80,7 @@ varflag(VAR_lp,		"lp",		FALSE,		tog_lp)
 varflag(VAR_lpquote,	"lpquote",	FALSE,		ch_lpquote)
 vartime(VAR_maildelay,	"maildelay",	60,0,		ch_maildelay)
 varenum(VAR_matching,	"matching",	1,		NULL,	enum_match)
-varint (VAR_max_instr,	"max_instr",	50000,		NULL)
+varint (VAR_max_instr,	"max_instr",	1000000,	NULL)
 varint (VAR_max_kbnum,	"max_kbnum",	999,		NULL)
 varint (VAR_max_recur,	"max_recur",	100,		NULL)
 varint (VAR_max_trig,	"max_trig",	100,		NULL)

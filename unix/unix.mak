@@ -1,4 +1,4 @@
-# $Id: unix.mak,v 35004.42 2003/12/10 01:52:05 hawkeye Exp $
+# $Id: unix.mak,v 35004.43 2003/12/12 05:59:53 hawkeye Exp $
 ########################################################################
 #  TinyFugue - programmable mud client
 #  Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
@@ -36,7 +36,7 @@ install:  _all PREFIXDIRS $(TF) LIBRARY $(MANPAGE) $(SYMLINK)
 all files:  _all
 	@echo '#####################################################'
 	@echo '## TinyFugue build successful.'
-	@echo '## Use "$(MAKE) install" to install the files in $(PREFIX).'
+	@echo '## Use "$(MAKE) install" to install the files in $(prefix).'
 
 _all:  tf$(X) ../tf-lib/tf-help.idx
 
@@ -74,8 +74,8 @@ TF tf$(X):     $(OBJS) $(BUILDERS) pcre
 	-test -z "$(STRIP)" || $(STRIP) tf$(X) || true
 
 PREFIXDIRS:
-	test -d "$(PREFIX)/bin" || mkdir $(PREFIX)/bin
-	test -d "$(PREFIX)/lib" || mkdir $(PREFIX)/lib
+	test -d "$(prefix)/bin" || mkdir $(prefix)/bin
+	test -d "$(prefix)/lib" || mkdir $(prefix)/lib
 
 install_TF $(TF): tf$(X) $(BUILDERS)
 	-@rm -f $(TF)

@@ -11,6 +11,12 @@ If you have custom code to do any of the following in older versions,
   switch, or resuming from sh or suspend); scrollback; status line
   customizations; ...
 
+5.0 beta 2 (2003-12-12)
+----------
+Fixed: prompts were not displaying, and were making tf eat CPU time. (50b1)
+Increased default value of %max_instr.
+Fixed harmless configure error that appeared on some systems.
+
 5.0 beta 1 (2003-12-10)
 ----------
 Added documentation for PCRE regexp syntax under "/help pcre".

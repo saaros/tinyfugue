@@ -8618,9 +8618,9 @@ Special global variables
 #expand_tabs
 #%expand_tabs
   [1mexpand_tabs[22m=on 
-          (flag) If on (and [1m%emulation[22;0m) is "print", "ansi_strip", or 
+          (flag) If on (and [1m%emulation[22;0m is "print", "ansi_strip", or 
           "ansi_attr"), tabs received from a server are expanded to spaces 
-          (according to [1m%tabsize[22;0m) immediately, before any [1mtrigger[22;0m) processing. 
+          (according to [1m%tabsize[22;0m) immediately, before any [1mtrigger[22;0m processing.  
           If off, tab characters are left in received lines.  
 
 #raw
@@ -8801,7 +8801,7 @@ Special global variables
 #instruction
 #instructions
 #%max_instr
-  [1mmax_instr[22m=5000 
+  [1mmax_instr[22m=1000000 
           Maximum number of instructions in a [1mmacro[22;0m execution.  A value of 0 
           will allow unlimited instructions.  An "instruction" is a basic 
           internal tf operation, such as addition, testing an /if or /while 
@@ -9906,7 +9906,7 @@ Keyboard Reading
   [1m/require[22;0m 
           Load a library file.  
 
-  [1m%TFLIBDIR[22;0m contains a sample "tfrc" file that you may want to copy and modify 
+  [1mTFLIBDIR[22;0m contains a sample "tfrc" file that you may want to copy and modify 
   to fit your tastes.  
 
   For backward compatibility, TF will load ~/.tinytalk if it exists.  The use 

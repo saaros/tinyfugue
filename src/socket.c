@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: socket.c,v 35004.234 2003/12/11 02:05:21 hawkeye Exp $";
+static const char RCSid[] = "$Id: socket.c,v 35004.235 2003/12/12 08:15:43 hawkeye Exp $";
 
 
 /***************************************************************
@@ -799,7 +799,9 @@ void main_loop(void)
                 if (!sock) sock = hsock;
                 stopsock = sock;
 		/* note: count may have been zeroed by nested main_loop */
-                while (count > 0 || socks_with_lines > 0) {
+                while (count > 0 || socks_with_lines > 0 ||
+		    prompt_timeout.tv_sec > 0)
+		{
                     xsock = sock;
                     if (sock->constate >= SS_OPEN) {
                         /* do nothing */
@@ -820,6 +822,7 @@ void main_loop(void)
                     }
 		    if (xsock->queue.list.head)
 			handle_socket_lines();
+
 		    /* If there's a partial line that's past prompt_timeout,
 		     * make it a prompt. */
 		    if (!xsock->prompt && xsock->prompt_timeout.tv_sec) {
@@ -827,13 +830,6 @@ void main_loop(void)
 			if (tvcmp(&xsock->prompt_timeout, &now) < 0) {
 			    handle_implicit_prompt();
 			}
-		    }
-		    /* If lpflag is on and we have a partial line from the fg
-		     * world, it might be a prompt, so start the timeout.  */
-		    if (lpflag && !xsock->queue.list.head &&
-			xsock->buffer->len && !xsock->prompt)
-		    {
-			test_prompt();
 		    }
 
                     sock = sock->next ? sock->next : hsock;
@@ -2428,6 +2424,7 @@ static void handle_socket_lines(void)
 	incoming_text = decode_ansi(line->data, xsock->attrs, emulation,
 	    &xsock->attrs);
 	incoming_text->time = line->time;
+	incoming_text->attrs |= line->attrs & (F_PROMPT | F_PROMPTHOOK);
 	Stringfree(line);
 	incoming_text->links++;
 
@@ -2464,6 +2461,9 @@ static void handle_socket_lines(void)
 	}
     } while ((line = dequeue(&xsock->queue)));
     depth--;
+
+    /* We just emptied the queue; there may be a partial line pending */
+    test_prompt();
 }
 
 /* log, record, and display line as if it came from sock */
@@ -2592,15 +2592,19 @@ static void schedule_prompt(Sock *sock)
 
 static void test_prompt(void)
 {
-    if (do_hook(H_PROMPT, NULL, "%S", xsock->buffer)) {
-	/* The hook took care of the unterminated line. */
-	Stringtrunc(xsock->buffer, 0);
-    } else if (lpflag) {
-	/* Wait for prompt_wait before interpreting unterm'd line as prompt. */
-	struct timeval now;
-	gettime(&now);
-	tvadd(&xsock->prompt_timeout, &now, &prompt_wait);
-	schedule_prompt(xsock);
+    if (lpflag && !xsock->queue.list.head &&
+	xsock->buffer->len && !xsock->prompt)
+    {
+	if (do_hook(H_PROMPT, NULL, "%S", xsock->buffer)) {
+	    /* The hook took care of the unterminated line. */
+	    Stringtrunc(xsock->buffer, 0);
+	} else if (lpflag) {
+	    /* Wait for prompt_wait before treating unterm'd line as prompt. */
+	    struct timeval now;
+	    gettime(&now);
+	    tvadd(&xsock->prompt_timeout, &now, &prompt_wait);
+	    schedule_prompt(xsock);
+	}
     }
 }
 
@@ -3044,6 +3048,8 @@ non_telnet:
 	if (interrupted()) break;
 
     } while (n > 0);
+
+    test_prompt();
 
     return received;
 }

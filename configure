@@ -23,7 +23,7 @@ ac_default_prefix=/usr/local
 ac_default_prefix=`
     if test -w /usr/local/bin && test -w /usr/local/lib; then
 	echo "/usr/local"
-    elif uname -s | egrep -q BeOS; then
+    elif uname -s | egrep BeOS >/dev/null 2>&1; then
 	# prefix according to Steven Black <steven@be.com>
 	echo "$HOME/config"
     else
