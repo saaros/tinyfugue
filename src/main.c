@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: main.c,v 35004.24 1997/10/02 10:39:01 hawkeye Exp $ */
+/* $Id: main.c,v 35004.25 1997/11/07 05:51:16 hawkeye Exp $ */
 
 
 /***********************************************
@@ -40,7 +40,7 @@ CONST char sysname[] = UNAME;
  * to the version number, and put a brief description of the modifications
  * in the mods[] string.
  */
-CONST char version[] = "TinyFugue version 4.0 alpha 1";
+CONST char version[] = "TinyFugue version 4.0 alpha 2";
 CONST char mods[] = "";
 
 CONST char copyright[] =

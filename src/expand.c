@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expand.c,v 35004.66 1997/11/06 06:13:07 hawkeye Exp $ */
+/* $Id: expand.c,v 35004.67 1997/11/07 05:47:55 hawkeye Exp $ */
 
 
 /********************************************************************
@@ -355,11 +355,10 @@ int process_macro(body, args, subs)
     saved_argv = argv;
     saved_argtext = argtext;
     saved_breaking = breaking;
-/*    saved_argtop = argtop; */
+    saved_argtop = argtop;
 
     ip = body;
     cmdsub_count = 0;
-/*    argtop = 0; */
 
     newvarscope(scope);
 
@@ -377,6 +376,7 @@ int process_macro(body, args, subs)
             argc++;
         }
         true_argv = argv;
+        argtop = 0;
     }
 
     if (!error) {
@@ -394,7 +394,7 @@ int process_macro(body, args, subs)
     argv = saved_argv;
     argtext = saved_argtext;
     breaking = saved_breaking;
-/*    argtop = saved_argtop; */
+    argtop = saved_argtop;
     recur_count--;
     return !!user_result;
 }
@@ -1583,6 +1583,11 @@ static Value *do_function(n)
         current_command = id;
 
         if (macro) {
+            static int warned = 0;
+            if (!warned && n == 1 && strchr(opdstr(1), ' ')) {
+                eprintf("warning: argument passing semantics for macros called as functions has changed in 4.0.  See ``/help functions''.");
+                warned = 1;
+            }
             saved_argtop = argtop;
             saved_argc = argc;
             saved_argv = argv;
@@ -2121,6 +2126,11 @@ static int varsub(dest)
             } else if (star) {
                 first = 0, last = argc - 1;
             } else if (n == 0) {
+                static int warned = 0;
+                if (!warned) {
+                    eprintf("warning: as of version 4.0, ``%%0'' is no longer the same as ``%%*''.");
+                    warned = 1;
+                }
                 Stringcat(dest, current_command);
             } else if (n > 0) {
                 if (except) first = n, last = argc - 1;

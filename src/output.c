@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.c,v 35004.46 1997/09/16 07:39:20 hawkeye Exp $ */
+/* $Id: output.c,v 35004.47 1997/11/07 05:55:57 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -1738,7 +1738,7 @@ void oflush()
             }
         } else if (moresize / morewait > lastsize / morewait) {
             update_status_field(NULL, STAT_MORE);
-        } else {
+        } else if (lastsize != moresize) {
             need_more_refresh = 1;
         }
         lastsize = moresize;

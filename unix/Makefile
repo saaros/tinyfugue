@@ -1,4 +1,4 @@
-# $Id: Makefile,v 35000.12 1997/11/06 07:25:21 hawkeye Exp $
+# $Id: Makefile,v 35000.13 1997/11/07 07:18:00 hawkeye Exp $
 ########################################################################
 #
 #  TinyFugue - programmable mud client
@@ -129,7 +129,7 @@ dev:
 	    TFDEV_QUIET=yes TFDEV_DMALLOC=0 ./unixmake config
 
 laurel: devhome files
-	cp CHANGES $$HOME/public_html/tf/
+	cp CHANGES $$HOME/www/tf/
 
 _always_:
 

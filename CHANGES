@@ -1,9 +1,18 @@
 Only the most recent version will have detailed changes described.
 Some fixes are followed by the version in which the problem first appeared.
 
+4.0 alpha 2 (11/7/97)
+----------
+Fixed parameter subs for macro-as-command called by macro-as-function
+  (including ismacro() and /more). (40a1)
+Fixed use of color in %status_fields. (40a1)
+Eliminated unneeded 1s updates of visual more status. (40a1)
+Added warnings for new 4.0 semantics of old code.
+
 4.0 alpha 1 (11/6/97)
 ----------
-Ported to Win32.
+Ported to Win32 (requires Cygwin Development Kit).
+%clock is no longer used.  See "/help %clock".
 %0 is the name of the executing macro.  This will break all existing code
   that uses %0 like %*.
 Macros called as functions map function arguments to positional parameters.
@@ -37,7 +46,7 @@ Clearing input buffer resets index for /dokey SEARCH[BF] functions.
 Optimized macro processing.
 Improved interactive response when sockets are very active.
 /list -s option may be mixed with other options.
-Fixed /substitute within /trigger
+Fixed /substitute within /trigger.
 Fixed support for 8-bit locales, including support for LC_CTYPE, LC_TIME,
   and LC_ALL variables.  See "/help locale".
 Fixed "tcsetattr: Bad file number" and disabled keyboard. (35b4)

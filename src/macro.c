@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: macro.c,v 35004.36 1997/10/25 22:29:46 hawkeye Exp $ */
+/* $Id: macro.c,v 35004.37 1997/11/07 07:06:25 hawkeye Exp $ */
 
 
 /**********************************************
@@ -107,6 +107,7 @@ attr_t parse_attrs(argp)    /* convert attr string to bitfields */
         case 'C':
             if ((color = enum2int(++*argp, enum_color, "color")) < 0)
                 return -1;
+            while (**argp) ++*argp;
             return attrs | color2attr(color);
         default:
             eprintf("invalid display attribute '%c'", **argp);
