@@ -12,7 +12,15 @@
 
 <p>
   MCCP is transparent to the user.  When TF connects to a server that supports
-  MCCP v2, it will be enabled automatically.
+  MCCP v2, it will be enabled automatically, unless the
+  <a href="../topics/special_variables.html#%mccp">mccp</a> variable is off.
+  The <a href="../commands/listsockets.html">listsockets</a> command
+  will indicate that MCCP is enabled.
+
+<p>
+  MCCP v1 is broken, and thus will never be supported in tf.
+  If you use a server that has only MCCP v1, you should encourage
+  the owner to upgrade to add support for v2.
 
 <p>
   See also:

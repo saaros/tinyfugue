@@ -5,19 +5,20 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: hooklist.h,v 35000.13 2003/05/27 01:09:22 hawkeye Exp $ */
+/* $Id: hooklist.h,v 35000.17 2003/10/31 01:40:10 hawkeye Exp $ */
 
 /* This keeps the constants and the array in the same place
  * so they can't get out of sync.
  */
 
-gencode(H_ACTIVITY,   "ACTIVITY",   HT_ALERT),
-gencode(H_BACKGROUND, "BACKGROUND", HT_ALERT),
-gencode(H_BAMF,       "BAMF",	    HT_WORLD),
-gencode(H_CONFAIL,    "CONFAIL",    HT_WORLD),
+gencode(H_ACTIVITY,   "ACTIVITY",   HT_ALERT | HT_XSOCK),
+gencode(H_BACKGROUND, "BACKGROUND", HT_ALERT | HT_XSOCK),
+gencode(H_BAMF,       "BAMF",	    HT_WORLD | HT_XSOCK),
+gencode(H_CONFAIL,    "CONFAIL",    HT_WORLD | HT_XSOCK),
 gencode(H_CONFLICT,   "CONFLICT",   0),
-gencode(H_CONNECT,    "CONNECT",    HT_WORLD),
-gencode(H_DISCONNECT, "DISCONNECT", HT_WORLD),
+gencode(H_CONNECT,    "CONNECT",    HT_WORLD | HT_XSOCK),
+gencode(H_CONNETFAIL, "CONNETFAIL", HT_WORLD | HT_XSOCK),
+gencode(H_DISCONNECT, "DISCONNECT", HT_WORLD | HT_XSOCK),
 gencode(H_KILL,       "KILL",	    0),
 gencode(H_LOAD,       "LOAD",	    0),
 gencode(H_LOADFAIL,   "LOADFAIL",   0),
@@ -26,7 +27,8 @@ gencode(H_LOGIN,      "LOGIN",	    0),
 gencode(H_MAIL,       "MAIL",	    HT_ALERT),
 gencode(H_MORE,       "MORE",	    0),
 gencode(H_NOMACRO,    "NOMACRO",    0),
-gencode(H_PENDING,    "PENDING",    HT_ALERT),
+gencode(H_PENDING,    "PENDING",    HT_WORLD | HT_XSOCK),
+gencode(H_PREACTIVITY,"PREACTIVITY",0),
 gencode(H_PROCESS,    "PROCESS",    0),
 gencode(H_PROMPT,     "PROMPT",	    0),
 gencode(H_PROXY,      "PROXY",	    0),

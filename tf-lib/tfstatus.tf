@@ -17,12 +17,14 @@
 /set warn_status=0
 
 /set status_int_more \
-     (!limit() & moresize() == 0) ? "" : status_int_more()
+    (limit() | morepaused()) ? status_int_more() : ""
 /def -i status_int_more = \
     /let new=$[moresize("ln")]%; \
     /let old=$[moresize("l") - new]%; \
-    /if (old >= 1000) /let old=$[old/1000]k%; /endif%; \
-    /if (old) \
+    /if (limit() & !morepaused()) \
+	/result "LIMIT ON"%; \
+    /elseif (old) \
+	/if (old >= 1000) /let old=$[old/1000]k%; /endif%; \
 	/if (new >= 1000) /let new=$[new/1000]k%; /endif%; \
 	/result pad(limit() ? "L" : " ", 1,  old, 3,  "+", 1,  new, 3)%; \
     /else \
@@ -31,8 +33,8 @@
     /endif
 
 /set status_int_world   \
-     ${world_name} =~ "" ? "(no world)" : \
-     strcat(!is_open() ? "!" : "",  ${world_name})
+     fg_world() =~ "" ? "(no world)" : \
+     strcat(!is_open(fg_world()) ? "!" : "",  fg_world())
 /set status_int_read    nread() ? "(Read)" : ""
 /set status_int_active  nactive() ? pad("(Active:", 0, nactive(), 2, ")") : ""
 /set status_int_log     nlog() ? "(Log)" : ""
@@ -69,7 +71,7 @@
     /let new=%*%; \
     /let space=$[opt_s > 0 ? strcat(" :", +opt_s) : ""]%; \
     /if (opt_x) \
-	/let regexp=(^| +)%new(:\\d*(:[\\w,]*)?)?( +|$$)%; \
+	/let regexp=(^| +)%new(:-?\\d*(:[\\w,]*)?)?( +|$$)%; \
 	/if (regmatch(regexp, status_fields)) \
 	    /return 0%; \
 	/endif%; \
@@ -77,16 +79,16 @@
     /let old_warn_status=%warn_status%; \
     /set warn_status=0%; \
     /if (opt_B =~ "") \
-	/set status_fields=%1%space %status_fields%; \
+	/set status_fields=%new%space %status_fields%; \
     /elseif (opt_B !~ ":") \
-	/let regexp=(^| +)(%opt_B(:\\d*(:[\\w,]*)?)?)( +|$$)%; \
+	/let regexp=(^| +)(%opt_B(:-?\\d*(:[\\w,]*)?)?)( +|$$)%; \
 	/if (regmatch(regexp, status_fields)) \
-	    /set status_fields=%PL%space %new %P2 %PR%; \
+	    /set status_fields=%PL%P1%new%space %P2 %PR%; \
 	/endif%; \
     /elseif (opt_A =~ "" | opt_A =~ ":") \
-	/set status_fields=%status_fields%space %1%; \
+	/set status_fields=%status_fields%space %new%; \
     /else \
-	/let regexp=(^| +)(%opt_A(:\\d*(:[\\w,]*)?)?)( +|$$)%; \
+	/let regexp=(^| +)(%opt_A(:-?\\d*(:[\\w,]*)?)?)( +|$$)%; \
 	/if (regmatch(regexp, status_fields)) \
 	    /set status_fields=%PL %P2%space %new %PR%; \
 	/endif%; \
@@ -96,7 +98,7 @@
 ;;; /status_rm field
 ;; remove field from status_fields
 /def -i status_rm = \
-    /let regexp=(^| +)(:(\\d*) +)?%1(:\\d*(:[\\w,]*)?)?( +:(\\d*))?($$| +)%; \
+    /let regexp=(^| +)(:(-?\\d*) +)?%1(:-?\\d*(:[\\w,]*)?)?( +:(-?\\d*))?($$| +)%; \
     /if (regmatch(regexp, status_fields)) \
 	/let old_warn_status=%warn_status%; \
 	/set warn_status=0%; \
@@ -112,9 +114,9 @@
 ;;; /status_edit field[:width[:attrs]]
 ;; replace existing field with argument
 /def -i status_edit = \
-    /if (regmatch("^([^: ]+)(:\\d*(:[\\w,]*)?)?$", {*})) \
+    /if (regmatch("^([^: ]+)(:-?\\d*(:[\\w,]*)?)?$", {*})) \
 	/let label=%P1%; \
-	/let regexp=(^| )%label(:\\d*(:[\\w,]*)?)?($$| )%; \
+	/let regexp=(^| )%label(:-?\\d*(:[\\w,]*)?)?($$| )%; \
 	/if (regmatch(regexp, status_fields)) \
 	    /let old_warn_status=%warn_status%; \
 	    /set warn_status=0%; \
@@ -132,7 +134,7 @@
 	/status_rm @clock%; \
     /else \
 	/if ({*} !/ "{1|on|yes}") \
-	    /set clock_format=%*%; \
+	    /set clock_format=%{*-%%H:%%M}%; \
 	/endif%; \
 	/let width=$[strlen(ftime(clock_format))]%; \
 	/if (regmatch("(^|\\s+)@clock(:[^: ]+(:[^ ]+)?)?\\b", status_fields)) \

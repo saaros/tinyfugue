@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: signals.h,v 35004.15 2003/05/27 01:09:24 hawkeye Exp $ */
+/* $Id: signals.h,v 35004.16 2003/06/09 02:00:43 hawkeye Exp $ */
 
 #ifndef SIGNALS_H
 #define SIGNALS_H
@@ -17,7 +17,7 @@ extern int  shell(const char *cmd);
 extern int  suspend(void);
 extern int  interrupted(void);
 extern void crash(int internal, const char *fmt,
-    const char *file, int line, long n);
+    const char *file, int line, long n) NORET;
 extern void close_all(void); /* defined in socket.c */
 
 #define core(fmt, file, line, n)	crash(TRUE, fmt, file, line, n)

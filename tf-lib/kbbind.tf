@@ -9,40 +9,46 @@
 ; ^J, ^M, ^H, and ^? are handled internally.
 
 
-;; keybind avoids warnings for undefined keys
-/def keybind = /if (keycode({1}) !~ "") /def -iB'%{1}' = %-1%; /endif
+;; ~keybind avoids warnings for undefined keys
+/def -i ~keybind = /if (keycode({1}) !~ "") /def -iB'%{1}' = %-1%; /endif
 
-/def defaultbind = \
+/def -i ~defaultbind = \
     /if /!ismacro -msimple -ib'%1'%; /then \
         /def -ib'%1' = %-1%;\
     /endif
 
+/def -i kb_updown = \
+    /kbwarn updown Up/down now scroll through input history; if you prefer \
+	the old behavior of moving within a line, "/load updown.tf".%; \
+    /dokey %*
 
 ;;; Keys defined by name.
 
-/keybind Up	/dokey_up
-/keybind Down	/dokey_down
-/keybind Right	/dokey_right
-/keybind Left	/dokey_left
-/keybind Delete	/dokey_dch
-/keybind F1	/help
-/keybind Home	/dokey_home
-/keybind Insert	/@test insert := !insert
-/keybind PgDn	/dokey_pgdn
-/keybind PgUp	/dokey_pgup
+;/~keybind Up	/dokey_up
+/~keybind Up	/kb_updown recallb
+;/~keybind Down	/dokey_down
+/~keybind Down	/kb_updown recallf
+/~keybind Right	/dokey_right
+/~keybind Left	/dokey_left
+/~keybind Delete	/dokey_dch
+/~keybind F1	/help
+/~keybind Home	/dokey_home
+/~keybind Insert	/@test insert := !insert
+/~keybind PgDn	/dokey_pgdn
+/~keybind PgUp	/dokey_pgup
 
 
 ;;; Defaults for keys normally defined by name.
 
-/defaultbind ^[[A /dokey recallb
-/defaultbind ^[[B /dokey recallf
-/defaultbind ^[[C /dokey_right
-/defaultbind ^[[D /dokey_left
+/~defaultbind ^[[A /kb_updown recallb
+/~defaultbind ^[[B /kb_updown recallf
+/~defaultbind ^[[C /dokey_right
+/~defaultbind ^[[D /dokey_left
 
-/defaultbind ^[OA /dokey recallb
-/defaultbind ^[OB /dokey recallf
-/defaultbind ^[OC /dokey_right
-/defaultbind ^[OD /dokey_left
+/~defaultbind ^[OA /kb_updown recallb
+/~defaultbind ^[OB /kb_updown recallf
+/~defaultbind ^[OC /dokey_right
+/~defaultbind ^[OD /dokey_left
 
 
 ;;; Bindings to cycle through connected sockets
@@ -63,10 +69,10 @@
     /endif
 
 ;; In case termcap arrow key entries are missing or wrong
-/defaultbind ^[^[OD	/dokey_socketb
-/defaultbind ^[^[OC	/dokey_socketf
-/defaultbind ^[^[[D	/dokey_socketb
-/defaultbind ^[^[[C	/dokey_socketf
+/~defaultbind ^[^[OD	/dokey_socketb
+/~defaultbind ^[^[OC	/dokey_socketf
+/~defaultbind ^[^[[D	/dokey_socketb
+/~defaultbind ^[^[[C	/dokey_socketf
 
 /def -ib'^[-'	= /set kbnum=-
 /def -ib'^[0'	= /set kbnum=+
@@ -83,14 +89,26 @@
 ;;; Other useful bindings
 ;;; Any dokey operation "X" can be performed with "/dokey X" or "/dokey_X".
 ;;; The only difference between the two invocations is efficiency.
-;;; /defaultbind is used for keys that may already be defined internally by
+;;; /~defaultbind is used for keys that may already be defined internally by
 ;;; copying the terminal driver.
 
+/def -i kbwarn = \
+    /if /test warn_5keys & !kbwarned_%1%; /then \
+	/echo %% Note: keys have changed in version 5.0 to be more like emacs \
+	    and many other unix apps.  %-1  This warning can be disabled with \
+	    "/set warn_5keys=off".%; \
+	/set kbwarned_%1=1%; \
+    /endif
+
 /def -ib'^A'	= /dokey_home
-/def -ib"^B"	= /dokey_left
+/def -ib"^B"	= /kbwarn char ^B/^F now move the cursor by a letter; \
+		    use ESC b/ESC f to move by a word.%; \
+		    /dokey_left
 /def -ib'^D'	= /dokey_dch
 /def -ib'^E'	= /dokey_end
-/def -ib'^F'	= /dokey_right
+/def -ib"^F"	= /kbwarn char ^B/^F now move the cursor by a letter; \
+		    use ESC b/ESC f to move by a word.%; \
+		    /dokey_right
 ; note ^G does NOT honor kbnum, so it can be used to cancel kbnum entry.
 /def -ib'^G'	= /beep
 ;def -ib"^H"	= /dokey_bspc			; internal
@@ -104,14 +122,14 @@
 ;def -ib"^O"	= /operate-and-get-next		; not implemented
 /def -ib'^P'	= /dokey recallb
 /def -ib"^Q"	= /dokey lnext
-/defaultbind ^R /dokey refresh
+/~defaultbind ^R /dokey refresh
 ;def -ib"^R"	= /dokey searchb		; conflict
 ;def -ib"^S"	= /dokey searchf		; conflict
 /def -ib"^S"	= /dokey pause
 /def -ib'^T'	= /kb_transpose_chars
 /def -ib'^U'	= /kb_backward_kill_line
-/defaultbind ^V /dokey lnext
-/defaultbind ^W	/dokey_bword
+/~defaultbind ^V /dokey lnext
+/~defaultbind ^W	/dokey_bword
 /def -ib"^X^R"	= /load ~/.tfrc
 /def -ib"^X^V"	= /version
 /def -ib"^X^?"	= /kb_backward_kill_line
@@ -141,10 +159,14 @@
 /def -ib'^[J'	= /dokey selflush
 /def -ib'^[L'	= /kb_toggle_limit
 /def -ib'^[_'	= /kb_last_argument
-/def -ib"^[b"	= /dokey_wleft
+/def -ib"^[b"	= /kbwarn word ESC b/ESC f now move the cursor by a word; \
+		    use ESC LEFT/ESC RIGHT to switch worlds.%; \
+		    /dokey_wleft
 /def -ib"^[c"	= /kb_capitalize_word
 /def -ib"^[d"	= /kb_kill_word
-/def -ib"^[f"	= /dokey_wright
+/def -ib"^[f"	= /kbwarn word ESC b/ESC f now move the cursor by a word; \
+		    use ESC LEFT/ESC RIGHT to switch worlds.%; \
+		    /dokey_wright
 /def -ib'^[h'	= /dokey_hpage
 /def -ib'^[j'	= /dokey flush
 /def -ib'^[l'	= /kb_downcase_word
@@ -155,35 +177,51 @@
 ;def -ib"^[~"	= /complete username		; complete.tf
 /def -ib'^[^?'	= /kb_backward_kill_word
 
+/def -ib'^]'	= /bg
+
+
 ;;; Other common keyboard-specific mappings which may or may not work
 ;F1
-/defaultbind ^[[11~	/help
-/defaultbind ^[OP	/help
+/~defaultbind ^[[11~	/help
+/~defaultbind ^[OP	/help
+
+; Some broken terminal emulators (TeraTerm, NiftyTelnet) send incorrect
+; char sequences for the editor keypad (the 6 keys above the arrow keys).
+; We can't cater to them without breaking keys for users with correct
+; terminal emulators.
+;
+;                      niftytelnet
+;            vt220     & teraterm
+;           standard    (broken)
+; insert     ^[[2~       ^[[1~
+; home       ^[[1~       ^[[2~
+; pgup       ^[[5~       ^[[3~
+; delete     ^[[3~       ^[[4~
+; end        ^[[4~       ^[[5~
+; pgdn       ^[[6~       ^[[6~
+;
+; TeraTerm users should fix their emulators by copying
+; %TFLIBDIR/teraterm.keyboard.cnf to keyboard.cnf in their TeraTerm
+; directory.
+;
+; I do not have a fix for NiftyTelnet.
+
 ;Insert
-/defaultbind ^[[2~	/@test insert := !insert
+/~defaultbind ^[[2~	/@test insert := !insert
 ;Delete
-/defaultbind ^[[3~	/dokey_dch
+/~defaultbind ^[[3~	/dokey_dch
 ;PgDn
-/defaultbind ^[[6~	/dokey_pgdn
-/defaultbind ^[Os	/dokey_pgdn
+/~defaultbind ^[[6~	/dokey_pgdn
+/~defaultbind ^[Os	/dokey_pgdn
 ;PgUp
-; Some broken terminal emulators (TeraTerm, NiftyTelnet) send ^[[3~ for PgUp,
-; but ^[[3~ is supposed to mean vt220 Delete.  We can't cater to them without
-; breaking Delete for users with correct emulators.
-/defaultbind ^[[5~	/dokey_pgup
-/defaultbind ^[Oy	/dokey_pgup
+/~defaultbind ^[[5~	/dokey_pgup
+/~defaultbind ^[Oy	/dokey_pgup
 ;Home
-/defaultbind ^[[1~	/dokey_home
-/defaultbind ^[OH	/dokey_home
-/defaultbind ^[[H	/dokey_home
+/~defaultbind ^[[1~	/dokey_home
+/~defaultbind ^[OH	/dokey_home
+/~defaultbind ^[[H	/dokey_home
 ;End
-/defaultbind ^[[4~	/dokey_end
-/defaultbind ^[OF	/dokey_end
-/defaultbind ^[[F	/dokey_end
-
-
-;; clean up
-
-/undef keybind
-/undef defaultbind
+/~defaultbind ^[[4~	/dokey_end
+/~defaultbind ^[OF	/dokey_end
+/~defaultbind ^[[F	/dokey_end
 

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.h,v 35004.49 2003/05/27 01:09:25 hawkeye Exp $ */
+/* $Id: tfio.h,v 35004.51 2003/06/11 19:51:23 hawkeye Exp $ */
 
 #ifndef TFIO_H
 #define TFIO_H
@@ -38,6 +38,7 @@ typedef struct PhysLine {
     int start;
     short len;
     short indent;
+    char visible; /* line passed screen_filter() */
 } PhysLine;
 
 typedef struct Queue {

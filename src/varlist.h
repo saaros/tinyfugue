@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: varlist.h,v 35000.47 2003/05/27 01:09:26 hawkeye Exp $ */
+/* $Id: varlist.h,v 35000.50 2003/09/01 20:20:12 hawkeye Exp $ */
 
 /* This keeps the constants and the array in the same place, so they can't
  * get out of sync.
@@ -81,6 +81,11 @@ varenum(VAR_matching,	"matching",	1,		NULL,	enum_match)
 varint (VAR_max_iter,	"max_iter",	1000,		NULL)
 varint (VAR_max_kbnum,	"max_kbnum",	999,		NULL)
 varint (VAR_max_recur,	"max_recur",	100,		NULL)
+#if HAVE_MCCP
+varflag(VAR_mccp,	"mccp",		TRUE,		NULL)
+#else
+varenum(VAR_mccp,	"mccp",		FALSE,		NULL,	enum_off)
+#endif
 varenum(VAR_mecho,	"mecho",	0,		NULL,	enum_mecho)
 varenum(VAR_meta_esc,	"meta_esc",	META_NONPRINT,	NULL,	enum_meta)
 varflag(VAR_more,	"more",		FALSE,		tog_more)
@@ -117,6 +122,7 @@ varstr (VAR_tfhost,	"tfhost",	NULL,		NULL)
 varstr (VAR_time_format,"time_format",	"%H:%M",	NULL)
 varflag(VAR_virtscreen,	"virtscreen",	TRUE,		NULL)
 varflag(VAR_visual,	"visual",	-1,		ch_visual)
+varflag(VAR_warn_5keys, "warn_5keys",	TRUE,		NULL)
 varflag(VAR_warn_curly_re,"warn_curly_re",TRUE,		NULL)
 varflag(VAR_warn_status,"warn_status",	TRUE,		NULL)
 varflag(VAR_watchdog,	"watchdog",	FALSE,		NULL)
@@ -124,6 +130,7 @@ varflag(VAR_watchname,	"watchname",	FALSE,		NULL)
 varstr (VAR_wordpunct,	"wordpunct",	"_",		NULL)
 varflag(VAR_wrap,	"wrap",		TRUE,		ch_wrap)
 varflag(VAR_wraplog,	"wraplog",	FALSE,		NULL)
+varint (VAR_wrappunct,	"wrappunct",	10,		ch_wrap)
 varint (VAR_wrapsize,	"wrapsize",	0,		ch_wrap)
 varint (VAR_wrapspace,	"wrapspace",	4,		ch_wrap)
 

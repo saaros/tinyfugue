@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: tty.c,v 35004.29 2003/05/27 01:09:25 hawkeye Exp $";
+static const char RCSid[] = "$Id: tty.c,v 35004.30 2003/10/29 22:26:43 hawkeye Exp $";
 
 /*
  * TTY driver routines.
@@ -19,7 +19,8 @@ static const char RCSid[] = "$Id: tty.c,v 35004.29 2003/05/27 01:09:25 hawkeye E
 # include <os2.h>
 #endif
 
-#if USE_TERMIOS                    /* POSIX is the way to go. */
+#if HAVE_TERMIOS_H                 /* POSIX is the way to go. */
+# define USE_TERMIOS
 # include <termios.h>
 /* # ifndef TIOCGWINSZ */
 #  include <sys/ioctl.h>              /* BSD needs this for TIOCGWINSZ */
@@ -31,9 +32,8 @@ static const char RCSid[] = "$Id: tty.c,v 35004.29 2003/05/27 01:09:25 hawkeye E
 # define ingetattr_error "tcgetattr"
 #endif
 
-#if USE_TERMIO      /* with a few macros, this looks just like USE_TERMIOS */
+#if HAVE_TERMIO_H      /* with a few macros, this looks just like USE_TERMIOS */
 # ifdef hpux                                   /* hpux's termio is different. */
-#  undef USE_TERMIO
 #  define USE_HPUX_TERMIO
 #  include <sys/ioctl.h>
 #  include <termio.h>
@@ -55,7 +55,8 @@ static const char RCSid[] = "$Id: tty.c,v 35004.29 2003/05/27 01:09:25 hawkeye E
 # include <sys/ptem.h>               /* needed for struct winsize.  Ugh. */
 #endif
 
-#if USE_SGTTY
+#if HAVE_SGTTY_H
+# define USE_SGTTY
 # include <sys/ioctl.h>
 # include <sgtty.h>                  /* BSD's old "new" terminal driver. */
 # define tty_struct struct sgttyb
@@ -82,10 +83,10 @@ int no_tty = 1;
 
 void init_tty(void)
 {
-#if USE_HPUX_TERMIO
+#ifdef USE_HPUX_TERMIO
     struct ltchars chars;
 #endif
-#if USE_SGTTY
+#ifdef USE_SGTTY
     struct ltchars chars;
 #endif
 
@@ -97,7 +98,7 @@ void init_tty(void)
 
     if (!no_tty) {
 
-#if USE_TERMIOS
+#ifdef USE_TERMIOS
         *bs = old_tty.c_cc[VERASE];
         *dline = old_tty.c_cc[VKILL];
 # ifdef VWERASE /* Not POSIX, but many systems have it. */
@@ -111,7 +112,7 @@ void init_tty(void)
 # endif
 #endif
 
-#if USE_HPUX_TERMIO
+#ifdef USE_HPUX_TERMIO
         *bs = old_tty.c_cc[VERASE];
         *dline = old_tty.c_cc[VKILL];
         if (ioctl(STDIN_FILENO, TIOCGLTC, &chars) < 0) perror("TIOCGLTC ioctl");
@@ -122,7 +123,7 @@ void init_tty(void)
         }
 #endif
 
-#if USE_SGTTY
+#ifdef USE_SGTTY
         *bs = old_tty.sg_erase;
         *dline = old_tty.sg_kill;
         if (ioctl(STDIN_FILENO, TIOCGLTC, &chars) < 0) perror("TIOCGLTC ioctl");
@@ -194,7 +195,7 @@ void cbreak_noecho_mode(void)
     if (ingetattr(&tty) < 0) die(ingetattr_error, errno);
     old_tty = tty;
 
-#if USE_TERMIOS
+#ifdef USE_TERMIOS
     tty.c_lflag &= ~(ECHO | ICANON);
     tty.c_lflag |= ISIG;
     tty.c_iflag |= IGNBRK | IGNPAR;
@@ -221,7 +222,7 @@ void cbreak_noecho_mode(void)
 # endif
 #endif /* USE_TERMIOS */
 
-#if USE_HPUX_TERMIO
+#ifdef USE_HPUX_TERMIO
     tty.c_lflag &= ~(ECHO | ECHOE | ICANON);
     tty.c_iflag &= ~ICRNL;
     tty.c_oflag &= ~OCRNL;
@@ -232,7 +233,7 @@ void cbreak_noecho_mode(void)
     tty.c_cc[VTIME] = 0;
 #endif
 
-#if USE_SGTTY
+#ifdef USE_SGTTY
     tty.sg_flags |= CBREAK;
     tty.sg_flags &= ~(ECHO | CRMOD);
     /* Sgtty's CRMOD is equivalent to termios' (ICRNL | OCRNL | ONLCR).

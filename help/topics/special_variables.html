@@ -612,7 +612,7 @@
 <a name="%keepalive"></a>
   <dt><b>keepalive</b>=on
       <dd> (flag) Enable periodic "pings" (TCP keepalive) of servers,
-      to detect a dropped connection.
+      to prevent network timeouts and detect dropped connections.
 
 <p>
 <a name="keypad"></a>
@@ -720,6 +720,13 @@
       <a href="../topics/macros.html">macro</a> calls or
       <a href="../topics/triggers.html">triggers</a>.  A value of 0 will
       allow unlimited recursion.
+
+<p>
+<!-- "mccp" has its own page -->
+<a name="%mccp"></a>
+  <dt><b>mccp</b>=on (if tf was compiled with MCCP support)
+      <dd> (flag) If on, MCCPv2 is allowed on new connections.
+      See <a href="../topics/mccp.html">mccp</a>.
 
 <p>
 <a name="debug"></a>
@@ -1059,6 +1066,13 @@
       (See: <a href="../topics/mode.html">mode</a>)
 
 <p>
+<a name="warn_5keys"></a>
+<a name="%warn_5keys"></a>
+  <dt><b>warn_5keys</b>=on
+      <dd> (flag) If on, TF will warn the first time some of the new
+      5.0 <a href="../topics/keybindings">keybindings</a> are used.
+
+<p>
 <a name="warn_curly_re"></a>
 <a name="%warn_curly_re"></a>
   <dt><b>warn_curly_re</b>=on
@@ -1105,11 +1119,12 @@
       WLEFT, WRIGHT, etc).
 
 <p>
+<a name="wordwrap"></a>
 <a name="wrap"></a>
 <a name="%wrap"></a>
   <dt><b>wrap</b>=on
       <dd> (flag) Enable wordwrap on the screen.  TF will try to break
-      lines between words to fit them within
+      lines at spaces or other punctuation to fit them within
       <a href="../topics/special_variables.html#wrapsize">%{wrapsize}</a>
       columns.
       <a href="../topics/special_variables.html#wrap">%{wrap}</a> is
@@ -1117,6 +1132,7 @@
       <a href="../topics/special_variables.html#emulation">%{emulation}</a>
       is "raw".
       See also:
+      <a href="../topics/special_variables.html#wrappunct">%{wrappunct}</a>,
       <a href="../topics/special_variables.html#wrapsize">%{wrapsize}</a>,
       <a href="../topics/special_variables.html#wrapspace">%{wrapspace}</a>.
 
@@ -1128,6 +1144,16 @@
       <a href="../topics/special_variables.html#wrap">%wrap</a>.
 
 <p>
+<a name="wrappunct"></a>
+<a name="%wrappunct"></a>
+  <dt><b>wrappunct</b>=10
+      <dd> When <a href="../topics/special_variables.html#wrap">wrapping</a>,
+      allow wrapping at any punctuation if wrapping only at spaces would
+      have caused more than
+      <a href="../topics/special_variables.html#wrappunct">%wrappunct</a>
+      characters to wrap.  This is particularly useful for long URLs.
+
+<p>
 <a name="wrapsize"></a>
 <a name="%wrapsize"></a>
   <dt><b>wrapsize</b>=79
@@ -1137,6 +1163,7 @@
       <a href="../topics/special_variables.html#emulation">%{emulation}</a>
       is "raw".  See also:
       <a href="../topics/special_variables.html#wrap">%wrap</a>,
+      <a href="../topics/special_variables.html#wrappunct">%wrappunct</a>,
       <a href="../topics/special_variables.html#wrapspace">%wrapspace</a>,
       <a href="../topics/functions.html#columns">columns()</a>.
 

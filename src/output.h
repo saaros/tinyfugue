@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.h,v 35004.51 2003/05/27 01:09:23 hawkeye Exp $ */
+/* $Id: output.h,v 35004.57 2003/10/31 01:39:48 hawkeye Exp $ */
 
 #ifndef OUTPUT_H
 #define OUTPUT_H
@@ -24,10 +24,11 @@ typedef enum { REF_NONE, REF_PHYSICAL, REF_PROMPT, REF_LOGICAL } ref_type_t;
 #define display_screen	(virtscreen ? fg_screen : default_screen)
 
 extern int lines, columns;
-extern time_t clock_update;
-extern ref_type_t need_refresh;    /* Does input need refresh? */
-extern int need_more_refresh;      /* Does visual more prompt need refresh? */
+extern struct timeval clock_update;	/* when to update clock */
+extern ref_type_t need_refresh;		/* Input needs refresh? */
+extern int need_more_refresh;		/* Visual more prompt needs refresh? */
 extern struct timeval alert_timeout;	/* when to clear alert */
+extern unsigned long alert_id;
 
 extern void dobell(int n);
 extern void init_output(void);
@@ -47,7 +48,10 @@ extern int  ch_wrap(void);
 extern int  ch_status_int(void);
 extern int  ch_status_fields(void);
 extern void update_status_field(Var *var, stat_id_t internal);
+extern void format_status_line(void);
+extern int  display_status_line(void);
 extern int  update_status_line(void);
+extern int handle_status_width_func(const char *name);
 extern void fix_screen(void);
 extern void minimal_fix_screen(void);
 extern void iput(int len);
@@ -70,8 +74,8 @@ extern int  wraplen(const char *str, int len, int indent);
 extern int  ch_hiliteattr(void);
 extern int  ch_status_attr(void);
 extern int  ch_alert_attr(void);
-extern attr_t  handle_inline_attr(String *line, attr_t attrs);
-extern attr_t  handle_ansi_attr(String *line, attr_t attrs, int emul);
+extern int  decode_attr(String *line, attr_t attrs);
+extern attr_t  decode_ansi(String *line, attr_t attrs, int emul);
 extern const char *get_keycode(const char *name);
 
 extern int moresize(Screen *screen);

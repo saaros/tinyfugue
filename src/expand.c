@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: expand.c,v 35004.177 2003/05/27 02:08:19 hawkeye Exp $";
+static const char RCSid[] = "$Id: expand.c,v 35004.184 2003/08/31 08:04:52 hawkeye Exp $";
 
 
 /********************************************************************
@@ -34,12 +34,12 @@ static const char RCSid[] = "$Id: expand.c,v 35004.177 2003/05/27 02:08:19 hawke
 #include "command.h"
 #include "variable.h"
 
+typedef struct { BuiltinCmd *cmd; opcode_t op; } opcmd_t;
 
 Value *user_result = NULL;		/* result of last user command */
 int recur_count = 0;			/* expansion nesting count */
 const char *current_command = NULL;
 char current_opt = '\0';
-int breaking = 0;			/* number of levels to /break */
 String *argstring = NULL;		/* command argument string */
 Arg *tf_argv = NULL;			/* shifted command argument vector */
 int tf_argc = 0;			/* shifted command/function arg count */
@@ -51,11 +51,21 @@ const char *oplabel[256];
 
 static int cmdsub_count = 0;		/* cmdsub nesting count */
 
+
+#define KEYWORD_LENGTH	6	/* length of longest keyword */
 static const char *keyword_table[] = {
     "BREAK", "DO", "DONE", "ELSE", "ELSEIF", "ENDIF",
-    "EXIT", "IF", "RESULT", "RETURN", "THEN", "WHILE"
+    "EXIT", "IF", "RESULT", "RETURN", "TEST", "THEN", "WHILE"
 };
-#define KEYWORD_LENGTH	6	/* length of longest keyword */
+
+
+/* A JUMP with a negative arg is a placeholder:  ENDIF_PLACEHOLDER is for
+ * jumping to ENDIF, all other negative values jump to the DONE of the
+ * (-arg)th enclosing WHILE loop.  Any negative args left at runtime must
+ * be because of a BREAK outside of a WHILE loop, so they will jump to
+ * end-of-program.
+ */
+#define ENDIF_PLACEHOLDER -999999
 
 static keyword_id_t keyword_parse(Program *prog);
 static int list(Program *prog, int subs);
@@ -66,6 +76,7 @@ static const char *error_text(Program *prog);
 static int macsub(Program *prog, int in_expr);
 static int cmdsub(Program *prog, int in_expr);
 static int percentsub(Program *prog, int subs, String **destp);
+static int expand(Program *prog, String *dest, int subs, opcmd_t *opcmdp);
 
 #define is_end_of_statement(p) ((p)[0] == '%' && is_statend((p)[1]))
 #define is_end_of_cmdsub(p) (cmdsub_count && *(p) == ')')
@@ -202,41 +213,6 @@ struct Value *handle_eval_command(String *args, int offset)
     if (!macro_run(args, offset, NULL, 0, subflag, "\bEVAL"))
         return shareval(val_zero);
     return_user_result();
-}
-
-
-struct Value *handle_test_command(String *args, int offset)
-{
-    struct Value *result;
-
-    result = expr_value(args->data + offset);
-    return result ? valval(result) : shareval(val_zero);
-}
-
-struct Value *handle_return_command(String *args, int offset)
-{
-    struct Value *result;
-
-    if (cmdsub_count) {
-        eprintf("may be called only directly from a macro, not in $() command substitution.");
-        return shareval(val_zero);
-    }
-    result = args->len - offset ? handle_test_command(args, offset) : NULL;
-    breaking = -1;
-    return result;
-}
-
-struct Value *handle_result_command(String *args, int offset)
-{
-    struct Value *result;
-    String *str;
-
-    result = handle_return_command(args, offset);
-    if (!argtop) {
-        str = valstr(result);
-        if (str) oputline(str);
-    }
-    return result;
 }
 
 /* A builtin command was explicitly called; execute it. */
@@ -518,18 +494,11 @@ Value *prog_interpret(Program *prog, int in_expr)
     stackbot = stacktop;
 
     for (cip = 0; cip < prog->len; cip++) {
-	if (breaking) {
-	    if (breaking < 0) break;
-	    for ( ; breaking && cip < prog->len; cip++) {
-		if (prog->code[cip].op == OP_DONE) {
-		    breaking--;
-		    /* mecho each "/done" as we break out of them */
-		    if (mecho > invis_flag) do_mecho(prog, cip);
-		}
-	    }
-	    if (cip >= prog->len) break;
+	if (exiting) break;
+	if (interrupted()) {
+	    eprintf("Macro execution interrupted.");
+	    goto prog_interpret_exit;
 	}
-
 	user_result_is_set = 0;
 	op = prog->code[cip].op;
 	if (mecho > invis_flag) do_mecho(prog, cip);
@@ -647,32 +616,45 @@ Value *prog_interpret(Program *prog, int in_expr)
 		SStringcat(buf, str);
 	    }
 	    break;
+
+#define jumpaddr(prog) \
+	((prog->code[cip].arg.i < 0) ? prog->len : prog->code[cip].arg.i - 1)
+
 	case OP_JUMP:
-	    cip = prog->code[cip].arg.i - 1;
+	    cip = jumpaddr(prog);
 	    break;
 	case OP_JZ:
-	    if (!opdint(1))
-		cip = prog->code[cip].arg.i - 1;
+	    if (!opdbool(1))
+		cip = jumpaddr(prog);
 	    freeval(stack[--stacktop]);
 	    break;
 	case OP_JNZ:
-	    if (opdint(1))
-		cip = prog->code[cip].arg.i - 1;
+	    if (opdbool(1))
+		cip = jumpaddr(prog);
 	    freeval(stack[--stacktop]);
 	    break;
 	case OP_JRZ:
-	    if (!valint(user_result))
-		cip = prog->code[cip].arg.i - 1;
+	    if (!valbool(user_result))
+		cip = jumpaddr(prog);
 	    break;
 	case OP_JRNZ:
-	    if (valint(user_result))
-		cip = prog->code[cip].arg.i - 1;
+	    if (valbool(user_result))
+		cip = jumpaddr(prog);
 	    break;
 	case OP_JNEMPTY:
 	    /* empty was set by one of the varsub operators */
 	    if (!empty)
-		cip = prog->code[cip].arg.i - 1;
+		cip = jumpaddr(prog);
 	    break;
+
+	case OP_EXPR:
+	    /* Evaulate the expression contained in buf and push its value */
+	    val = expr_value(buf->data);
+	    Stringtrunc(buf, 0);
+	    val = val ? valval(val) : shareval(val_zero);
+	    if (!pushval(val)) goto prog_interpret_exit;
+	    break;
+
 	case OP_RETURN:
 	case OP_RESULT:
 	    if ((val = prog->code[cip].arg.val))
@@ -785,25 +767,18 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    break;
 	case OP_AVAR:
 	case OP_PVAR:
-	    str = prog->code[cip].arg.str;
-	    val = getnearestvarval(str->data);
-	    empty = 1;
+	    (val = (prog->code[cip].arg.val))->count++;
 	    if (op_is_push(op)) {
-		if (val) {
-		    val->count++;
-		    if (!pushval(val))
-			goto prog_interpret_exit;
-		    empty = (val->type & TYPE_STR && !val->sval->len);
-		} else {
-		    if (!pushval(newstr("", -1)))
-			goto prog_interpret_exit;
-		    empty = 1;
-		}
-	    } else if (val) {
+		(val = valval(val))->count++;
+		if (!pushval(val))
+		    goto prog_interpret_exit;
+		empty = (val->type & TYPE_STR && !val->sval->len);
+	    } else {
 		str = valstr(val);
 		empty = !str->len;
 		SStringcat(buf, str);
 	    }
+	    freeval(val);
 	    break;
 	case OP_AREG:
 	    empty = (regsubstr(buf, prog->code[cip].arg.i) <= 0);
@@ -912,6 +887,7 @@ Value *prog_interpret(Program *prog, int in_expr)
 	default:
 	    internal_error(__FILE__, __LINE__, "invalid opcode 0x%04X at %d",
 		op, cip);
+	    cip = prog->len; /* end the loop */
 	    break;
 	}
     }
@@ -941,7 +917,7 @@ int prog_run(Program *prog, String *args, int offset, const char *name,
     String *kbnumlocal)
 {
     Arg *true_argv = NULL;		/* unshifted argument vector */
-    int saved_cmdsub, saved_argc, saved_breaking, saved_argtop;
+    int saved_cmdsub, saved_argc, saved_argtop;
     Arg *saved_argv;
     String *saved_argstring;
     const char *saved_command;
@@ -958,7 +934,6 @@ int prog_run(Program *prog, String *args, int offset, const char *name,
     saved_argstring = argstring;
     saved_argc = tf_argc;
     saved_argv = tf_argv;
-    saved_breaking = breaking;
     saved_argtop = argtop;
     saved_tfin = tfin;
     saved_tfout = tfout;
@@ -994,7 +969,6 @@ int prog_run(Program *prog, String *args, int offset, const char *name,
     tf_argc = saved_argc;
     tf_argv = saved_argv;
     argstring = saved_argstring;
-    breaking = exiting ? -1 : saved_breaking;
     argtop = saved_argtop;
     current_command = saved_command;
     recur_count--;
@@ -1224,7 +1198,8 @@ static int list(Program *prog, int subs)
     keyword_id_t oldblock;
     int is_a_command, is_a_condition, is_special;
     int failed = 0, result = 0;
-    const char *exprstart, *stmtstart;
+    /*const char *exprstart;*/
+    const char *stmtstart;
     static const char unexpect_msg[] = "unexpected /%s in %s block";
     int is_pipe = 0;
     int block_start, jump_point;
@@ -1272,7 +1247,7 @@ static int list(Program *prog, int subs)
             if (*ip == '(') {
                 is_a_condition = TRUE;
                 oldblock = block;
-                exprstart = ip;
+                /*exprstart = ip;*/
                 ip++; /* skip '(' */
                 if (!expr(prog)) goto list_exit;
                 if (*ip != ')') {
@@ -1316,6 +1291,21 @@ static int list(Program *prog, int subs)
 		jump_point = prog->len - 1;
                 continue;
 
+            case BREAK:
+	    {
+		int levels = (is_end_of_statement(ip) || is_end_of_cmdsub(ip)) ?
+		    1 : strtoint(ip, &ip);
+                if (levels <= 0) {
+		    parse_error(prog, "/BREAK", "positive integer");
+                    block = oldblock;
+                    goto list_exit;
+                }
+		code_add_nomecho(prog, OP_JUMP, -levels);
+		code_mark(prog, ip); /* XXX ??? */
+		block = oldblock;
+                continue;
+	    }
+
             case DONE:
                 if (oldblock != DO) {
                     unexpected(block, oldblock);
@@ -1323,6 +1313,21 @@ static int list(Program *prog, int subs)
                     goto list_exit;
                 }
 		code_add_nomecho(prog, OP_JUMP, block_start);
+		/* fill in the jump address for each BREAK */
+		{
+		    int i;
+		    for (i = block_start; i < prog->len; i++) {
+			if (op_type_is(prog->code[i].op, JUMP) &&
+			    prog->code[i].arg.i < 0 &&
+			    prog->code[i].arg.i != ENDIF_PLACEHOLDER)
+			{
+			    if (prog->code[i].arg.i == -1)
+				prog->code[i].arg.i = prog->len;
+			    else
+				prog->code[i].arg.i++;
+			}
+		    }
+		}
 		code_add(prog, OP_DONE, 0);
 		comefrom(prog, jump_point, prog->len - 1);
 		eat_space(prog);
@@ -1350,7 +1355,8 @@ static int list(Program *prog, int subs)
                     block = oldblock;
                     goto list_exit;
                 }
-		code_add_nomecho(prog, is_a_condition ? OP_JZ : OP_JRZ, -1);
+		code_add_nomecho(prog, is_a_condition ? OP_JZ : OP_JRZ,
+		    ENDIF_PLACEHOLDER);
 		code_mark(prog, ip);
 		jump_point = prog->len - 1;
                 continue;
@@ -1362,7 +1368,7 @@ static int list(Program *prog, int subs)
                     block = oldblock;
                     goto list_exit;
                 }
-		code_add_nomecho(prog, OP_JUMP, -1);
+		code_add_nomecho(prog, OP_JUMP, ENDIF_PLACEHOLDER);
 		comefrom(prog, jump_point, prog->len);
                 continue;
 
@@ -1373,12 +1379,12 @@ static int list(Program *prog, int subs)
                     goto list_exit;
                 }
 		eat_space(prog);
-		/* fill in the jump-to-end after each THEN block */
+		/* fill in the jump address after each THEN block */
 		{
 		    int i;
 		    for (i = block_start; i < prog->len; i++) {
 			if (op_type_is(prog->code[i].op, JUMP) &&
-			    prog->code[i].arg.i == -1)
+			    prog->code[i].arg.i == ENDIF_PLACEHOLDER)
 			{
 			    prog->code[i].arg.i = prog->len;
 			}
@@ -1386,6 +1392,51 @@ static int list(Program *prog, int subs)
 		}
 		code_add(prog, OP_ENDIF);   /* no-op, to hold mecho pointers */
                 result = 1;  goto list_exit;
+
+	    case TEST:
+	    case RETURN:
+	    case RESULT:
+	    {
+		Value *val = NULL;
+		String *dest;
+		/* len=1 forces data allocation (expected by prog_interpret) */
+		(dest = Stringnew(NULL, 1, 0))->links++;
+		result = expand(prog, dest, subs, NULL);
+		if (!result)
+		    goto list_exit;
+		if (result == 2) {
+		    /* expr is generated at runtime, must defer compilation */
+		    code_add(prog, OP_EXPR, NULL);
+
+		} else {
+		    /* expression is fixed, can compile it now */
+		    const char *saved_ip = ip;
+		    int exprstart = prog->len; /* start of expr code in prog */
+		    ip = dest->data;
+		    eat_space(prog);
+		    if (!*ip) {
+			val = shareval(val_zero);
+		    } else if (!expr(prog)) {
+			prog_free_tail(prog, exprstart); /* rm bad expr code */
+			val = shareval(val_zero);
+		    } else if (*ip) {
+			parse_error(prog, "expression", "end of expression");
+			prog_free_tail(prog, exprstart); /* rm bad expr code */
+			val = shareval(val_zero);
+		    }
+		    ip = saved_ip; /* XXX need to restore line number too */
+		    /* XXX is this safe? prog may have debug ptrs into dest. */
+		    Stringfree(dest);
+		}
+		switch (block) {
+		    case TEST:   code_add(prog, OP_TEST, val);   break;
+		    case RETURN: code_add(prog, OP_RETURN, val); break;
+		    case RESULT: code_add(prog, OP_RESULT, val); break;
+		    default: /* impossible */ break;
+		}
+		block = oldblock;
+                break;
+	    }
 
             default:
                 /* not a control statement */
@@ -1445,7 +1496,7 @@ static int list(Program *prog, int subs)
     }
 
 list_exit:
-    return result;
+    return !!result;
 }
 
 const char **keyword(const char *id)
@@ -1456,18 +1507,21 @@ const char **keyword(const char *id)
 
 static keyword_id_t keyword_parse(Program *prog)
 {
-    const char **result, *end;
+    const char **result, *start, *end;
     char buf[KEYWORD_LENGTH+1];
 
-    if (!is_keystart(*ip)) return 0;          /* fast heuristic */
+    start = (*ip == '@') ? ip + 1 : ip;
+    if (!is_keystart(*start)) return 0;		/* fast heuristic */
 
-    end = ip + 1;
-    while (*end && !is_space(*end) && *end != '%' && *end != ')')
-        end++;
-    if (end - ip >= sizeof(buf)) return 0;    /* too long, can't be keyword */
+    end = start + 1;
+    while (*end && !is_space(*end) && *end != '%' && *end != ')') {
+	if (++end - start > KEYWORD_LENGTH)
+	    return 0; /* too long to be keyword */
+    }
 
-    strncpy(buf, ip, end - ip);
-    buf[end - ip] = '\0';
+    /* XXX stupid copy */
+    strncpy(buf, start, end - start);
+    buf[end - start] = '\0';
     if (!(result = keyword(buf)))
         return 0;
     for (ip = end; is_space(*ip); ip++);
@@ -1514,39 +1568,30 @@ int dollarsub(Program *prog, String **destp)
     return result;
 }
 
-static int statement(Program *prog, int subs)
+/* returns: 0=error, 1=static, 2=dynamic */
+static int expand(Program *prog, String *dest, int subs, opcmd_t *opcmdp)
 {
     const char *start;
-    String *dest;
-    int result = 1, resolvable = 0;
-    int orig_len;
-    opcode_t op;
-    BuiltinCmd *cmd = NULL;
-
-    orig_len = prog->len;
-    /* len=1 forces dest->data to be allocated (expected by prog_interpret) */
-    (dest = Stringnew(NULL, 1, 0))->links++;
-    /*code_add(prog, OP_NEWSTMT);*/
-
-    if (ip[0] != '/') {
-	op = OP_SEND;
-    } else if (ip[1] == '/') {
-	ip++;
-	op = OP_SEND;
-    } else {
-	ip++;
-	op = OP_EXECUTE;
-	resolvable = 1;
-    }
+    int error = 0;
+    int orig_len = prog->len;
 
     while (*ip) {
 	eat_newline(prog);
-        if (*ip == '\\' && subs >= SUB_NEWLINE) {
+	/* XXX The '\\' test used to be >= SUB_NEWLINE when this code was
+	 * part of statement(), but when test/return/result were implemented
+	 * as real keywords, things like
+	 *   /test echo('\\.')
+	 * gave the wrong results.  Changing it to SUB_FULL fixed that problem,
+	 * but it fails to generate a 'legal escapes' warning for
+	 *   /test echo('\.')
+	 * and may have caused other problems I haven't discovered yet.
+	 */
+        if (*ip == '\\' && subs >= SUB_FULL) {
             ++ip;
-            if (!backsub(prog, dest)) { result = 0; break; }
+            if (!backsub(prog, dest)) { error++; break; }
         } else if (*ip == '/' && subs >= SUB_FULL) {
             ++ip;
-            if (!slashsub(prog, dest)) { result = 0; break; }
+            if (!slashsub(prog, dest)) { error++; break; }
         } else if (*ip == '%' && subs >= SUB_NEWLINE) {
             if (is_end_of_statement(ip)) {
                 while (dest->len && is_space(dest->data[dest->len-1]))
@@ -1554,99 +1599,101 @@ static int statement(Program *prog, int subs)
                 break;
             }
             ++ip;
-	    if (!percentsub(prog, subs, &dest)) { result = 0; break; }
-	    if (prog->len != orig_len) resolvable = 0;
+	    if (!percentsub(prog, subs, &dest)) { error++; break; }
+	    if (prog->len != orig_len) opcmdp = NULL;
         } else if (*ip == '$' && subs >= SUB_FULL) {
             ++ip;
-	    if (!dollarsub(prog, &dest)) { result = 0; break; }
-	    if (prog->len != orig_len) resolvable = 0;
+	    if (!dollarsub(prog, &dest)) { error++; break; }
+	    if (prog->len != orig_len) opcmdp = NULL;
         } else if (subs >= SUB_FULL && is_end_of_cmdsub(ip)) {
             break;
         } else {
             /* is_statmeta() is much faster than all those if statements. */
             start = ip++;
-            while (*ip && !is_statmeta(*ip) && !(is_space(*ip) && resolvable))
+            while (*ip && !is_statmeta(*ip) && !(is_space(*ip) && opcmdp))
 		ip++;
             SStringoncat(dest, prog->src, start - prog->src->data, ip - start);
-	    if (resolvable && (!*ip || is_space(*ip))) {
+	    if (opcmdp && (!*ip || is_space(*ip) ||
+		is_end_of_statement(ip)))
+	    {
 		/* command name is constant, can be resolved at compile time */
 		int i, truth = 1;
 		for (i = 0; dest->data[i] == '!'; i++)
 		    truth = !truth;
-		op = (dest->data[i] == '@') ? (++i, OP_BUILTIN) : OP_COMMAND;
-		if ((cmd = find_builtin_cmd(dest->data + i))) {
+		opcmdp->op = (dest->data[i] == '@') ? (++i, OP_BUILTIN) :
+		    OP_COMMAND;
+		if ((opcmdp->cmd = find_builtin_cmd(dest->data + i))) {
 		    Stringtrunc(dest, 0);
 		    while (is_space(*ip)) { ip++; }
-		} else if (op == OP_BUILTIN) {
+		} else if (opcmdp->op == OP_BUILTIN) {
 		    eprintf("%s: not a builtin command", dest->data + i);
-		    result = 0;
+		    error++;
 		    break;
 		} else {
 		    int j = 0;
 		    while (i <= dest->len)
 			dest->data[j++] = dest->data[i++];
 		    dest->len = j - 1;
-		    op = OP_MACRO;
+		    opcmdp->op = OP_MACRO;
 		}
 		if (!truth)
-		    op |= OPR_FALSE;
-		resolvable = 0;
+		    opcmdp->op |= OPR_FALSE;
+		opcmdp = NULL;
 	    }
         }
     }
 
-    if (!result) {
+    if (error) {
 	Stringfree(dest);
+	return 0; /* error */
+
+    } else if (prog->len == orig_len) {
+	return 1; /* static */
+
     } else {
-	if (prog->len > orig_len) {
-	    if (dest->len) {
-		code_add(prog, OP_APPEND, dest);
-	    } else {
-		Stringfree(dest);
-	    }
-	    dest = NULL;
-	}
-	if (cmd) {
-	    /* XXX this optimization should be done AFTER code_add(), which
-	     * may have optimized a complex argument down to a single string.
-	     */
-	    if (dest && (
-                cmd->func == handle_test_command ||
-		cmd->func == handle_result_command ||
-		cmd->func == handle_return_command))
-	    {
-		const char *saved_ip = ip;
-		Value *val = NULL;
-		int exprstart = prog->len; /* start of expr code in prog */
-		ip = dest->data;
-		eat_space(prog);
-		if (!*ip) {
-		    val = shareval(val_zero);
-		} else if (!expr(prog)) {
-		    prog_free_tail(prog, exprstart); /* remove bad expr code */
-		    val = shareval(val_zero);
-		} else if (*ip) {
-                    parse_error(prog, "expression", "end of expression");
-		    prog_free_tail(prog, exprstart); /* remove bad expr code */
-		    val = shareval(val_zero);
-		}
-		ip = saved_ip; /* XXX need to restore line number too */
-		if (cmd->func == handle_result_command) {
-		    code_add(prog, OP_RESULT, val);
-		} else if (cmd->func == handle_return_command) {
-		    code_add(prog, OP_RETURN, val);
-		} else /* if (cmd->func == handle_test_command) */ {
-		    code_add(prog, OP_TEST, val);
-		}
-		/* XXX is this safe? prog may have debug ptrs into dest. */
-		Stringfree(dest);
-	    } else {
-		code_add(prog, OP_ARG, dest);
-		code_add(prog, op, cmd);
-	    }
+	/* text is generated at runtime */
+	if (dest->len) {
+	    code_add(prog, OP_APPEND, dest);
 	} else {
-	    code_add(prog, op, dest);
+	    Stringfree(dest);
 	}
+	dest = NULL;
+	return 2; /* dynamic */
+    }
+}
+
+static int statement(Program *prog, int subs)
+{
+    String *dest;
+    int result;
+    opcmd_t opcmd, *opcmdp = NULL;
+
+    opcmd.cmd = NULL;
+
+    if (ip[0] != '/') {
+	opcmd.op = OP_SEND;
+    } else if (ip[1] == '/') {
+	ip++;
+	opcmd.op = OP_SEND;
+    } else {
+	ip++;
+	opcmd.op = OP_EXECUTE;
+	opcmdp = &opcmd;
+    }
+
+    /* len=1 forces dest->data to be allocated (expected by prog_interpret) */
+    (dest = Stringnew(NULL, 1, 0))->links++;
+
+    result = expand(prog, dest, subs, opcmdp);
+
+    if (!result)
+	return 0;
+
+    if (opcmd.cmd) {
+	code_add(prog, OP_ARG, result == 1 ? dest : NULL);
+	code_add(prog, opcmd.op, opcmd.cmd);
+    } else {
+	code_add(prog, opcmd.op, result == 1 ? dest : NULL);
     }
     return result;
 }
@@ -1912,8 +1959,12 @@ int varsub(Program *prog, int sub_warn, int in_expr)
 	} else if (cstrcmp(selector->data, "PR") == 0) {
 	    code_add(prog, in_expr ? OP_PREG : OP_AREG, -2);
 	} else {
-	    code_add(prog, in_expr ? OP_PVAR : OP_AVAR, selector);
-	    selector->links++;
+	    Value *val = newid(selector->data, selector->len);
+	    if (in_expr) {
+		code_add(prog, *ip == '-' ? OP_PVAR : OP_PUSH, val);
+	    } else {
+		code_add(prog, OP_AVAR, val);
+	    }
 	}
     }
 

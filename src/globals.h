@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: globals.h,v 35000.51 2003/05/27 01:09:22 hawkeye Exp $ */
+/* $Id: globals.h,v 35000.53 2003/09/01 20:20:12 hawkeye Exp $ */
 
 #ifndef GLOBALS_H
 #define GLOBALS_H
@@ -182,6 +182,7 @@ enum Vars {
 #define max_iter	getintvar(VAR_max_iter)
 #define max_kbnum	getintvar(VAR_max_kbnum)
 #define max_recur	getintvar(VAR_max_recur)
+#define mccp		getintvar(VAR_mccp)
 #define mecho		getintvar(VAR_mecho)
 #define meta_esc	getintvar(VAR_meta_esc)
 #define more		getintvar(VAR_more)
@@ -218,6 +219,7 @@ enum Vars {
 #define wordpunct	getstdvar(VAR_wordpunct)
 #define wrapflag	getintvar(VAR_wrap)
 #define wraplog		getintvar(VAR_wraplog)
+#define wrappunct	getintvar(VAR_wrappunct)
 #define wrapsize	getintvar(VAR_wrapsize)
 #define wrapspace	getintvar(VAR_wrapspace)
 

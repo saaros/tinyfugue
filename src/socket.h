@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: socket.h,v 35004.36 2003/05/27 01:09:25 hawkeye Exp $ */
+/* $Id: socket.h,v 35004.38 2003/10/22 22:53:06 hawkeye Exp $ */
 
 #ifndef SOCKET_H
 #define SOCKET_H
@@ -15,9 +15,11 @@
 #define SOCK_SEND	1
 
 /* /connect flags */
-#define CONN_AUTOLOGIN	001
-#define CONN_QUIETLOGIN	002
-#define CONN_SSL	004
+#define CONN_AUTOLOGIN	0x01
+#define CONN_QUIETLOGIN	0x02
+#define CONN_SSL	0x04
+#define CONN_BG		0x08
+#define CONN_FG		0x10
 
 struct World   *world_decl;	/* declares struct World */
 
@@ -52,6 +54,7 @@ extern int     world_hook(const char *fmt, const char *name);
 
 extern struct World *xworld(void);
 extern int	     xsock_is_fg(void);
+extern void          xsock_alert_id(void);
 extern const char   *fgname(void);
 extern const char   *world_info(const char *worldname, const char *fieldname);
 extern struct World *named_or_current_world(const char *name);

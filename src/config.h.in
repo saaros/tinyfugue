@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: config.h.in,v 35004.16 2003/05/27 01:09:21 hawkeye Exp $ */
+/* $Id: config.h.in,v 35004.25 2003/10/30 02:22:00 hawkeye Exp $ */
 
 #define PLATFORM_UNIX
 
@@ -29,11 +29,7 @@
 #define HAVE_PWD_H 0
 #define NEED_PTEM_H 0
 #define HAVE_ZLIB_H 0
-
-#if HAVE_ZLIB_H
 #define HAVE_LIBZ 0
-#endif
-
 #define SOCKS 0
 #define HAVE_LIBSSL 0
 
@@ -44,11 +40,8 @@
 #define HAVE_FILENO 0
 #define HAVE_GETCWD 0
 #define HAVE_GETHOSTBYNAME 0
-#define HAVE_GETHOSTBYNAME2 0
 #define HAVE_GETIPNODEBYNAME 0
-#if HAVE_PWD_H
-# define HAVE_GETPWNAM 0
-#endif
+#define HAVE_GETPWNAM 0
 #define HAVE_GETTIMEOFDAY 0
 #define HAVE_GETWD 0
 #define HAVE_H_ERRNO 0
@@ -61,6 +54,7 @@
 #define HAVE_MEMSET 0
 #define HAVE_RAISE 0
 #define HAVE_SETLOCALE 0
+#define HAVE_SETRLIMIT 0
 #define HAVE_SIGACTION 0
 #define HAVE_SRAND 0
 #define HAVE_SRANDOM 0
@@ -81,15 +75,20 @@
 
 #define TERMCAP 0
 #define HARDCODE 0
-#define USE_TERMIOS 0
-#define USE_TERMIO 0
-#define USE_SGTTY 0
+#define HAVE_TERMIOS_H 0
+#define HAVE_TERMIO_H 0
+#define HAVE_SGTTY_H 0
 
+#define HAVE_SOCKADDR_SA_LEN 0
+#define HAVE_GETADDRINFO 0
 #define ENABLE_INET6 0
+#define DISABLE_CORE 0
 #undef IN6_ADDR
 #define NO_HISTORY 0
 #define NO_PROCESS 0
 #define NO_FLOAT 0
+
+#define HAVE_MCCP (HAVE_ZLIB_H && HAVE_LIBZ)
 
 #undef inline
 
@@ -98,14 +97,15 @@
 #undef NDEBUG
 #include <assert.h>
 
-extern int feature_float;
-extern int feature_history;
-extern int feature_process;
-extern int feature_IPv6;
-extern int feature_MCCPv2;
-extern int feature_ssl;
-extern int feature_SOCKS;
-extern int feature_locale;
-extern int feature_subsecond;
-extern int feature_ftime;
-extern int feature_TZ;
+extern const int feature_core;
+extern const int feature_float;
+extern const int feature_ftime;
+extern const int feature_history;
+extern const int feature_IPv6;
+extern const int feature_locale;
+extern const int feature_MCCPv2;
+extern const int feature_process;
+extern const int feature_SOCKS;
+extern const int feature_ssl;
+extern const int feature_subsecond;
+extern const int feature_TZ;

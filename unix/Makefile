@@ -1,4 +1,4 @@
-# $Id: Makefile,v 35000.34 2003/05/27 01:54:18 hawkeye Exp $
+# $Id: Makefile,v 35000.35 2003/06/06 03:25:28 hawkeye Exp $
 ########################################################################
 #
 #  TinyFugue - programmable mud client
@@ -17,13 +17,15 @@
 
 SHELL = /bin/sh
 
-default: files
-# If the next rule were first, a few strange versions of make would try
-# to make "install", "all", AND "files", instead of just "install".
+default: __always__
+	@case `pwd` in; \
+	*/tf*/unix) cd ..;; \
+	esac; \
+	make
 
-install all files: src/Makefile src/config.h _log
-	cd ./src; { $(MAKE) $@ 2>&1; echo; cat exitmsg; } | \
-	    { tee -a ../Build.log || cat; }
+# If the next rule were first, a few strange versions of make would try
+# to make "install", "all", "files", AND "tf", instead of just "install".
+install all files tf: default
 
 configure: configure.in
 	autoconf
@@ -33,33 +35,9 @@ reconfigure:  unconfigure install
 unconfigure:
 	rm -f src/Makefile src/config.h
 
-config src/Makefile src/config.h: Makefile unix/Config unix/tfconfig unix/unix.mak
-	@rm -f ../src/Makefile ../src/config.h ../Build.log tfconfig.log
-#	Use tfconfig to create config files.  If it fails, we don't exit
-#	now, we want to create Build.log first.  Instead, we rm src/Makefile
-#	but not src/config.h;  this lets 'install' continue on to '_log'.
-#	('install' probably got here via the src/Makefile dependancy; if we
-#	rm'd src/config.h, then 'install' would come back here again for the
-#	src/config.h dependancy.)  Then, '_log' will create Build.log and,
-#	if an error occured in this rule, '_log' will exit.
-#	Note: tee eats exit code of tfconfig, so we couldn't use it anyway.
-#	Note: some buggy versions of bash can't handle using descriptor 3 here.
-	-@cd unix; \
-		{ ./tfconfig $(TFVER) 2>&1 4>../src/config.h 5>vars.mak || \
-		rm -f ../src/Makefile; } | \
-			tee tfconfig.log
-
-_log:
-	-@{ cat unix/tfconfig.log; echo; } > Build.log
-#	Exit now if there were errors in tfconfig.
-	@test -f src/Makefile && test -f src/config.h
-#	No errors.  Save info in Build.log, and continue.
-	-@{ cat unix/vars.mak; echo; } >> Build.log
-	-@{ cat src/config.h; echo; } >> Build.log
-
 clean:
-	cd ./src; rm -f *.o Makefile core* exitmsg config.h typescript*
-	cd ./unix; rm -f vars.mak *.log functest* libtest* test.c a.out
+	cd ./src; rm -f *.o Makefile core* *.core config.h typescript*
+	cd ./unix; rm -f vars.mak
 
 distclean:  clean
 	rm -f Build.log
@@ -101,14 +79,6 @@ dist: disttest srcdist distclean help bogus-makefile configure
 
 gzdist: ./tf-lib/tf-help ../tf-$(TFVER).tar
 	cd ..; gzip tf-$(TFVER).tar
-
-tcp.com:
-	cd ..; scp tf-$(TFVER).tar.gz tf-$(TFVER).zip tf-$(TFVER)-help.tar.gz \
-	    tcp.com:
-
-# XXX
-laurel: devhome files
-	cp CHANGES $$HOME/www/tf/
 
 __always__:
 

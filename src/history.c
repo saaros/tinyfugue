@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: history.c,v 35004.91 2003/05/27 01:09:22 hawkeye Exp $";
+static const char RCSid[] = "$Id: history.c,v 35004.96 2003/10/17 00:26:34 hawkeye Exp $";
 
 
 /****************************************************************
@@ -32,7 +32,7 @@ static const char RCSid[] = "$Id: history.c,v 35004.91 2003/05/27 01:09:22 hawke
 #include "variable.h"		/* set_var_by_*() */
 #include "signals.h"		/* interrupted() */
 
-int feature_history = !(NO_HISTORY - 0);
+const int feature_history = !(NO_HISTORY - 0);
 #if !NO_HISTORY
 
 #define GLOBALSIZE    1000	/* global history size */
@@ -46,7 +46,7 @@ typedef struct History {	/* circular list of lines, and logfile */
 } History;
 
 static int      next_hist_opt(char **ptr, int *offsetp, History **histp,
-		    struct timeval *timep, long *ival);
+		    void *u);
 static void     save_to_hist(History *hist, String *line);
 static void     save_to_log(History *hist, const String *str);
 static void     hold_input(const String *str);
@@ -241,7 +241,7 @@ int do_recall(String *args, int offset)
     struct timeval tv0, tv1, *tvp0, *tvp1;
     char *ptr;
     AUTO_BUFFER(recall_time_format);
-    attr_t attrs = 0;
+    attr_t attrs = 0, tmpattrs;
     char opt;
     Pattern pat;
     World *world = xworld();
@@ -259,12 +259,12 @@ int do_recall(String *args, int offset)
 
     init_pattern_str(&pat, NULL);
     startopt(args, "ligw:a:f:t:m:vqA#B#C#");
-    while ((opt = next_hist_opt(&ptr, &offset, &hist, NULL, &ival))) {
+    while ((opt = next_hist_opt(&ptr, &offset, &hist, &ival))) {
         switch (opt) {
         case 'a': case 'f':
-            if ((i = parse_attrs(&ptr)) < 0)
+            if (!parse_attrs(&ptr, &tmpattrs))
                 goto do_recall_exit;
-            attrs |= i;
+            attrs |= tmpattrs;
             break;
         case 't':
 	    Stringcpy(recall_time_format, ptr);
@@ -598,8 +598,8 @@ String *history_sub(String *line)
 {
     STATIC_BUFFER(pattern);
     STATIC_BUFFER(buffer);
-    char *replacement, *loc;
-    String *src;
+    char *replacement, *loc = NULL;
+    String *src = NULL;
     int i;
 
     pattern->data = line->data + 1;
@@ -639,15 +639,14 @@ static void listlog(World *world)
  * selected by the "ligw:" options.  *histp will be unchanged if no relavant
  * options are given; the caller should assign a default before calling.
  */
-static int next_hist_opt(char **ptr, int *offsetp, History **histp,
-    struct timeval *timep, long *ival)
+static int next_hist_opt(char **ptr, int *offsetp, History **histp, void *u)
 {
     World *world;
     char c, *p;
     int selected = 0;
 
     if (!ptr) ptr = &p;
-    while ((c = nextopt(ptr, ival, timep, offsetp))) {
+    while ((c = nextopt(ptr, u, NULL, offsetp))) {
         switch (c) {
         case 'l':
 	    if (selected++) goto multiple_error;
@@ -686,7 +685,7 @@ struct Value *handle_recordline_command(String *args, int offset)
     String *line;
 
     startopt(args, "lgiw:t@");
-    while ((opt = next_hist_opt(NULL, &offset, &history, &tv, NULL))) {
+    while ((opt = next_hist_opt(NULL, &offset, &history, &tv))) {
         if (opt == 't') tvp = &tv;
         else return shareval(val_zero);
     }
@@ -718,7 +717,7 @@ struct Value *handle_log_command(String *args, int offset)
 
     history = &dummy;
     startopt(args, "lgiw:");
-    if (next_hist_opt(NULL, &offset, &history, NULL, NULL))
+    if (next_hist_opt(NULL, &offset, &history, NULL))
         return shareval(val_zero);
 
     if (history == &dummy && !(args->len - offset)) {
@@ -797,15 +796,11 @@ struct Value *handle_histsize_command(String *args, int offset)
 
     hist = globalhist;
     startopt(args, "lgiw:");
-    if (next_hist_opt(NULL, &offset, &hist, NULL, NULL))
+    if (next_hist_opt(NULL, &offset, &hist, NULL))
         return shareval(val_zero);
     if (args->len - offset) {
         ptr = args->data + offset;
         if ((maxsize = numarg(&ptr)) <= 0) return shareval(val_zero);
-        if (maxsize > 100000) {
-            eprintf("%d lines?  Don't be ridiculous.", maxsize);
-            return shareval(val_zero);
-        }
 	if (!resize_cqueue(&hist->cq, maxsize)) {
 	    eprintf("not enough memory for %d lines.", maxsize);
 	    maxsize = 0;

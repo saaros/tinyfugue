@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: variable.c,v 35004.75 2003/05/27 01:09:26 hawkeye Exp $";
+static const char RCSid[] = "$Id: variable.c,v 35004.80 2003/10/23 19:16:56 hawkeye Exp $";
 
 
 /**************************************
@@ -50,11 +50,8 @@ static void   init_special_variable(Var *var, const char *cval,
 	(Var*)hashed_find(name, hash, var_table)
 #define findglobalvar(name) \
 	(Var*)hashed_find(name, hash_string(name), var_table)
-#define findspecialvar(name) \
-        (Var *)binsearch((void*)(name), (void*)special_var, NUM_VARS, \
-            sizeof(Var), strstructcmp)
 
-#define HASH_SIZE 499    /* prime number */
+#define HASH_SIZE 997    /* prime number */
 
 static List localvar[1];          /* local variables */
 static HashTable var_table[1];    /* global variables */
@@ -75,6 +72,9 @@ static String enum_block[] = {
     STRING_LITERAL("nonblocking"),
     STRING_NULL };
 
+String enum_off[]	= {
+    STRING_LITERAL("off"),
+    STRING_NULL };
 String enum_flag[]	= {
     STRING_LITERAL("off"),
     STRING_LITERAL("on"),
@@ -133,10 +133,13 @@ static void init_special_variable(Var *var,
     const char *cval, long ival, long uval)
 {
     var->val.sval = NULL;
+    var->flags |= VARSET;
     switch (var->val.type & TYPES_BASIC) {
     case TYPE_STR:
-        if (!cval) return;  /* don't insert into hash table */
-        (var->val.sval = Stringnew(cval, -1, 0))->links++;
+        if (cval)
+	    (var->val.sval = Stringnew(cval, -1, 0))->links++;
+	else
+	    var->flags &= ~VARSET;
         break;
     case TYPE_ENUM:
         var->val.sval = &var->enumvec[ival >= 0 ? ival : 0];
@@ -154,7 +157,6 @@ static void init_special_variable(Var *var,
         break;
     }
     var->node = hash_insert((void *)var, var_table);
-    var->flags |= VARSET;
 }
 
 /* initialize structures for variables */
@@ -188,20 +190,25 @@ void init_variables(void)
         /* There should always be an '=', but some shells (zsh?) violate this.*/
         cvalue = strchr(str, '=');
         if (cvalue) *cvalue++ = '\0';
-        var = findspecialvar(str);
-        svalue = cvalue ? Stringnew(cvalue, -1, 0) : blankline;
+        var = findglobalvar(str);
+	/* note: Stringnew(cvalue,-1,0) would create a non-resizeable string */
+        svalue = cvalue ? Stringcpy(Stringnew(NULL,-1,0), cvalue) : blankline;
         svalue->links++;
         if (!var) {
             /* new variable */
             var = newglobalvar(str, TYPE_STR, svalue);
             var->node = hash_insert((void*)var, var_table);
-        } else {
+        } else if (var->flags & VARSPECIAL) {
             /* overwrite a pre-defined special variable */
             set_special_var(var, TYPE_STR, svalue, 0, 0);
             /* We do NOT call the var->func here, because the modules they
              * reference have not been initialized yet.  The init_*() calls
              * in main.c should call the funcs in the appropraite order.
              */
+	} else {
+	    /* Shouldn't happen unless environment contained same name twice */
+	    set_var_direct(var, TYPE_STR, svalue);
+	    if (!var->node) var->node = hash_insert((void *)var, var_table);
         }
         if (cvalue) *--cvalue = '=';  /* restore '=' */
         var->flags |= VAREXPORT;
@@ -441,6 +448,13 @@ static void remove_env(const char *str)
 /* set type and value directly into variable */
 static void set_var_direct(Var *var, int type, void *value)
 {
+
+    if (value == &var->val.u) {
+	/* self assignment:  if we didn't catch this, the clearval of the
+	 * lhs would clobber the rhs */
+	return;
+    }
+
     assert(var->val.count == 1);
     clearval(&var->val);
 
@@ -491,18 +505,18 @@ static void set_env_var(Var *var, int exportflag)
 Var *setvar(Var *var, const char *name, unsigned int hash, int type,
     void *value, int exportflag)
 {
-    if (var || (var = findspecialvar(name))) {
-        if (!set_special_var(var, type, value, 1, exportflag))
-            return NULL;
-    } else if ((var = hfindglobalvar(name, hash))) {
-        set_var_direct(var, type, value);
-        if (!var->node) var->node = hash_insert((void *)var, var_table);
-        set_env_var(var, exportflag);
-    } else {
+    if (!var && !(var = hfindglobalvar(name, hash))) {
         var = newglobalvar(name, type, value);
         if (setting_nearest && pedantic) {
             eprintf("warning: variable '%s' was not previously defined in any scope, so it has been created in the global scope.", name);
         }
+        if (!var->node) var->node = hash_insert((void *)var, var_table);
+        set_env_var(var, exportflag);
+    } else if (var->flags & VARSPECIAL) {
+        if (!set_special_var(var, type, value, 1, exportflag))
+            return NULL;
+    } else /* exists, but not special */ {
+        set_var_direct(var, type, value);
         if (!var->node) var->node = hash_insert((void *)var, var_table);
         set_env_var(var, exportflag);
     }
@@ -638,6 +652,8 @@ struct Value *handle_export_command(String *args, int offset)
 int unsetvar(Var *var)
 {
     Toggler *func = NULL;
+
+    if (!(var->flags & VARSET)) return 1;
 
     if (var->val.type == TYPE_POS) {
         eprintf("%s must be a positive integer, so can not be unset.",

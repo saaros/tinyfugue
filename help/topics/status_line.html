@@ -86,11 +86,12 @@
     <a href="../topics/special_variables.html#clock_format">%clock_format</a>.
     <br><br>
 
-<dt><code>/clock <i>format</i></code>
+<dt><code>/clock [<i>format</i>]</code>
     <dd>Add a clock to the end of the status bar if there is not already a
     clock on the status bar; in either case, use <i>format</i> to control the
     format of the clock (see <a href="../commands/ftime.html">ftime()</a>
     for the meaning of <i>format</i>).
+    If <i>format</i> is omitted, it defaults to "%H:%M".
     The width of the @clock field will be set exactly wide enough
     to hold a time formatted according to <i>format</i>.
     <br><br>
@@ -280,7 +281,7 @@
        <a href="../topics/functions.html#moresize">moresize()</a> &gt; 9999 ? "MuchMore" : \
        <a href="../topics/functions.html#pad">pad</a>("More", 4, <a href="../topics/functions.html#moresize">moresize()</a>, 4)
   <a href="../commands/set.html">/set</a> status_int_world   <a href="../topics/functions.html#strcat">strcat</a>( \
-       <a href="../topics/worlds.html">${world_name}</a> !~ "" &amp; !<a href="../topics/functions.html#is_open">is_open</a>() ? "!" : "",  <a href="../topics/worlds.html">${world_name}</a>)
+       <a href="../topics/functions.html#fg_world">fg_world</a>() !~ "" &amp; !<a href="../topics/functions.html#is_open">is_open</a>(<a href="../topics/functions.html#fg_world">fg_world</a>()) ? "!" : "",  <a href="../topics/functions.html#fg_world">fg_world</a>())
   <a href="../commands/set.html">/set</a> status_int_read    <a href="../topics/functions.html#nread">nread()</a> ? "(Read)" : ""
   <a href="../commands/set.html">/set</a> status_int_active  <a href="../topics/functions.html#nactive">nactive()</a> ? <a href="../topics/functions.html#pad">pad</a>("(Active:",0,<a href="../topics/functions.html#nactive">nactive()</a>,2,")") : ""
   <a href="../commands/set.html">/set</a> status_int_log     <a href="../topics/functions.html#nlog">nlog()</a> ? "(Log)" : ""

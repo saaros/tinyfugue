@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: opcodes.h,v 35004.17 2003/05/27 01:09:23 hawkeye Exp $ */
+/* $Id: opcodes.h,v 35004.19 2003/08/31 03:18:33 hawkeye Exp $ */
 
 /*        label     code  type  arg   result */
 /*        -----     ----  ----  ---   ------ */
@@ -44,8 +44,8 @@ defopcode(ACMDSUB  ,0x88, SUB,  NONE, APP)   /* output of a cmdsub */
 defopcode(PCMDSUB  ,0x89, SUB,  NONE, PUSH)
 defopcode(AMAC     ,0x8A, SUB,  STRP, APP)   /* value of macro */
 defopcode(PMAC     ,0x8B, SUB,  STRP, PUSH)
-defopcode(AVAR     ,0x8C, SUB,  STRP, APP)   /* value of variable */
-defopcode(PVAR     ,0x8D, SUB,  STRP, PUSH)
+defopcode(AVAR     ,0x8C, SUB,  VALP, APP)   /* value of variable */
+defopcode(PVAR     ,0x8D, SUB,  VALP, PUSH)
 defopcode(PBUF     ,0x8F, SUB,  STRP, PUSH)
 /* A0-AF jump operators.  Complementary pairs differ only in last bit. */
 defopcode(JZ       ,0xA0, JUMP, INT,  NONE)   /* jump if zero */
@@ -77,5 +77,6 @@ defopcode(DONE     ,0xC9, CTRL, NONE, NONE)
 defopcode(ENDIF    ,0xCA, CTRL, NONE, NONE)
 defopcode(PIPE     ,0xCB, CTRL, NONE, NONE)   /* pipe from this stmt to next */
 defopcode(NOP      ,0xCC, CTRL, NONE, NONE)
+defopcode(EXPR     ,0xCD, CTRL, NONE, NONE)
 
 #undef defopcode

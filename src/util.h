@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.h,v 35004.42 2003/05/27 01:09:26 hawkeye Exp $ */
+/* $Id: util.h,v 35004.43 2003/07/03 17:23:56 hawkeye Exp $ */
 
 #ifndef UTIL_H
 #define UTIL_H
@@ -106,7 +106,7 @@ extern int    smatch(const char *pat, const char *str);
 extern int    smatch_check(const char *s);
 extern char  *stripstr(char *s);
 extern void   startopt(String *args, const char *opts);
-extern char   nextopt(char **arg, long *ival, struct timeval *tv, int *offp);
+extern char   nextopt(char **arg, void *u, int *type, int *offp);
 #if HAVE_TZSET
 extern int    ch_timezone(void);
 #else

@@ -19,7 +19,8 @@
         /else \
             /echo -e %%% Speedwalk enabled.%%;\
 ;           NOT fallthru, so _map_send in map.tf won't catch it too.
-            /def -ip%{maxpri} -mregexp -h'send ^[nsewud0-9]+$$$' ~speedwalk = \
+            /def -ip%{maxpri} -mregexp -h'send ^([0-9]*[nsewud])+$$$' \
+	      ~speedwalk = \
                 /~do_speedwalk %%%*%%;\
         /endif
 

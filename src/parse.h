@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: parse.h,v 35004.37 2003/05/27 01:09:24 hawkeye Exp $ */
+/* $Id: parse.h,v 35004.38 2003/08/31 03:18:33 hawkeye Exp $ */
 
 #ifndef PARSE_H
 #define PARSE_H
@@ -13,7 +13,7 @@
 /* keywords: must be sorted and numbered sequentially */
 typedef enum {
     BREAK = 0200, DO, DONE, ELSE, ELSEIF, ENDIF,
-    EXIT, IF, RESULT, RETURN, THEN, WHILE
+    EXIT, IF, RESULT, RETURN, TEST, THEN, WHILE
 } keyword_id_t;
 
 #define OPNUM_MASK	0x00FF

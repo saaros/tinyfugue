@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: tfio.c,v 35004.89 2003/05/27 01:09:25 hawkeye Exp $";
+static const char RCSid[] = "$Id: tfio.c,v 35004.92 2003/10/28 19:10:06 hawkeye Exp $";
 
 
 /***********************************
@@ -24,7 +24,7 @@ static const char RCSid[] = "$Id: tfio.c,v 35004.89 2003/05/27 01:09:25 hawkeye 
 /* #include <sys/time.h> */   /* for struct timeval, in select() */
 #include <sys/stat.h>
 
-#if HAVE_GETPWNAM
+#if HAVE_PWD_H
 # include <pwd.h>	/* getpwnam() */
 #endif
 
@@ -119,7 +119,7 @@ char *expand_filename(const char *str)
             dir = getvar("HOME");
         } else {
 
-#if !HAVE_GETPWNAM
+#if !(HAVE_GETPWNAM && HAVE_PWD_H)
             eprintf("warning: \"~user\" filename expansion is not supported.");
 #else
             struct passwd *pw;
@@ -397,7 +397,7 @@ void tfputs(const char *str, TFILE *file)
 }
 
 /* tfputansi
- * Print to a TFILE, with embedded ANSI display codes.
+ * Print to a TFILE, converting embedded ANSI display codes to String attrs.
  */
 attr_t tfputansi(const char *str, TFILE *file, attr_t attrs)
 {
@@ -405,7 +405,7 @@ attr_t tfputansi(const char *str, TFILE *file, attr_t attrs)
 
     if (file && file->type != TF_NULL) {
         (line = Stringnew(str, -1, 0))->links++;
-        attrs = handle_ansi_attr(line, attrs, EMUL_ANSI_ATTR);
+        attrs = decode_ansi(line, attrs, EMUL_ANSI_ATTR);
         if (attrs >= 0)
             tfputline(line, file);
         Stringfree(line);
@@ -686,12 +686,27 @@ void aprintf(const char *fmt, ...)
     va_end(ap);
 }
 
+static const char interrmsg[] =
+    "Please report this to the author, and describe what you did.";
+
 void internal_error(const char *file, int line, const char *fmt, ...)
 {
     va_list ap;
 
-    eprintf("Internal error at %s:%d, %s.  %s", file, line, version,
-        "Please report this to the author, and describe what you did.");
+    eprintf("Internal error at %s:%d, %s.  %s", file, line, version, interrmsg);
+
+    va_start(ap, fmt);
+    veprintf(fmt, ap);
+    va_end(ap);
+}
+
+void internal_error2(const char *file, int line, const char *file2, int line2,
+    const char *fmt, ...)
+{
+    va_list ap;
+
+    eprintf("Internal error at %s:%d (%s:%d), %s.  %s",
+	file, line, file2, line2, version, interrmsg);
 
     va_start(ap, fmt);
     veprintf(fmt, ap);

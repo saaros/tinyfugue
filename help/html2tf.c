@@ -102,6 +102,7 @@ int main(int argc, char *argv[])
                 inattr = 0;
                 inquote = 0;
                 iscomment = 0;
+		continuetag:
                 while ((c = getc(file)) != EOF) {
                     if (taglen == 0 && c == '!') iscomment = 1;
                     if (c == '"') inquote = !inquote;
@@ -115,6 +116,10 @@ int main(int argc, char *argv[])
                 }
                 tag[taglen] = '\0';
                 attr[attrlen] = '\0';
+		if (iscomment) {
+		    if (taglen < 5 || strcmp(tag + taglen - 2, "--") != 0)
+			goto continuetag;
+		}
                 if (strcasecmp(tag, "!-- END --") == 0) {
                     break;
                 } else if (precmp(tag, "!--\"@") == 0) {

@@ -3,8 +3,6 @@
 <!--"@/relimit"-->
 <!--"@/unlimit"-->
 <h1>/limit</h1>
-<h1>/relimit</h1>
-<h1>/unlimit</h1>
 
 <p>
   Usage:
@@ -72,13 +70,27 @@
 <p>
   <a href="../commands/limit.html">/unlimit</a> disables the 
   <a href="../commands/limit.html">/limit</a> so all lines are displayed.
-  The bottommost line in the window stays put, and other lines are inserted
-  as needed above it.
+
+<p>
+  During <a href="../commands/limit.html">/limit</a>,
+  scrolling to any point, including the bottom, results in a
+  More prompt that shows the number of lines (possibly 0) below the status
+  line.  In this state,
+  <a href="../commands/limit.html">/unlimit</a>
+  will leave the bottom visible line where it
+  is, and redraw the unlimited lines above it.
   Thus, you can use <a href="../commands/limit.html">/limit</a> to find
   a line you are interested in, use the scrolling keys to position that
   line at the bottom of the window, then 
   <a href="../commands/limit.html">/unlimit</a> to see the context of that
   line.
+  But if you attempt to scroll <em>past</em> the bottom during
+  <a href="../commands/limit.html">/limit</a>,
+  the More prompt changes to "LIMIT ON"; in
+  this state,
+  <a href="../commands/limit.html">/unlimit</a> will redraw with the
+  previously invisible last line at the bottom of the screen.
+
 
 <p>
   <a href="../commands/limit.html">/relimit</a> repeats the last

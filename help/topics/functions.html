@@ -401,13 +401,43 @@ Angles are in radians.
           negative, they are counted as absolute values from the end of
           <i>s</i>.
 
+<a name="strip_attr"></a>
+<a name="strip_attr()"></a>
+  <dt><b>strip_attr</b>(<var>s</var>)
+          <dd> (str) Returns <i>s</i> with all display
+	  <a href="../topics/attributes.html">attributes</a> removed.
+
 <a name="inline_attr"></a>
 <a name="inline_attr()"></a>
-  <dt><b>inline_attr</b>(<var>s</var>)
+<a name="decode_attr"></a>
+<a name="decode_attr()"></a>
+  <dt><b>decode_attr</b>(<var>s</var>)
           <dd> (str) Returns <i>s</i> with
-	  "@{<i>attr</i>}" strings interpeted as display
+	  "@{<i>attr</i>}" codes interpeted as display
 	  <a href="../topics/attributes.html">attributes</a>,
 	  as in <a href="../commands/echo.html">/echo</a> -p.
+
+<!--
+<a name="decode_ansi"></a>
+<a name="decode_ansi()"></a>
+  <dt><b>decode_ansi</b>(<var>s</var>)
+          <dd> (str) Returns <i>s</i> with
+	  ANSI display sequences interpeted as display
+	  <a href="../topics/attributes.html">attributes</a>.
+-->
+
+<a name=""></a><!-- has its own page -->
+  <dt><b>textencode</b>(<var>s</var>)
+          <dd> (str) Returns <i>s</i> converted to a form containing only
+	  letters, digits, and underscores.
+	  See <a href="../commands/textencode.html">textencode()</a>.
+
+<a name=""></a><!-- has its own page -->
+  <dt><b>textdecode</b>(<var>s</var>)
+          <dd> (str) Converts <i>s</i>, the result of
+	  <a href="../commands/textencode.html">textencode()</a>,
+	  back to its original form.
+	  See <a href="../commands/textencode.html">textencode()</a>.
 
 <a name=""></a>
 
@@ -542,27 +572,75 @@ Angles are in radians.
           <a href="../topics/functions.html#lines()">lines()</a>,
           <a href="../topics/functions.html#columns()">columns()</a>.
 
+<a name="morepaused"></a>
+<a name="morepaused()"></a>
+  <dt><b>morepaused</b>([<var>s1</var>])
+          <dd> (int) Returns 1 if output of world <i>s1</i> is paused
+	  (by <a href="../commands/more.html">more</a> or
+	  (<a href="../commands/dokey.html">dokey</a> pause).
+	  If omitted, <i>s1</i> defaults to the current world.
+          See also: <a href="../topics/functions.html#moresize">moresize()</a>.
+
 <a name="morescroll"></a>
 <a name="morescroll()"></a>
   <dt><b>morescroll</b>(<var>i</var>)
-          <dd> (int) If at a <a href="../commands/more.html">more</a> prompt,
-          this function displays up to the next <i>i</i> lines of text, and
-          returns 1.  Otherwise, it does nothing, and returns 0.
+          <dd> (int) If <i>i</i> is positive, this function scrolls
+	  <i>i</i> lines of text from the window buffer into the window
+	  from the bottom.
+	  If <i>i</i> is negative, it reverse-scrolls
+	  abs(<i>i</i>) lines of text from the window buffer into the
+	  window from the top.
+	  If abs(<i>i</i>) is larger than one screenful, the actual
+	  scrolling is skipped, and only the end result is displayed.
 
 <a name="moresize"></a>
 <a name="moresize()"></a>
-  <dt><b>moresize</b>([<var>s</var>])
-          <dd> (int) If <i>s</i> is omitted or blank,
-          <a href="../topics/functions.html#moresize()">moresize()</a>
-	  returns the number of physical (after wrapping) lines below the
+  <dt><b>moresize</b>([<var>s1</var> [, <var>s2</var>]])
+          <dd> (int) Returns a line count for world <i>s2</i>,
+	  or the current world if <i>s2</i> is omitted.
+	  If <i>s1</i> is omitted or blank,
+          the count is the number of lines below the
 	  bottom of the output window
 	  (i.e., queued at a <a href="../commands/more.html">more</a> prompt).
-          If <i>s</i> contains "n", it counts only new lines that have never
+          If <i>s1</i> contains "n", it counts only new lines that have never
 	  been seen, not lines that had been displayed and then reverse
 	  scrolled off.
-          If <i>s</i> contains "l", it counts only lines that match the
+          If <i>s1</i> contains "l", it counts only lines that match the
 	  current <a href="../commands/limit.html">/limit</a>.
 	  "n" and "l" may be combined.
+	  In all cases, the count is the number of physical (after wrapping)
+	  lines.
+	  Note that a return value of 0 does not necessarily indicate that
+	  output is not paused; it may indicate that output is paused and
+	  there are just 0 lines below the bottom of the window.  Use
+          <a href="../topics/functions.html#morepaused">morepaused()</a>,
+          to tell if output is paused.
+          See also:
+          <a href="../topics/functions.html#morepaused">morepaused()</a>,
+	  <a href="../topics/functions.html#nactive">nactive()</a>.
+
+<a name="nactive"></a>
+<a name="nactive()"></a>
+  <dt><b>nactive</b>()
+          <dd> (int) Number of active worlds (ie, worlds with unseen text).
+  <dt><b>nactive</b>(<var>s</var>)
+          <dd> (int) Number of unseen lines in world <i>s</i>.
+          <br>Note:  when
+          <a href="../topics/functions.html#nactive">nactive()</a>
+          (with or without arguments)
+          is called from a <a href="../topics/triggers.html">trigger</a>, the
+          line that caused the <a href="../topics/triggers.html">trigger</a>
+          is not counted by
+          <a href="../topics/functions.html#nactive">nactive()</a>
+          because it has not yet been fully processed (for example, a lower
+          <a href="../topics/priority.html">priority</a>
+          <a href="../topics/trigger.html">trigger</a> might
+          <a href="../topics/attributes.html">gag</a> the line).
+          <code><a href="../topics/functions.html#nactive">nactive</a>(<i>s</i>)</code>
+	  is equivalent to
+          <code><a href="../topics/functions.html#moresize">moresize</a>("n",
+	    <i>s</i>)</code>.
+          See also: <a href="../topics/functions.html#moresize">moresize()</a>.
 
 <a name="world_info"></a>
 <a name="world_info()"></a>
@@ -595,6 +673,7 @@ Angles are in radians.
           <dd> (int) Returns 1 if
           <a href="../topics/worlds.html">world</a> <i>s</i> is connected,
 	  0 otherwise.
+          See also <a href="../topics/functions.html#is_open">is_open()</a>.
 
 <a name="is_open"></a>
 <a name="is_open()"></a>
@@ -631,24 +710,6 @@ Angles are in radians.
           <a href="../topics/worlds.html">world</a>
           <i>s</i>, or -1 on error.
 
-<a name="nactive"></a>
-<a name="nactive()"></a>
-  <dt><b>nactive</b>()
-          <dd> (int) Number of active worlds (ie, worlds with unseen text).
-  <dt><b>nactive</b>(<var>s</var>)
-          <dd> (int) Number of unseen lines in world <i>s</i>.
-          <br>Note:  when
-          <a href="../topics/functions.html#nactive">nactive()</a>
-          (with or without arguments)
-          is called from a <a href="../topics/triggers.html">trigger</a>, the
-          line that caused the <a href="../topics/triggers.html">trigger</a>
-          is not counted by
-          <a href="../topics/functions.html#nactive">nactive()</a>
-          because it has not yet been fully processed (for example, a lower
-          <a href="../topics/priority.html">priority</a>
-          <a href="../topics/trigger.html">trigger</a> might
-          <a href="../topics/attributes.html">gag</a> the line).
-
 <a name="nlog"></a>
 <a name="nlog()"></a>
   <dt><b>nlog</b>()
@@ -675,7 +736,8 @@ Angles are in radians.
 <a name="systype"></a>
 <a name="systype()"></a>
   <dt><b>systype</b>()
-          <dd> (str) System type: "unix", "os/2", or "cygwin32".
+          <dd> (str) System type: "unix" (includes MacOS X),
+	  "os/2", or "cygwin32".
 <a name=""></a>
 </dl>
 
@@ -688,6 +750,12 @@ Angles are in radians.
           <dd> Defines or redefines a
           <a href="../topics/worlds.html">world</a>.
           See "<a href="../commands/addworld.html">addworld()</a>".
+
+<a name=""></a><!-- there is a separate file for this topic -->
+  <dt><b>eval</b>(<var>s1</var> [, <var>s2</var>])
+          <dd> (str) Evaluates <i>s1</i> as a 
+          <a href="../topics/macro.html">macro body</a>.
+          See: <a href="../commands/eval.html">/eval</a>.
 
 <a name="filename"></a>
 <a name="filename()"></a>

@@ -52,8 +52,8 @@
 /def -i dokey_selflush	= /dokey selflush
 
 ; These two are intended to be redefined as the user wants
-/def -i dokey_pgup	= /dokey_hpageback
-/def -i dokey_pgdn	= /dokey_hpage
+/def -i dokey_pgup	= /dokey_pageback
+/def -i dokey_pgdn	= /dokey_page
 
 
 /def -i kb_backward_kill_line = /@test kbdel(0)
@@ -71,7 +71,7 @@
 /def -i kb_capitalize_word = \
     /let _old_insert=$[+insert]%;\
     /set insert=0%;\
-    /repeat -S $[kbnum>0?kbnum:1] \
+    /repeat -S $[kbnum>0?+kbnum:1] \
 	/@test kbgoto(kbwordright()), kbgoto(kbwordleft()) %%;\
 	/let end=$$[kbwordright()]%%;\
 	/@test input(toupper(substr(kbtail(), 0, 1))) %%;\
@@ -81,14 +81,14 @@
 /def -i kb_downcase_word = \
     /let _old_insert=$[+insert]%;\
     /set insert=0%;\
-    /repeat -S $[kbnum>0?kbnum:1] \
+    /repeat -S $[kbnum>0?+kbnum:1] \
 	/@test input(tolower(substr(kbtail(), 0, kbwordright() - kbpoint()))) %;\
     /set insert=%{_old_insert}
 
 /def -i kb_upcase_word = \
     /let _old_insert=$[+insert]%;\
     /set insert=0%;\
-    /repeat -S $[kbnum>0?kbnum:1] \
+    /repeat -S $[kbnum>0?+kbnum:1] \
 	/@test input(toupper(substr(kbtail(), 0, kbwordright() - kbpoint()))) %;\
     /set insert=%{_old_insert}
 

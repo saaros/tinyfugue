@@ -23,31 +23,37 @@
 <pre>
 Key	Command			Meaning
 ---	-------			-------
-Up	<a href="../commands/dokey.html">/dokey</a> UP		*cursor up
-Down	<a href="../commands/dokey.html">/dokey</a> DOWN		*cursor down
+Up	<a href="../commands/dokey.html">/dokey</a> recallb		*recall backward input <a href="../topics/history.html">history</a>
+Down	<a href="../commands/dokey.html">/dokey</a> recallf		*recall forward input <a href="../topics/history.html">history</a>
 Right	<a href="../commands/dokey.html">/dokey</a> RIGHT		*cursor right
 Left	<a href="../commands/dokey.html">/dokey</a> LEFT		*cursor left
 Delete	<a href="../commands/dokey.html">/dokey</a> dch		*delete character
 F1	<a href="../commands/help.html">/help</a>			&nbsp;help
 Home	<a href="../commands/dokey.html">/dokey_home</a>		&nbsp;cursor to beginning of line
 Insert	<a href="../commands/test.html">/test</a> <a href="../topics/special_variables.html#insert">insert</a>:=!<a href="../topics/special_variables.html#insert">insert</a>	&nbsp;toggle <a href="../topics/special_variables.html#insert">insert</a> mode
-PgDn	<a href="../topics/keybindings.html#pgdn">/dokey_pgdn</a>		*scroll forward a half screenful
-PgUp	<a href="../topics/keybindings.html#pgup">/dokey_pgup</a>		*scroll back a half screenful
+PgDn	<a href="../topics/keybindings.html#pgdn">/dokey_pgdn</a>		*scroll forward a screenful
+PgUp	<a href="../topics/keybindings.html#pgup">/dokey_pgup</a>		*scroll back a screenful
 <br>
 Esc Left	<a href="../commands/fg.html">/fg</a> -&lt;		*<a href="../topics/sockets.html#foreground">foreground</a> previous <a href="../topics/sockets.html">socket</a>
 Esc Right	<a href="../commands/fg.html">/fg</a> -&gt;		*<a href="../topics/sockets.html#foreground">foreground</a> next <a href="../topics/sockets.html">socket</a>
 </pre>
-If you prefer PgUp and PgDn to scroll a full screen instead of a half,
+If you prefer PgUp and PgDn to scroll a half screen instead of a full screen,
 you should not redefine the bindings.  Instead, you should redefine
-"<code>/def dokey_pgdn = /dokey_page</code>" and
-"<code>/def dokey_pgup = /dokey_pageback</code>".
+"<code>/def dokey_pgdn = /dokey_hpage</code>" and
+"<code>/def dokey_pgup = /dokey_hpageback</code>".
+
 <p>
-Note: some emulators (NiftyTelnet, TeraTerm) incorrectly send ^[[3~ when PgUp
-is pressed, but the correct meaning of ^[[3~ is Delete (in vt220 emulation).
-The PgUp key in these emulators will not work correctly in tf unless you
-(preferred) fix your emulator, or (easier)
-"<code>/bind ^[[3~ = /dokey_pgup</code>"
-(warning: may break your Delete key).
+<a name="teraterm">
+<a name="niftytelnet">
+<a name="broken emulators">
+Note: some broken terminal emulators (TeraTerm, NiftyTelnet) send incorrect
+character sequences for the editor keypad
+(insert, delete, home, end, page up, page down).
+TeraTerm users should fix their emulators by copying
+<a href="../topics/special_vars.html#TFLIBDIR">%TFLIBDIR</a>/teraterm.keyboard.cnf
+to KEYBOARD.CNF in their TeraTerm directory.
+This will help all applications you use through TeraTerm, not just TF.
+<a name="">
 
 <p>
 <h3>Unnamed key sequences</h3>
@@ -86,14 +92,20 @@ String	Command			Meaning
 "^X}"	<a href="../commands/dokey.html">/dokey</a>_page		*scroll forward a screenful
 "^[^E"	<a href="../topics/keybindings.html">/kb_expand_line</a>		&nbsp;<a href="../topics/evaluation.html">expand</a> current line in place
 "^[^H"	<a href="../topics/keybindings.html">/kb_backward_kill_word</a>	*delete backward word (punctuation-delimited)
+"^[^I"	<a href="../commands/complete.html">/complete</a>		&nbsp;complete current word, depending on context
 "^[^L"	<a href="../commands/dokey.html">/dokey</a> clear		&nbsp;clear screen
 "^[^N"	<a href="../commands/dokey.html">/dokey</a> line		*scroll forward one line
 "^[^P"	<a href="../commands/dokey.html">/dokey</a> lineback		*scroll back one line
+"^[^W"	<a href="../commands/complete.html">/complete worldname</a>	&nbsp;complete tf world name
+"^[$"	<a href="../commands/complete.html">/complete macroname</a>	&nbsp;complete tf macro name
+"^[%"	<a href="../commands/complete.html">/complete variable</a>	&nbsp;complete tf variable name
+"^[/"	<a href="../commands/complete.html">/complete filename</a>	&nbsp;complete file name (unix only)
 "^[ "	<a href="../topics/keybindings.html">/kb_collapse_space</a>	&nbsp;change multiple spaces to a single space
-"^[-"	                        &nbsp;start <a href="../topics/keybindings.html#kbnum">kbnum</a> entry with -
-"^[0"	                        &nbsp;start <a href="../topics/keybindings.html#kbnum">kbnum</a> entry with 0
+"^[-"	<a href="../commands/set.html">/set</a> <a href="../topics/keybindings.html#kbnum">kbnum</a>=-		&nbsp;start <a href="../topics/keybindings.html#kbnum">kbnum</a> entry with -
+"^[0"	<a href="../commands/set.html">/set</a> <a href="../topics/keybindings.html#kbnum">kbnum</a>=+0		&nbsp;start <a href="../topics/keybindings.html#kbnum">kbnum</a> entry with 0
 ...
-"^[9"	                        &nbsp;start <a href="../topics/keybindings.html#kbnum">kbnum</a> entry with 9
+"^[9"	<a href="../commands/set.html">/set</a> <a href="../topics/keybindings.html#kbnum">kbnum</a>=+9		&nbsp;start <a href="../topics/keybindings.html#kbnum">kbnum</a> entry with 9
+"^[;"	<a href="../commands/complete.html">/complete user_defined</a>	&nbsp;complete from <a href="../commands/complete.html">%{completion_list}</a>
 "^[="	<a href="../topics/keybindings.html">/kb_goto_match</a>		&nbsp;move cursor to matching parenthesis/bracket
 "^[."	<a href="../topics/keybindings.html">/kb_last_argument</a>	&nbsp;input last word of previous line
 "^[&lt;"	<a href="../topics/dokey.html">/dokey</a> recallbeg	&nbsp;go to beginning of input history
@@ -107,6 +119,7 @@ String	Command			Meaning
 "^[d"	<a href="../commands/dokey.html">/kb_kill_word</a>		*delete forward word
 "^[f"	<a href="../commands/dokey.html">/dokey_wright</a>		*cursor to end of word
 "^[h"	<a href="../commands/dokey.html">/dokey</a>_hpage		*scroll forward a half screenful
+"^[i"	<a href="../commands/complete.html">/complete</a> input_history	&nbsp;complete from previously typed words
 "^[j"	<a href="../commands/dokey.html">/dokey</a> flush		&nbsp;jump to last screenful of text
 "^[l"	<a href="../topics/keybindings.html">/kb_downcase_word</a>	*convert word to lower case
 "^[n"	<a href="../commands/dokey.html">/dokey</a> searchf		*search forward input <a href="../topics/history.html">history</a>
@@ -116,7 +129,13 @@ String	Command			Meaning
 "^[{"	<a href="../commands/fg.html">/fg</a> -&lt;			*<a href="../topics/sockets.html#foreground">foreground</a> previous <a href="../topics/sockets.html">socket</a>
 "^[}"	<a href="../commands/fg.html">/fg</a> -&gt;			*<a href="../topics/sockets.html#foreground">foreground</a> next <a href="../topics/sockets.html">socket</a>
 "^[^?"	<a href="../topics/keybindings.html">/kb_backward_kill_word</a>	*delete backward word (punctuation-delimited)
+"^]"	<a href="../topics/keybindings.html">/bg</a>			&nbsp;put all <a href="../topics/sockets.html">sockets</a> in <a href="../topics/sockets.html#background">background</a>
 </pre>
+
+<p>
+The one-time warning about certain new keybindings in 5.0 can be disabled
+by setting the variable
+<a href="../topics/special_variables.html#warn_5keys">warn_5keys</a>=off.
 
 <p>
 <a name="terminal">
@@ -170,6 +189,27 @@ sets an upper limit on the value of
 <a href="../topics/special_variables.html#kbnum">%kbnum</a>
 that can be entered by the ESC and digit keys, to prevent
 typos from sending tf into very long loops.
+
+<p>
+The interpretation of
+<a href="../topics/special_variables.html#kbnum">%kbnum</a>
+must be done by the command called from the keybinding;
+it is not done automatically by tf.  So, for
+<a href="../topics/special_variables.html#kbnum">%kbnum</a>
+to be meaningful in a macro you write, you must implement those
+semantics yourself.
+Additionally, most of the standard "/kb_*" and
+"<a href="../commands/dokey.html">/dokey</a>"
+commands that use <a href="../topics/special_variables.html#kbnum">%kbnum</a>
+are optimized to not simply repeat the command a number of times,
+but instead calculate only the end result.  For example,
+ESC 300 TAB does not laboriously scroll 300 screenfuls of text
+onto the screen, but figures out what the 300th screenful looks
+like and draws that immediately.  It does this because /dokey_page
+calls "<code><a href="../commands/test.html">/test</a>
+<a href="../topics/functions.html#morescroll">morescroll</a>(
+<a href="../topics/functions.html#winlines">winlines</a>() *
+(kbnum<a href="../topics/expressions.html#operators">?:</a>1))</code>".
 
 <p>
 To set <a href="../topics/special_variables.html#kbnum">%kbnum</a>
@@ -310,7 +350,7 @@ key is typed, that key will be executed, and
 <p>
   See: <a href="../commands/dokey.html">/dokey</a>,
   <a href="../commands/bind.html">/bind</a>,
-  <a href="../topics/completion.html">completion</a>,
+  <a href="../commands/complete.html">/complete</a>,
   <a href="../topics/special_variables.html#wordpunct">%wordpunct</a>,
   <a href="../topics/signals.html">signals</a>.
 

@@ -1,10 +1,18 @@
 <title>TinyFugue: /eval</title>
 <!--"@/not"-->
 <!--"@/eval"-->
-<h1>/eval</h1>
+<!--"@eval"-->
+<!--"@eval()"-->
+<h1>eval()</h1>
 
 <p>
-  Usage:
+  Function usage:
+
+<p>
+  <a href="../commands/eval.html">eval</a>(<i>text</i> [, <i>level</i>])<br>
+
+<p>
+  Command usage:
 
 <p>
   <a href="../commands/eval.html">/EVAL</a> [-s<i>level</i>] <i>text</i><br>
@@ -16,7 +24,8 @@
   as a <a href="../topics/macros.html">macro</a> body:
   it goes through <a href="../topics/substitution.html">substitution</a>,
   and is executed in a new <a href="../topics/scope.html">scope</a>.
-  The return value of <a href="../commands/eval.html">/eval</a>
+  The return value of <a href="../commands/eval.html">eval()</a>
+  and <a href="../commands/eval.html">/eval</a>
   is that of the last command in <i>text</i>;
   the return value of <a href="../commands/eval.html">/not</a> is the logical
   negation of return value of the last command in <i>text</i>.
@@ -26,13 +35,14 @@
   etc) are inherited from the caller.
 
 <p>
-  <a href="../topics/options.html">Options:</a>
+  <a href="../topics/options.html">Options</a> and arguments:
   <dl>
-  <dt>-s<i>level</i>
-	<dd>Expands the <i>command</i> as if
+  <dt>command: -s<i>level</i>
+  <dt>function: <i>level</i>
+	<dd>Expands the <i>text</i> as if
 	<a href="../topics/special_variables.html#sub">%{sub}</a> were set
-	to <i>level</i>.  By default, <a href="../commands/eval.html">/eval</a>
-	expands the <i>command</i> as if 
+	to <i>level</i>.  By default, <a href="../commands/eval.html">eval</a>
+	expands the <i>text</i> as if 
 	<a href="../topics/special_variables.html#sub">%{sub}</a> were "full",
 	and echoes it if
 	<a href="../topics/special_variables.html#mecho">%{mecho}</a>

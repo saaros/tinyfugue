@@ -31,7 +31,7 @@
 
 /def -iFp1 -h"WORLD" prev_world_hook =\
     /if (fg_world !~ "") \
-        /if (nactive(fg_world)) \
+        /if (moresize("", fg_world)) \
             /set active_worlds=%{active_worlds} %{fg_world}%; \
         /else \
             /set prev_worlds=%fg_world $(/remove %fg_world %prev_worlds)%;\

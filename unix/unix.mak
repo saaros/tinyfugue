@@ -1,4 +1,4 @@
-# $Id: unix.mak,v 35004.39 2003/05/28 06:17:19 hawkeye Exp $
+# $Id: unix.mak,v 35004.41 2003/06/11 19:52:07 hawkeye Exp $
 ########################################################################
 #  TinyFugue - programmable mud client
 #  Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
@@ -146,7 +146,7 @@ MANPAGE $(MANPAGE): $(BUILDERS) tf.1.$(MANTYPE)man
 
 Makefile: ../unix/vars.mak ../unix/unix.mak ../configure ../configure.in
 	@echo
-	@echo "## WARNING: changes in configuration will not be reflected."
+	@echo "## WARNING: configuration should be rerun."
 	@echo
 
 uninstall:
@@ -157,7 +157,7 @@ uninstall:
 	rm -rf $(LIBDIR)
 
 clean distclean cleanest:
-	cd ..; ./unixmake $@
+	cd ..; make -f unix/Makefile $@
 
 
 # development stuff, not necessarily portable.

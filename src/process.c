@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: process.c,v 35004.53 2003/05/27 01:09:24 hawkeye Exp $";
+static const char RCSid[] = "$Id: process.c,v 35004.55 2003/07/03 17:23:56 hawkeye Exp $";
 
 /************************
  * Fugue processes.     *
@@ -27,7 +27,7 @@ static const char RCSid[] = "$Id: process.c,v 35004.53 2003/05/27 01:09:24 hawke
 #include "output.h"	/* oflush() */
 #include "signals.h"	/* interrupted() */
 
-int feature_process = !(NO_PROCESS - 0);
+const int feature_process = !(NO_PROCESS - 0);
 #if !NO_PROCESS
 
 #define P_REPEAT     'R'
@@ -482,7 +482,7 @@ static int procopt(const char *opts, String *args, int *offsetp,
     *world = NULL;
     ptime->tv_sec = PTIME_VAR;
     startopt(args, opts);
-    while ((opt = nextopt(&ptr, NULL, &tv, offsetp))) {
+    while ((opt = nextopt(&ptr, &tv, NULL, offsetp))) {
         switch(opt) {
         case 'w':
             if (!(*world = named_or_current_world(ptr)))

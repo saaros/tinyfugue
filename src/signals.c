@@ -5,13 +5,17 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: signals.c,v 35004.44 2003/05/27 01:09:24 hawkeye Exp $";
+static const char RCSid[] = "$Id: signals.c,v 35004.52 2003/10/30 02:22:01 hawkeye Exp $";
 
 /* Signal handling, core dumps, job control, and interactive shells */
 
 #include "config.h"
 #include <signal.h>
 #include "port.h"
+#if DISABLE_CORE
+# include <sys/time.h>
+# include <sys/resource.h>
+#endif
 #include "tf.h"
 #include "util.h"
 #include "search.h"	/* for tfio.h */
@@ -117,8 +121,9 @@ typedef RETSIGTYPE (SigHandler)(int sig);
 #endif
 
 VEC_TYPEDEF(sig_set, (NSIG-1));
+const int feature_core = 1 - DISABLE_CORE;
 
-
+static int have_pending_signals = 0;
 static sig_set pending_signals;
 static RETSIGTYPE (*parent_tstp_handler)(int sig);
 
@@ -177,6 +182,7 @@ static SigHandler *setsighandler(int sig, SigHandler *func)
 void init_signals(void)
 {
     VEC_ZERO(&pending_signals);
+    have_pending_signals = 0;
 
     old_sighup_handler = setsighandler(SIGHUP  , signal_scheduler);
     setsighandler(SIGINT  , signal_scheduler);
@@ -193,6 +199,14 @@ void init_signals(void)
     setsighandler(SIGUSR2 , signal_scheduler);
     parent_tstp_handler = setsighandler(SIGTSTP , signal_scheduler);
     setsighandler(SIGWINCH, signal_scheduler);
+
+#if DISABLE_CORE
+    {
+	struct rlimit rlim;
+	rlim.rlim_cur = rlim.rlim_max = 0;
+	setrlimit(RLIMIT_CORE, &rlim);
+    }
+#endif
 }
 
 #ifndef SIG_IGN
@@ -206,6 +220,9 @@ static void handle_interrupt(void)
 {
     int c;
 
+    VEC_CLR(SIGINT, &pending_signals);
+    /* so status line macros in setup_screen() aren't gratuitously killed */
+
     if (no_tty)
         die("Interrupt, exiting.", 0);
     reset_kbnum();
@@ -215,7 +232,6 @@ static void handle_interrupt(void)
     c = igetchar();
     if (ucase(c) == 'X')
         die("Interrupt, exiting.", 0);
-    setup_screen();
     if (ucase(c) == 'T') {
         set_var_by_id(VAR_borg, 0);
         oputs("% Cyborg triggers disabled.");
@@ -223,6 +239,7 @@ static void handle_interrupt(void)
         kill_procs();
         oputs("% All processes killed.");
     }
+    redraw();
 }
 
 int suspend(void)
@@ -250,13 +267,19 @@ static RETSIGTYPE core_handler(int sig)
     setsighandler(sig, core_handler);  /* restore handler (POSIX) */
 
     if (sig == SIGQUIT) {
-        fix_screen();
-        puts("SIGQUIT received.  Dump core and exit?  (y/n)\r");
-        fflush(stdout);
-        if (no_tty || igetchar() != 'y') {
-            setup_screen();
-            return;
-        }
+	if (!no_tty) {
+	    fix_screen();
+#if DISABLE_CORE
+	    puts("SIGQUIT received.  Exit?  (y/n)\r");
+#else
+	    puts("SIGQUIT received.  Dump core and exit?  (y/n)\r");
+#endif
+	    fflush(stdout);
+	    if (igetchar() != 'y') {
+		redraw();
+		return;
+	    }
+	}
         fputs("Abnormal termination - SIGQUIT\r\n", stderr);
     }
     setsighandler(sig, SIG_DFL);
@@ -264,17 +287,16 @@ static RETSIGTYPE core_handler(int sig)
         minimal_fix_screen();
         coremsg();
         fprintf(stderr, "> Abnormal termination - signal %d\r\n\n", sig);
-        fputs("If you can, get a stack trace and send it to the author.\r\n",
+        fputs("Please email the author with the error messages above, and describe\r\n", stderr);
+	fputs("what you were doing at the time.\r\n", stderr);
+#if DISABLE_CORE
+        fputs("Also, if you can, reinstall tf with --enable-core, attempt to reproduce the\r\n", stderr);
+	fputs("error, get a stack trace and send it to the author.\r\n", stderr);
+#else /* cores are enabled */
+        fputs("Also, if you can, include a stack trace in your email.\r\n",
             stderr);
-        fputs("If not, please at least describe what you were doing at the\r\n",
-            stderr);
-        fputs("time of this crash.\r\n", stderr);
-#ifdef PLATFORM_UNIX
-        fputs("If you haven't already done so, in the 'Config' file set\r\n",
-            stderr);
-        fputs("CCFLAGS='-g' and STRIP='', and rerun 'make'.  Then do:\r\n",
-            stderr);
-        fputs("\n", stderr);
+# ifdef PLATFORM_UNIX
+        fputs("To get a stack trace, do this:\r\n", stderr);
         fputs("cd src\r\n", stderr);
         fputs("script\r\n", stderr);
         fputs("gdb -q tf   ;# if gdb is unavailable, use 'dbx tf' instead.\r\n",
@@ -285,13 +307,10 @@ static RETSIGTYPE core_handler(int sig)
         fputs("quit\r\n", stderr);
         fputs("exit\r\n", stderr);
         fputs("\r\n", stderr);
-        fputs("and mail the \"typescript\" file to the address above.\r\n",
-            stderr);
+        fputs("Then include the \"typescript\" file in your email.\r\n", stderr);
         fputs("\n", stderr);
-#else
-        fputs("If you can, get a stack trace and send it to the author.\r\n",
-            stderr);
-#endif
+# endif /* PLATFORM_UNIX */
+#endif /* DISABLE_CORE */
     }
 
     if (!no_tty) {
@@ -321,13 +340,13 @@ void crash(int internal, const char *fmt, const char *file, int line, long n)
 
 static void coremsg(void)
 {
-    fputs("\r\n\nPlease report the following message verbatim to hawkeye@tf.tcp.com.\n", stderr);
+    fputs("\r\n\nPlease report the following message verbatim to hawkeye@tcp.com.\n", stderr);
     fputs("Also describe what you were doing in tf when this\r\n", stderr);
     fputs("occured, and whether you can repeat it.\r\n\n", stderr);
     fprintf(stderr, "> %s\r\n", version);
     if (*sysname) fprintf(stderr, "> %s\r\n", sysname);
-    fprintf(stderr,"> visual=%ld, emulation=%ld, lp=%ld, sub=%ld\r\n",
-        visual, emulation, lpflag, sub);
+    fprintf(stderr,"> virtscreen=%ld, visual=%ld, emulation=%ld, lp=%ld, sub=%ld\r\n",
+        virtscreen, visual, emulation, lpflag, sub);
 #if SOCKS
     fprintf(stderr,"> SOCKS %d\r\n", SOCKS);
 #endif
@@ -347,10 +366,12 @@ static RETSIGTYPE signal_scheduler(int sig)
 {
     setsighandler(sig, signal_scheduler);  /* restore handler (POSIX) */
     VEC_SET(sig, &pending_signals);        /* set flag to deal with it later */
+    have_pending_signals++;
 }
 
 void process_signals(void)
 {
+    if (!have_pending_signals) return;
     if (VEC_ISSET(SIGINT, &pending_signals))   handle_interrupt();
     if (VEC_ISSET(SIGTSTP, &pending_signals))  suspend();
     if (VEC_ISSET(SIGWINCH, &pending_signals))
@@ -365,6 +386,7 @@ void process_signals(void)
     if (VEC_ISSET(SIGTERM, &pending_signals))
 	terminate(SIGTERM);
 
+    have_pending_signals = 0;
     VEC_ZERO(&pending_signals);
 }
 

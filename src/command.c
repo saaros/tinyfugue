@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: command.c,v 35004.100 2003/05/27 01:09:21 hawkeye Exp $";
+static const char RCSid[] = "$Id: command.c,v 35004.115 2003/10/30 02:59:30 hawkeye Exp $";
 
 
 /*****************************************************************
@@ -25,7 +25,7 @@ static const char RCSid[] = "$Id: command.c,v 35004.100 2003/05/27 01:09:21 hawk
 #include "output.h"	/* oflush(), dobell() */
 #include "macro.h"
 #include "keyboard.h"	/* find_key(), find_efunc() */
-#include "expand.h"     /* macro_run(), breaking */
+#include "expand.h"     /* macro_run() */
 #include "signals.h"    /* suspend(), shell() */
 #include "variable.h"
 
@@ -39,6 +39,7 @@ static void split_args(char *args);
 static HANDLER (handle_beep_command);
 static HANDLER (handle_bind_command);
 static HANDLER (handle_connect_command);
+static HANDLER (handle_core_command);
 static HANDLER (handle_features_command);
 static HANDLER (handle_gag_command);
 static HANDLER (handle_hilite_command);
@@ -72,8 +73,8 @@ static BuiltinCmd cmd_table[] =
 /*   name	    function		    reserved? */
   { "BEEP"        , handle_beep_command        , 0 },
   { "BIND"        , handle_bind_command        , 0 },
-  { "BREAK"       , handle_break_command       , 0 },
   { "CONNECT"     , handle_connect_command     , 0 },
+  { "CORE"        , handle_core_command        , 0 },
   { "DC"          , handle_dc_command          , 0 },
   { "DEF"         , handle_def_command         , 0 },
   { "DOKEY"       , handle_dokey_command       , 0 },
@@ -111,8 +112,6 @@ static BuiltinCmd cmd_table[] =
   { "RELIMIT"     , handle_relimit_command     , 0 },
   { "REPEAT"      , handle_repeat_command      , 0 },
   { "RESTRICT"    , handle_restrict_command    , 0 },
-  { "RESULT"      , handle_result_command      , 1 },
-  { "RETURN"      , handle_return_command      , 1 },
   { "SAVE"        , handle_save_command        , 0 },
   { "SAVEWORLD"   , handle_saveworld_command   , 0 },
   { "SET"         , handle_set_command         , 0 },
@@ -120,7 +119,6 @@ static BuiltinCmd cmd_table[] =
   { "SH"          , handle_sh_command          , 0 },
   { "SHIFT"       , handle_shift_command       , 0 },
   { "SUSPEND"     , handle_suspend_command     , 0 },
-  { "TEST"        , handle_test_command        , 1 },  
   { "TRIGGER"     , handle_trigger_command     , 0 },  
   { "TRIGPC"      , handle_trigpc_command      , 0 },
   { "UNBIND"      , handle_unbind_command      , 0 },
@@ -196,7 +194,7 @@ static struct Value *handle_trigger_command(String *args, int offset)
     (incoming_text = Stringodup(args, offset))->links++;
 
     result = find_and_run_matches(NULL, hook, &incoming_text, world, is_global,
-	exec_list_long);
+	exec_list_long, 0);
 
     Stringfree(incoming_text);
     incoming_text = old_incoming_text;
@@ -218,14 +216,14 @@ int handle_substitute_func(
         goto error_handle_substitute_func;
     }
 
-    attrs = parse_attrs((char **)&attrstr);
-    if (attrs < 0) return 0;
+    if (!parse_attrs((char **)&attrstr, &attrs))
+	return 0;
     /* Start w/ incoming_text->attrs, adjust with string->attrs and attrstr. */
     string->attrs = adj_attr(incoming_text->attrs, string->attrs);
     string->attrs = adj_attr(string->attrs, attrs);
     string->time = incoming_text->time;
 
-    if (inline_flag && handle_inline_attr(string, 0) < 0) {
+    if (inline_flag && !decode_attr(string, 0)) {
 	goto error_handle_substitute_func;
     }
 
@@ -250,12 +248,14 @@ static struct Value *handle_connect_command(String *args, int offset)
     if (login) flags |= CONN_AUTOLOGIN;
     if (quietflag) flags |= CONN_QUIETLOGIN;
 
-    startopt(args, "lqx");
+    startopt(args, "lqxfb");
     while ((opt = nextopt(NULL, NULL, NULL, &offset))) {
         switch (opt) {
             case 'l':  flags &= ~CONN_AUTOLOGIN; break;
             case 'q':  flags |= CONN_QUIETLOGIN; break;
             case 'x':  flags |= CONN_SSL; break;
+            case 'f':  flags |= CONN_FG; break;
+            case 'b':  flags |= CONN_BG; break;
             default:   return shareval(val_zero);
         }
     }
@@ -354,6 +354,15 @@ static struct Value *handle_version_command(String *args, int offset)
     return shareval(val_one);
 }
 
+/* for debugging */
+static struct Value *handle_core_command(String *args, int offset)
+{
+    internal_error(__FILE__, __LINE__, "command: /core %s",
+	args->data + offset);
+    core("/core command", __FILE__, __LINE__, 0);
+    return NULL; /* never reached */
+}
+
 static struct Value *handle_features_command(String *args, int offset)
 {
     struct feature *f;
@@ -361,18 +370,19 @@ static struct Value *handle_features_command(String *args, int offset)
 
     static struct feature {
 	const char *name;
-	int *flag;
+	const int *flag;
     } features[] = {
+	{ "core",		&feature_core, },
 	{ "float",		&feature_float },
-	{ "history",		&feature_history },
-	{ "process",		&feature_process },
-	{ "IPv6",		&feature_IPv6 },
-	{ "MCCPv2",		&feature_MCCPv2 },
-	{ "ssl",		&feature_ssl },
-	{ "SOCKS",		&feature_SOCKS },
-	{ "locale",		&feature_locale },
-	{ "subsecond",		&feature_subsecond },
 	{ "ftime",		&feature_ftime },
+	{ "history",		&feature_history },
+	{ "IPv6",		&feature_IPv6 },
+	{ "locale",		&feature_locale },
+	{ "MCCPv2",		&feature_MCCPv2 },
+	{ "process",		&feature_process },
+	{ "SOCKS",		&feature_SOCKS },
+	{ "ssl",		&feature_ssl },
+	{ "subsecond",		&feature_subsecond },
 	{ "TZ",			&feature_TZ, },
 	{ NULL,			NULL }
     };
@@ -404,7 +414,7 @@ static struct Value *handle_lcd_command(String *args, int offset)
         return shareval(val_zero);
     }
 
-    name = expand_filename(args->data + offset);
+    name = expand_filename(stripstr(args->data + offset));
     if (*name && chdir(name) < 0) {
         operror(name);
         return shareval(val_zero);
@@ -435,7 +445,7 @@ int handle_echo_func(
 
     string->links++;
 
-    if ((attrs = parse_attrs((char **)&attrstr)) < 0)
+    if (!parse_attrs((char **)&attrstr, &attrs))
         goto exit_handle_echo_func;
     switch(*dest) {
         case 'r':  raw = 1;       break;
@@ -458,8 +468,7 @@ int handle_echo_func(
     }
 
     string->attrs = adj_attr(string->attrs, attrs);
-
-    if (inline_flag && handle_inline_attr(string, 0) < 0) {
+    if (inline_flag && !decode_attr(string, 0)) {
 	goto exit_handle_echo_func;
     }
 
@@ -501,7 +510,7 @@ static struct Value *handle_limit_command(String *args, int offset)
 {
     int mflag = matching;
     int got_opts = 0;
-    int result, had_filter;
+    int result, had_filter, has_new_pat;
     char c, *ptr;
     Screen *screen = display_screen;
     int attr_flag = 0, sense = 1;
@@ -530,7 +539,7 @@ static struct Value *handle_limit_command(String *args, int offset)
         result = screen_has_filter(screen);
 	goto end;
     }
-    if (offset != args->len) {
+    if ((has_new_pat = (offset != args->len))) {
 	if (!init_pattern(&pat, args->data + offset, mflag)) {
 	    result = 0;
 	    goto end;
@@ -538,7 +547,7 @@ static struct Value *handle_limit_command(String *args, int offset)
     }
     had_filter = screen_has_filter(screen);
     clear_screen_filter(screen);
-    set_screen_filter(screen, &pat, attr_flag, sense);
+    set_screen_filter(screen, has_new_pat ? &pat : NULL, attr_flag, sense);
 
     if (!(result = redraw_window(screen, 0))) {
 	aprintf("%s", "% No lines matched criteria.");
@@ -556,6 +565,7 @@ static struct Value *handle_relimit_command(String *args, int offset)
     Value *result = val_one;
 
     if (!enable_screen_filter(screen)) {
+	aprintf("%s", "% No previous limit.");
 	result = val_zero;
     } else if (!redraw_window(screen, 0)) {
 	aprintf("%s", "% No lines matched criteria.");
@@ -573,11 +583,10 @@ static struct Value *handle_unlimit_command(String *args, int offset)
     if (!screen_has_filter(screen))
 	return shareval(val_zero);
     clear_screen_filter(screen);
+    if (!screen->paused)
+	screen_end(0);
     redraw_window(screen, 0);
-    need_more_refresh = 1;
-    oflush(); /* scroll on anything below bot that got pushed off by limit */
-    if (need_more_refresh)
-	update_status_field(NULL, STAT_MORE);
+    update_status_field(NULL, STAT_MORE);
     return shareval(val_one);
 }
 
@@ -711,8 +720,6 @@ int do_file_load(const char *args, int tinytalk)
 
     if (!loadfile)
         exiting = 0;
-    if (!exiting)
-        breaking = 0;
 
     return !error;
 }
@@ -765,17 +772,10 @@ static struct Value *handle_save_command(String *args, int offset)
     return shareval(val_zero);
 }
 
-struct Value *handle_break_command(String *args, int offset)
-{
-    if ((breaking = atoi(args->data + offset)) <= 0) breaking = 1;
-    return shareval(val_one);
-}
-
 struct Value *handle_exit_command(String *args, int offset)
 {
     if (!loadfile) return shareval(val_zero);
     if ((exiting = atoi(args->data + offset)) <= 0) exiting = 1;
-    breaking = -1;
     return shareval(val_one);
 }
 
@@ -797,7 +797,7 @@ static struct Value *handle_load_command(String *args, int offset)
 
     quietload += quiet;
     if (args->len - offset)
-        result = (do_file_load(args->data + offset, FALSE) > 0);
+        result = (do_file_load(stripstr(args->data + offset), FALSE) > 0);
     else eprintf("missing filename");
     quietload -= quiet;
     return newint(result);
@@ -872,12 +872,13 @@ static struct Value *handle_trigpc_command(String *args, int offset)
 static struct Value *handle_untrig_command(String *args, int offset)
 {
     char c, *ptr;
-    attr_t attrs = 0;
+    attr_t attrs = 0, tmp;
 
     startopt(args, "a:");
     while ((c = nextopt(&ptr, NULL, NULL, &offset))) {
         if (c != 'a') return shareval(val_zero);
-        if ((attrs |= parse_attrs(&ptr)) < 0) return shareval(val_zero);
+        if (!parse_attrs(&ptr, &tmp)) return shareval(val_zero);
+        attrs |= tmp;
     }
     return newint(remove_macro(args->data + offset, attrs ? attrs : 0, 0));
 }

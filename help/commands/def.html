@@ -69,20 +69,36 @@
           and its body will not be executed.
           If the value of <i>expression</i> is non-zero, the comparison
           proceedes as usual.
-          Note that
-          <a href="../topics/substitution.html#%n">positional parameters</a>
-          (<a href="../topics/substitution.html#%n">%n</a>) and
-          <a href="../topics/substitution.html#%Pn">subexpression matches</a>
-          (<a href="../topics/substitution.html#%Pn">%Pn</a>)
-          are not available in <i>expression</i>.
-          Remember that for every macro with a trigger and an -E expression,
-	  its <i>expression</i> must be evaluated for every line received.
-	  So, you should keep it simple (e.g., "<code>enable_foo</code>"
-	  or "<code><a href="../topics/worlds.html#fields">${world_name}</a> =~
-	  <a href="../topics/functions.html#fg_wold">fg_world</a>()</code>").
-	  More complex expressions should be put in the body of the macro.
+          Note:
+          <br>*
+	    <a href="../topics/substitution.html#%n">positional parameters</a>
+            (<a href="../topics/substitution.html#%n">%n</a>) and
+            <a href="../topics/substitution.html#%Pn">subexpression matches</a>
+            (<a href="../topics/substitution.html#%Pn">%Pn</a>)
+            are not available in <i>expression</i>.
+          <br>*
+	    Remember that for every macro with a trigger and an -E expression,
+	    its <i>expression</i> must be evaluated for every line received.
+	    So, you should keep it simple (e.g., "<code>enable_foo</code>"
+	    or
+	    "<code><a href="../topics/worlds.html#fields">${world_name}</a> =~
+	    <a href="../topics/functions.html#fg_wold">fg_world</a>()</code>").
+	    More complex expressions should be put in the body of the macro.
+          <br>*
+	    The body of a high <a href="../topics/priority.html">priority</a>
+            <a href="../topics/macros.html">macro</a> is not necessarily
+	    executed before the -E expression of a lower
+	    <a href="../topics/priority.html">priority</a>
+            <a href="../topics/macros.html">macro</a> is tested,
+	    so <i>expression</i> should not rely on values that may be
+	    changed by other macros that match the same
+            <a href="../topics/triggers.html">trigger</a> or
+            <a href="../topics/hooks.html">hook</a>.
+	  <br>
           Default: no <a href="../topics/expressions.html">expression</a>
-          (i.e., always match if the trigger or hook matches).
+          (i.e., always match if the
+          <a href="../topics/triggers.html">trigger</a> or
+          <a href="../topics/hooks.html">hook</a> matches).
 
 <p>
 <a name="/def -t"></a>
@@ -210,17 +226,41 @@
 <p>
 <a name="/def -P"></a>
 <a name="-P"></a>
-  <dt>-P[<i>n</i>][nurfdBhC]
-          <dd> "Partial <a href="../topics/attributes.html">hilite</a>": Set
-          <a href="../topics/attributes.html">attribute</a>(s) used to
-          display text matched by the <i>n</i>th parenthesized subexpression
-          in a <a href="../topics/patterns.html#regexp">regexp</a>
-          <a href="../topics/triggers.html">trigger</a>.  If
-          <i>n</i> is omitted it defaults to 0, i.e. the text matched by the
-          entire <a href="../topics/patterns.html#regexp">regexp</a>.
-          If there are multiple matches in the text, the
-          <a href="../topics/attributes.html">attributes</a> will be applied
-          to all of them.
+  <dt>-P[<i>part</i>][<i>attr</i>][;[<i>part</i>][<i>attr</i>]]...
+          <dd>Define a "partial
+	  <a href="../topics/attributes.html">hilite</a>".
+	  The argument consists of a list of pairs of parts
+	  (<i>part</i>) and attributes (<i>attr</i>),
+	  separated by ';'.
+	  When a line matches the
+	  <a href="../topics/patterns.html#regexp">regexp</a>
+          <a href="../topics/triggers.html">trigger</a> of this macro,
+	  each <i>attr</i> is applied to the corresponding <i>part</i>
+	  of the line.
+          <i>Attr</i> can contain any of the
+	  <a href="../topics/attributes.html">attribute</a> codes
+	  "nxurfdBhC".
+          (normal, exclusive, underline, reverse, flash, dim, bold,
+          <a href="../topics/attributes.html">hilite</a>, Color).
+	  The value of <i>part</i> determines which part of the text
+	  is affected:
+	  <dl compact>
+	  <dt>L<dd>text to the left of the
+	      <a href="../topics/patterns.html#regexp">regexp</a> match
+	  <dt>R<dd>text to the right of the
+	      <a href="../topics/patterns.html#regexp">regexp</a> match
+	  <dt>0<dd>text matched by the entire
+	      <a href="../topics/patterns.html#regexp">regexp</a>
+	  <dt><i>number</i><dd>text matched by the
+	      the <i>number</i>th parenthesized subexpression of the
+	      <a href="../topics/patterns.html#regexp">regexp</a>.
+	  </dl>
+	  
+          If <i>part</i> is omitted it defaults to 0.
+          If <i>part</i> is a number and
+	  there are multiple matches in the text, the
+          <i>attr</i> will be applied
+          to all of the matches.
           Implies <a href="../commands/def.html#-m">-m</a>regexp.
           Only one <a href="../commands/def.html#-P">-P</a> option is allowed.
           See "<a href="../topics/attributes.html">attributes</a>".

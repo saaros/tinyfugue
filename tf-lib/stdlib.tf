@@ -6,7 +6,7 @@
 ;;;; General Public License.  See the file "COPYING" for details.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-/set tf_stdlib_id=$Id: stdlib.tf,v 35000.71 2003/05/27 02:08:23 hawkeye Exp $
+/set tf_stdlib_id=$Id: stdlib.tf,v 35000.75 2003/10/29 20:04:27 hawkeye Exp $
 
 ;;; TF macro library
 
@@ -45,7 +45,6 @@
 /def -i require = \
     /let _required=1%; \
     /load %{-L} %{L}
-
 
 ;;; visual status bar
 /eval /load -q %TFLIBDIR/tfstatus.tf
@@ -219,6 +218,9 @@
 ;; macro existance test.
 /def -i ismacro = /test tfclose("o")%; /@list -s -i %{*-@}
 
+;; variable existance test.
+/def -i isvar = /test tfclose("o")%; /listvar -msimple -- %*
+
 
 ;; cut-and-paste tool
 
@@ -291,10 +293,10 @@
 /def -i _paste = \
     /if (opt_x) \
 ;	execute
-	/eval -s0 - %*%; \
+	/test eval({*}, 0)%; \
     /else \
-;	send (preserving leading spaces)
-	/test send({*}, _world)%; \
+;	send (preserving leading spaces, and invoking send hooks)
+	/test send({*}, _world, "h")%; \
     /endif
 ;   /recordline -i - %*
 ; A /recordline here would allow history browsing during the paste, but do we
@@ -362,9 +364,6 @@
 /def -i addtelnet	= /addworld -T"telnet"	%*
 
 
-;; Auto-switch connect hook
-/def -iFp0 -agG -hCONNECT ~connect_switch_hook = /@fg %1
-
 ;; Proxy server connect hook
 /eval /def -iFp%{maxpri} -agG -hPROXY proxy_hook = /proxy_command
 
@@ -383,7 +382,7 @@
 ;; as such by the user's /addworld definition.
 /def -iFp1 -mglob -T'{}' -hCONNECT ~detect_worldtype_hook = \
 ; telnet prompt
-    /def -ip1 -n1 -w -mregexp -h'PROMPT [Ll]ogin: *$$' \
+    /def -ip1 -n1 -w -mregexp -h'PROMPT login: *$$' \
     ~detect_worldtype_telnet_${world_name} = \
         /echo -e %%% This looks like a telnet world, so I'm redefining it as \
             one.  You should explicitly set the type with the -T option of \
@@ -405,13 +404,13 @@
         /@test prompt(strcat({PL}, {P0}))%%; \
         /purge -i ~detect_worldtype_*_${world_name}%; \
     /let cleanup=%cleanup%%; /purge -i #%?%; \
-; If there's no prompt in the first 60s, assume this is not a prompting world,
+; If there's no prompt in the first 5s, assume this is not a prompting world,
 ; and undefine the hooks to avoid false positives later.  We must also create
 ; a disconnect hook to undefine the prompt hooks if we disconnect before the
 ; timeout, and have the timeout process undefine the disconnect hook.
-    /def -ip1 -n1 -w -hDISCONNECT = %cleanup%; \
+    /def -iFp%{maxpri} -n1 -w -hDISCONNECT = %cleanup%; \
     /let cleanup=%cleanup%%; /purge -i #%?%; \
-    /repeat -60 1 %cleanup
+    /repeat -5 1 %cleanup
 
 
 ;; Default worldtype hook: tiny login format (for backward compatibility),
@@ -753,7 +752,7 @@
 /eval /if (MAILPATH !~ "") \
     /let _head=%; \
     /let _tail=%{MAILPATH}%; \
-    /while (regmatch("^([^?%%:]+)([?%%][^:]+)?:?", {_tail}))%; \
+    /while (regmatch("^([^?%%:]+)([?%%][^:]+)?:?", {_tail})) \
         /let _head=%{_head} %{P1}%; \
         /let _tail=%{PR}%; \
     /done%; \

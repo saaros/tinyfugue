@@ -5,12 +5,17 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: macro.h,v 35004.39 2003/05/27 01:09:23 hawkeye Exp $ */
+/* $Id: macro.h,v 35004.43 2003/10/22 22:53:06 hawkeye Exp $ */
 
 #ifndef MACRO_H
 #define MACRO_H
 
 enum { USED_NAME, USED_TRIG, USED_HOOK, USED_KEY, USED_N }; /* for Macro.used */
+
+typedef struct {
+    cattr_t attr;
+    short subexp;
+} subattr_t;
 
 typedef struct Macro {
     const char *name;
@@ -27,8 +32,8 @@ typedef struct Macro {
     struct World *world;		/* only trig on text from world */
     int pri, num;
     attr_t attr;
-    cattr_t subattr;
-    short subexp;
+    int nsubattr;
+    subattr_t *subattr;
     short prob, shots, invis;
     short flags;
     signed char fallthru, quiet;
@@ -39,7 +44,7 @@ typedef struct Macro {
 extern int invis_flag;
 
 extern void   init_macros(void);
-extern attr_t parse_attrs(char **argp);
+extern int    parse_attrs(char **argp, attr_t *attrp);
 extern long   parse_hook(char **args);
 extern Macro *find_macro(const char *name);
 extern Macro *find_num_macro(int num); 
@@ -58,7 +63,8 @@ extern int    do_macro(Macro *macro, String *args, int offset,
 		int used_type, String *kbnumlocal);
 extern const char *macro_body(const char *name);
 extern int    find_and_run_matches(String *text, long hook, String **linep,
-		struct World *world, int globalflag, int exec_list_long);
+		struct World *world, int globalflag, int exec_list_long,
+		int hooktype);
 
 #if USE_DMALLOC
 extern void   free_macros(void);

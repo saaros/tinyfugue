@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: dstring.c,v 35004.30 2003/05/27 01:09:21 hawkeye Exp $";
+static const char RCSid[] = "$Id: dstring.c,v 35004.33 2003/10/28 19:10:05 hawkeye Exp $";
 
 
 /*********************************************************************
@@ -79,11 +79,11 @@ void extend_charattrs(String *str, int oldlen, cattr_t cattrs)
 static void resize(String *str, const char *file, int line)
 {
     if (!str->resizable) {
-        internal_error(str->file, str->line, "");
+        internal_error2(file, line, str->file, str->line, "");
         core("resize: data not resizable", file, line, 0);
     }
     if (str->size < 0) {
-        internal_error(str->file, str->line, "");
+        internal_error2(file, line, str->file, str->line, "");
         core("resize freed string", file, line, 0);
     }
     str->size = (str->len / ALLOCSIZE + 1) * ALLOCSIZE;
@@ -182,7 +182,7 @@ String *dSinit(
 void dSfree(String *str, const char *file, int line)
 {
     if (str->links < 0) {
-        internal_error(str->file, str->line, "");
+        internal_error2(file, line, str->file, str->line, "");
         core("dSfree: links==%ld", file, line, (long)str->links);
     }
 
@@ -300,11 +300,8 @@ String *dScat(String *dest, const char *src, const char *file, int line)
     return dest;
 }
 
-String *dSSoncat(dest, src, start, len, file, line)
-    String *dest;
-    const String *src;
-    const char *file;
-    int line;
+String *dSSoncat(String *dest, const String *src, int start, int len,
+    const char *file, int line)
 {
     int oldlen = dest->len;
     int i, j;
@@ -373,6 +370,52 @@ String *dSfncat(String *dest, const char *src, int n, const char *file, int line
     if (dest->charattrs) extend_charattrs(dest, oldlen, 0);
     return dest;
 }
+
+#if 0
+String *encode_attr(String *str)
+{
+    attr_t oldattrs = 0, attrs;
+    int i;
+    String *new;
+    
+    new = Stringnew(NULL, str->len, 0);
+    if (!str->charattrs) {
+	if (str->attrs) {
+	    Stringcat(new, "@{");
+	    SStringcat(new, attr2str(str->attrs));
+	    Stringadd(new, '}');
+	}
+	Stringcat(new, str->data);
+    } else {
+	for (i = 0; i < str->len; i++) {
+	    attrs = adj_attr(str->attrs, str->charattrs[i]);
+	    if (attrs != oldattrs) {
+		if (!attrs) {
+		    /* no attrs */
+		    Stringcat(new, "@{n}");
+		} else if (((oldattrs | attrs) & F_ENCODE) ==
+		    (attrs & F_ENCODE))
+		{
+		    /* new attrs can be added to old attrs */
+		    Stringcat(new, "@{");
+		    SStringcat(new, attr2str(attrs & ~(oldattrs & F_SIMPLE)));
+		    Stringadd(new, '}');
+		} else {
+		    /* attrs are different */
+		    Stringcat(new, "@{n");
+		    SStringcat(new, attr2str(attrs));
+		    Stringadd(new, '}');
+		}
+	    }
+	    Stringadd(new, str->data[i]);
+	    oldattrs = attrs;
+	}
+	if (attrs)
+	    Stringcat(new, "@{n}");
+    }
+    return new;
+}
+#endif
 
 #if USE_DMALLOC
 void free_dstring(void)

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: search.c,v 35004.23 2003/05/27 01:09:24 hawkeye Exp $";
+static const char RCSid[] = "$Id: search.c,v 35004.24 2003/10/11 22:19:17 hawkeye Exp $";
 
 
 /**********************************************
@@ -310,6 +310,7 @@ int resize_cqueue(CQueue *cq, int maxsize)
     int first, last, size;
     void **newdata;
 
+    /* XXX should use version of malloc without reserve */
     if (!(newdata = (void**)MALLOC(maxsize * sizeof(void*))))
 	return 0;
     first = nmod(cq->total, maxsize);

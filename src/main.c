@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: main.c,v 35004.88 2003/05/28 06:59:56 hawkeye Exp $";
+static const char RCSid[] = "$Id: main.c,v 35004.91 2003/07/03 17:22:53 hawkeye Exp $";
 
 
 /***********************************************
@@ -47,7 +47,7 @@ const char version[] =
 #if DEVELOPMENT
     "DEVELOPMENT VERSION: "
 #endif
-    "TinyFugue version 5.0 alpha 11";
+    "TinyFugue version 5.0 alpha 13";
 
 const char mods[] = "";
 
@@ -116,8 +116,8 @@ int main(int argc, char *argv[])
     if (argc > 2) {
     error:
         fputs("\n", stderr);
-        fprintf(stderr, "Usage: %s [-L<dir>] [-f[<file>]] [-c<cmd>] [-nlq] [<world>]\n", argv0);
-        fprintf(stderr, "       %s [-L<dir>] [-f[<file>]] [-c<cmd>] <host> <port>\n", argv0);
+        fprintf(stderr, "Usage: %s [-L<dir>] [-f[<file>]] [-c<cmd>] [-vnlq] [<world>]\n", argv0);
+        fprintf(stderr, "       %s [-L<dir>] [-f[<file>]] [-c<cmd>] [-vlq] <host> <port>\n", argv0);
         fputs("Options:\n", stderr);
         fputs("  -L<dir>   use <dir> as library directory (%TFLIBDIR)\n", stderr);
         fputs("  -f        don't load personal config file (.tfrc)\n", stderr);

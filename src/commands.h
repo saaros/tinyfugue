@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: commands.h,v 35004.27 2003/05/27 01:09:21 hawkeye Exp $ */
+/* $Id: commands.h,v 35004.29 2003/08/31 03:18:33 hawkeye Exp $ */
 
 #ifndef COMMANDS_H
 #define COMMANDS_H
@@ -13,7 +13,6 @@
 
 #define HANDLER(name) struct Value *name(String *args, int offset)
 
-extern HANDLER (handle_break_command);
 extern HANDLER (handle_dc_command);
 extern HANDLER (handle_def_command);
 extern HANDLER (handle_dokey_command);
@@ -31,11 +30,8 @@ extern HANDLER (handle_listvar_command);
 extern HANDLER (handle_listworlds_command);
 extern HANDLER (handle_prompt_command);
 extern HANDLER (handle_purge_command);
-extern HANDLER (handle_result_command);
-extern HANDLER (handle_return_command);
 extern HANDLER (handle_saveworld_command);
 extern HANDLER (handle_shift_command);
-extern HANDLER (handle_test_command);
 extern HANDLER (handle_undefn_command);
 extern HANDLER (handle_unset_command);
 extern HANDLER (handle_unworld_command);

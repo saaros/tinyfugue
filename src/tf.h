@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tf.h,v 35004.41 2003/05/27 01:09:25 hawkeye Exp $ */
+/* $Id: tf.h,v 35004.45 2003/10/28 19:10:06 hawkeye Exp $ */
 
 #ifndef TF_H
 #define TF_H
@@ -99,17 +99,19 @@ enum enum_attr {
 #endif
 
     /* outside the 16 low bits */
+    F_TEMP	  = 0x02000000,
     F_BELL        = 0x04000000,
     F_GAG         = 0x08000000,
     F_NOHISTORY   = 0x10000000,
     F_SUPERGAG    = (F_GAG | F_NOHISTORY),
 
-    F_INDENT      = 0x20000000,
-    F_TEMP	  = 0x40000000,
+    F_PROMPT      = 0x20000000,		/* is a prompt */
+    F_PROMPTHOOK  = 0x40000000,		/* is a prompt and needs hook */
 
     F_COLORS      = (F_FGCOLOR | F_BGCOLOR | F_FGCOLORMASK | F_BGCOLORMASK),
     F_SIMPLE      = (F_UNDERLINE | F_REVERSE | F_FLASH | F_DIM | F_BOLD),
     F_HWRITE      = (F_SIMPLE | F_HILITE | F_COLORS),
+    F_ENCODE      = (F_SIMPLE | F_HILITE | F_FGCOLOR | F_BGCOLOR),
     F_ATTR        = (F_HWRITE | F_SUPERGAG | F_NONE | F_EXCLUSIVE)
 };
 
@@ -159,6 +161,7 @@ extern attr_t adj_attr(attr_t base, attr_t adj);  /* output.c */
 #define bicode(a, b)  a 
 #include "enumlist.h"
 
+extern String enum_off[];
 extern String enum_flag[];
 extern String enum_sub[];
 extern String enum_color[];
@@ -180,8 +183,10 @@ enum Hooks {
 /* externs */
 extern const char version[], sysname[], copyright[], contrib[], mods[];
 extern int restriction, debug;
-extern void internal_error(const char *file, int line, const char *fmt, ...)
-    format_printf(3, 4);
+extern void internal_error(const char *file, int line,
+    const char *fmt, ...) format_printf(3, 4);
+extern void internal_error2(const char *file, int line, const char *file2,
+    int line2, const char *fmt, ...) format_printf(5, 6);
 
 
 #endif /* TF_H */

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: util.c,v 35004.109 2003/05/27 01:09:25 hawkeye Exp $";
+static const char RCSid[] = "$Id: util.c,v 35004.112 2003/08/31 03:18:33 hawkeye Exp $";
 
 
 /*
@@ -52,10 +52,10 @@ struct timeval tvzero = { 0, 0 };	/* zero (useful in tvcmp()) */
 struct timeval mail_update = { 0, 0 };	/* next mail update (0==immediately) */
 int mail_count = 0;
 char tf_ctype[0x100];
-int feature_locale = HAVE_SETLOCALE - 0;
-int feature_subsecond = HAVE_GETTIMEOFDAY - 0;
-int feature_ftime = HAVE_STRFTIME - 0;
-int feature_TZ = HAVE_TZSET - 0;
+const int feature_locale = HAVE_SETLOCALE - 0;
+const int feature_subsecond = HAVE_GETTIMEOFDAY - 0;
+const int feature_ftime = HAVE_STRFTIME - 0;
+const int feature_TZ = HAVE_TZSET - 0;
 
 static char *cmatch(const char *pat, int ch);
 static void  free_maillist(void);
@@ -100,16 +100,16 @@ void init_util1(void)
     tf_ctype['d']  |= IS_KEYSTART;  /* do, done */
     tf_ctype['e']  |= IS_KEYSTART;  /* else, elseif, endif, exit */
     tf_ctype['i']  |= IS_KEYSTART;  /* if */
-    tf_ctype['r']  |= IS_KEYSTART;  /* return */
-    tf_ctype['t']  |= IS_KEYSTART;  /* then */
+    tf_ctype['r']  |= IS_KEYSTART;  /* return, result */
+    tf_ctype['t']  |= IS_KEYSTART;  /* then, test */
     tf_ctype['w']  |= IS_KEYSTART;  /* while */
 
     tf_ctype['B']  |= IS_KEYSTART;  /* BREAK */
     tf_ctype['D']  |= IS_KEYSTART;  /* DO, DONE */
     tf_ctype['E']  |= IS_KEYSTART;  /* ELSE, ELSEIF, ENDIF, EXIT */
     tf_ctype['I']  |= IS_KEYSTART;  /* IF */
-    tf_ctype['R']  |= IS_KEYSTART;  /* RETURN */
-    tf_ctype['T']  |= IS_KEYSTART;  /* THEN */
+    tf_ctype['R']  |= IS_KEYSTART;  /* RETURN, RESULT */
+    tf_ctype['T']  |= IS_KEYSTART;  /* THEN, TEST */
     tf_ctype['W']  |= IS_KEYSTART;  /* WHILE */
 }
 
@@ -768,7 +768,7 @@ void startopt(String *args, const char *opts)
     inword = 0;
 }
 
-char nextopt(char **arg, long *ival, struct timeval *tvp, int *offp)
+char nextopt(char **arg, void *uval, int *type, int *offp)
 {
     char *q, *end, opt;
     STATIC_BUFFER(buffer);
@@ -842,6 +842,7 @@ char nextopt(char **arg, long *ival, struct timeval *tvp, int *offp)
         }
 	if (arg)
 	    *arg = buffer->data;
+	if (type) *type = TYPE_STR;
 
 	/* option takes a numeric argument expression */
 	if (*q == '#') {
@@ -850,8 +851,9 @@ char nextopt(char **arg, long *ival, struct timeval *tvp, int *offp)
 		opt = '?';
 		goto end;
 	    }
-	    *ival = valint(val);
+	    *(int*)uval = valint(val);
 	    freeval(val);
+	    if (type) *type = TYPE_INT;
 	}
 
     /* option takes a time argument */
@@ -862,12 +864,14 @@ char nextopt(char **arg, long *ival, struct timeval *tvp, int *offp)
             opt = '?';
 	    goto end;
         }
-	*tvp = val->u.tval;
+	*(struct timeval*)uval = val->u.tval;
         *offp = end - optstr->data;
+	if (type) *type = TYPE_TIME;
 
     /* option takes no argument */
     } else {
         if (arg) *arg = NULL;
+	if (type) *type = 0;
     }
 
     inword = (optstr->data[*offp] && !is_space(optstr->data[*offp]));

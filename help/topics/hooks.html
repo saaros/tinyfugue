@@ -24,8 +24,8 @@
   <a href="../topics/hooks.html">Hooks</a> are a method of calling a
   <a href="../topics/macros.html">macro</a> based on special events within
   TF, in much the same way as <a href="../topics/triggers.html">triggers</a>
-  call <a href="../topics/macros.html">macros</a> based on
-  <a href="../topics/sockets.html">socket</a> text.
+  call <a href="../topics/macros.html">macros</a> based on text received
+  from a <a href="../topics/sockets.html">socket</a>.
   <a href="../topics/hooks.html">Hooks</a> allow the user to customize the
   behavior of TinyFugue and automate special functions.
 
@@ -72,81 +72,87 @@
       to the <a href="../topics/tfio.html">alert stream</a>.
   <dt>Otherwise, the message is sent to the the
       <a href="../topics/tfio.html">tferr stream</a> (i.e., the screen).
+      <dd>
   </dl>
 <pre>
-    Event Name	Arguments	Default Message or Action
-    ----------	---------	-------------------------
+  Event Name  Arguments       Default Message or Action
+  ----------  ---------       -------------------------
 <a name="ACTIVITY"></a><!--
-------->    ACTIVITY	world		A '% Activity in world <i>world</i>'
-				  (called only the first time activity
-				  occurs on a given <a href="../topics/sockets.html">socket</a>.)
+------->  ACTIVITY    world           A '% Activity in world <i>world</i>'
+                                (called only the first time activity
+                                occurs on a given <a href="../topics/sockets.html">socket</a>.)
 <a name="BACKGROUND"></a><!--
-------->    BACKGROUND	world		A '% <a href="../topics/triggers.html">Trigger</a> in world <i>world</i>'
+------->  BACKGROUND  world           A '% <a href="../topics/triggers.html">Trigger</a> in world <i>world</i>'
 <a name="BAMF"></a><!--
-------->    BAMF	world		W '% <a href="../commands/bamf.html">Bamfing</a> to <i>world</i>'
+------->  BAMF        world           W '% <a href="../commands/bamf.html">Bamfing</a> to <i>world</i>'
 <a name="CONFAIL"></a><!--
-------->    CONFAIL	world, reason	W '% <a href="../commands/connect.html">Connection</a> to <i>world</i> failed: <i>reason</i>'
+------->  CONFAIL     world, reason   W '% Unable to <a href="../commands/connect.html">connect</a> to <i>world</i>.'
 <a name="CONFLICT"></a><!--
-------->    CONFLICT	<a href="../topics/macros.html">macro</a>		  '% <i>macro</i> conflicts with builtin command.'
+------->  CONFLICT    <a href="../topics/macros.html">macro</a>             '% <i>macro</i> conflicts with builtin command.'
 <a name="CONNECT"></a><!--
-------->    CONNECT	world		W '% <a href="../commands/connect.html">Connection</a> to <i>world</i> established.'
+------->  CONNECT     world           W '% <a href="../commands/connect.html">Connected</a> to <i>world</i>.'
+<a name="CONNETFAIL"></a><!--
+------->  CONNETFAIL  world, reason   W '% <a href="../commands/connect.html">Connection</a> to <i>world</i> failed: <i>reason</i>'
 <a name="DISCONNECT"></a><!--
-------->    DISCONNECT	world, reason	W '% <a href="../commands/connect.html">Connection</a> to <i>world</i> closed: <i>reason</i>.'
-				  (Called if you send the server's disconnect
-				  command (e.g., "QUIT") or <a href="../topics/sockets.html">socket</a> closes, but
-				  not if you use <a href="../commands/dc.html">/dc</a>.)
+------->  DISCONNECT  world, reason   W '% <a href="../commands/connect.html">Connection</a> to <i>world</i> closed: <i>reason</i>.'
+                                (Called if you send the server's disconnect
+                                command (e.g., "QUIT") or <a href="../topics/sockets.html">socket</a> closes, but
+                                not if you use <a href="../commands/dc.html">/dc</a>.)
 <a name="KILL"></a><!--
-------->    KILL	pid		  (<a href="../topics/processes.html">process</a> ends)
+------->  KILL        pid               (<a href="../topics/processes.html">process</a> ends)
 <a name="LOAD"></a><!--
-------->    LOAD	file		  '% <a href="../commands/load.html">Loading</a> commands from file <i>file</i>'
+------->  LOAD        file              '% <a href="../commands/load.html">Loading</a> commands from file <i>file</i>'
 <a name="LOADFAIL"></a><!--
-------->    LOADFAIL	file, reason	  '% <i>file</i>: <i>reason</i>'
+------->  LOADFAIL    file, reason      '% <i>file</i>: <i>reason</i>'
 <a name="LOG"></a><!--
-------->    LOG		file		  '% <a href="../commands/log.html">Logging</a> to file <i>file</i>'
+------->  LOG         file              '% <a href="../commands/log.html">Logging</a> to file <i>file</i>'
 <a name="LOGIN"></a><!--
-------->    LOGIN	world             (<a href="../topics/login.html">automatic login</a>)
+------->  LOGIN       world             (<a href="../topics/login.html">automatic login</a>)
 <a name="MAIL"></a><!--
-------->    MAIL	file		A '% You have new mail in <i>file</i>.'
-				  (See: <a href="../topics/mail.html">mail</a>).
+------->  MAIL        file            A '% You have new mail in <i>file</i>.'
+                                (See: <a href="../topics/mail.html">mail</a>).
 <a name="MORE"></a><!--
-------->    MORE			  '<a href="../commands/more.html">--More--</a>' (reverse bold)
+------->  MORE                          '<a href="../commands/more.html">--More--</a>' (reverse bold)
 <a name="NOMACRO"></a><!--
-------->    NOMACRO	name		  '% <i>name</i>: No such command or macro'
+------->  NOMACRO     name              '% <i>name</i>: No such command or macro'
 <a name="PENDING"></a><!--
-------->    PENDING	world		A '% Hostname resolution for <i>world</i> in progress'
-    PENDING	world		A '% <a href="../commands/connect.html">Connection</a> to <i>world</i> in progress'
+------->  PENDING     world           W '% Hostname lookup for <i>world</i> in progress'
+  PENDING     world, address  A '% Trying to <a href="../commands/connect.html">connect</a> to <i>world</i>: <i>address</i>'
+<a name="PREACTIVITY"></a><!--
+------->  PREACTIVITY world             (Activity in world <i>world</i>)
+                                (called only the first time activity
+                                occurs on a given <a href="../topics/sockets.html">socket</a>.)
 <a name="PROCESS"></a><!--
-------->    PROCESS	pid		  <a href="../topics/processes.html">process</a> starts
+------->  PROCESS     pid               <a href="../topics/processes.html">process</a> starts
 <a name="PROMPT"></a><!--
-------->    PROMPT	text		  <i>text</i> is a partial (unterminated) line
-				  from the server.  See "<a href="../topics/prompts.html">prompts</a>"
+------->  PROMPT      text              <i>text</i> is a partial (unterminated) line
+                                from the server.  See "<a href="../topics/prompts.html">prompts</a>"
 <a name="PROXY"></a><!--
-------->    PROXY	world		  (<a href="../topics/proxy.html">proxy</a> connection to <i>world</i> has completed)
+------->  PROXY       world             (<a href="../topics/proxy.html">proxy</a> connection to <i>world</i> has completed)
 <a name="REDEF"></a><!--
-------->    REDEF	obj_type, name	  '% Redefined <i>obj_type</i> <i>name</i>'
-<a name="SIGWINCH"></a><!--
--------><a name="RESIZE"></a><!--
-------->    RESIZE	columns, lines	  (window was resized)
-				  (see also: <a href="../topics/functions.html#columns">columns()</a>, <a href="../topics/functions.html#lines">lines()</a>)
+------->  REDEF       obj_type, name    '% Redefined <i>obj_type</i> <i>name</i>'
+<a name="RESIZE"></a><!--
+------->  RESIZE      columns, lines    (window was resized)
+                                (see also: <a href="../topics/functions.html#columns">columns()</a>, <a href="../topics/functions.html#lines">lines()</a>)
 <a name="SEND"></a><!--
-------->    SEND	text	   	  (text sent to <a href="../topics/sockets.html#current">current</a> <a href="../topics/sockets.html">socket</a>)
-				  (see note below ("<a href="../topics/hooks.html">hooks</a>"))
+------->  SEND        text              (text sent to <a href="../topics/sockets.html#current">current</a> <a href="../topics/sockets.html">socket</a>)
+                                (see note below ("<a href="../topics/hooks.html">hooks</a>"))
 <a name="SHADOW"></a><!--
-------->    SHADOW	var_name	  '% Variable <i>var_name</i> overshadows global'
+------->  SHADOW      var_name          '% Variable <i>var_name</i> overshadows global'
 <a name="SHELL"></a><!--
-------->    SHELL	type, command	  '% Executing <i>type</i>: <i>command</i>'
+------->  SHELL       type, command     '% Executing <i>type</i>: <i>command</i>'
 <a name="SIGHUP"></a><!--
-------->    SIGHUP			  (SIGHUP <a href="../topics/signals.html">signal</a> caught; tf may terminate)
+------->  SIGHUP                        (SIGHUP <a href="../topics/signals.html">signal</a> caught; tf may terminate)
 <a name="SIGTERM"></a><!--
-------->    SIGTERM			  (SIGTERM <a href="../topics/signals.html">signal</a> caught; tf terminates)
+------->  SIGTERM                       (SIGTERM <a href="../topics/signals.html">signal</a> caught; tf terminates)
 <a name="SIGUSR1"></a><!--
-------->    SIGUSR1			  (SIGUSR1 <a href="../topics/signals.html">signal</a> caught; no effect)
+------->  SIGUSR1                       (SIGUSR1 <a href="../topics/signals.html">signal</a> caught; no effect)
 <a name="SIGUSR2"></a><!--
-------->    SIGUSR2			  (SIGUSR2 <a href="../topics/signals.html">signal</a> caught; no effect)
+------->  SIGUSR2                       (SIGUSR2 <a href="../topics/signals.html">signal</a> caught; no effect)
 <a name="WORLD"></a><!--
-------->    WORLD	world		W (<a href="../topics/sockets.html#foreground">foreground socket</a> changes)
-<a name=""></a>
+------->  WORLD       world           W (<a href="../topics/sockets.html#foreground">foreground socket</a> changes)
 </pre>
+<a name=""></a>
   Notes:
 
 <p>
@@ -195,14 +201,16 @@
      called).
 
 <p>
-  The message for the CONNECT <a href="../topics/hooks.html">hook</a> is
-  displayed only if the connection was pending.  The standard library defines
-  a default CONNECT <a href="../topics/hooks.html">hook</a> to
-  <a href="../commands/fg.html">/fg</a> the
-  <a href="../topics/sockets.html">socket</a>, which in turn calls the WORLD
-  <a href="../topics/hooks.html">hook</a>; define your own CONNECT
-  <a href="../topics/hooks.html">hook</a> if you want to override this
-  automatic <a href="../commands/fg.html">/fg</a>.
+  When a (non-<a href="../topics/attributes.html">gag</a>ged)
+  line is displayed in a background world, the
+  PREACTIVITY hook is called immediately before the line is displayed, and 
+  the ACTIVITY hook is called immediately after.
+  Thus, functions like
+  <a href="../topics/functions.html#moresize">moresize()</a> and
+  <a href="../topics/functions.html#nactive">nactive()</a>
+  will give different results in the two hooks.
+  Any activity generated by a PREACTIVITY hook will not recursively
+  cause another PREACTIVITY or ACTIVITY event.
 
 <p>
   The SIGHUP, SIGTERM, SIGUSR1, and SIGUSR2
@@ -216,6 +224,15 @@
   <a href="../commands/quote.html">/quote</a> without -S, a nonblocking
   <a href="../commands/connect.html">/connect</a>, etc), those effects will
   not occur before termination.
+
+<p>
+  A hook's message, if any, is displayed (with its
+  <a href="../topics/attributes.html">attributes</a>)
+  before any of the hooked <a href="../topics/macros.html">macros</a>
+  are executed.  Prior to version 5.0, the message was displayed
+  after executing hooked <a href="../topics/macros.html">macros</a>,
+  which may have generated their own output, which was sometimes
+  confusing.
 
 <p>
   Examples:

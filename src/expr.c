@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: expr.c,v 35004.110 2003/05/27 01:09:21 hawkeye Exp $";
+static const char RCSid[] = "$Id: expr.c,v 35004.125 2003/10/31 01:39:47 hawkeye Exp $";
 
 
 /********************************************************************
@@ -43,7 +43,7 @@ static const char RCSid[] = "$Id: expr.c,v 35004.110 2003/05/27 01:09:21 hawkeye
 
 int stacktop = 0;
 Value *stack[STACKSIZE];
-int feature_float = !NO_FLOAT;
+const int feature_float = !(NO_FLOAT-0);
 
 static Value *valpool = NULL;		/* freelist */
 
@@ -72,45 +72,20 @@ typedef struct ExprFunc {
 } ExprFunc;
 
 static ExprFunc functab[] = {
-#define funccode(id, name, pure, min, max)  { name, min, max }
+#define funccode(name, pure, min, max)  { #name, min, max }
 #include "funclist.h"
 #undef funccode
 };
 
 enum func_id {
-#define funccode(id, name, pure, min, max)  id
+#define funccode(name, pure, min, max)  FN_##name
 #include "funclist.h"
 #undef funccode
 };
 
 int expr(Program *prog)
 {
-    int ok;
-#if 0
-    int stackbot = stacktop;
-    int old_eflag = evalflag;
-    int old_condition = condition;
-    int old_breaking = breaking;
-#endif
-
-    ok = comma_expr(prog);
-
-#if 0
-    if (ok && stacktop != stackbot + 1) {
-        internal_error(__FILE__, __LINE__,
-	    (stacktop < stackbot + 1) ?
-            "expression stack underflow" : "dirty expression stack");
-        ok = 0;
-    }
-    while (stacktop > stackbot + ok) freeval(stack[--stacktop]);
-
-    /* in case some short-circuit code left these in a weird state */
-    evalflag = old_eflag;
-    condition = old_condition;
-    breaking = exiting ? -1 : old_breaking;
-#endif
-
-    return ok;
+    return comma_expr(prog);
 }
 
 /* Returns the value of expression.  Caller must freeval() the value. */
@@ -129,28 +104,7 @@ Value *expr_value(const char *expression)
 
 Value *expr_value_safe(Program *prog)
 {
-    Value *result;
-#if 0 /* XXX */
-    int old_eflag = evalflag;
-    int old_condition = condition;
-    int old_breaking = breaking;
-    TFILE *old_tfin = tfin, *old_tfout = tfout;
-
-    evalflag = 1;
-    condition = 1;
-    breaking = 0;
-#endif
-
-    result = prog_interpret(prog, 1);
-
-#if 0 /* XXX */
-    tfin = old_tfin;    /* in case expression closed tfin */
-    tfout = old_tfout;  /* in case expression closed tfout */
-    evalflag = old_eflag;
-    condition = old_condition;
-    breaking = old_breaking;
-#endif
-    return result;
+    return prog_interpret(prog, 1);
 }
 
 
@@ -184,7 +138,7 @@ Value *newint_fl(long i, const char *file, int line)
 {
     Value *val;
 
-    val = newval();
+    val = newval_fl(file, line);
     val->type = TYPE_INT;
     val->u.ival = i;
     return val;
@@ -194,7 +148,7 @@ Value *newtime_fl(long s, long u, const char *file, int line)
 {
     Value *val;
 
-    val = newval();
+    val = newval_fl(file, line);
     val->type = TYPE_TIME;
     val->u.tval.tv_sec = s;
     val->u.tval.tv_usec = u;
@@ -205,7 +159,7 @@ Value *newstr_fl(const char *data, int len, const char *file, int line)
 {
     Value *val;
 
-    val = newval();
+    val = newval_fl(file, line);
     val->type = TYPE_STR;
     (val->sval = Stringnew(data, len, 0))->links++;
     val->u.p = NULL;
@@ -217,7 +171,7 @@ Value *newSstr_fl(String *str, const char *file, int line)
 {
     Value *val;
 
-    val = newval();
+    val = newval_fl(file, line);
     val->type = TYPE_STR;
     (val->sval = str)->links++;
     val->u.p = NULL;
@@ -229,7 +183,7 @@ Value *newid_fl(const char *id, int len, const char *file, int line)
     Value *val;
     char *new;
 
-    val = newval();
+    val = newval_fl(file, line);
     val->type = TYPE_ID;
     new = strncpy((char *)xmalloc(NULL, len + 1, file, line), id, len);
     new[len] = '\0';
@@ -243,7 +197,7 @@ Value *newptr_fl(void *ptr, const char *file, int line)
 {
     Value *val;
 
-    val = newval();
+    val = newval_fl(file, line);
     val->type = TYPE_FILE;
     val->u.p = ptr;
     return val;
@@ -257,7 +211,7 @@ Value *valval_fl(Value *val, const char *file, int line)
     Value *result;
     struct timeval tv;
 
-    if (!val->name)
+    if (val->type != TYPE_ID)
 	return val;
     if (!(result = hgetnearestvarval(val->name, val->u.hash))) {
 	result = newSstr_fl(blankline, file, line);
@@ -581,7 +535,8 @@ int reduce(opcode_t op, int n)
 		    return 0;
                 }
             }
-            var = setnearestvar(opd(2)->name, basic_type, value);
+            var = hsetnearestvar(opd(2)->name, opd(2)->u.hash, basic_type,
+		value);
             palloc(val, Value, valpool, u.next, __FILE__, __LINE__);
             val->name = NULL;
             val->count = 1;
@@ -681,8 +636,10 @@ static Value *reduce_arithmetic(opcode_t op, int n)
 	    neg1 = int1 < 0;
 	    sum = (int0 + int1);
 	}
-	if (neg0 == neg1 && sum<0 != neg0)
+	if (neg0 == neg1 && sum<0 != neg0) {
+	    /* operands have same sign, but sum has different sign: overflow */
 	    promoted_type = TYPE_FLOAT;
+	}
     }
 
     switch (promoted_type) {
@@ -768,6 +725,8 @@ static Value *function_switch(int symbol, int n, const char *parent)
     FILE *file;
     TFILE *tfile;
     struct timeval tv, *then;
+    union { struct timeval tv; long i; } u;
+    int type;
 
 #ifdef __CYGWIN32__
     STATIC_STRING(systype, "cygwin32", 0);
@@ -785,7 +744,7 @@ static Value *function_switch(int symbol, int n, const char *parent)
 
         switch (symbol) {
 
-        case FN_ADDWORLD:
+        case FN_addworld:
     /* addworld(name, type, host, port, char, pass, file, flags, srchost) */
 	  {
 	    int flags = 0;
@@ -812,9 +771,9 @@ static Value *function_switch(int symbol, int n, const char *parent)
 		    }
 		}
             }
-            str = opdstd(n-0);  /* name */
 
-            return newint(!!new_world(str,  /* name */
+            return newint(!!new_world(
+                opdstd(n-0),                /* name */
                 opdstd(n-1),                /* type */
                 n>2 ? opdstd(n-2) : "",     /* host */
                 n>3 ? opdstd(n-3) : "",     /* port */
@@ -825,31 +784,47 @@ static Value *function_switch(int symbol, int n, const char *parent)
 		n>8 ? opdstd(n-8) : ""));   /* srchost */
 	  }
 
-        case FN_COLUMNS:
+        case FN_columns:
             return newint(columns);
 
-        case FN_LINES:
+        case FN_lines:
             return newint(lines);
 
-        case FN_WINLINES:
+        case FN_winlines:
             return newint(winlines());
 
-        case FN_INLINE:
+#if 0
+        case FN_decode_ansi:
+	    Sstr = opdstrdup(n);
+	    decode_ansi(Sstr, 0, EMUL_ANSI_ATTR);
+	    return newSstr(Sstr);
+
+        case FN_encode_attr:
+	    return newSstr(encode_attr(opdstr(n-0)));
+#endif
+
+        case FN_decode_attr:
             {
 		attr_t attr = 0;
-		Value *val;
 		if (n > 1) {
 		    str = opdstd(n-1);
-		    attr = parse_attrs((char**)&str);
-		    if (attr < 0) return newSstr(blankline);
+		    if (!parse_attrs((char**)&str, &attr))
+			return newSstr(blankline);
 		}
 		Sstr = opdstrdup(n);
-		handle_inline_attr(Sstr, attr);
-		val = newSstr(Sstr);
-		return val;
+		if (!decode_attr(Sstr, attr))
+		    Stringtrunc(Sstr, 0);
+		return newSstr(Sstr);
             }
 
-        case FN_ECHO:
+        case FN_strip_attr:
+	    Sstr = opdstr(n-0);
+	    return newstr(Sstr->data, Sstr->len);
+
+        case FN_status_width:
+	    return newint(handle_status_width_func(opdstd(n-0)));
+
+        case FN_echo:
             i = (n>2) ?
 		enum2int(opdstd(n-2), 0, enum_flag, "arg 3 (inline)") : 0;
             if (i < 0) return shareval(val_zero);
@@ -857,24 +832,33 @@ static Value *function_switch(int symbol, int n, const char *parent)
                 (n >= 2) ? opdstd(n-1) : "",
                 i, (n >= 4) ? opdstd(n-3) : "o"));
 
-        case FN_SUBSTITUTE:
+        case FN_substitute:
             i = (n>2) ?
 		enum2int(opdstd(n-2), 0, enum_flag, "arg 3 (inline)") : 0;
             if (i < 0) return shareval(val_zero);
             return newint(handle_substitute_func(opdstrdup(n),
                 (n >= 2) ? opdstd(n-1) : "",  i));
 
-        case FN_SEND:
+        case FN_eval:
+	    i = SUB_MACRO;
+	    if (n>1)
+		if ((i = enum2int(opdstd(n-1), 0, enum_sub, "arg 2 (sub)")) < 0)
+		    return shareval(val_zero);
+	    if (!macro_run(opdstr(n-0), 0, NULL, 0, i, "\bEVAL"))
+		return shareval(val_zero);
+	    return_user_result();
+
+        case FN_send:
             i = handle_send_function(opdstr(n), (n>1 ? opdstd(n-1) : NULL), 
 		(n>2 ? opdstd(n-2) : ""));
             return newint(i);
 
-        case FN_FAKE_RECV:
+        case FN_fake_recv:
             i = handle_fake_recv_function(opdstr(n),
 		(n>1 ? opdstd(n-1) : NULL), (n>2 ? opdstd(n-2) : ""));
             return newint(i);
 
-        case FN_FWRITE:
+        case FN_fwrite:
             ptr = opdstd(2);
             file = fopen(expand_filename(ptr), "a");
             if (!file) {
@@ -886,11 +870,11 @@ static Value *function_switch(int symbol, int n, const char *parent)
             fclose(file);
             return shareval(val_one);
 
-        case FN_TFOPEN:
+        case FN_tfopen:
             return newint(handle_tfopen_func(
                 n<2 ? "" : opdstd(2), n<1 ? "q" : opdstd(1)));
 
-        case FN_TFCLOSE:
+        case FN_tfclose:
             str = opdstd(1);
             if (!str[1]) {
                 switch(lcase(str[0])) {
@@ -904,14 +888,14 @@ static Value *function_switch(int symbol, int n, const char *parent)
             tfile = find_tfile(str);
             return newint(tfile ? tfclose(tfile) : -1);
 
-        case FN_TFWRITE:
+        case FN_tfwrite:
             tfile = (n > 1) ? find_usable_tfile(opdstd(2), S_IWUSR) : tfout;
             if (!tfile) return newint(-1);
             Sstr = opdstrdup(1);
             tfputline(Sstr, tfile);
             return shareval(val_one);
 
-        case FN_TFREAD:
+        case FN_tfread:
             tfile = (n > 1) ? find_usable_tfile(opdstd(2), S_IRUSR) : tfin;
             if (!tfile) return newint(-1);
             if (opd(1)->type != TYPE_ID) {
@@ -923,14 +907,14 @@ static Value *function_switch(int symbol, int n, const char *parent)
             j = -1;
             (Sstr = Stringnew(NULL, 0, 0))->links++;
             if (tfgetS(Sstr, tfile)) {
-                if (setnearestvar(opd(1)->name, TYPE_STR, Sstr))
+                if (hsetnearestvar(opd(1)->name, opd(1)->u.hash, TYPE_STR, Sstr))
                     j = Sstr->len;
             }
             Stringfree(Sstr);
             block = oldblock;
             return newint(j);
 
-        case FN_TFFLUSH:
+        case FN_tfflush:
             tfile = find_usable_tfile(opdstd(n), S_IWUSR);
             if (!tfile) return newint(-1);
             if (n > 1) {
@@ -942,31 +926,42 @@ static Value *function_switch(int symbol, int n, const char *parent)
             }
             return shareval(val_one);
 
-        case FN_ASCII:
+        case FN_ascii:
             return newint((0x100 + unmapchar(*opdstd(1))) & 0xFF);
 
-        case FN_CHAR:
+        case FN_char:
             c = mapchar(localize(opdint(1)));
             return newstr(&c, 1);
 
-        case FN_KEYCODE:
+        case FN_keycode:
             Sstr = opdstr(1);
             ptr = get_keycode(Sstr->data);
             if (ptr) return newstr(ptr, -1);
             eprintf("unknown key name \"%S\"", Sstr);
             return newSstr(blankline);
 
-        case FN_MOD:
+        case FN_mod:
             if ((i = opdint(1)) == 0) {
                 eprintf("division by zero");
                 return NULL;
             }
             return newint(opdint(2) % i);
 
-        case FN_MORESIZE:
+        case FN_morepaused:
+	  {
+	    World *world;
+	    Screen *screen;
+            world = (n>=1 && *opdstd(1)) ? find_world(opdstd(1)) : xworld();
+	    screen = world ? world->screen : display_screen;
+	    return newint(screen->paused);
+	  }
+
+        case FN_moresize:
 	  {
 	    int lim = 0, new = 0;
-	    if (n > 0 && (str = opdstd(1))) {
+	    World *world;
+	    Screen *screen;
+	    if (n > 0 && (str = opdstd(n-0))) {
 		for ( ; *str; str++) {
 		    if (lcase(*str) == 'l') lim++;
 		    else if (lcase(*str) == 'n') new++;
@@ -976,93 +971,95 @@ static Value *function_switch(int symbol, int n, const char *parent)
 		    }
 		}
 	    }
+            world = (n>=2 && *opdstd(n-1)) ? find_world(opdstd(n-1)) : xworld();
+	    screen = world ? world->screen : display_screen;
 	    return newint(new ?
-		(lim ? display_screen->nnew_filtered : display_screen->nnew) :
-		(lim ? display_screen->nback_filtered : display_screen->nback));
+		(lim ? screen->nnew_filtered : screen->nnew) :
+		(lim ? screen->nback_filtered : screen->nback));
 	  }
 
-        case FN_MORESCROLL:
+        case FN_morescroll:
             return newint(clear_more(opdint(1)));
 
 #if !NO_FLOAT
-        case FN_SQRT:
+        case FN_sqrt:
             return newfloat(sqrt(opdfloat(1)));
 
-        case FN_SIN:
+        case FN_sin:
             return newfloat(sin(opdfloat(1)));
 
-        case FN_COS:
+        case FN_cos:
             return newfloat(cos(opdfloat(1)));
 
-        case FN_TAN:
+        case FN_tan:
             return newfloat(tan(opdfloat(1)));
 
-        case FN_ASIN:
+        case FN_asin:
             return newfloat(asin(opdfloat(1)));
 
-        case FN_ACOS:
+        case FN_acos:
             return newfloat(acos(opdfloat(1)));
 
-        case FN_ATAN:
+        case FN_atan:
             return newfloat(atan(opdfloat(1)));
 
-        case FN_EXP:
+        case FN_exp:
             return newfloat(exp(opdfloat(1)));
 
-        case FN_LN:
+        case FN_ln:
             return newfloat(log(opdfloat(1)));
 
-        case FN_LOG10:
+        case FN_log10:
             return newfloat(log10(opdfloat(1)));
 
-        case FN_POW:
+        case FN_pow:
             return newfloat(pow(opdfloat(2), opdfloat(1)));
 
-        case FN_TRUNC:
+        case FN_trunc:
             return newint(opdint(1));
 
-        case FN_ABS:
+        case FN_abs:
 	  {
 	    Value *val = valnum(opd(1));
 	    return (!val) ? shareval(val_zero) : (val->type & TYPE_INT) ?
                 newint(labs(valint(val))) : newfloat(fabs(valfloat(val)));
 	  }
 #else
-        case FN_ABS:
+        case FN_abs:
             return newint(abs(opdint(1)));
 #endif /* NO_FLOAT */
 
-        case FN_RAND:
+        case FN_rand:
             if (n == 0) return newint(RAND());
             i = (n==1) ? 0 : opdint(2);
             if (i < 0) i = 0;
             j = opdint(1) - (n==1);
             return newint((j > i) ? RRAND(i, j) : i);
 
-        case FN_ISATTY:
+        case FN_isatty:
             return newint(!no_tty);
 
-        case FN_FTIME:
+        case FN_ftime:
             Sstr = Stringnew(NULL, 0, 0);
             if (n > 1) opdtime(&tv, n-1);
             else gettime(&tv);
             tftime(Sstr, n>0 ? opdstr(n) : blankline, &tv);
             return newSstr(Sstr);
 
-        case FN_TIME:
+        case FN_time:
             gettime(&tv);
             return newtime(tv.tv_sec, tv.tv_usec);
 
-        case FN_CPUTIME:
+        case FN_cputime:
 	    {
 		clock_t t;
 		t = clock();
 		return newfloat(t / (double)CLOCKS_PER_SEC);
 	    }
 
-        case FN_IDLE:
-        case FN_SIDLE:
-            if (symbol == FN_SIDLE)
+        case FN_idle:
+        case FN_sidle:
+            if (symbol == FN_sidle)
                 then = socktime(n > 0 ? opdstd(1) : "", SOCK_SEND);
             else if (n > 0)
                 then = socktime(opdstd(1), SOCK_RECV);
@@ -1073,7 +1070,7 @@ static Value *function_switch(int symbol, int n, const char *parent)
             tvsub(&tv, &tv, then);
             return newtime(tv.tv_sec, tv.tv_usec);
 
-        case FN_MKTIME:
+        case FN_mktime:
 	    {
 		struct tm tm;
 		time_t t;
@@ -1104,14 +1101,14 @@ static Value *function_switch(int symbol, int n, const char *parent)
 		return newtime(t, usec);
 	    }
 
-        case FN_FILENAME:
+        case FN_filename:
             str = expand_filename(opdstd(1));
             return newstr(str, -1);
 
-        case FN_FG_WORLD:
+        case FN_fg_world:
             return ((str=fgname())) ? newstr(str, -1) : newSstr(blankline);
 
-        case FN_WORLDINFO:
+        case FN_world_info:
             ptr = n>=1 ? opdstd(1) : NULL;
             str = world_info(n>=2 ? opdstd(2) : NULL, ptr);
             if (!str) {
@@ -1120,16 +1117,16 @@ static Value *function_switch(int symbol, int n, const char *parent)
             }
             return newstr(str, -1);
 
-        case FN_IS_CONN:
+        case FN_is_connected:
             return newint(is_connected(n>0 ? opdstd(1) : ""));
 
-        case FN_IS_OPEN:
+        case FN_is_open:
             return newint(is_open(n>0 ? opdstd(1) : ""));
 
-        case FN_GETPID:
+        case FN_getpid:
             return newint((long)getpid());
 
-        case FN_REGMATCH:
+        case FN_regmatch:
 	  {
 	    Value *val;
             (Sstr = opdstrdup(1))->links++;	/* XXX not needed if no match */
@@ -1142,20 +1139,20 @@ static Value *function_switch(int symbol, int n, const char *parent)
             return val;
 	  }
 
-        case FN_STRCAT:
+        case FN_strcat:
             Sstr = opdstrdup(n);
             for (n--; n; n--)
                 SStringcat(Sstr, opdstr(n));
             return newSstr(Sstr);
 
-        case FN_STRREP:
+        case FN_strrep:
             Sstr = opdstr(2);
             i = opdint(1);
             for (Sstr2 = Stringnew(NULL, 0, 0); i > 0; i--)
                 SStringcat(Sstr2, Sstr);
             return newSstr(Sstr2);
 
-        case FN_PAD:
+        case FN_pad:
             for (Sstr2 = Stringnew(NULL, 0, 0); n > 0; n -= 2) {
                 Sstr = opdstr(n);
                 i = (n > 1) ? opdint(n-1) : 0;
@@ -1169,13 +1166,13 @@ static Value *function_switch(int symbol, int n, const char *parent)
             }
             return newSstr(Sstr2);
 
-        case FN_STRCMP:
+        case FN_strcmp:
             return newint(strcmp(opdstd(2), opdstd(1)));
 
-        case FN_STRNCMP:
+        case FN_strncmp:
             return newint(strncmp(opdstd(3), opdstd(2), opdint(1)));
 
-        case FN_STRLEN:
+        case FN_strlen:
             Sstr = opdstr(1);
             return newint(Sstr->len);
 
@@ -1200,7 +1197,7 @@ static Value *function_switch(int symbol, int n, const char *parent)
 	} \
     } while (0)
 
-        case FN_SUBSTR:
+        case FN_substr:
             Sstr = opdstr(n);
             i = opdint(n - 1);
 	    bound_check(i, Sstr->len);
@@ -1208,19 +1205,19 @@ static Value *function_switch(int symbol, int n, const char *parent)
             Sstr2 = Stringnew(NULL, 0, 0);
             return newSstr(SStringoncat(Sstr2, Sstr, i, j));
 
-        case FN_STRSTR:
+        case FN_strstr:
             Sstr = opdstr(n);
 	    optional_int_arg(j, n, 3, Sstr->len, 0);
             ptr = strstr(Sstr->data + j, opdstd(n-1));
             return newint(ptr ? (ptr - Sstr->data) : -1);
 
-        case FN_STRCHR:
+        case FN_strchr:
             Sstr = opdstr(n);
 	    optional_int_arg(j, n, 3, Sstr->len, 0);
             i = strcspn(Sstr->data + j, opdstd(n-1));
             return newint(Sstr->data[i+j] ? i+j : -1);
 
-        case FN_STRRCHR:
+        case FN_strrchr:
             Sstr = opdstr(n);
             ptr = opdstd(n-1);
 	    optional_int_arg(i, n, 3, Sstr->len - 1, Sstr->len - 1);
@@ -1229,7 +1226,7 @@ static Value *function_switch(int symbol, int n, const char *parent)
 		    return newint(i);
             return newint(-1);
 
-        case FN_REPLACE: {
+        case FN_replace: {
 	    String *old, *new;
 	    const char *start, *next;
 	    old = opdstr(3);
@@ -1246,48 +1243,48 @@ static Value *function_switch(int symbol, int n, const char *parent)
 	    return newSstr(Sstr2);
 	  }
 
-        case FN_TOLOWER:
+        case FN_tolower:
             Sstr2 = opdstrdup(n);
 	    optional_int_arg(j, n, 2, Sstr2->len, Sstr2->len);
             for (i = 0; i < j; i++)
                 Sstr2->data[i] = lcase(Sstr2->data[i]);
             return newSstr(Sstr2);
 
-        case FN_TOUPPER:
+        case FN_toupper:
             Sstr2 = opdstrdup(n);
 	    optional_int_arg(j, n, 2, Sstr2->len, Sstr2->len);
             for (i = 0; i < j; i++)
                 Sstr2->data[i] = ucase(Sstr2->data[i]);
             return newSstr(Sstr2);
 
-        case FN_KBHEAD:
+        case FN_kbhead:
             return newstr(keybuf->data, keyboard_pos);
 
-        case FN_KBTAIL:
+        case FN_kbtail:
             return newstr(keybuf->data + keyboard_pos, keybuf->len - keyboard_pos);
 
-        case FN_KBPOINT:
+        case FN_kbpoint:
             return newint(keyboard_pos);
 
-        case FN_KBGOTO:
+        case FN_kbgoto:
             return newint(igoto(opdint(1)));
 
-        case FN_KBDEL:
+        case FN_kbdel:
             return (newint(do_kbdel(opdint(1))));
 
-        case FN_KBMATCH:
+        case FN_kbmatch:
             return newint(do_kbmatch(n>0 ? opdint(1) : keyboard_pos));
 
-        case FN_KBWLEFT:
+        case FN_kbwordleft:
             return newint(do_kbword(n>0 ? opdint(1) : keyboard_pos, -1));
 
-        case FN_KBWRIGHT:
+        case FN_kbwordright:
             return newint(do_kbword(n>0 ? opdint(1) : keyboard_pos, 1));
 
-        case FN_KBLEN:
+        case FN_kblen:
             return newint(keybuf->len);
 
-        case FN_GETOPTS: {
+        case FN_getopts: {
             char name[] = "opt_?";
             int offset;
             current_command = parent;
@@ -1315,14 +1312,17 @@ static Value *function_switch(int symbol, int n, const char *parent)
             if (!tf_argc) return shareval(val_one);
             offset = tf_argv[0].start;
             startopt(argstring, str);
-            while (i = 1, (c = nextopt((char**)&ptr, &i, NULL, &offset))) {
+            while ((c = nextopt((char**)&ptr, &u, &type, &offset))) {
                 if (is_alpha(c)) {
                     name[4] = c;
-                    if (ptr) {
+		    if (type == TYPE_STR) {
                         setlocalvar(name, TYPE_STR, Stringnew(ptr, -1, 0));
-                    } else {
+		    } else if (type == 0) {
+			i = 1;
                         setlocalvar(name, TYPE_INT, &i);
-                    }
+                    } else {
+                        setlocalvar(name, type, &u);
+		    }
                 } else {
                     return shareval(val_zero);
                 }
@@ -1337,7 +1337,7 @@ static Value *function_switch(int symbol, int n, const char *parent)
             return shareval(val_one);
           }
 
-        case FN_READ:
+        case FN_read:
             eprintf("warning: read() will be removed in the near future.  Use tfread() instead.");
             oldblock = block;  /* condition and evalflag are already correct */
             block = 0;
@@ -1347,22 +1347,22 @@ static Value *function_switch(int symbol, int n, const char *parent)
             block = oldblock;
             return newSstr(Sstr);
 
-        case FN_NREAD:
+        case FN_nread:
             return newint(read_depth);
 
-        case FN_NACTIVE:
+        case FN_nactive:
             return newint(nactive(n ? opdstd(1) : NULL));
 
-        case FN_NLOG:
+        case FN_nlog:
             return newint(log_count);
 
-        case FN_NMAIL:
+        case FN_nmail:
             return newint(mail_count);
 
-        case FN_SYSTYPE:
+        case FN_systype:
             return newSstr(systype);
 
-        case FN_WHATIS: {
+        case FN_whatis: {
 	    Value *val = opd(1);
             Sstr = Stringnew(NULL, 0, 0);
 	    if (val->type == TYPE_ID) {
@@ -1672,10 +1672,7 @@ static int unary_expr(Program *prog)
 	    } else if ((cmd = find_builtin_cmd(arg->val->name))) {
 		arg->val->type = TYPE_CMD;
 		arg->val->u.p = cmd;
-		if (cmd->func == handle_exit_command ||
-		    cmd->func == handle_result_command ||
-		    cmd->func == handle_return_command)
-		{
+		if (cmd->func == handle_exit_command) {
 		    eprintf("%s: not a function", cmd->name);
 		    return 0;
 		}

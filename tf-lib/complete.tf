@@ -64,7 +64,8 @@
 ;; <list> is a list of possible matches.
 ;; If <word> matches exactly one member of <list>, that member will be
 ;; inserted in the input buffer.  If multiple matches are found, the
-;; longest common prefix will be inserted, and a list of matches will
+;; longest common prefix will be inserted; if this is not the first time
+;; this identical list of matches has been generated, the list will
 ;; be displayed.  If no matches are found, it simply beeps.
 ;; If exactly one match was found, %{_completion_suffix} or a space
 ;; will be appended to the completed word.
@@ -88,9 +89,9 @@
 ;   Remove duplicates (and strip leading space)
     /if (_need_unique) \
         /let _match=$(/unique %{_match})%;\
-    /else \
-        /let _match=$(/echo - %{_match})%;\
     /endif%;\
+;   strip leading/trailing space
+    /let _match=$[regmatch('^ *(.*?) *$', _match), {P1}]%;\
 ;
     /if (_match =~ "") \
 ;       No match was found.
@@ -98,8 +99,11 @@
     /elseif (_match !/ "{*}") \
 ;       Multiple matches were found.  Use longest common prefix.
         /beep 1%;\
-        /@test input(substr($$(/common_prefix %{_len} %{_match}), _len))%;\
-        /echo - %{_match}%;\
+        /@test input(substr($$(/common_prefix %%{_len} %%{_match}), _len))%;\
+        /if (_match =~ _prev_match) \
+	    /echo - %{_match}%;\
+	/endif%; \
+	/set _prev_match=%_match%; \
     /else \
 ;       Exactly one match was found.
         /@test _match := strcat(_match, _completion_suffix)%;\
