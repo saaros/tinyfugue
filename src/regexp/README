@@ -5,6 +5,15 @@ does it in a much cleaner fashion than the analogous routines in SysV.
 	Copyright (c) 1986 by University of Toronto.
 	Written by Henry Spencer.  Not derived from licensed software.
 
+	This is an altered version.  Changes include:
+
+	1. Minor changes in regexp.h for cleaner integration into TinyFugue,
+		which should have no effect on the package's portability.
+
+	2. The original Makefile has been renamed original.mak; the new
+		Makefile contains only enough to compile regexp.o for
+		use with TinyFugue.
+
 	Permission is granted to anyone to use this software for any
 	purpose on any computer system, and to redistribute it freely,
 	subject to the following restrictions:

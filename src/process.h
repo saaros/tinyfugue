@@ -1,22 +1,20 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: process.h,v 33000.1 1994/04/26 08:56:29 hawkeye Exp $ */
+/* $Id: process.h,v 35004.3 1997/03/27 01:04:40 hawkeye Exp $ */
 
 #ifndef PROCESS_H
 #define PROCESS_H
-
-#include "world.h"
 
 # ifndef NO_PROCESS
 
 extern void FDECL(kill_procs_by_world,(struct World *world));
 extern void NDECL(kill_procs);
-extern void FDECL(runall,(TIME_T now));
+extern void NDECL(runall);
 
 # else
 

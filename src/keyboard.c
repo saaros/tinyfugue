@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: keyboard.c,v 33000.5 1994/04/23 23:21:45 hawkeye Exp $ */
+/* $Id: keyboard.c,v 35004.18 1997/04/02 23:49:31 hawkeye Exp $ */
 
 /**************************************************
  * Fugue keyboard handling.
@@ -13,42 +13,37 @@
  **************************************************/
 
 #include "config.h"
-#include <ctype.h>
+#include <errno.h>
 #include "port.h"
 #include "dstring.h"
 #include "tf.h"
 #include "util.h"
+#include "tfio.h"
+#include "macro.h"	/* Macro, find_macro(), do_macro()... */
 #include "keyboard.h"
-#include "macro.h"		/* Macro, new_macro(), add_macro()... */
-#include "output.h"		/* iput(), idel(), redraw()... */
-#include "history.h"		/* history_sub() */
-#include "expand.h"		/* process_macro() */
+#include "output.h"	/* iput(), idel(), redraw()... */
+#include "history.h"	/* history_sub() */
+#include "expand.h"	/* process_macro() */
 #include "search.h"
 #include "commands.h"
 
-typedef struct KeyNode {
-    int children;
-    union {
-        struct KeyNode **child;
-        Macro *macro;
-    } u;
-} KeyNode;
-
+extern int errno;
 static int literal_next = FALSE;
-extern int echoflag;
-int input_is_complete = FALSE;
+static TrieNode *keynode = NULL;	/* current node matched by input */
 
-static Macro   *FDECL(trie_insert,(KeyNode **root, Macro *macro, char *key));
-static KeyNode *FDECL(untrie_key,(KeyNode **root, char *s));
+int pending_line = FALSE;
+int pending_input = FALSE;
+TIME_T keyboard_time = 0;
 
-/* The /dokey functions. (some are declared in output.h) */
+static int  NDECL(dokey_newline);
+static int  FDECL(replace_input,(Aline *aline));
+static int  NDECL(kill_input);
+static void FDECL(handle_input_string,(CONST char *input, unsigned int len));
 
-int NDECL(dokey_dline);
 
 STATIC_BUFFER(scratch);                 /* buffer for manipulating text */
-STATIC_BUFFER(cat_keybuf);              /* Total buffer for /cat */
 STATIC_BUFFER(current_input);           /* unprocessed keystrokes */
-static KeyNode *keytrie = NULL;         /* root of keybinding trie */
+static TrieNode *keytrie = NULL;        /* root of keybinding trie */
 
 Stringp keybuf;                         /* input buffer */
 int keyboard_pos = 0;                   /* current position in buffer */
@@ -62,37 +57,18 @@ int keyboard_pos = 0;                   /* current position in buffer */
  * have macros in stdlib.tf of the form "/def dokey_foo = /dokey foo",
  * so all operations can be performed with "/dokey_foo".
  */
-static char *efunc_table[] = {
-    "DLINE"  ,
-    "FLUSH"  ,
-    "HPAGE"  ,
-    "LINE"   ,
-    "LNEXT"  ,
-    "NEWLINE",
-    "PAGE"   ,
-    "RECALLB",
-    "RECALLF",
-    "REDRAW" ,
-    "REFRESH",
-    "SEARCHB",
-    "SEARCHF"
+enum {
+#define bicode(a, b)  a
+#include "keylist.h"
+#undef bicode
 };
 
-enum {
-    DOKEY_DLINE  ,
-    DOKEY_FLUSH  ,
-    DOKEY_HPAGE  ,
-    DOKEY_LINE   ,
-    DOKEY_LNEXT  ,
-    DOKEY_NEWLINE,
-    DOKEY_PAGE   ,
-    DOKEY_RECALLB,
-    DOKEY_RECALLF,
-    DOKEY_REDRAW ,
-    DOKEY_REFRESH,
-    DOKEY_SEARCHB,
-    DOKEY_SEARCHF
+static CONST char *efunc_table[] = {
+#define bicode(a, b)  b
+#include "keylist.h"
+#undef bicode
 };
+
 
 void init_keyboard()
 {
@@ -101,160 +77,146 @@ void init_keyboard()
 
 /* Find the macro assosiated with <key> sequence. */
 Macro *find_key(key)
-    char *key;
+    CONST char *key;
 {
-    KeyNode *n;
-
-    for (n = keytrie; n && n->children && *key; n = n->u.child[*key++]);
-    return (n && !n->children && !*key) ? n->u.macro : NULL;
+    return (Macro *)trie_find(keytrie, (unsigned char*)key);
 }
 
-/* Insert a macro into the keybinding trie */
-static Macro *trie_insert(root, macro, key)
-    KeyNode **root;
-    Macro *macro;
-    char *key;
+int bind_key(spec)   /* install Macro's binding in key structures */
+    Macro *spec;
 {
-    int i;
+    Macro *macro;
+    int status;
 
-    if (!*root) {
-        *root = (KeyNode *) MALLOC(sizeof(KeyNode));
-        if (*key) {
-            (*root)->children = 1;
-            (*root)->u.child = (KeyNode **) MALLOC(128 * sizeof(KeyNode *));
-            for (i = 0; i < 128; i++) (*root)->u.child[i] = NULL;
-            return trie_insert(&(*root)->u.child[*key], macro, key + 1);
+    if ((macro = find_key(spec->bind))) {
+        if (redef) {
+            kill_macro(macro);
+            /* intrie is guaranteed to succeed */
         } else {
-            (*root)->children = 0;
-            return (*root)->u.macro = macro;
-        }
-    } else {
-        if (*key) {
-            if ((*root)->children) {
-                if (!(*root)->u.child[*key]) (*root)->children++;
-                return trie_insert(&(*root)->u.child[*key], macro, key + 1);
-            } else {
-                tfprintf(tferr, "%% %s is prefixed by an existing sequence.",
-                    ascii_to_print(macro->bind));
-                return NULL;
-            }
-        } else {
-            if ((*root)->children) {
-                tfprintf(tferr, "%% %s is prefix of an existing sequence.",
-                  ascii_to_print(macro->bind));
-                return NULL;
-            } else if (redef) {
-                return (*root)->u.macro = macro;
-            } else {
-                tfprintf(tferr, "%% Binding %s already exists.",
-                    ascii_to_print(macro->bind));
-                return NULL;
-            }
+            eprintf("Binding %s already exists.", ascii_to_print(spec->bind));
+            return 0;
         }
     }
-}
 
-Macro *bind_key(macro)
-    Macro *macro;
-{
-    return trie_insert(&keytrie, macro, macro->bind);
-}
+    status = intrie(&keytrie, spec, (unsigned char*)spec->bind);
 
-static KeyNode *untrie_key(root, s)
-    KeyNode **root;
-    char *s;
-{
-    if (!*s) {
-        FREE(*root);
-        return *root = NULL;
+    if (status < 0) {
+        eprintf("'%s' is %s an existing keybinding.",
+            ascii_to_print(spec->bind),
+            (status == TRIE_SUPER) ? "prefixed by" : "a prefix of");
+        return 0;
     }
-    if (untrie_key(&((*root)->u.child[*s]), s + 1)) return *root;
-    if (--(*root)->children) return *root;
-    FREE((*root)->u.child);
-    FREE(*root);
-    return *root = NULL;
+
+    if (macro && redef)
+        do_hook(H_REDEF, "%% Redefined %s %s", "%s %s",
+            "binding", ascii_to_print(spec->bind));
+
+    return 1;
 }
 
 void unbind_key(macro)
     Macro *macro;
 {
-    untrie_key(&keytrie, macro->bind);
+    untrie(&keytrie, (unsigned char*)macro->bind);
+    keynode = NULL;  /* in case it pointed to a node that no longer exists */
 }
 
-void handle_keyboard_input()
+/* returns 0 at EOF, 1 otherwise */
+int handle_keyboard_input()
 {
-    char *s, buf[64];
+    char buf[64];
+    CONST char *s;
     int i, count;
-    static KeyNode *n;
     static int key_start = 0;
     static int input_start = 0;
     static int place = 0;
+    static int is_open = 1;
 
-    /* read a block of text */
-    if ((count = read(0, buf, sizeof(buf))) < 0) {
-        if (errno == EINTR) return;
-        perror("handle_keyboard_input: read");
-        die("% Couldn't read keyboard.");
+    if (is_open) {
+        /* read a block of text */
+        if ((count = read(STDIN_FILENO, buf, sizeof(buf))) < 0) {
+            /* error or interrupt */
+            if (errno == EINTR) return 1;
+            die("handle_keyboard_input: read", errno);
+        } else if (count > 0) {
+            /* something was read */
+            keyboard_time = time(NULL);
+        } else if (place == 0) {
+            /* nothing was read, and nothing is buffered */
+            is_open = 0;
+            close(STDIN_FILENO);
+        }
+    } else if (place == 0) {
+        return is_open;
     }
-    if (!count) return;
 
     for (i = 0; i < count; i++) {
-        /* strip high bits and nul bytes */
-        if ((buf[i] &= 0x7F)) Stringadd(current_input, buf[i]);
+        if (istrip) buf[i] &= 0x7F;
+        if (!isprint(buf[i]) && buf[i] & 0x80) {
+            Stringadd(current_input, '\033');
+            buf[i] &= 0x7F;
+        }
+        Stringadd(current_input, mapchar(buf[i]));
     }
 
     s = current_input->s;
-    if (!n) n = keytrie;
-    while (s[place]) {
+    if (!s) return is_open; /* no good chars; current_input not yet allocated */
+    while (place < current_input->len) {
+        if (!keynode) keynode = keytrie;
+        if ((pending_input = pending_line))
+            break;
         if (literal_next) {
             place++;
             key_start++;
             literal_next = FALSE;
             continue;
         }
-        while (s[place] && n && n->children) n = n->u.child[s[place++]];
-        if (!n || !keytrie->children) {
-            /* No match.  Try a suffix. */
-            place = ++key_start;
-            n = keytrie;
-        } else if (n->children) {
-            /* Partial match.  Just hold on to it for now */
-        } else {
-            /* Total match.  Process everything up to this point, */
-            /* and call the macro. */
+        while (place < current_input->len && keynode && keynode->children)
+            keynode = keynode->u.child[(unsigned char)s[place++]];
+        if (!keynode) {
+            /* No keybinding match; check for builtins. */
+            if (s[key_start] == '\n' || s[key_start] == '\r') {
+                handle_input_string(s + input_start, key_start - input_start);
+                place = input_start = ++key_start;
+                dokey_newline();
+                /* handle_input_line(); */
+            } else if (s[key_start] == '\b' || s[key_start] == '\177') {
+                handle_input_string(s + input_start, key_start - input_start);
+                place = input_start = ++key_start;
+                do_kbdel(keyboard_pos - 1);
+            } else {
+                /* No builtin; try a suffix. */
+                place = ++key_start;
+            }
+            keynode = NULL;
+        } else if (!keynode->children) {
+            /* Total match; process everything up to here and call the macro. */
+            Macro *macro = (Macro *)keynode->u.datum;
             handle_input_string(s + input_start, key_start - input_start);
             key_start = input_start = place;
-            do_macro(n->u.macro, "");
-            n = keytrie;
-        }
+            keynode = NULL;  /* before do_macro(), for reentrance */
+            do_macro(macro, NULL);
+        } /* else, partial match; just hold on to it for now. */
     }
 
     /* Process everything up to a possible match. */
     handle_input_string(s + input_start, key_start - input_start);
 
     /* Shift the window if there's no pending partial match. */
-    if (!s[key_start]) {
+    if (key_start >= current_input->len) {
         Stringterm(current_input, 0);
         place = key_start = 0;
     }
     input_start = key_start;
+    return is_open;
 }
 
 /* Update the input window and keyboard buffer. */
-void handle_input_string(input, len)
-    char *input;
+static void handle_input_string(input, len)
+    CONST char *input;
     unsigned int len;
 {
-    int i, j;
-
     if (len == 0) return;
-    for (i = j = 0; i < len; i++) {
-        if (isspace(input[i]))       /* convert newlines and tabs to spaces */
-            input[j++] = ' ';
-        else if (isprint(input[i]))
-            input[j++] = input[i];
-    }
-    len = j;
 
     if (keyboard_pos == keybuf->len) {                    /* add to end */
         Stringncat(keybuf, input, len);
@@ -264,13 +226,21 @@ void handle_input_string(input, len)
         Stringncat(keybuf, input, len);
         SStringcat(keybuf, scratch);
     } else if (keyboard_pos + len < keybuf->len) {        /* overwrite */
-        strncpy(keybuf->s + keyboard_pos, input, len);
+        memcpy(keybuf->s + keyboard_pos, input, len);
     } else {                                              /* write past end */
         Stringterm(keybuf, keyboard_pos);
         Stringncat(keybuf, input, len);
     }                      
     keyboard_pos += len;
-    if (echoflag || always_echo) iput(input, len);
+    iput(len);
+}
+
+
+int handle_input_command(args)
+    char *args;
+{
+    handle_input_string(args, strlen(args));
+    return 1;
 }
 
 
@@ -281,52 +251,75 @@ void handle_input_string(input, len)
 int handle_dokey_command(args)
     char *args;
 {
-    char **ptr;
+    CONST char **ptr;
     STATIC_BUFFER(buffer);
     Macro *macro;
 
-    ptr = (char **)binsearch((GENERIC*)&args, (GENERIC*)efunc_table,
-        sizeof(efunc_table)/sizeof(char*), sizeof(char*), gencstrcmp);
+    ptr = (CONST char **)binsearch((GENERIC*)args, (GENERIC*)efunc_table,
+        sizeof(efunc_table)/sizeof(char*), sizeof(char*), cstrstructcmp);
 
     if (!ptr) {
         Stringcat(Stringcpy(buffer, "dokey_"), args);
         if ((macro = find_macro(buffer->s))) return do_macro(macro, NULL);
-        else tfprintf(tferr, "%% No editing function %s", args); 
+        else eprintf("No editing function %s", args); 
         return 0;
     }
 
     switch (ptr - efunc_table) {
 
-    case DOKEY_DLINE:      return dokey_dline();
-    case DOKEY_FLUSH:      return dokey_flush();
+    case DOKEY_DLINE:      return kill_input();
+    case DOKEY_FLUSH:      return screen_flush(FALSE);
     case DOKEY_HPAGE:      return dokey_hpage();
     case DOKEY_LINE:       return dokey_line();
     case DOKEY_LNEXT:      return literal_next = TRUE;
-
-    case DOKEY_NEWLINE:
-        reset_outcount();
-        inewline();
-        /* If we actually process the input now, weird things will happen with
-         * current_command and mecho.  So we just set a flag and wait until the
-         * end of handle_command(), when things are cleaner.
-         */
-        return input_is_complete = TRUE;  /* return value isn't really used */
-
+    case DOKEY_NEWLINE:    return dokey_newline();
     case DOKEY_PAGE:       return dokey_page();
-    case DOKEY_RECALLB:    return recall_input(-1, FALSE);
-    case DOKEY_RECALLF:    return recall_input(1, FALSE);
+    case DOKEY_RECALLB:    return replace_input(recall_input(-1, FALSE));
+    case DOKEY_RECALLBEG:  return replace_input(recall_input(-2, FALSE));
+    case DOKEY_RECALLEND:  return replace_input(recall_input(2, FALSE));
+    case DOKEY_RECALLF:    return replace_input(recall_input(1, FALSE));
     case DOKEY_REDRAW:     return redraw();
-    case DOKEY_REFRESH:    return logical_refresh();
-    case DOKEY_SEARCHB:    return recall_input(-1, TRUE);
-    case DOKEY_SEARCHF:    return recall_input(1, TRUE);
+    case DOKEY_REFRESH:    return logical_refresh(), keyboard_pos;
+    case DOKEY_SEARCHB:    return replace_input(recall_input(-1, TRUE));
+    case DOKEY_SEARCHF:    return replace_input(recall_input(1, TRUE));
+    case DOKEY_SELFLUSH:   return screen_flush(TRUE);
     default:               return 0; /* impossible */
     }
 }
 
-int dokey_dline()
+static int dokey_newline()
 {
-    Stringterm(keybuf, keyboard_pos = 0);
-    logical_refresh();
+    reset_outcount();
+    inewline();
+    /* We might be in the middle of a macro (^M -> /dokey newline) now,
+     * so we can't process the input now, or weird things will happen with
+     * current_command and mecho.  So we just set a flag and wait until
+     * later when things are cleaner.
+     */
+    pending_line = TRUE;
+    return 1;  /* return value isn't really used */
+}
+
+static int replace_input(aline)
+    Aline *aline;
+{
+    if (!aline) {
+        bell(1);
+        return 0;
+    }
+    if (keybuf->len) kill_input();
+    handle_input_string(aline->str, aline->len);
+    return 1;
+}
+
+static int kill_input()
+{
+    if (keybuf->len) {
+        Stringterm(keybuf, keyboard_pos = 0);
+        logical_refresh();
+    } else {
+        bell(1);
+    }
     return keyboard_pos;
 }
 
@@ -337,69 +330,80 @@ int do_kbdel(place)
         Stringcpy(scratch, keybuf->s + keyboard_pos);
         SStringcat(Stringterm(keybuf, place), scratch);
         idel(place);
-    } else if (keyboard_pos < place && place <= keybuf->len) {
+    } else if (place > keyboard_pos && place <= keybuf->len) {
         Stringcpy(scratch, keybuf->s + place);
         SStringcat(Stringterm(keybuf, keyboard_pos), scratch);
         idel(place);
+    } else {
+        bell(1);
     }
     return keyboard_pos;
 }
 
 #define isinword(c) (isalnum(c) || (wordpunct && strchr(wordpunct, (c))))
 
-int do_kbwordleft()
+int do_kbword(dir)
+    int dir;
 {
-    int place;
+    int stop = (dir < 0) ? -1 : keybuf->len;
+    int place = keyboard_pos - (dir < 0);
 
-    place = keyboard_pos - 1;
-    while (place >= 0 && !isinword(keybuf->s[place])) place--;
-    while (place >= 0 && isinword(keybuf->s[place])) place--;
-    return place + 1;
+    while (place != stop && !isinword(keybuf->s[place])) place += dir;
+    while (place != stop && isinword(keybuf->s[place])) place += dir;
+    return place + (dir < 0);
 }
 
-int do_kbwordright()
+int do_kbmatch()
 {
-    int place;
+    static CONST char *braces = "(){}[]";
+    CONST char *type;
+    int dir, stop, depth = 0, place = keyboard_pos;
 
-    place = keyboard_pos;
-    while (place < keybuf->len && !isinword(keybuf->s[place])) place++;
-    while (place < keybuf->len && isinword(keybuf->s[place])) place++;
-    return place;
+    while (1) {
+        if (place >= keybuf->len) return -1;
+        if ((type = strchr(braces, keybuf->s[place]))) break;
+        ++place;
+    }
+    dir = ((type - braces) % 2) ? -1 : 1;
+    stop = (dir < 0) ? -1 : keybuf->len;
+    do {
+        if      (keybuf->s[place] == type[0])   depth++;
+        else if (keybuf->s[place] == type[dir]) depth--;
+        if (depth == 0) return place;
+    } while ((place += dir) != stop);
+    return -1;
 }
 
 int handle_input_line()
 {
-    extern int concat;
+    String *line;
 
     SStringcpy(scratch, keybuf);
     Stringterm(keybuf, keyboard_pos = 0);
-    input_is_complete = FALSE;
+    pending_line = FALSE;
 
-    if (concat) {
-        if (scratch->s[0] == '.' && scratch->len == 1) {
-            SStringcpy(scratch, cat_keybuf);
-            Stringterm(cat_keybuf, 0);
-            concat = 0;
-        } else {
-            SStringcat(cat_keybuf, scratch);
-            if (concat == 2) Stringcat(cat_keybuf, "%;");
+    if (*scratch->s == '^') {
+        if (!(line = history_sub(scratch->s + 1))) {
+            oputs("% No match.");
             return 0;
         }
-    }
+        SStringcpy(keybuf, line);
+        iput(keyboard_pos = keybuf->len);
+        inewline();
+        Stringterm(keybuf, keyboard_pos = 0);
+    } else
+        line = scratch;
 
-    if (kecho) tfprintf(tferr, "%s%S", kprefix, scratch);
-
-    if (*scratch->s == '^')
-        return history_sub(scratch->s + 1);
-
-    record_input(scratch->s);
-
-    return process_macro(scratch->s, NULL, sub);
+    if (kecho) tfprintf(tferr, "%s%S", kprefix, line);
+    record_input(line->s);
+    return process_macro(line->s, NULL, sub);
 }
 
 #ifdef DMALLOC
 void free_keyboard()
 {
     Stringfree(keybuf);
+    Stringfree(scratch);
+    Stringfree(current_input);
 }
 #endif

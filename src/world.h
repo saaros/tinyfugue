@@ -1,16 +1,17 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: world.h,v 33000.1 1994/04/26 08:56:29 hawkeye Exp $ */
+/* $Id: world.h,v 35004.9 1997/03/27 01:04:58 hawkeye Exp $ */
 
 #ifndef WORLD_H
 #define WORLD_H
 
 #define WORLD_TEMP     001
+#define WORLD_NOPROXY  002
 
 typedef struct World {         /* World structure */
     int flags;
@@ -18,7 +19,7 @@ typedef struct World {         /* World structure */
     char *name;                /* name of world */
     char *character;           /* login name */
     char *pass;                /* password */
-    char *address;             /* host name */
+    char *host;                /* host name */
     char *port;                /* port number or service name */
     char *mfile;               /* macro file */
     char *type;                /* user-defined server type (tiny, lp...) */
@@ -29,12 +30,12 @@ typedef struct World {         /* World structure */
 } World;
 
 
-extern World *FDECL(new_world,(char *name, char *character, char *pass,
-                    char *address, char *port, char *mfile, char *type));
-extern int    FDECL(list_worlds,(int full, char *pattern, TFILE *file));
-extern void   FDECL(free_world,(World *w));
-extern void   FDECL(nuke_world,(World *w));
+extern World *FDECL(new_world,(CONST char *name, CONST char *character,
+                    CONST char *pass, CONST char *host, CONST char *port,
+                    CONST char *mfile, CONST char *type, int flags));
+extern int    FDECL(nuke_world,(World *w));
 extern World *NDECL(get_default_world);
-extern World *FDECL(find_world,(char *name));
+extern World *FDECL(find_world,(CONST char *name));
+extern void   FDECL(mapworld,(void FDECL((*func),(struct World *world))));
 
 #endif /* WORLD_H */

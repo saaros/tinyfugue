@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: signals.c,v 33000.4 1994/04/19 23:45:23 hawkeye Exp $ */
+/* $Id: signals.c,v 35004.14 1997/03/27 01:04:43 hawkeye Exp $ */
 
 /* Signal handling, core dumps, job control, and interactive shells */
 
@@ -15,12 +15,18 @@
 #include "dstring.h"
 #include "tf.h"
 #include "util.h"
+#include "tfio.h"
+#include "world.h" /* for process.h */
 #include "process.h"
 #include "tty.h"
 #include "output.h"
-#include "socket.h"
-#include "macro.h"
 #include "signals.h"
+#include "variable.h"
+
+#ifdef TF_AIX_DECLS
+struct rusage *dummy_struct_rusage;
+union wait *dummy_union_wait;
+#endif
 
 /* POSIX.1 systems should define WIFEXITED and WEXITSTATUS, taking an |int|
  * parameter, in <sys/wait.h>.  For posix systems, we use them.  For non-posix
@@ -32,6 +38,7 @@
  */
 
 #ifdef _POSIX_VERSION
+# include <sys/types.h>
 # include <sys/wait.h>
 #else
 # undef WIFEXITED
@@ -48,147 +55,191 @@
  * unix-like systems do use this layout).
  */
 #ifndef WIFEXITED
-# define WIFEXITED(w)  (((*(int *)&(w)) & 0177) == 0)   /* works most places */
+# define WIFEXITED(w)  (((*(int *)&(w)) & 0xFF) == 0)   /* works most places */
 #endif
 #ifndef WEXITSTATUS
-# define WEXITSTATUS(w)  ((*(int *)&(w)) >> 8)          /* works most places */
+# define WEXITSTATUS(w)  (((*(int *)&(w)) >> 8) & 0xFF) /* works most places */
 #endif
 
 typedef RETSIG FDECL((SigHandler),(int sig));
 
+#ifndef HAVE_raise
+# ifdef HAVE_kill
+#  define raise(sig) kill(getpid(), sig)
+# endif
+#endif
+
+#ifdef SIGABRT
+# define ABORT SIGABRT
+#else
+# ifdef SIGQUIT
+#  define ABORT SIGQUIT
+# else
+#  define ABORT SIGTERM
+# endif
+#endif
+
+/* Zero out undefined signals, so we don't have to #ifdef everything later. */
+#ifndef SIGHUP
+# define SIGHUP 0
+#endif
+#ifndef SIGTRAP
+# define SIGTRAP 0
+#endif
+#ifndef SIGABRT
+# define SIGABRT 0
+#endif
+#ifndef SIGBUS /* not defined in Linux */
+# define SIGBUS 0
+#endif
+#ifndef SIGPIPE
+# define SIGPIPE 0
+#endif
+#ifndef SIGUSR1
+# define SIGUSR1 0
+#endif
+#ifndef SIGUSR2
+# define SIGUSR2 0
+#endif
 #ifndef SIGTSTP
 # define SIGTSTP 0
 #endif
 #ifndef SIGWINCH
 # define SIGWINCH 0
 #endif
-#ifndef SIGBUS /* not defined in Linux */
-# define SIGBUS 0
-#endif
 
 #ifndef NSIG
   /* Find an upper bound of the signals we use */
 # define NSIG \
-   ((SIGINT | SIGTERM | SIGHUP | SIGSEGV | SIGQUIT | SIGILL | SIGTRAP | \
-     SIGFPE | SIGPIPE | SIGTSTP | SIGWINCH | SIGBUS) + 1)
+   ((SIGHUP  | SIGINT  | SIGQUIT | SIGILL  | SIGTRAP | SIGABRT | SIGFPE  | \
+     SIGBUS  | SIGSEGV | SIGPIPE | SIGTERM | SIGUSR1 | SIGUSR2 | SIGTSTP | \
+     SIGWINCH) + 1)
 #endif
 
 VEC_TYPEDEF(sig_set, (NSIG-1));
-
-#define SIG_SET(sig)     VEC_SET((sig), &pending_signals)
-#define SIG_CLR(sig)     VEC_CLR((sig), &pending_signals)
-#define SIG_ISSET(sig)   VEC_ISSET((sig), &pending_signals)
-#define SIG_ZERO()       VEC_ZERO(&pending_signals)
 
 
 static sig_set pending_signals;
 static RETSIG FDECL((*parent_tstp_handler),(int sig));
 
-static void   NDECL(interrupt);
+static void   NDECL(handle_interrupt);
 static void   FDECL(terminate,(int sig));
+static void   NDECL(coremsg);
 static RETSIG FDECL(core_handler,(int sig));
 static RETSIG FDECL(signal_scheduler,(int sig));
 #ifndef SIG_IGN
 static RETSIG FDECL(SIG_IGN,(int sig));
 #endif
 
-#ifndef SA_RESTART
-# define setsighandler(sig, func)  signal(sig, func)
-
-#else
 
 static SigHandler *FDECL(setsighandler,(int sig, SigHandler *func));
+
+/* HAVE_sigaction doesn't mean we NEED_sigaction.  On some systems that have
+ * it, struct sigaction will not get defined unless _POSIX_SOURCE or similar
+ * is defined, so it's best to avoid it if we don't need it.
+ */
+#ifdef SA_RESTART
+# define NEED_sigaction
+#endif
+#ifdef SA_ACK
+# define NEED_sigaction
+#endif
 
 static SigHandler *setsighandler(sig, func)
     int sig;
     SigHandler *func;
 {
-    /* Disable system call restarting.  We want select() to be interruptable. */
-    struct sigaction act;
-    SigHandler *oldfunc;
+    if (!sig) return NULL;
+#ifndef NEED_sigaction
+    return signal(sig, func);
+#else
+    {
+        struct sigaction act;
+        SigHandler *oldfunc;
 
-    sigaction(sig, NULL, &act);
-    oldfunc = act.sa_handler;
-    act.sa_flags &= ~SA_RESTART;
-    act.sa_handler = func;
-    sigaction(sig, &act, NULL);
-    return oldfunc;
+        sigaction(sig, NULL, &act);
+        oldfunc = act.sa_handler;
+# ifdef SA_RESTART
+        /* Disable system call restarting, so select() is interruptable. */
+        act.sa_flags &= ~SA_RESTART;
+# endif
+# ifdef SA_ACK
+        /* Disable OS2 SA_ACK, so signals can be re-installed POSIX-style. */
+        act.sa_flags &= ~SA_ACK;
+# endif
+        act.sa_handler = func;
+        sigaction(sig, &act, NULL);
+        return oldfunc;
+    }
+#endif /* HAVE_sigaction */
 }
-
-#endif /* SA_RESTART */
 
 
 void init_signals()
 {
-    SIG_ZERO();
-    setsighandler(SIGINT  , signal_scheduler);
-    setsighandler(SIGTERM , signal_scheduler);
+    VEC_ZERO(&pending_signals);
+
     setsighandler(SIGHUP  , signal_scheduler);
-#if SIGTSTP
-    parent_tstp_handler = setsighandler(SIGTSTP , signal_scheduler);
-#endif
-#if SIGWINCH
-    setsighandler(SIGWINCH, signal_scheduler);
-#endif
-#if SIGBUS /* not defined in Linux */
-    setsighandler(SIGBUS  , core_handler);
-#endif
-    setsighandler(SIGSEGV , core_handler);
+    setsighandler(SIGINT  , signal_scheduler);
     setsighandler(SIGQUIT , core_handler);
     setsighandler(SIGILL  , core_handler);
     setsighandler(SIGTRAP , core_handler);
+    setsighandler(SIGABRT , core_handler);
     setsighandler(SIGFPE  , core_handler);
+    setsighandler(SIGBUS  , core_handler);
+    setsighandler(SIGSEGV , core_handler);
     setsighandler(SIGPIPE , SIG_IGN);
+    setsighandler(SIGTERM , signal_scheduler);
+    setsighandler(SIGUSR1 , signal_scheduler);
+    setsighandler(SIGUSR2 , signal_scheduler);
+    parent_tstp_handler = setsighandler(SIGTSTP , signal_scheduler);
+    setsighandler(SIGWINCH, signal_scheduler);
+
 }
 
 #ifndef SIG_IGN
 static RETSIG SIG_IGN(sig)
     int sig;
 {
-    setsighandler(sig, SIG_IGN);  /* restore handler, for SYSV */
+    setsighandler(sig, SIG_IGN);  /* restore handler (POSIX) */
 }
 #endif
 
-static void interrupt()
+static void handle_interrupt()
 {
     int c;
+    extern int no_tty;
 
-    if (visual) fix_screen();
-    else clear_input_line();
-    printf("C) continue; X) exit; T) disable triggers; P) kill processes\r\n");
+    if (no_tty)
+        die("Interrupt, exiting.", 0);
+    fix_screen();
+    puts("C) continue tf; X) exit; T) disable triggers; P) kill processes\r");
     fflush(stdout);
     c = igetchar();
-    clear_input_line();
-    if (strchr("xyXY", c)) die("Interrupt, exiting.\r\n");
-    setup_screen();
-    logical_refresh();
+    if (ucase(c) == 'X')
+        die("Interrupt, exiting.", 0);
+    setup_screen(0);
     if (ucase(c) == 'T') {
         setivar("borg", 0, FALSE);
-        oputs("% Cyborg triggers disabled");
+        oputs("% Cyborg triggers disabled.");
     } else if (ucase(c) == 'P') {
         kill_procs();
     }
-    oflush();       /* in case of output between SIGINT receipt and handling */
-}
-
-void tog_sigquit()
-{
-    setsighandler(SIGQUIT, ignore_sigquit ? SIG_IGN : core_handler);
+    oputs("% Resuming TinyFugue.");
 }
 
 int suspend()
 {
 #if SIGTSTP
     if (parent_tstp_handler == SIG_DFL) {      /* true for job-control shells */
-        oflush();
-        if (visual) fix_screen();
+        check_mail();
+        fix_screen();
         reset_tty();
-        kill(getpid(), SIGSTOP);
+        raise(SIGSTOP);
         cbreak_noecho_mode();
         get_window_size();
-        setup_screen();
-        logical_refresh();
-        if (maildelay > 0) check_mail();
+        setup_screen(-1);
+        check_mail();
         return 1;
     }
 #endif
@@ -196,97 +247,168 @@ int suspend()
     return 0;
 }
 
+
 static RETSIG core_handler(sig)
     int sig;
 {
-    setsighandler(sig, SIG_DFL);
-    cleanup();
-    printf("Core dumped - signal %d\n", sig);
-    if (sig != SIGQUIT) {
-        puts("Please report this and any preceeding messages to");
-        puts("the author, after reading \"/help core\" or README.");
+    setsighandler(sig, core_handler);  /* restore handler (POSIX) */
+
+    if (sig == SIGQUIT) {
+        fix_screen();
+        puts("SIGQUIT received.  Dump core?  (y/n)\r");
+        fflush(stdout);
+        if (igetchar() != 'y') {
+            setup_screen(0);
+            oputs("% Resuming TinyFugue.");
+            return;
+        }
+        fputs("Abnormal termination - SIGQUIT\n", stderr);
     }
-    kill(getpid(), sig);
+    setsighandler(sig, SIG_DFL);
+    panic_fix_screen();
+    reset_tty();
+    if (sig != SIGQUIT) {
+        coremsg();
+        fprintf(stderr, "> Abnormal termination - signal %d\n\n", sig);
+#ifdef PLATFORM_UNIX
+        fputs("If you can, follow these instructions to get a stack trace.\n",
+            stderr);
+        fputs("If you haven't already done so, in the \"Config\" file set\n",
+            stderr);
+        fputs("CCFLAGS='-g' and STRIP='', and run \"make\" again.  Then do:\n",
+            stderr);
+        fputs("\n", stderr);
+        fputs("cd src\n", stderr);
+        fputs("script\n", stderr);
+        fputs("gdb -q tf   ;# if gdb is unavailable, use \"dbx tf\" instead.\n",
+            stderr);
+        fputs("run\n", stderr);
+        fputs("(do whatever is needed to reproduce the core dump)\n", stderr);
+        fputs("where\n", stderr);
+        fputs("quit\n", stderr);
+        fputs("exit\n", stderr);
+        fputs("\n", stderr);
+        fputs("and mail the \"typescript\" file to the address above.\n",
+            stderr);
+        fputs("\n", stderr);
+#else
+        fputs("If you can, get a stack trace and send it to the author.\n",
+            stderr);
+#endif
+        fputs("If you can't or don't get a stack trace, at least describe\n",
+            stderr);
+        fputs("what you were doing at the time of this crash.\n", stderr);
+    }
+    raise(sig);
+}
+
+void crash(internal, fmt, file, line, n)
+    CONST char *fmt, *file;
+    int internal, line;
+    long n;
+{
+    setsighandler(SIGQUIT, SIG_DFL);
+    panic_fix_screen();
+    reset_tty();
+    if (internal) coremsg();
+    fprintf(stderr, "> %s:  %s, line %d\n",
+        internal ? "Internal error" : "Aborting", file, line);
+    fprintf(stderr, "> TERM=%s, visual=%ld, emulation=%ld, lp=%ld\n",
+        TERM, visual, emulation, lpflag);
+    fputs("> ", stderr);
+    fprintf(stderr, fmt, n);
+    fputs("\n\n", stderr);
+    raise(SIGQUIT);
+}
+
+static void coremsg()
+{
+    extern CONST char version[], sysname[];
+    fputs("Please report this message verbatim to hawkeye@tcp.com.\n", stderr);
+    fputs("Also describe what you were doing in tf when this\n", stderr);
+    fputs("occured, and if you can repeat it.\n\n", stderr);
+    fprintf(stderr, "> %s\n", version);
+    if (*sysname) fprintf(stderr, "> %s\n", sysname);
 }
 
 static void terminate(sig)
     int sig;
 {
     setsighandler(sig, SIG_DFL);
-    cleanup();
-    printf("Terminating - signal %d\n", sig);
-    kill(getpid(), sig);
+    fix_screen();
+    reset_tty();
+    fprintf(stderr, "Terminating - signal %d\n", sig);
+    raise(sig);
 }
 
 static RETSIG signal_scheduler(sig)
     int sig;
 {
-    setsighandler(sig, signal_scheduler);  /* restore handler, for SYSV */
-    SIG_SET(sig);                          /* set flag to deal with it later */
+    setsighandler(sig, signal_scheduler);  /* restore handler (POSIX) */
+    VEC_SET(sig, &pending_signals);        /* set flag to deal with it later */
 }
 
 void process_signals()
 {
-    if (SIG_ISSET(SIGINT))   interrupt();
-#if SIGTSTP
-    if (SIG_ISSET(SIGTSTP))  suspend();
-#endif
-#if SIGWINCH
-    if (SIG_ISSET(SIGWINCH))
+    if (VEC_ISSET(SIGINT, &pending_signals))   handle_interrupt();
+    if (VEC_ISSET(SIGTSTP, &pending_signals))  suspend();
+    if (VEC_ISSET(SIGWINCH, &pending_signals))
         if (!get_window_size()) operror("TIOCGWINSZ ioctl");
-#endif
-    if (SIG_ISSET(SIGHUP))   do_hook(H_SIGHUP, NULL, "");
-    if (SIG_ISSET(SIGTERM))  do_hook(H_SIGTERM, NULL, "");
+    if (VEC_ISSET(SIGHUP, &pending_signals))   do_hook(H_SIGHUP, NULL, "");
+    if (VEC_ISSET(SIGTERM, &pending_signals))  do_hook(H_SIGTERM, NULL, "");
+    if (VEC_ISSET(SIGUSR1, &pending_signals))  do_hook(H_SIGUSR1, NULL, "");
+    if (VEC_ISSET(SIGUSR2, &pending_signals))  do_hook(H_SIGUSR2, NULL, "");
 
-    if (SIG_ISSET(SIGHUP))   terminate(SIGHUP);
-    if (SIG_ISSET(SIGTERM))  terminate(SIGTERM);
-    SIG_ZERO();
+    if (VEC_ISSET(SIGHUP, &pending_signals))   terminate(SIGHUP);
+    if (VEC_ISSET(SIGTERM, &pending_signals))  terminate(SIGTERM);
+
+    VEC_ZERO(&pending_signals);
 }
 
 int interrupted()
 {
-    return SIG_ISSET(SIGINT);
+    return VEC_ISSET(SIGINT, &pending_signals);
 }
 
-void core(why)
-    CONST char *why;
-{
-    cleanup();
-    puts(why);
-    setsighandler(SIGQUIT, SIG_DFL);
-    kill(getpid(), SIGQUIT);
-}
-
-int shell(cmd)
-    char *cmd;
-{
+int shell_status(result)
     int result;
-
-    oflush();
-    if (visual) fix_screen();
-    reset_tty();
-#if SIGTSTP
-    setsighandler(SIGTSTP, parent_tstp_handler);
-#endif
-    result = system(cmd);
-#if SIGTSTP
-    setsighandler(SIGTSTP, signal_scheduler);
-#endif
+{
     /* If the next line causes errors like "request for member `w_S' in
      * something not a structure or union", then <sys/wait.h> must have
      * defined WIFEXITED and WEXITSTATUS incorrectly (violating Posix.1).
      * The workaround is to not #include <sys/wait.h> at the top of this
      * file, so we can use our own definitions.
      */
-    result = (WIFEXITED(result)) ? WEXITSTATUS(result) : -1;
+    return (WIFEXITED(result)) ? WEXITSTATUS(result) : -1;
+}
+
+int shell(cmd)
+    CONST char *cmd;
+{
+    int result;
+
+    check_mail();
+    fix_screen();
+    reset_tty();
+    setsighandler(SIGTSTP, parent_tstp_handler);
+    result = system(cmd);
+    setsighandler(SIGTSTP, signal_scheduler);
     cbreak_noecho_mode();
-    if (shpause) {
+    if (result == -1) {
+        eprintf("%s", strerror(errno));
+    } else if (shpause) {
         oputs("% Press any key to continue.");
+        oflush();
         igetchar();
     }
     get_window_size();
-    setup_screen();
-    do_hook(H_RESUME, "%% Resuming TinyFugue", "");
-    if (maildelay > 0) check_mail();
+    setup_screen(-1);
+    if (result == -1) return result;
+    do_hook(H_RESUME, "%% Resuming TinyFugue.", "");
+    check_mail();
+#ifdef PLATFORM_OS2
     return result;
+#else /* UNIX */
+    return shell_status(result);
+#endif
 }

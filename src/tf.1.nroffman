@@ -1,4 +1,4 @@
-.\" $Id: tf.1.nroffman,v 32101.1 1994/04/07 01:02:22 hawkeye Exp $
+.\" $Id: tf.1.nroffman,v 34000.3 1994/08/29 00:15:29 hawkeye Exp $
 .TH TF 1 LOCAL
 .SH NAME
 tf \- TinyFugue, a MUD client
@@ -8,18 +8,21 @@ tf \- TinyFugue, a MUD client
 .B "tf [-f\fIfile\fB] \fIhost\fB \fIport\fB"
 .SH DESCRIPTION
 \fITinyFugue\fR (also known as "Fugue" or "TF") is a line-based client
-designed for connecting to MUD servers (especially TinyMUD-style MUDs).
+designed for connecting to MUD servers (note: LP, DIKU, and other servers
+which use prompts require "/lp on"; see /help prompts).
 .PP
 Most of the \fITF\fR documentation is in the help file, which may be read
-with the "/help" command.
+online with the "/help" command.
 This manual page may be obsolete in certain areas;
-however, the helpfile will usually be up to date.
+however, the helpfile will always be up to date.
 .PP
-\fITinyFugue\fR is larger than most MUD clients, and has many more features.
+\fITinyFugue\fR is larger than most MUD clients, but has many more features
+and is much more flexible.
 The goal is to provide the most functionality in a client that still
 maintains the user-friendliness of \fITinytalk\fR.
 Clients with extension languages such as \fITcltt\fR or \fIVaporTalk\fR
-can do more in certain areas, but are considerably harder to use and learn.
+can do a little more in certain areas, but are considerably harder to use
+and learn.
 \fITF\fR provides most of these abilities in such a manner that learning to use
 any one function is relatively easy.
 .PP
@@ -31,76 +34,12 @@ For this reason, I leave some older versions at the ftp site where I distribute
 \fITF\fR (ftp.tcp.com), which do not have all the current
 features but may have fewer bugs than the most recent release.
 
-.SH "CHANGES FROM VERSION 3.1 TO 3.2"
-.sp
-Added REGULAR EXPRESSIONS, and ability to extract arbitrary pieces of
-of matched text using %Pn.  See: patterns, matching, regmatch, %Pn.
-.sp
-"Partial hilites" - hilite part of a line.  (see /partial, /def -P).
-.sp
-Colors names are fixed (but codes can still be changed).
-.sp
-More useful return values for macro creation commands, /quote, /repeat,
-and /dokey.
-.sp
-In expressions, "=" and "==" both do comparison, not assignment.
-.sp
-In expressions, ":=" does assignment.
-.sp
-Assignment expressions can create a new global (not local) variable.
-.sp
-Better handling of toggling %{lp} (e.g., when switching worlds).
-.sp
-Replaced /rand with rand().
-.sp
-Expanded kbfunc.tf, bind-bash.tf.
-.sp
-Added ability to avoid automatic switch when pending connect completes.
-.sp
-Installed library directory, includes:  many advanced keybindings
-(completion, transpose, last word, etc.); /alias; /at; /putfile; 
-speedwalk (like tintin);
-mapping (like tintin); shell utilities; quoting utilities; logging
-utilities; /rwho; Diku tick counter (like tintin); and many other
-useful utilities.  See: /help utilities.
-.sp
-Control constructs (/if and /while) can be used from command line.
-.sp
-Added kbdel() user function.
-.sp
-Added %{scroll} and simulated scrolling for terminals without scroll regions.
-.sp
-Detects and warns about some common user macro mistakes.
-.sp
-/mecho nesting; also, doesn't echo invisible macros.
-.sp
-/send can send a blank line.
-.sp
-Better error messages for files.
-.sp
-Symbolic values and better type checking for special variables.
-.sp
-Internal redesign of screen handling, cursor and write() optimization.
-.sp
-Fixed possible prompt duplication.
-.sp
-Fixed /retry.
-.sp
-Fixed \] bug in [...] patterns.
-.sp
-Fixed potentially fatal bug in typeless /addworld.
-.sp
-Improved portability of library linking order (affects Dynix/ptx).
-.sp
-Improved portability of internet headers (affects some SVR3 based systems).
-.sp
-Internal changes.
-
 .SH "COMMAND LINE ARGUMENTS"
 With no arguments, \fITF\fR will 
 try to connect to the first world defined in the configuration file(s).
 .PP
-With a \fBworld\fR argument, \fITF\fR will try to connect to \fBworld\fR.
+With a \fBworld\fR argument, \fITF\fR will try to connect to \fBworld\fR,
+as defined in the configuration file.
 If \fBworld\fR is omitted, it will try to connect to the first world
 defined in your configuration files.
 .PP
@@ -177,10 +116,10 @@ Recall previously received text.
 .SH "CONFIGURATION FILES"
 .PP
 \fITF\fR will attempt to read two files when starting.  The first is a public
-configuration file, "stdlib.tf", located in TFLIBDIR.  TFLIBDIR is defined
-by the person person who installed the copy of \fITF\fR
-you are using (often /usr/local/lib/tf.lib, or under the
-home directory of the installer).  This library contains many macros
+configuration file "stdlib.tf", located in TFLIBDIR.
+TFLIBDIR is defined when \fITF\fR is installed, and is often
+/usr/local/lib/tf.lib, or under the home directory of the installer.
+This library contains many macros
 and definitions essential to the correct operation of \fITF.\fR
 
 Next, \fITF\fR will attempt to read your personal configuration
@@ -206,7 +145,7 @@ serious bugs and was never officially released (the phrase "Tinywar
 doesn't exist" is often quoted), and is now an unsupported client.
 \fITF\fR began when Greg Hudson (Explorer_Bob) merged many of the new
 features of \fITinywar\fR back into \fITinyTalk,\fR
-and added many new features of his own, most notably the windowing system.
+and added many new features of his own, most notably the split screen.
 Some of the code in Greg's releases was contributed by Leo Plotkin.
 After Greg moved on to \fIVaporTalk,\fR Ken Keys (Hawkeye) took over design
 and maintenance of \fITF\fR in July 1991, and continues to make improvements

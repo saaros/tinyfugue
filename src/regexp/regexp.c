@@ -23,6 +23,26 @@
  * precedence is structured in regular expressions.  Serious changes in
  * regular-expression syntax might require a total rethink.
  */
+
+
+/* Additions by Ken Keys to make package work better with TinyFugue */
+
+#include "../config.h"  /* for TinyFugue's HAVE_* macros */
+
+/* Automatically replace strchr() with index() if needed, for TinyFugue */
+#ifndef HAVE_strchr
+# ifdef HAVE_index
+#  define strchr index
+# endif
+#endif
+
+/* Automatically define STRCSPN if needed, for TinyFugue */
+#ifndef HAVE_strcspn
+# define STRCSPN
+#endif
+
+/* End TinyFugue additions */
+
 #include <stdio.h>
 #include <regexp.h>
 #include "regmagic.h"

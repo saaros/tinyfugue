@@ -1,38 +1,10 @@
 
-  TinyFugue.  Copyright (C) 1994 Ken Keys.
+  TinyFugue.  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys.
 
   Regexp package is Copyright (c) 1986 by University of Toronto.  See
-  src/regexp/README for details.  I made one minor change:  the
-  addition of prototype declarations in regexp.h.  This should have no
-  effect on the portability of the package as a seperate unit.
+  src/regexp/README for details.
 
 =======
-
-  TinyFugue is the result of several years of voluntary work.  If you
-  use it, please send a donation to the author.  A reasonable amount
-  might be $10, but send whatever you think is appropriate.  Your
-  donation will cover the past time and effort put into TinyFugue, as
-  well as user support, maintenance, and future versions.  Be sure to
-  include your name and email address with your donation sent to:
-
-    Ken Keys
-    1820 Cottonwood Ave.
-    Carlsbad, CA 92009
-    USA
-
-  For bug reports, questions, suggestions, etc., I can be reached by
-  email at hawkeye@tcp.com.  Please provide the following information:
-
-    The version of TF (type "/version" in tf).
-    The operating system version (type "uname -a" in the shell).
-    If tf won't compile, send the Build.log file.
-    If you have a bug or core, give me all error messages from tf.
-    If you have a bug or core, tell me what you did or what happened
-        before the problem, and if the problem is repeatable.
-    If you have a core, do _not_ send the core.
-
-  TinyFugue is not associated in any way with the GNU Project, it
-  merely uses the same license.
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -48,63 +20,37 @@
   along with this program; if not, write to the Free Software
   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+=======
+
 
                        INSTALLING TINYFUGUE
 
-Installing TinyFugue is quite easy on most unix-like systems:  simply
-type "make" in the directory you unarchived.  The autoconfig script
-will attempt to figure out everything it needs to know about your
-system and install all files in their proper location.  If you have any
-problems, or want to change a default installation option, be sure to
-read the rest of this file, and the Config file.  Changes should be
-made in Config only.
+TinyFugue can be installed and run on UNIX-like systems and OS/2.
+For instructions, see unix/README or os2/README.
 
-Make options:
+Note that the .tar.gz and .tar.Z distributions contain LF line delimiters,
+intended for UNIX, and the .zip distribution contains CR LF delimiters,
+intended for OS/2.  It is possible to convert line delimiters, but it's
+easier to just get a distribution that already has the correct delimiters.
 
- make             Compile and install all required files.
- make install     Same as "make".
- make files       Compile, but do not install ("make install" should be
+
+Installation program options
+----------------------------
+
+Options are not available on all systems.  To use an option, give it as
+an argument to the installation program (e.g., "sh unixmake clean").
+
+ install	Compile and install (this is the default).  The default
+			installation locations depend on the operating system.
+ files		Compile, but do not install (the "install" option should be
 			run later to install the files).
- make clean       Remove object files and other junk from source directory.
- make uninstall   Remove tf, file & index, and library from their
+ clean		Remove object files and other junk from source directory.
+ uninstall	Remove tf executable, help files, and library from their
 			installed locations.
-
-
-File Locations
---------------
-
-If you do not explicitly define the file locations, TF will try to
-install them in these places:  /usr/local/bin and /usr/local/lib,
-if you have write permission; or, $HOME/bin and $HOME/lib, if they
-exist; otherwise, $HOME.  The man page is not installed by default.
-To change the location of a file, edit the appropriate variable
-in Config, using a full path name.
-
-If SYMLINK is set in Config, its value will be used as the name of a
-symbolic link to the file named by EXE.  This is useful for giving
-all the files a name that includes a version number, so they can be
-installed without problem even if old versions are currently in use.
-
-If you move or rename any files after installing, you must let tf
-know.  One way is to edit Config and compile again.  The other is to
-set environment variables TFLIBRARY, TFLIBDIR, and/or TFHELP to the new
-path(s).  These can be set in the %{TFLIBDIR}/local.tf with /set
-(except for TFLIBDIR, obviously).  Or, they can be set in the shell
-before running tf, with a shellscript like this:
-
-    #!/bin/sh
-    TFLIBDIR=/weird/place/for/tf.lib
-    export TFLIBDIR
-    exec /weird/place/for/tf.exe $*
 
 
 Public Installation
 -------------------
-
-If you have write permission in /usr/local/bin and /usr/local/lib,
-TinyFugue will be installed there by default.  Or you can change the
-locations by editing Config as described above.  The Makefile will then
-put all files in their proper location with the proper permissions.
 
 Some features of TF can be disabled for secure public installation, by
 using one of these /restrict commands in %{TFLIBDIR}/local.tf:
@@ -127,45 +73,58 @@ using one of these /restrict commands in %{TFLIBDIR}/local.tf:
 Terminal Handling
 -----------------
 
-By default, TF will use the termcap library if it can, otherwise it
-will use hardcoded vt100 codes.  You can explcitly configure TF to
-use termcap, vt100, or neither by setting the TERMINAL option in
-Config.
+If the default terminal handling option does not work, tf can be
+configured to use vt100 codes or nothing at all.  See the README
+file in the subdirectory corresponding to your operating system.
 
 
 Compression
 -----------
 
-If you are short on disk space, you can compress the helpfile.
-Make sure the COMPRESS_SUFFIX and COMPRESS_READ macros are set
-correctly; set them in the %{TFLIBDIR}/local.tf file if needed.
-Note that compresion can not be used if /restrict is used.
+If you are short on disk space, you can compress the helpfile and
+library files (except stdlib.tf).  Make sure the COMPRESS_SUFFIX
+and COMPRESS_READ macros are set correctly; set them in the
+%{TFLIBDIR}/local.tf file if needed.  Note that compresion can not
+be used if /restrict is used.
 
-Installation Problems
----------------------
 
-Autoconfig can usually figure out everything it needs to know.  But if
-it fails because your system is brain damaged, you may need to edit
-some lines in the Config file.  Try running "make" at least once before
-making any of these changes.
+Firewalls
+---------
 
-  Problem				   Possible Solution in "Config"
-  -------				   -----------------------------
-  Hostnames don't work on SunOS 4.0.x	   LIBS='-lresolv'
-  ioctl() errors with gcc		   FLAGS='-traditional'
-  Your system is Apollo Domain/OS.	   FLAGS='-U__STDC__'
+TF can be made to connect through a generic proxy server by setting
+the %proxy_host variable at runtime.  See "/help proxy".
+
+Also see the README file in the subdirectory corresponding to your
+operating system to see if tf has transparent firewall support on your
+system.
 
 
 Last Resort
 -----------
 
-If you think TF won't compile because of a bug or incompatibility with
-your system (you followed all the instructions, and it still won't
-work), email the author at hawkeye@tcp.com.  Please include the version
-number of TF, and describe the type of system on which you are trying
-to compile, or at the very least, the address of the system.  Use
-"uname -a", if available, to get the system type; if not, look at the
-message you see when you log in.  Also include the file "Build.log",
-generated by make.  If TF does compile, but has other problems, read
-"/help bugs" before mailing a report.
+If you have an installation problem or other system-specific problem
+that is not described in this README or the README in the subdirectory
+for your system, contact the person who supports TF on your system.  If
+you have a problem that is not system-related, contact the author by
+email at hawkeye@tcp.com.  Please provide the following information:
+
+    The version of TF (type "/version" in tf).
+    The operating system version (on unix, type "uname -a" in the shell).
+    If tf won't compile, send the Build.log file (in plaintext form).
+    If you have a bug or core, give me all error messages from tf.
+    If you have a bug or core, tell me what you did or what happened
+        before the problem, and if the problem is repeatable.
+    If you have a core, do _not_ send the core file.
+
+
+Porting
+-------
+
+I have no personal interest in Mac, DOS, Windows 95, Windows NT, or
+Amiga, so I don't plan on porting to them.  However, I am willing to
+work with someone who wants to try and is willing to follow my
+guidelines (this is how the OS/2 version was created, and why it is an
+official version which continues to grow).  Basically, this means
+keeping the platform-specific code seperate and to a minimum, and not
+adding new features.
 

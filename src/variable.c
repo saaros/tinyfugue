@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: variable.c,v 33000.8 1994/04/22 06:05:07 hawkeye Exp $ */
+/* $Id: variable.c,v 35004.20 1997/03/27 01:04:54 hawkeye Exp $ */
 
 
 /**************************************
@@ -13,34 +13,34 @@
  **************************************/
 
 #include "config.h"
-#include <ctype.h>
 #include "port.h"
+#include "dstring.h"
 #include "tf.h"
 #include "util.h"
+#include "tfio.h"
 #include "output.h"
-#include "macro.h"
-#include "socket.h"
+#include "socket.h"	/* tog_bg(), tog_lp() */
 #include "search.h"
-#include "signals.h"
 #include "commands.h"
+#include "process.h"	/* runall() */
+#include "expand.h"	/* SUB_KEYWORD */
+#include "variable.h"
 
-static Var     *FDECL(findlevelvar,(char *name, List *level));
-static Var     *FDECL(findlocalvar,(char *name));
-static Var     *FDECL(findnearestvar,(char *name));
-static Toggler *FDECL(set_special_var,(Var *var, char *value));
-static Var     *FDECL(newlocalvar,(char *name, char *value));
-static Var     *FDECL(newglobalvar,(char *name, char *value));
-static char    *FDECL(new_env,(char *name, char *value));
-static void     FDECL(append_env,(char *str));
-static char   **FDECL(find_env,(char *str));
-static void     FDECL(remove_env,(char *str));
-static void     FDECL(replace_env,(char *str));
-static void     FDECL(listvar,(int exportflag));
+static Var   *FDECL(findlevelvar,(CONST char *name, List *level));
+static Var   *FDECL(findlocalvar,(CONST char *name));
+static int    FDECL(set_special_var,(Var *var, CONST char *val, Toggler **fpp));
+static Var   *FDECL(newglobalvar,(CONST char *name, CONST char *value));
+static char  *FDECL(new_env,(Var *var));
+static void   FDECL(append_env,(char *str));
+static char **FDECL(find_env,(CONST char *str));
+static void   FDECL(remove_env,(CONST char *str));
+static void   FDECL(replace_env,(char *str));
+static void   FDECL(listvar,(int exportflag));
 
 #define findglobalvar(name)   (Var *)hash_find(name, var_table)
 #define findspecialvar(name) \
-        (Var *)binsearch((GENERIC*)&(name), (GENERIC*)special_var, NUM_VARS, \
-            sizeof(Var), genstrcmp)
+        (Var *)binsearch((GENERIC*)(name), (GENERIC*)special_var, NUM_VARS, \
+            sizeof(Var), strstructcmp)
 
 #define HASH_SIZE 197    /* prime number */
 
@@ -49,124 +49,85 @@ static HashTable var_table[1];    /* global variables */
 static int envsize;
 static int envmax;
 
+#define bicode(a, b)  b 
+#include "enumlist.h"
+#undef bicode
+
+static CONST char *enum_flag[]	= { "off", "on", NULL };
+static CONST char *enum_mecho[]	= { "off", "on", "all", NULL };
+static CONST char *enum_block[] = { "blocking", "nonblocking", NULL };
+
+CONST char *enum_sub[]	= { "off", "on", "full", NULL };
+CONST char *enum_color[]= { "black", "red", "green", "yellow",
+			"blue", "magenta", "cyan", "white",
+			"8", "9", "10", "11", "12", "13", "14", "15",
+			"bgblack", "bgred", "bggreen", "bgyellow",
+			"bgblue", "bgmagenta", "bgcyan", "bgwhite",
+			NULL };
+
 extern char **environ;
 
-char *enum_flag[] =	{ "off", "on", NULL };
-char *enum_bamf[] =	{ "off", "on", "old", NULL };
-char *enum_ctrl[] =	{ "off", "ascii", "ansi", NULL };
-char *enum_sub[] =	{ "off", "on", "full", NULL };
-char *enum_match[] =	{ "simple", "glob", "regexp", NULL };
-char *enum_mecho[] =	{ "off", "on", "all", NULL };
-char *enum_color[] =	{ "black", "red", "green", "yellow",
-			  "blue", "magenta", "cyan", "white",
-			  "8", "9", "10", "11", "12", "13", "14", "15",
-			  NULL };
+#define VARINT     001	/* type: nonnegative integer */
+#define VARPOS     002	/* type: positive integer */
+#define VARENUM    004	/* type: enumerated */
+#define VARSTR     010	/* type: string */
+#define VARSPECIAL 020	/* has special meaning to tf */
+#define VAREXPORT  040	/* exported to environment */
 
-#define VARINT     001
-#define VARENUM    002
-#define VARSTR     004
-#define VARSPECIAL 010
-#define VAREXPORT  020
 
 /* Special variables.
  * Omitted last field (node) is implicitly initialized to NULL.
  */
 Var special_var[] = {
-  {"MAIL"	,	NULL, VARSTR,  NULL	, 0    , ch_mailfile },
-  {"TERM"	,	NULL, VARSTR,  NULL	, 0    , change_term },
-  {"TFHELP"     ,   HELPFILE, VARSTR,  NULL	, 0    , NULL },
-  {"TFLIBDIR"	,     LIBDIR, VARSTR,  NULL	, 0    , NULL },
-  {"always_echo",	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"background"	,	NULL, VARENUM, enum_flag, TRUE , tog_bg },
-  {"backslash"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
-  {"bamf"	,	NULL, VARENUM, enum_bamf, FALSE, NULL },
-  {"beep"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
-  {"bg_output"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
-  {"borg"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
-  {"catch_ctrls",	NULL, VARENUM, enum_ctrl, FALSE, NULL },
-  {"cleardone"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"clearfull"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"clock"	,	NULL, VARENUM, enum_flag, TRUE , tog_clock },
-  {"gag"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
-  {"gpri"	,	NULL, VARINT , NULL	, 0    , NULL },
-  {"hilite"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
-  {"hiliteattr"	,	"B" , VARSTR,  NULL	, 0    , ch_hilite },
-  {"hook"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
-  {"hpri"	,	NULL, VARINT , NULL	, 0    , NULL },
-  {"ignore_sigquit",	NULL, VARENUM, enum_flag, FALSE, tog_sigquit },
-  {"insert"	,	NULL, VARENUM, enum_flag, TRUE , tog_insert },
-  {"isize"	,	NULL, VARINT , NULL	, 3    , ch_isize },
-  {"kecho"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"kprefix"	,	NULL, VARSTR , NULL	, 0    , NULL },
-  {"login"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
-  {"lp"		,	NULL, VARENUM, enum_flag, FALSE, tog_lp },
-  {"lpquote"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"maildelay"	,	NULL, VARINT , NULL	, 60   , ch_maildelay },
-  {"matching"	,	NULL, VARENUM, enum_match,1    , NULL },
-  {"max_iter"	,	NULL, VARINT , NULL	, 1000 , NULL },
-  {"max_recur"	,	NULL, VARINT , NULL	, 100  , NULL },
-  {"mecho"	,	NULL, VARENUM, enum_mecho,0    , NULL },
-  {"more"	,	NULL, VARENUM, enum_flag, FALSE, tog_more },
-  {"mprefix"	,	"+",  VARSTR , NULL	, 0    , NULL },
-  {"oldslash"	,	NULL, VARINT , NULL	, 1    , NULL },
-  {"prompt_sec"	,	NULL, VARINT , NULL	, 0    , NULL },
-  {"prompt_usec",	NULL, VARINT , NULL	, 250000,NULL },
-  {"ptime"	,	NULL, VARINT , NULL	, 1    , NULL },
-  {"qecho"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"qprefix"	,	NULL, VARSTR , NULL	, 0    , NULL },
-  {"quiet"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"quitdone"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"quoted_args",	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"redef"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"refreshtime",	NULL, VARINT , NULL	, 250000,NULL },
-  {"scroll"	,	NULL, VARENUM, enum_flag, FALSE ,setup_screen },
-  {"shpause"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"snarf"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"sockmload"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"sub"	,	NULL, VARENUM, enum_sub , 0    , NULL },
-  {"telopt"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"time_format",    "%H:%M", VARSTR , NULL	, 0    , NULL },
-  {"visual"	,	NULL, VARENUM, enum_flag, FALSE, tog_visual },
-  {"watchdog"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"watchname"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"wordpunct"	,       "_-", VARSTR , NULL	, FALSE, NULL },
-  {"wrap"	,	NULL, VARENUM, enum_flag, TRUE , NULL },
-  {"wraplog"	,	NULL, VARENUM, enum_flag, FALSE, NULL },
-  {"wrapsize"	,	NULL, VARINT , NULL	, 0,     NULL },
-  {"wrapspace"	,	NULL, VARINT , NULL	, 0,     NULL },
-  {NULL         ,	NULL, 0      , NULL	, 0,     NULL }
+#define varcode(id, name, val, type, enums, ival, func) \
+    { name, val, 0, type, enums, ival, func }
+#include "varlist.h"
+#undef varcode
 };
+
 
 /* initialize structures for variables */
 void init_variables()
 {
     char **oldenv, **p, *value, buf[20], *str;
+    extern CONST char *current_command;
+    CONST char *oldcommand;
     Var *var;
+    Stringp scratch;
 
-    init_hashtable(var_table, HASH_SIZE, strcmp);
+    init_hashtable(var_table, HASH_SIZE, strstructcmp);
     init_list(localvar);
 
     /* special pre-defined variables */
     for (var = special_var; var->name; var++) {
         var->flags |= VARSPECIAL;
         if (var->flags & VARSTR) {
-            if (var->value) var->value = STRDUP(var->value);
+            if (var->value) {
+                var->len = strlen(var->value);
+                var->value = STRNDUP(var->value, var->len);
+            }
             var->ival = !!var->value;
         } else if (var->flags & VARENUM) {
-            var->value = STRDUP(var->enumvec[var->ival]);
-        } else /* VARINT */ {
-            sprintf(buf, "%d", var->ival);
-            var->value = STRDUP(buf);
+            var->value = var->enumvec[var->ival >= 0 ? var->ival : 0];
+            var->len = strlen(var->value);
+            var->value = STRNDUP(var->value, var->len);
+        } else /* integer */ {
+            sprintf(buf, "%ld", var->ival);
+            var->len = strlen(buf);
+            var->value = STRNDUP(buf, var->len);
         }
-        var->node = hash_insert((GENERIC *)var, var_table);
+        if (var->value)
+            var->node = hash_insert((GENERIC *)var, var_table);
     }
 
     /* environment variables */
+    oldcommand = current_command;
+    current_command = "[environment]";
     for (p = environ; *p; p++);
     envsize = 0;
     envmax = p - environ;
     oldenv = environ;
-    environ = (char **)MALLOC((envmax + 1) * sizeof(char *));
+    environ = (char **)XMALLOC((envmax + 1) * sizeof(char *));
     *environ = NULL;
     for (p = oldenv; *p; p++) {
         append_env(str = STRDUP(*p));
@@ -179,41 +140,35 @@ void init_variables()
             var = newglobalvar(str, value ? value : "");
             var->node = hash_insert((GENERIC*)var, var_table);
         } else {
-            /* overwrite a pre-defined variable */
-            if (var->value) FREE(var->value);
-            set_special_var(var, value ? value : "");
+            /* overwrite a pre-defined special variable */
+            set_special_var(var, value ? value : "", NULL);
+            /* We do NOT call the var->func here, because the modules they
+             * reference have not been initialized yet.  The init_*() calls
+             * in main.c should call the funcs in the appropraite order.
+             */
+            if (!var->node) var->node = hash_insert((GENERIC *)var, var_table);
         }
-        if (value) *--value = '=';
+        if (value) *--value = '=';  /* restore '=' */
         var->flags |= VAREXPORT;
     }
+    current_command = oldcommand;
+
+    /* run-time default values */
+    Stringinit(scratch);
+    if (!findglobalvar("TFLIBRARY")) {
+        Sprintf(scratch, 0, "%s/stdlib.tf", TFLIBDIR);
+        setvar("TFLIBRARY", scratch->s, 0);
+    }
+    if (!findglobalvar("TFHELP")) {
+        Sprintf(scratch, 0, "%s/tf-help", TFLIBDIR);
+        setvar("TFHELP", scratch->s, 0);
+    }
+    Stringfree(scratch);
 }
 
-int enum2int(str, vec, msg)
-    char *str, **vec, *msg;
+void newvarscope(level)
+    struct List *level;
 {
-    int i, j;
-    STATIC_BUFFER(buf);
-
-    for (i = 0; vec[i]; ++i) {
-        if (cstrcmp(str, vec[i]) == 0) return i;
-    }
-    if (isdigit(*str)) {
-        j = atoi(str);
-        if (j < i) return j;
-    }
-    Sprintf(buf, 0, "%S: valid values for %s are: %s", error_prefix(), msg,
-        vec[0]);
-    for (i = 1; vec[i]; ++i) Sprintf(buf, SP_APPEND, ", %s", vec[i]);
-    tfputs(buf->s, tferr);
-    return -1;
-}
-
-
-void newvarscope()
-{
-    List *level;
-
-    level = (List *)MALLOC(sizeof(List));
     init_list(level);
     inlist((GENERIC *)level, localvar, NULL);
 }
@@ -230,11 +185,10 @@ void nukevarscope()
         FREE(var->value);
         FREE(var);
     }
-    FREE(level);
 }
 
 static Var *findlevelvar(name, level)
-    char *name;
+    CONST char *name;
     List *level;
 {
     ListEntry *node;
@@ -246,7 +200,7 @@ static Var *findlevelvar(name, level)
 }
 
 static Var *findlocalvar(name)
-    char *name;
+    CONST char *name;
 {
     ListEntry *node;
     Var *var = NULL;
@@ -257,17 +211,9 @@ static Var *findlocalvar(name)
     return var;
 }
 
-static Var *findnearestvar(name)
-    char *name;
-{
-    Var *var;
-
-    return (var = findlocalvar(name)) ? var : findglobalvar(name);
-}
-
 /* get value of global variable <name> */
-char *getvar(name)
-    char *name;
+CONST char *getvar(name)
+    CONST char *name;
 {
     Var *var;
 
@@ -275,49 +221,59 @@ char *getvar(name)
 }
 
 /* If np is nonnull, ival of var will be put there. */
-char *getnearestvar(name, np)
-    char *name;
-    int *np;
+CONST char *getnearestvar(name, np)
+    CONST char *name;
+    long *np;
 {
     Var *var;
     STATIC_BUFFER(buf);
 
     if (np) *np = 0;
-    if ((var = findnearestvar(name))) {
+    if (((var = findlocalvar(name))) || ((var = findglobalvar(name)))) {
         if (np) *np = (var->flags & VARSTR) ? 0 : var->ival;
         return var->value;
     }
-    if (ucase(name[0]) == 'P' && isdigit(name[1])) {
+    if (ucase(name[0]) == 'P') {
         Stringterm(buf, 0);
-        return regsubstr(buf, atoi(name + 1)) >= 0 ? buf->s : NULL;
+        if (isdigit(name[1]))
+            return regsubstr(buf, atoi(name + 1)) >= 0 ? buf->s : NULL;
+        else if (ucase(name[1]) == 'L')
+            return regsubstr(buf, -1) >= 0 ? buf->s : NULL;
+        else if (ucase(name[1]) == 'R')
+            return regsubstr(buf, -2) >= 0 ? buf->s : NULL;
     }
     return NULL;
 }
 
-char *setnearestvar(name, value)
-    char *name, *value;
+Var *setnearestvar(name, value)
+    CONST char *name, *value;
 {
     Var *var;
 
     if ((var = findlocalvar(name))) {
-        FREE(var->value);
-        return var->value = STRDUP(value);
+        if (var->value != value) {
+            FREE(var->value);
+            var->len = strlen(value);
+            var->value = STRNDUP(value, var->len);
+        }
+        return var;
     } else {
         return setvar(name, value, FALSE);
     }
 }
 
-static Var *newlocalvar(name, value)
-    char *name, *value;
+Var *newlocalvar(name, value)
+    CONST char *name, *value;
 {
     Var *var;
 
-    var = (Var *)MALLOC(sizeof(Var));
+    var = (Var *)XMALLOC(sizeof(Var));
     var->node = NULL;
     var->name = STRDUP(name);
-    var->value = STRDUP(value);
+    var->len = strlen(value);
+    var->value = STRNDUP(value, var->len);
     var->flags = VARSTR;
-    /* var->ival = atoi(value); */ /* never used */
+    /* var->ival = atol(value); */ /* never used */
     var->func = NULL;
     inlist((GENERIC *)var, (List*)(localvar->head->datum), NULL);
     if (findglobalvar(name)) {
@@ -327,16 +283,17 @@ static Var *newlocalvar(name, value)
 }
 
 static Var *newglobalvar(name, value)
-    char *name, *value;
+    CONST char *name, *value;
 {
     Var *var;
 
-    var = (Var *)MALLOC(sizeof(Var));
+    var = (Var *)XMALLOC(sizeof(Var));
     var->node = NULL;
     var->name = STRDUP(name);
-    var->value = STRDUP(value);
+    var->len = strlen(value);
+    var->value = STRNDUP(value, var->len);
     var->flags = VARSTR;
-    /* var->ival = atoi(value); */ /* never used */
+    /* var->ival = atol(value); */ /* never used */
     var->func = NULL;
     return var;
 }
@@ -347,23 +304,24 @@ static Var *newglobalvar(name, value)
  */
 
 /* create new environment string */
-static char *new_env(name, value)
-    char *name, *value;
+static char *new_env(var)
+    Var *var;
 {
     char *str;
 
-    str = (char *)MALLOC(strlen(name) + 1 + strlen(value) + 1);
-    return strcat(strcat(strcpy(str, name), "="), value);
+    str = (char *)XMALLOC(strlen(var->name) + 1 + var->len + 1);
+    sprintf(str, "%s=%s", var->name, var->value);
+    return str;
 }
 
-/* Add "<name>=<value>" to environment.  Assumes name is not already defined. */
+/* Add str to environment.  Assumes name is not already defined. */
 /* str must be duped before call */
 static void append_env(str)
     char *str;
 {
     if (envsize == envmax) {
         envmax += 5;
-        environ = (char **)REALLOC((char*)environ, (envmax+1) * sizeof(char*));
+        environ = (char **)XREALLOC((char*)environ, (envmax+1) * sizeof(char*));
     }
     environ[envsize] = str;
     environ[++envsize] = NULL;
@@ -373,7 +331,7 @@ static void append_env(str)
  * "<name>=<value>" format.
  */
 static char **find_env(str)
-    char *str;
+    CONST char *str;
 {
     char **envp;
     int len;
@@ -387,7 +345,7 @@ static char **find_env(str)
 
 /* Remove the environment string for <name>. */
 static void remove_env(str)
-    char *str;
+    CONST char *str;
 {
     char **envp;
 
@@ -413,41 +371,45 @@ static void replace_env(str)
  * Interfaces with rest of program.
  */
 
-char *setvar(name, value, exportflag)
-    char *name, *value;
+Var *setvar(name, value, exportflag)
+    CONST char *name, *value;
     int exportflag;
 {
     Var *var;
     Toggler *func = NULL;
 
     if ((var = findspecialvar(name))) {
-        if (var->value) FREE(var->value);
-        func = set_special_var(var, value);
+        if (!set_special_var(var, value, &func))
+            return NULL;
     } else if ((var = findglobalvar(name))) {
-        FREE(var->value);
-        var->value = STRDUP(value);
+        if (value != var->value) {
+            FREE(var->value);
+            var->len = strlen(value);
+            var->value = STRNDUP(value, var->len);
+        }
     } else {
         var = newglobalvar(name, value);
     }
     if (!var->node) var->node = hash_insert((GENERIC *)var, var_table);
 
     if (var->flags & VAREXPORT) {
-        replace_env(new_env(name, value));
+        replace_env(new_env(var));
     } else if (exportflag) {
-        append_env(new_env(name, value));
+        append_env(new_env(var));
         var->flags |= VAREXPORT;
     }
 
     if (func) (*func)();
-    return var->value;
+    return var;
 }
 
 void setivar(name, value, exportflag)
-    char *name;
-    int value, exportflag;
+    CONST char *name;
+    long value;
+    int exportflag;
 {
     char buf[20];
-    sprintf(buf, "%d", value);
+    sprintf(buf, "%ld", value);
     setvar(name, buf, exportflag);
 }
 
@@ -462,15 +424,33 @@ int do_set(args, exportflag, localflag)
     if (!*args) {
         if (!localflag) listvar(exportflag);
         return !localflag;
-    } else if ((value = strchr(args, '='))) {
-        *value++ = '\0';
-        if (!*args) {
-            tfputs("% missing variable name", tferr);
+    }
+
+    for (value = args + 1; ; value++) {
+        if (*value == '=') {
+            *value++ = '\0';
+            break;
+        } else if (isspace(*value)) {
+            for (*value++ = '\0'; isspace(*value); value++);
+            if (*value == '\0') value = NULL;
+            if (*value == '=')
+                eprintf("warning: '=' following space is part of value.");
+            break;
+        } else if (*value == '\0') {
+            value = NULL;
+            break;
+        }
+    }
+
+    /* Restrict variable names to alphanumerics and underscores, like POSIX.2 */
+    for (i = 0; args[i]; i++) {
+        if (!(isalpha(args[i]) || args[i]=='_' || (i>0 && isdigit(args[i])))) {
+            oputs("% illegal variable name.");
             return 0;
         }
-    } else if ((value = strchr(args, ' '))) {
-        for (*value++ = '\0'; isspace(*value); value++);
-    } else {
+    }
+
+    if (!value) {
         if ((var = localflag ? findlocalvar(args) : findglobalvar(args))) {
             oprintf("%% %s=%s", args, var->value);
             return 1;
@@ -480,26 +460,17 @@ int do_set(args, exportflag, localflag)
         }
     }
 
-    /* Posix.2 restricts the lhs of a variable assignment to
-     * alphanumerics and underscores.  We'll do the same.
-     */
-    for (i = 0; args[i]; i++) {
-        if (!(isalpha(args[i]) || args[i]=='_' || (i>0 && isdigit(args[i])))) {
-            oputs("% illegal variable name.");
-            return 0;
-        }
-    }
-
-    if (!localflag) return setvar(args, value, exportflag) ? 1 : 0;
+    if (!localflag) return !!setvar(args, value, exportflag);
 
     if (!localvar->head) {
-        tfputs("% /let illegal at top level.", tferr);
+        eprintf("illegal at top level.");
         return 0;
     } else if ((var = findlevelvar(args, (List *)localvar->head->datum))) {
         FREE(var->value);
-        var->value = STRDUP(value);
+        var->len = strlen(value);
+        var->value = STRNDUP(value, var->len);
     } else {
-        var = newlocalvar(args, value);
+        newlocalvar(args, value);
     }
     return 1;
 }
@@ -510,10 +481,10 @@ int handle_export_command(name)
     Var *var;
 
     if (!(var = findglobalvar(name))) {
-        tfprintf(tferr, "%% %s not defined.", name);
+        eprintf("%s not defined.", name);
         return 0;
     }
-    if (!(var->flags & VAREXPORT)) append_env(new_env(var->name, var->value));
+    if (!(var->flags & VAREXPORT)) append_env(new_env(var));
     var->flags |= VAREXPORT;
     return 1;
 }
@@ -521,10 +492,15 @@ int handle_export_command(name)
 int handle_unset_command(name)
     char *name;
 {
-    int oldval;
+    long oldval;
     Var *var;
 
     if (!(var = findglobalvar(name))) return 0;
+
+    if (var->flags & VARPOS) {
+        eprintf("%s must a positive integer, so can not be unset.", var->name);
+        return 0;
+    }
 
     hash_remove(var->node, var_table);
     if (var->flags & VAREXPORT) remove_env(name);
@@ -547,41 +523,50 @@ int handle_unset_command(name)
 /*********/
 
 /* Set a special variable, with proper coersion of the value. */
-static Toggler *set_special_var(var, value)
+static int set_special_var(var, value, fpp)
     Var *var;
-    char *value;
+    CONST char *value;
+    Toggler **fpp;
 {
-    int oldival;
-    Toggler *func;
     static char buffer[20];
+    long oldival = var->ival;
+    CONST char *oldvalue = var->value;
 
-    oldival = var->ival;
+    oflush();   /* flush buffer now, in case variable affects flushing */
 
-    if (var->flags & VARINT) {
-        sprintf(buffer, "%d", var->ival=atoi(value));
-        if (strcmp(buffer, value) != 0) {
-            tfprintf(tferr, "%S: %s: invalid integer value.", error_prefix(),
-                var->name);
-            return NULL;
-        }
-        value = buffer;
-        func = (var->ival != oldival) ? var->func : NULL;
-
-    } else if (var->flags & VARENUM) {
+    if (var->flags & VARENUM) {
         if ((var->ival = enum2int(value, var->enumvec, var->name)) < 0) {
+            /* error. restore values and abort. */
             var->ival = oldival;
-            return NULL;
+            var->value = oldvalue;
+            return 0;
         }
         value = var->enumvec[var->ival];
-        func = (var->ival != oldival) ? var->func : NULL;
+        if (fpp) *fpp = (var->ival != oldival) ? var->func : NULL;
 
-    } else /* if (var->flags & VARSTR) */ {
-        /* var->ival = atoi(value); */ /* never used */
-        func = var->func;
+    } else if (var->flags & VARSTR) {
+        /* var->ival = atol(value); */ /* never used */
+        if (fpp) *fpp = var->func;
+
+    } else /* integer */ {
+        while (isspace(*value)) value++;
+        var->ival=atol(value);
+        if (!isdigit(*value) || var->ival < !!(var->flags & VARPOS)) {
+            eprintf("%s must be an integer greater than or equal to %d",
+                var->name, !!(var->flags & VARPOS));
+            var->ival = oldival;
+            if (fpp) *fpp = NULL;
+            return 0;
+        }
+        sprintf(buffer, "%ld", var->ival=atol(value));
+        value = buffer;
+        if (fpp) *fpp = (var->ival != oldival) ? var->func : NULL;
     }
 
-    var->value = STRDUP(value);
-    return func;
+    var->len = strlen(value);
+    var->value = STRNDUP(value, var->len);
+    if (oldvalue) FREE(oldvalue);
+    return 1;
 }
 
 static void listvar(exportflag)

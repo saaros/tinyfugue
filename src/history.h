@@ -1,48 +1,47 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: history.h,v 33000.1 1994/04/26 08:56:29 hawkeye Exp $ */
+/* $Id: history.h,v 35004.4 1997/03/27 01:04:29 hawkeye Exp $ */
 
 #ifndef HISTORY_H
 #define HISTORY_H
 
 # ifndef NO_HISTORY
 
-typedef struct History {       /* circular list of Alines, and logfile */
-    struct Aline **alines;
-    int size, maxsize, pos, index, num;
-    TFILE *logfile;
-    char *logname;
-} History;
-
 extern void   NDECL(init_histories);
-extern void   FDECL(init_history,(History *hist, int maxsize));
-extern void   FDECL(free_history,(History *hist));
-extern void   FDECL(record_hist,(History *hist, Aline *aline));
-extern void   FDECL(record_global,(Aline *aline));
-extern void   FDECL(record_local,(Aline *aline));
-extern void   FDECL(record_input,(char *line));
-extern int    FDECL(recall_history,(char *args, TFILE *file));
-extern int    FDECL(recall_input,(int dir, int searchflag));
-extern int    FDECL(is_suppressed,(char *line));
-extern int    FDECL(history_sub,(char *pattern));
+extern struct History *FDECL(init_history,(struct History *hist, int maxsize));
+extern void   FDECL(free_history,(struct History *hist));
+extern void   FDECL(recordline,(struct History *hist, Aline *aline));
+extern void   FDECL(record_input,(CONST char *line));
+extern Aline *FDECL(recall_input,(int dir, int searchflag));
+extern int    FDECL(is_watchdog,(struct History *hist, Aline *aline));
+extern int    FDECL(is_watchname,(struct History *hist, Aline *aline));
+extern String*FDECL(history_sub,(CONST char *pattern));
+extern void   FDECL(flush_hist,(struct History *hist));
+
+#define record_global(aline)  recordline(globalhist, (aline))
+#define record_local(aline)   recordline(localhist, (aline))
+
+extern struct History globalhist[], localhist[];
 
 # else /* NO_HISTORY */
 
 #define init_histories()               /* do nothing */
 #define free_history(hist)             /* do nothing */
-#define record_hist(hist, aline)       /* do nothing */
-#define record_global(aline)           /* do nothing */
-#define record_local(aline)            /* do nothing */
+#define recordline(hist, aline)        /* do nothing */
+#define record_global(line)            /* do nothing */
+#define record_local(line)             /* do nothing */
 #define record_input(line)             /* do nothing */
-#define recall_history(args, file)     cmderror("history disabled")
-#define recall_input(dir, searchflag)  cmderror("history disabled")
-#define is_suppressed(line)            (0)
-#define history_sub(pattern)           /* do nothing */
+#define recall_history(args, file)     (eprintf("history disabled"), 0)
+#define recall_input(dir, searchflag)  (eprintf("history disabled"), 0)
+#define check_watch(hist, aline)       /* do nothing */
+#define history_sub(pattern)           (0)
+#define is_watchdog(hist, aline)       (0)
+#define is_watchname(hist, aline)      (0)
 
 # endif /* NO_HISTORY */
 

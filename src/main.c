@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: main.c,v 33000.4 1994/04/26 08:56:29 hawkeye Exp $ */
+/* $Id: main.c,v 35004.16 1997/04/04 02:21:45 hawkeye Exp $ */
 
 
 /***********************************************
@@ -18,26 +18,44 @@
  ***********************************************/
 
 #include "config.h"
-#include <ctype.h>
 #include "port.h"
 #include "dstring.h"
 #include "tf.h"
 #include "util.h"
+#include "tfio.h"
 #include "history.h"
 #include "world.h"
 #include "socket.h"
 #include "macro.h"
 #include "output.h"
 #include "signals.h"
-#include "tty.h"
 #include "command.h"
 #include "keyboard.h"
+#include "variable.h"
+#include "tty.h"
 
-char version[] = "TinyFugue version 3.3 beta 6, Copyright (C) 1993, 1994 Ken Keys";
+CONST char sysname[] = UNAME;
+
+/* For customized versions, please add a unique identifer (e.g., your initials)
+ * to the version number, and put a brief description of the modifications
+ * in the mods[] string.
+ */
+CONST char version[] = "TinyFugue version 3.5 beta 4";
+CONST char mods[] = "";
+
+CONST char copyright[] =
+    "Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys (hawkeye@tcp.com)";
+
+CONST char contrib[] =
+#ifdef PLATFORM_OS2
+    "OS/2 support written by Andreas Sahlbach (asa@stardiv.de)";
+#else
+    "";
+#endif
 
 int restrict = 0;
 
-static void FDECL(read_configuration,(char *fname));
+static void FDECL(read_configuration,(CONST char *fname));
 int FDECL(main,(int argc, char **argv));
 
 int main(argc, argv)
@@ -45,11 +63,12 @@ int main(argc, argv)
     char *argv[];
 {
     char *opt, *argv0 = argv[0], *configfile = NULL;
-    int opterror = FALSE;
     int worldflag = TRUE;
-    int autologin = -1, quietlogin = -1;
+    int autologin = -1, quietlogin = -1, autovisual = TRUE;
+    extern int no_tty;
 
-    while (--argc > 0 && (*++argv)[0] == '-' && !opterror) {
+    while (--argc > 0 && (*++argv)[0] == '-') {
+        if (!(*argv)[1]) { argc--; argv++; break; }
         for (opt = *argv + 1; *opt; )
             switch (*opt++) {
             case 'l':
@@ -61,75 +80,122 @@ int main(argc, argv)
             case 'n':
                 worldflag = FALSE;
                 break;
+            case 'v':
+                autovisual = FALSE;
+                break;
             case 'f':
                 if (configfile) FREE(configfile);
                 configfile = STRDUP(opt);
                 while (*opt) opt++;
                 break;
             default:
-                opterror = TRUE;
-                break;
+                fprintf(stderr, "%s: illegal option -- %c\n", argv0, *--opt);
+                goto error;
             }
     }
-    if (opterror || argc > 2) {
-        char usage[256];
-        sprintf(usage,
-            "Usage: %s %s [-nlq] [<world>]\n       %s %s <host> <port>\n",
-            argv0, "[-f<file>]", argv0, "[-f<file>]");
-        die(usage);
+    if (argc > 2) {
+    error:
+        fprintf(stderr, "Usage: %s [-f[<file>]] [-nlq] [<world>]\n", argv0);
+        fprintf(stderr, "       %s [-f[<file>]] <host> <port>\n", argv0);
+        fputs("Options:\n", stderr);
+        fputs("  -f         don't read personal config file\n", stderr);
+        fputs("  -f<file>   read <file> instead of config file\n", stderr);
+        fputs("  -n         no connection\n", stderr);
+        fputs("  -l         no automatic login\n", stderr);
+        fputs("  -q         quiet login\n", stderr);
+        fputs("  -v         no automatic visual mode\n", stderr);
+        fputs("Arguments:\n", stderr);
+        fputs("  <host>     hostname or IP address\n", stderr);
+        fputs("  <port>     port number or name\n", stderr);
+        fputs("  <world>    connect to <world> defined by /addworld\n", stderr);
+        exit(1);
     }
 
-    SRAND(getpid());		/* seed random generator */
-    init_util();		/* util.c     */
-    init_signals();		/* signals.c  */
-    init_variables();		/* variable.c */
-    init_sock();		/* socket.c   */
-    init_macros();		/* macro.c    */
-    init_histories();		/* history.c  */
-    init_tty();			/* tty.c      */
-    init_output();		/* output.c   */
-    init_keyboard();		/* keyboard.c */
-    init_mail();		/* util.c     */
-    tog_sigquit();              /* signals.c  */
+    puts("\n\n\n\n");
+    puts(version);
+    puts(copyright);
+    puts("Type `/help copyright' for more information.");
+    if (*contrib) puts(contrib);
+    if (*mods) puts(mods);
+#ifdef SOCKS
+    SOCKSinit(argv0);  /* writes message to stdout */
+#endif
+    puts("Regexp package is Copyright (c) 1986 by University of Toronto.");
+    puts("Type `/help', `/help topics', or `/help intro' for help.");
+    puts("Type `/quit' to quit tf.");
+    puts("");
 
-    oputs(version);
-    oputs("Regexp package is Copyright (c) 1986 by University of Toronto.");
-    oputs("Type \"/help\" for help.");
+    SRAND(getpid());			/* seed random generator */
+    init_malloc();			/* malloc.c   */
+    init_tfio();			/* tfio.c     */
+    init_tfscreen();			/* open output queue */
+    init_util1();			/* util.c     */
+    init_signals();			/* signals.c  */
+    init_variables();			/* variable.c */
+    init_sock();			/* socket.c   */
+    init_macros();			/* macro.c    */
+    init_histories();			/* history.c  */
+    init_output();			/* output.c   */
+    init_keyboard();			/* keyboard.c */
+    init_util2();			/* util.c     */
 
     read_configuration(configfile);
+    if (configfile) FREE(configfile);
+
+    /* if %visual was not explicitly set, turn it on */
+    if (autovisual && getintvar(VAR_visual) < 0 && !no_tty)
+        setvar("visual", "1", FALSE);
 
     if (worldflag) {
         if (autologin < 0) autologin = login;
-        if (quietlogin < 0) quietlogin = quiet;
+        if (quietlogin < 0) quietlogin = quietflag;
         if (argc == 0)
             openworld(NULL, NULL, autologin, quietlogin);
         else if (argc == 1)
             openworld(argv[0], NULL, autologin, quietlogin);
         else /* if (argc == 2) */
             openworld(argv[0], argv[1], autologin, quietlogin);
+    } else {
+        do_hook(H_WORLD, "---- No world ----", "");
     }
 
     main_loop();
+
+#ifdef DMALLOC
+    free_macros();
+    handle_purgeworld_command("*");
+    free_histories();
+    free_term();
+    free_vars();
+    free_keyboard();
+    free_search();
+    free_expand();
+    free_help();
+    debug_mstats("tf");
+#endif
+
+    fix_screen();
+    reset_tty();
     return 0;
 }
 
 static void read_configuration(fname)
-    char *fname;
+    CONST char *fname;
 {
-    char *lib;
-
-    if (!(lib = getvar("TFLIBRARY"))) setvar("TFLIBRARY", lib = TFLIBRARY, 0);
-    if (!do_file_load(lib, FALSE)) die("Can't read required library.");
+    if (!do_file_load(getvar("TFLIBRARY"), FALSE))
+        die("Can't read required library.", 0);
 
     if (fname) {
         if (*fname) do_file_load(fname, FALSE);
         return;
     }
 
-    do_file_load(TFRC, TRUE);
+    do_file_load("~/.tfrc", TRUE) ||
+    do_file_load("~/tfrc", TRUE) ||
+    do_file_load("./.tfrc", TRUE) ||
+    do_file_load("./tfrc", TRUE);
 
     /* support for old fashioned .tinytalk files */
-    if (!(fname = getvar("TINYTALK"))) fname = TINYTALK;
-    do_file_load(fname, TRUE);
+    do_file_load((fname = getvar("TINYTALK")) ? fname : "~/.tinytalk", TRUE);
 }
 

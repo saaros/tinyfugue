@@ -1,0 +1,41 @@
+#!/bin/sh
+########################################################################
+#
+#  TinyFugue - programmable mud client
+#  Copyright (C) 1994, 1995, 1996, 1997 Ken Keys
+#
+#  TinyFugue (aka "tf") is protected under the terms of the GNU
+#  General Public License.  See the file "COPYING" for details.
+#
+#  Tilde expander.
+#
+########################################################################
+
+file=$*
+case $file in
+\~/* | \~)
+	user=$USER
+	;;
+\~*)
+	oifs="$IFS"
+	IFS='\~/ '
+	set `echo $*`
+	user=$1
+	IFS="$oifs"
+	;;
+*)
+	echo $*
+	exit 0
+	;;
+esac
+
+# Note: password file may contain shell metacharacters.
+line=`egrep "^${user}:" /etc/passwd`
+
+if [ -n "$line" ]; then
+    dir=`echo "$line" | awk -F: '{ print $6; }'`
+    echo ${dir}`echo "$file" | sed -e 's;^[^/]*;;'`
+else
+    echo $file
+fi
+

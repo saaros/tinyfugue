@@ -1,462 +1,325 @@
 
 
 
-     TTTTFFFF((((1111))))                 UUUUNNNNIIIIXXXX SSSSyyyysssstttteeeemmmm VVVV ((((LLLLOOOOCCCCAAAALLLL))))                 TTTTFFFF((((1111))))
+ TTTTFFFF((((1111))))                                                                 TTTTFFFF((((1111))))
+9                                    LLLLOOOOCCCCAAAALLLL
 
 
 
-     NNNNAAAAMMMMEEEE
-          tf - TinyFugue, a MUD client
+ NNNNAAAAMMMMEEEE
+      tf - TinyFugue, a MUD client
 
-     SSSSYYYYNNNNOOOOPPPPSSSSIIIISSSS
-          ttttffff [[[[----ffff_f_i_l_e]]]] [[[[----llllnnnnqqqq]]]] [[[[_w_o_r_l_d]]]]
-          ttttffff [[[[----ffff_f_i_l_e]]]] _h_o_s_t _p_o_r_t
+ SSSSYYYYNNNNOOOOPPPPSSSSIIIISSSS
+      ttttffff [[[[----ffff_f_i_l_e]]]] [[[[----llllnnnnqqqq]]]] [[[[_w_o_r_l_d]]]]
+      ttttffff [[[[----ffff_f_i_l_e]]]] _h_o_s_t _p_o_r_t
 
-     DDDDEEEESSSSCCCCRRRRIIIIPPPPTTTTIIIIOOOONNNN
-          _T_i_n_y_F_u_g_u_e (also known as "Fugue" or "TF") is a line-based
-          client designed for connecting to MUD servers (especially
-          TinyMUD-style MUDs).
+ DDDDEEEESSSSCCCCRRRRIIIIPPPPTTTTIIIIOOOONNNN
+      _T_i_n_y_F_u_g_u_e (also known as "Fugue" or "TF") is a line-based client
+      designed for connecting to MUD servers (note: LP, DIKU, and other
+      servers which use prompts require "/lp on"; see /help prompts).
 
-          Most of the _T_F documentation is in the help file, which may
-          be read with the "/help" command.  This manual page may be
-          obsolete in certain areas; however, the helpfile will
-          usually be up to date.
+      Most of the _T_F documentation is in the help file, which may be read
+      online with the "/help" command.  This manual page may be obsolete in
+      certain areas; however, the helpfile will always be up to date.
 
-          _T_i_n_y_F_u_g_u_e is larger than most MUD clients, and has many more
-          features.  The goal is to provide the most functionality in
-          a client that still maintains the user-friendliness of
-          _T_i_n_y_t_a_l_k.  Clients with extension languages such as _T_c_l_t_t or
-          _V_a_p_o_r_T_a_l_k can do more in certain areas, but are considerably
-          harder to use and learn.  _T_F provides most of these
-          abilities in such a manner that learning to use any one
-          function is relatively easy.
+      _T_i_n_y_F_u_g_u_e is larger than most MUD clients, but has many more features
+      and is much more flexible.  The goal is to provide the most
+      functionality in a client that still maintains the user-friendliness
+      of _T_i_n_y_t_a_l_k.  Clients with extension languages such as _T_c_l_t_t or
+      _V_a_p_o_r_T_a_l_k can do a little more in certain areas, but are considerably
+      harder to use and learn.  _T_F provides most of these abilities in such
+      a manner that learning to use any one function is relatively easy.
 
-          Because I am continually adding new features and changing
-          the code, _T_F sometimes becomes less stable in a new release.
-          Versions labled "alpha" are generally not as well tested as
-          "beta" versions, so they have the potential for more bugs.
-          For this reason, I leave some older versions at the ftp site
-          where I distribute _T_F (ftp.tcp.com), which do not have all
-          the current features but may have fewer bugs than the most
-          recent release.
+      Because I am continually adding new features and changing the code, _T_F
+      sometimes becomes less stable in a new release.  Versions labled
+      "alpha" are generally not as well tested as "beta" versions, so they
+      have the potential for more bugs.  For this reason, I leave some older
+      versions at the ftp site where I distribute _T_F (ftp.tcp.com), which do
+      not have all the current features but may have fewer bugs than the
+      most recent release.
 
 
-     CCCCHHHHAAAANNNNGGGGEEEESSSS FFFFRRRROOOOMMMM VVVVEEEERRRRSSSSIIIIOOOONNNN 3333....1111 TTTTOOOO 3333....2222
-          Added REGULAR EXPRESSIONS, and ability to extract arbitrary
-          pieces of of matched text using %Pn.  See: patterns,
-          matching, regmatch, %Pn.
+ CCCCOOOOMMMMMMMMAAAANNNNDDDD LLLLIIIINNNNEEEE AAAARRRRGGGGUUUUMMMMEEEENNNNTTTTSSSS
+      With no arguments, _T_F will try to connect to the first world defined
+      in the configuration file(s).
 
-          "Partial hilites" - hilite part of a line.  (see /partial,
-          /def -P).
+      With a wwwwoooorrrrlllldddd argument, _T_F will try to connect to wwwwoooorrrrlllldddd, as defined in
+      the configuration file.  If wwwwoooorrrrlllldddd is omitted, it will try to connect
+      to the first world defined in your configuration files.
 
-          Colors names are fixed (but codes can still be changed).
+      With hhhhoooosssstttt and ppppoooorrrrtttt arguments, _T_F will define a temporary world and try
+      to connect to it.  The hhhhoooosssstttt may be an IP number or regular name
+      format.
 
-          More useful return values for macro creation commands,
-          /quote, /repeat, and /dokey.
+      OPTIONS
 
-          In expressions, "=" and "==" both do comparison, not
-          assignment.
+      -f_f_i_l_e
+           Load _f_i_l_e instead of $HOME/.tfrc at startup.
 
+9
 
 
+                                    - 1 -         Formatted:  March 21, 1997
 
-     Page 1                                          (printed 4/26/94)
 
 
 
 
 
+ TTTTFFFF((((1111))))                                                                 TTTTFFFF((((1111))))
+9                                    LLLLOOOOCCCCAAAALLLL
 
-     TTTTFFFF((((1111))))                 UUUUNNNNIIIIXXXX SSSSyyyysssstttteeeemmmm VVVV ((((LLLLOOOOCCCCAAAALLLL))))                 TTTTFFFF((((1111))))
 
 
+      -f   Do not load any personal configuration file.  The library will
+           still be loaded.
 
-          In expressions, ":=" does assignment.
+      -l   Disable automatic login.
 
-          Assignment expressions can create a new global (not local)
-          variable.
+      -n   Do not connect to any world at startup.
 
-          Better handling of toggling %{lp} (e.g., when switching
-          worlds).
+      -q   Quiet login (overrides %{quiet} flag).
 
-          Replaced /rand with rand().
 
-          Expanded kbfunc.tf, bind-bash.tf.
+ FFFFEEEEAAAATTTTUUUURRRREEEESSSS
+      Among other things, _T_F allows you to:
 
-          Added ability to avoid automatic switch when pending connect
-          completes.
+      Divide the screen into two parts, for input and output, with flexible
+      handling of input (/visual mode).
 
-          Installed library directory, includes:  many advanced
-          keybindings (completion, transpose, last word, etc.);
-          /alias; /at; /putfile; speedwalk (like tintin); mapping
-          (like tintin); shell utilities; quoting utilities; logging
-          utilities; /rwho; Diku tick counter (like tintin); and many
-          other useful utilities.  See: /help utilities.
+      Connect to multiple worlds and switch between them.
 
-          Control constructs (/if and /while) can be used from command
-          line.
+      Wrap MUD output at the edge of the screen.
 
-          Added kbdel() user function.
+      Edit text in the input buffer.
 
-          Added %{scroll} and simulated scrolling for terminals
-          without scroll regions.
+      Recall previous commands.
 
-          Detects and warns about some common user macro mistakes.
+      Modify key sequences used to perform editing functions.
 
-          /mecho nesting; also, doesn't echo invisible macros.
+      Bind commands to key sequences.
 
-          /send can send a blank line.
+      Define complex macros to perform MUD tasks easily.
 
-          Better error messages for files.
+      Create triggers which automatically perform certain tasks when certain
+      output is received from the MUD.
 
-          Symbolic values and better type checking for special
-          variables.
+      Modify existing macros using either a command format or interactive
+      editing.
 
-          Internal redesign of screen handling, cursor and write()
-          optimization.
+      Support "portals" that automatically switch from world to world.
 
-          Fixed possible prompt duplication.
+      Hilite or color all or part of a line that matches a certain pattern.
 
-          Fixed /retry.
+      Gag lines that match certain patterns.
 
-          Fixed ] bug in [...] patterns.
+      Suppress frequently repeated text ("spamming").
 
-          Fixed potentially fatal bug in typeless /addworld.
+      Automatically log into a character on a world.
 
+      Send a text file to the MUD in flexible ways, or echo it locally.
 
+      Send the output of a system command to the MUD, or echo it locally.
 
+      Send text previously received from the MUD to the MUD, or echo it
 
-     Page 2                                          (printed 4/26/94)
 
+9                                    - 2 -         Formatted:  March 21, 1997
 
 
 
 
 
-     TTTTFFFF((((1111))))                 UUUUNNNNIIIIXXXX SSSSyyyysssstttteeeemmmm VVVV ((((LLLLOOOOCCCCAAAALLLL))))                 TTTTFFFF((((1111))))
 
+ TTTTFFFF((((1111))))                                                                 TTTTFFFF((((1111))))
+9                                    LLLLOOOOCCCCAAAALLLL
 
 
-          Improved portability of library linking order (affects
-          Dynix/ptx).
 
-          Improved portability of internet headers (affects some SVR3
-          based systems).
+      locally.
 
-          Internal changes.
+      Repeat a MUD or _T_F command a number of times.
 
+      Do the above four things at varying intervals, or at a rapid-fire
+      rate.
 
-     CCCCOOOOMMMMMMMMAAAANNNNDDDD LLLLIIIINNNNEEEE AAAARRRRGGGGUUUUMMMMEEEENNNNTTTTSSSS
-          With no arguments, _T_F will try to connect to the first world
-          defined in the configuration file(s).
+      Log a session to a file.
 
-          With a wwwwoooorrrrlllldddd argument, _T_F will try to connect to wwwwoooorrrrlllldddd.  If
-          wwwwoooorrrrlllldddd is omitted, it will try to connect to the first world
-          defined in your configuration files.
+      Separate LP and Diku style prompts from normal output.
 
-          With hhhhoooosssstttt and ppppoooorrrrtttt arguments, _T_F will define a temporary
-          world and try to connect to it.  The hhhhoooosssstttt may be an IP
-          number or regular name format.
+      Page output using a --More-- prompt.
 
-          OPTIONS
+      Recall previously received text.
 
-          -f_f_i_l_e
-               Load _f_i_l_e instead of $HOME/.tfrc at startup.
 
-          -f   Do not load any personal configuration file.  The
-               library will still be loaded.
+ CCCCOOOONNNNFFFFIIIIGGGGUUUURRRRAAAATTTTIIIIOOOONNNN FFFFIIIILLLLEEEESSSS
+      _T_F will attempt to read two files when starting.  The first is a
+      public configuration file "stdlib.tf", located in TFLIBDIR.  TFLIBDIR
+      is defined when _T_F is installed, and is often /usr/local/lib/tf.lib,
+      or under the home directory of the installer.  This library contains
+      many macros and definitions essential to the correct operation of _T_F.
 
-          -l   Disable automatic login.
+      Next, _T_F will attempt to read your personal configuration file,
+      $HOME/.tfrc, in which you can put any _T_F commands you want executed
+      automatically at startup.  Two of the most useful commands to use in a
+      _T_F configuration file are /addworld and /load.
 
-          -n   Do not connect to any world at startup.
+      For backward compatability, _T_F will also try to read the _T_i_n_y_T_a_l_k
+      configuration file.  Its name defautls to $HOME/.tinytalk, or can be
+      defined by the TINYTALK environment variable.  This file may start
+      with a list of worlds that will be defined as if with /addworld.
 
-          -q   Quiet login (overrides %{quiet} flag).
 
+ HHHHIIIISSSSTTTTOOOORRRRYYYY
+      Anton Rang (Tarrant) in February of 1990 released _T_i_n_y_t_a_l_k, the first
+      Tinyclient with any great number of features, including hiliting and
+      suppression of text, simple triggers, and separating input and output
+      on the screen.  Leo Plotkin (Grod) made rather extensive modifications
+      to _T_i_n_y_t_a_l_k to produce _T_i_n_y_w_a_r, which was plagued with some serious
+      bugs and was never officially released (the phrase "Tinywar doesn't
+      exist" is often quoted), and is now an unsupported client.  _T_F began
+      when Greg Hudson (Explorer_Bob) merged many of the new features of
+      _T_i_n_y_w_a_r back into _T_i_n_y_T_a_l_k, and added many new features of his own,
+      most notably the split screen.  Some of the code in Greg's releases
+      was contributed by Leo Plotkin.  After Greg moved on to _V_a_p_o_r_T_a_l_k, Ken
+      Keys (Hawkeye) took over design and maintenance of _T_F in July 1991,
+      and continues to make improvements in features and performance.
 
-     FFFFEEEEAAAATTTTUUUURRRREEEESSSS
-          Among other things, _T_F allows you to:
+      The code size of _T_F has surpassed 300K (unstripped), and is
+      signifigantly larger than _T_i_n_y_t_a_l_k.  It is, in fact, more than three
 
-          Divide the screen into two parts, for input and output, with
-          flexible handling of input (/visual mode).
 
-          Connect to multiple worlds and switch between them.
+9                                    - 3 -         Formatted:  March 21, 1997
 
-          Wrap MUD output at the edge of the screen.
 
-          Edit text in the input buffer.
 
-          Recall previous commands.
 
-          Modify key sequences used to perform editing functions.
 
 
+ TTTTFFFF((((1111))))                                                                 TTTTFFFF((((1111))))
+9                                    LLLLOOOOCCCCAAAALLLL
 
 
-     Page 3                                          (printed 4/26/94)
 
+      times the size of a number of existing servers.  As of version 3.0, it
+      has 66 builtin commands and 57 library commands, each documented in
+      the helpfile.
 
+      It has been stated that _T_F is the most-used client in MUDdom at the
+      current time.  I haven't taken a poll, but I wouldn't be surprised.
 
 
+ RRRREEEEVVVVIIIIEEEEWWWWSSSS
+      _T_F has significantly changed the tinyclient world.  It has a number of
+      merits and a number of flaws, and has frequently been criticized
+      (mostly out of boredom; nobody takes this business too seriously) as
+      having too many features and being too damn big.
 
+           "Tinywar doesn't exist; TinyFugue merely shouldn't." -- Coined by
+      Woodlock, I believe.
 
-     TTTTFFFF((((1111))))                 UUUUNNNNIIIIXXXX SSSSyyyysssstttteeeemmmm VVVV ((((LLLLOOOOCCCCAAAALLLL))))                 TTTTFFFF((((1111))))
+           "TinyFugue is a work of art." -- Binder, obviously after having
+      too much to drink.
 
+           "TinyFugue is the biggest hack since the platform it was built
+      on." -- Explorer_Bob, in one of his lucid moments.
 
+      The New York Times, the Christian Science Monitor and the Washington
+      Post all refused to comment.
 
-          Bind commands to key sequences.
 
-          Define complex macros to perform MUD tasks easily.
+ CCCCOOOOPPPPYYYYRRRRIIIIGGGGHHHHTTTT
+      Copyright (C) 1993, 1994 Ken Keys
 
-          Create triggers which automatically perform certain tasks
-          when certain output is received from the MUD.
+      _T_i_n_y_F_u_g_u_e (aka "_t_f") is protected under the terms of the GNU General
+      Public License.  See the file "COPYING" for details.
 
-          Modify existing macros using either a command format or
-          interactive editing.
+      _T_F is currently supported by Ken Keys, who may be contacted by e-mail
+      at kkeys@ucsd.edu or hawkeye@tcp.com.
 
-          Support "portals" that automatically switch from world to
-          world.
 
-          Hilite or color all or part of a line that matches a certain
-          pattern.
+ BBBBAAAACCCCKKKKWWWWAAAARRRRDDDD IIIINNNNCCCCOOOOMMMMPPPPAAAATTTTIIIIBBBBIIIILLLLTTTTIIIIEEEESSSS
+      VERSION 3.2
 
-          Gag lines that match certain patterns.
+      /rand has been replaced with rand().  Color names can no longer be
+      user defined (but color codes still can).  The "=" operator does
+      comparison, not assignment.
 
-          Suppress frequently repeated text ("spamming").
+      VERSION 3.1
 
-          Automatically log into a character on a world.
+      Added type argument to WORLD and LOGIN hooks.
 
-          Send a text file to the MUD in flexible ways, or echo it
-          locally.
+      VERSION 3.0
 
-          Send the output of a system command to the MUD, or echo it
-          locally.
+9
 
-          Send text previously received from the MUD to the MUD, or
-          echo it locally.
 
-          Repeat a MUD or _T_F command a number of times.
+                                    - 4 -         Formatted:  March 21, 1997
 
-          Do the above four things at varying intervals, or at a
-          rapid-fire rate.
 
-          Log a session to a file.
 
-          Separate LP and Diku style prompts from normal output.
 
-          Page output using a --More-- prompt.
 
-          Recall previously received text.
 
+ TTTTFFFF((((1111))))                                                                 TTTTFFFF((((1111))))
+9                                    LLLLOOOOCCCCAAAALLLL
 
-     CCCCOOOONNNNFFFFIIIIGGGGUUUURRRRAAAATTTTIIIIOOOONNNN FFFFIIIILLLLEEEESSSS
-          _T_F will attempt to read two files when starting.  The first
-          is a public configuration file, "stdlib.tf", located in
-          TFLIBDIR.  TFLIBDIR is defined by the person person who
-          installed the copy of _T_F you are using (often
-          /usr/local/lib/tf.lib, or under the home directory of the
-          installer).  This library contains many macros and
 
 
+      Backslashes in macros are interpreted slightly differently than in
+      previous versions.  Turning on the "backslash" flag will enable the
+      old behavior.
 
-     Page 4                                          (printed 4/26/94)
+      VERSION 2.1
 
+      The CONNECT hook is now called before the LOGIN hook.  In 2.0, CONNECT
+      was called after autologin.
 
+      VERSION 2.0
 
+      In versions prior to 2.0, <space> was used to scroll the pager; 2.0
+      uses <tab> as the default, to allow the pager to be nonblocking.
 
+      _T_i_n_y_t_a_l_k style name gags and hilites are no longer supported.  You
+      must use the '*' wildcard explicitly, as in '/hilite hawkeye*'.
 
+      _T_i_n_y_t_a_l_k style page and whisper hilites are no longer supported.
+      However, /hilite_page and /hilite_whisper macros are provided in the
+      default macro library.
 
-     TTTTFFFF((((1111))))                 UUUUNNNNIIIIXXXX SSSSyyyysssstttteeeemmmm VVVV ((((LLLLOOOOCCCCAAAALLLL))))                 TTTTFFFF((((1111))))
+      The .tinytalk file may not be supported in the future; use .tfrc
+      instead.
 
+      The '-' command line option in versions prior to 2.0 is no longer
+      supported, and has been replaced with '-l'.
 
 
-          definitions essential to the correct operation of _T_F.
+ BBBBUUUUGGGGSSSS
+      When unterbamfing, the old connection should not be closed until the
+      new connection succeeds.
 
-          Next, _T_F will attempt to read your personal configuration
-          file, $HOME/.tfrc, in which you can put any _T_F commands you
-          want executed automatically at startup.  Two of the most
-          useful commands to use in a _T_F configuration file are
-          /addworld and /load.
+      If a shell quote (/quote !) reads a partial line from the pipe, the
+      read will block until the rest of the line is read.
 
-          For backward compatability, _T_F will also try to read the
-          _T_i_n_y_T_a_l_k configuration file.  Its name defautls to
-          $HOME/.tinytalk, or can be defined by the TINYTALK
-          environment variable.  This file may start with a list of
-          worlds that will be defined as if with /addworld.
 
+ WWWWAAAARRRRNNNNIIIINNNNGGGGSSSS
+      The Surgeon General has determined that MUDding can be detrimental to
+      your GPA.
 
-     HHHHIIIISSSSTTTTOOOORRRRYYYY
-          Anton Rang (Tarrant) in February of 1990 released _T_i_n_y_t_a_l_k,
-          the first Tinyclient with any great number of features,
-          including hiliting and suppression of text, simple triggers,
-          and separating input and output on the screen.  Leo Plotkin
-          (Grod) made rather extensive modifications to _T_i_n_y_t_a_l_k to
-          produce _T_i_n_y_w_a_r, which was plagued with some serious bugs
-          and was never officially released (the phrase "Tinywar
-          doesn't exist" is often quoted), and is now an unsupported
-          client.  _T_F began when Greg Hudson (Explorer_Bob) merged
-          many of the new features of _T_i_n_y_w_a_r back into _T_i_n_y_T_a_l_k, and
-          added many new features of his own, most notably the
-          windowing system.  Some of the code in Greg's releases was
-          contributed by Leo Plotkin.  After Greg moved on to
-          _V_a_p_o_r_T_a_l_k, Ken Keys (Hawkeye) took over design and
-          maintenance of _T_F in July 1991, and continues to make
-          improvements in features and performance.
 
-          The code size of _T_F has surpassed 300K (unstripped), and is
-          signifigantly larger than _T_i_n_y_t_a_l_k.  It is, in fact, more
-          than three times the size of a number of existing servers.
-          As of version 3.0, it has 66 builtin commands and 57 library
-          commands, each documented in the helpfile.
 
-          It has been stated that _T_F is the most-used client in MUDdom
-          at the current time.  I haven't taken a poll, but I wouldn't
-          be surprised.
 
 
-     RRRREEEEVVVVIIIIEEEEWWWWSSSS
-          _T_F has significantly changed the tinyclient world.  It has a
-          number of merits and a number of flaws, and has frequently
-          been criticized (mostly out of boredom; nobody takes this
-          business too seriously) as having too many features and
-          being too damn big.
 
-               "Tinywar doesn't exist; TinyFugue merely shouldn't."
 
 
 
-     Page 5                                          (printed 4/26/94)
 
 
+9
 
 
-
-
-     TTTTFFFF((((1111))))                 UUUUNNNNIIIIXXXX SSSSyyyysssstttteeeemmmm VVVV ((((LLLLOOOOCCCCAAAALLLL))))                 TTTTFFFF((((1111))))
-
-
-
-          -- Coined by Woodlock, I believe.
-
-               "TinyFugue is a work of art."  -- Binder, obviously
-          after having too much to drink.
-
-               "TinyFugue is the biggest hack since the platform it
-          was built on."  -- Explorer_Bob, in one of his lucid
-          moments.
-
-          The New York Times, the Christian Science Monitor and the
-          Washington Post all refused to comment.
-
-
-     CCCCOOOOPPPPYYYYRRRRIIIIGGGGHHHHTTTT
-          Copyright (C) 1993, 1994 Ken Keys
-
-          _T_i_n_y_F_u_g_u_e (aka "_t_f") is protected under the terms of the GNU
-          General Public License.  See the file "COPYING" for details.
-
-          _T_F is currently supported by Ken Keys, who may be contacted
-          by e-mail at kkeys@ucsd.edu or hawkeye@tcp.com.
-
-
-     BBBBAAAACCCCKKKKWWWWAAAARRRRDDDD IIIINNNNCCCCOOOOMMMMPPPPAAAATTTTIIIIBBBBIIIILLLLTTTTIIIIEEEESSSS
-          VERSION 3.2
-
-          /rand has been replaced with rand().  Color names can no
-          longer be user defined (but color codes still can).  The "="
-          operator does comparison, not assignment.
-
-          VERSION 3.1
-
-          Added type argument to WORLD and LOGIN hooks.
-
-          VERSION 3.0
-
-          Backslashes in macros are interpreted slightly differently
-          than in previous versions.  Turning on the "backslash" flag
-          will enable the old behavior.
-
-          VERSION 2.1
-
-          The CONNECT hook is now called before the LOGIN hook.  In
-          2.0, CONNECT was called after autologin.
-
-          VERSION 2.0
-
-          In versions prior to 2.0, <space> was used to scroll the
-          pager; 2.0 uses <tab> as the default, to allow the pager to
-          be nonblocking.
-
-          _T_i_n_y_t_a_l_k style name gags and hilites are no longer
-
-
-
-     Page 6                                          (printed 4/26/94)
-
-
-
-
-
-
-     TTTTFFFF((((1111))))                 UUUUNNNNIIIIXXXX SSSSyyyysssstttteeeemmmm VVVV ((((LLLLOOOOCCCCAAAALLLL))))                 TTTTFFFF((((1111))))
-
-
-
-          supported.  You must use the '*' wildcard explicitly, as in
-          '/hilite hawkeye*'.
-
-          _T_i_n_y_t_a_l_k style page and whisper hilites are no longer
-          supported.  However, /hilite_page and /hilite_whisper macros
-          are provided in the default macro library.
-
-          The .tinytalk file may not be supported in the future; use
-          .tfrc instead.
-
-          The '-' command line option in versions prior to 2.0 is no
-          longer supported, and has been replaced with '-l'.
-
-
-     BBBBUUUUGGGGSSSS
-          When unterbamfing, the old connection should not be closed
-          until the new connection succeeds.
-
-          If a shell quote (/quote !) reads a partial line from the
-          pipe, the read will block until the rest of the line is
-          read.
-
-
-     WWWWAAAARRRRNNNNIIIINNNNGGGGSSSS
-          The Surgeon General has determined that MUDding can be
-          detrimental to your GPA.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-     Page 7                                          (printed 4/26/94)
+                                    - 5 -         Formatted:  March 21, 1997
 
 
 

@@ -1,38 +1,82 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: malloc.c,v 33000.2 1994/04/16 03:19:53 hawkeye Exp $ */
-
-#ifndef DMALLOC
+/* $Id: malloc.c,v 35004.5 1997/03/27 01:04:34 hawkeye Exp $ */
 
 #include "config.h"
 #include "port.h"
 #include "signals.h"
 #include "malloc.h"
 
-GENERIC *dmalloc(size)
-    long unsigned size;
-{
-    GENERIC *ret;
+int low_memory_warning = 0;
+static char *reserve = NULL;
 
-    if ((long)size <= 0) core("internal error: dmalloc: size <= 0");
-    if (!(ret = (GENERIC*)malloc(size))) core("% malloc failed");
-    return ret;
+void init_malloc()
+{
+    reserve = MALLOC(1024*16);
 }
 
-GENERIC *drealloc(ptr, size)
+GENERIC *xmalloc(size, file, line)
+    long unsigned size;
+    CONST char *file;
+    CONST int line;
+{
+    GENERIC *memory;
+
+    if ((long)size <= 0)
+        core("xmalloc(%ld).", file, line, (long)size);
+
+    memory = (GENERIC*)dmalloc(size, file, line);
+    if (!memory) {
+        if (reserve) {
+            low_memory_warning = 1;
+            FREE(reserve);
+            reserve = NULL;
+            memory = (GENERIC*)dmalloc(size, file, line);
+        }
+        if (!memory)
+            error_exit("xmalloc(%ld): out of memory.", file, line, (long)size);
+    }
+
+    return memory;
+}
+
+GENERIC *xrealloc(ptr, size, file, line)
     GENERIC *ptr;
     long unsigned size;
+    CONST char *file;
+    CONST int line;
 {
-    GENERIC *ret;
+    GENERIC *memory;
 
-    if ((long)size <= 0) core("internal error: drealloc: size <= 0");
-    if (!(ret = (GENERIC*)realloc(ptr, size))) core("% realloc failed");
-    return ret;
+    if ((long)size <= 0)
+        core("xrealloc(%ld).", file, line, (long)size);
+
+    memory = (GENERIC*)drealloc(ptr, size, file, line);
+    if (!memory) {
+        if (reserve) {
+            low_memory_warning = 1;
+            FREE(reserve);
+            reserve = NULL;
+            memory = (GENERIC*)drealloc(ptr, size, file, line);
+        }
+        if (!memory)
+            error_exit("xrealloc(%ld): out of memory.", file, line, (long)size);
+    }
+
+    return memory;
 }
 
-#endif
+void xfree(ptr, file, line)
+    GENERIC *ptr;
+    CONST char *file;
+    CONST int line;
+{
+    dfree(ptr, file, line);
+    if (!reserve)
+        init_malloc();
+}

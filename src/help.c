@@ -1,121 +1,151 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: help.c,v 33000.2 1994/04/26 08:56:29 hawkeye Exp $ */
+/* $Id: help.c,v 35004.7 1997/03/27 01:04:27 hawkeye Exp $ */
 
 /*
  * Fugue help handling
  *
  * Uses the help index to search the helpfile for a topic.
  *
- * Original algorithm developed by Leo Plotkin.
  * Rewritten by Ken Keys to work with rest of program, and handle
  * topic aliasing, and subtopics.
  */
 
 #include "config.h"
-#include <ctype.h>
+#include <stdio.h>
 #include "port.h"
 #include "dstring.h"
 #include "tf.h"
-#include "util.h"
+#include "tfio.h"
 #include "commands.h"
+#include "variable.h"
+
+STATIC_BUFFER(indexfname);
+
+#define HELPLEN  (80+1)		/* maximum length of lines in help file */
 
 int handle_help_command(args) 
     char *args;
 {
-    STATIC_BUFFER(indexfname);
-    STATIC_BUFFER(buf0);
-    STATIC_BUFFER(buf1);
-    STATIC_BUFFER(buf2);
-    String *input, *major_buffer, *minor_buffer, *spare;
-    char *name, *major_topic, *minor_topic, *place;
+    char buf0[HELPLEN], buf1[HELPLEN], buf2[HELPLEN];
+    char *input, *major_buffer, *minor_buffer, *spare;
+    char *major_topic, *minor_topic, *place;
+    CONST char *name;
     TFILE *helpfile, *indexfile;
     long offset = -1;
 
     Stringterm(indexfname, 0);
-    Stringterm(buf0, 0);
-    Stringterm(buf1, 0);
-    Stringterm(buf2, 0);
-    if (!*args) args = "summary";
 
-    name = expand_filename(TFHELP);
+    name = expand_filename(getvar("TFHELP"));
     if ((helpfile = tfopen(name, "r")) == NULL) {
         operror(name);
         return 0;
     }
-    Sprintf(indexfname, 0, "%s.index", name);
-    if ((indexfile = tfopen(indexfname->s, "r")) == NULL) {
-        operror(indexfname->s);
-        tfclose(helpfile);
-        return 0;
+
+    if (helpfile->type == TF_FILE) {
+        /* regular file: use index */
+        Sprintf(indexfname, 0, "%s.idx", name);
+        if ((indexfile = tfopen(indexfname->s, "r")) == NULL) {
+            operror(indexfname->s);
+            tfclose(helpfile);
+            return 0;
+        }
+    } else {
+        /* pipe: use brute-force search */
+        indexfile = helpfile;
     }
+
+    name = (*args) ? args : "summary";
 
     input = buf0;
     major_buffer = buf1;
     minor_buffer = buf2;
 
-    while (offset < 0 && tfgetS(input, indexfile) != NULL) {
-        Stringterm(minor_buffer, 0);
-        for (place = input->s; isdigit(*place); place++);
+    while (offset < 0 && fgets(input, HELPLEN, indexfile->u.fp) != NULL) {
+        minor_buffer[0] = '\0';
+        for (place = input; isdigit(*place); place++);
         if (*place == '@') {
-            Stringterm(major_buffer, 0);
+            major_buffer[0] = '\0';
             spare = major_buffer;
             major_buffer = input;
-        } else {
+        } else if (*place == '#') {
             spare = minor_buffer;
             minor_buffer = input;
+        } else {
+            continue;
         }
         ++place;
-        if ((*place != '-' && cstrcmp(place, args) == 0) ||
-          (*place == '-' && strcmp(place, args) == 0) ||
-          (*place == '/' && cstrcmp(place + 1, args) == 0)) {
-                offset = atol(input->s);
+        if (*place)
+            place[strlen(place)-1] = '\0';
+
+        if (strcmp(place, name) == 0 ||
+            (ispunct(*place) && strcmp(place + 1, name) == 0))
+        {
+            offset = atol(input);
         }
         input = spare;
     }
-    tfclose(indexfile);
+
+    if (indexfile != helpfile)
+        tfclose(indexfile);
+
     if (offset < 0) {
-        oprintf("%% Help on subject %s not found.", args);
+        oprintf("%% Help on subject %s not found.", name);
         tfclose(helpfile);
         return 0;
     }
 
+    if (indexfile != helpfile)
+        fseek(helpfile->u.fp, offset, SEEK_SET);
+
     /* find offset, skip lines matching ^[@#], and remember last topic */
-    tfjump(helpfile, offset);
-    while (tfgetS(input, helpfile) != NULL) {
-        if (*input->s != '@' && *input->s != '#') break;
-        if (minor_buffer->len) {
+
+    while (fgets(input, HELPLEN, helpfile->u.fp) != NULL) {
+        if (*input) input[strlen(input)-1] = '\0';
+        if (*input != '@' && *input != '#') break;
+        if (*minor_buffer) {
             spare = minor_buffer;
             minor_buffer = input;
             input = spare;
-        } else if (*input->s == '@') {
+        } else if (*input == '@') {
             spare = major_buffer;
             major_buffer = input;
             input = spare;
         }
     }
 
-    for (major_topic = major_buffer->s; isdigit(*major_topic); major_topic++);
+    for (major_topic = major_buffer; isdigit(*major_topic); major_topic++);
     major_topic++;
-    if (minor_buffer->len) {
-        for (minor_topic = minor_buffer->s; isdigit(*minor_topic); minor_topic++);
+    if (*minor_buffer) {
+        for (minor_topic = minor_buffer; isdigit(*minor_topic); minor_topic++);
         minor_topic++;
-        oprintf("Help on: %s %s", major_topic, minor_topic);
+        oprintf("Help on: %s: %s", major_topic, minor_topic);
     } else {
         oprintf("Help on: %s", major_topic);
     }
 
-    do {
-        if (*input->s == '@') break;
-        else if (*input->s != '#') oputs(input->s);
-        else if (minor_buffer->len) break;
-    } while (tfgetS(input, helpfile) != NULL);
+    while (*input != '@') {
+        if (*input != '#') oputs(input);
+        else if (*minor_buffer) break;
+        if (fgets(input, HELPLEN, helpfile->u.fp) == NULL) break;
+        if (*input) input[strlen(input)-1] = '\0';
+    }
+
+    if (*minor_buffer)
+        oprintf("For more complete information, see \"%s\".", major_topic);
 
     tfclose(helpfile);
     return 1;
 }
+
+#ifdef DMALLOC
+void free_help()
+{
+    Stringfree(indexfname);
+}
+#endif

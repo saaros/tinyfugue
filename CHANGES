@@ -1,7 +1,543 @@
-Notation for relases pre-1.4.0 beta is not particularly accurate, and
-sometimes changed code was released without updating version numbers.
-I don't do this any more.
 Only the most recent version will have detailed changes described.
+Some fixes are followed by the version in which the problem first appeared.
+
+3.5 beta 4 (4/4/97)
+----------
+Fixed keyboard lockup or "Bad file number" during fast input. (35b3)
+Added ./.tfrc and ./tfrc to the list of files searched for at startup.
+
+3.5 beta 3 (3/24/97)
+----------
+Can run without a terminal (e.g., with input redirected from a file).
+Fixed /paste. (35b2)
+Fixed sometimes fatal bug in hiliting server text. (35b2)
+Fixed "handle_keyboard_input: read: Bad file number" during fast input. (35b2)
+
+3.5 beta 2 (3/21/97)
+----------
+The LOGIN hook no longer has <character> and <password> arguments; use
+  ${world_character} and ${world_password} instead of %2 and %3.
+Added /trigger -h, to call hooks.
+Added /addworld -p, to make local connections ignore %proxy_host.
+Added %connect.  Try "/set connect=blocking" if you have new problems when
+  trying to connect.
+Added ++ and -- prefix operators.
+Fixed possible corruption when redefining world with "/addworld -Ttype name".
+Output generated before a synchronous process starts is displayed before the
+  process starts.
+/dokey SELFLUSH (^[J) does not consider lines with only -aG "interesting".
+/dokey SEARCHB and SEARCHF (^[p and ^[n) match only proper prefixes, not
+  an exact match.
+Improved screen appearance after resizing window, changing %isize, or
+  receiving SIGINT or SIGQUIT.
+Fixed "/edit -an" and "/edit -P<n>n".
+Fixed %hilite.
+Fixed connect loop under SOCKS, possibly others.
+Fixed bug in handling illegal combination of /def -P and -h.
+Improved error messages for syntax errors.
+Minor portability improvements for other operating systems.
+
+3.5 beta 1 (12/8/96)
+----------
+Added fwrite() function to write text to a file.
+Added pad() function for string formatting.
+Fixed handling of quickly received keybindings. (35a21)
+Fixed compiling errors under HP-UX ANSI compiler.
+Fixed /list'ing of macros with names beginning with "-".
+
+3.5 alpha 21 (10/12/96)
+------------
+Added /def -B to bind symbolic key names.  (Note: TERM=vt100 should not
+  be used on xterms).
+Added keycode(), lines(), columns(), and send() functions.
+Added "init" argument to getopts().
+Added "-s" option to /listworlds.
+Added /fgrep, /grep, and /egrep.
+Repeated lines are not saved in input history.
+Documented /finger, mapping, /psh, /spell_line, /tick, /tr.
+/finger and /rwho do not interfere with world-q.tf or other WORLD hooks.
+Changed default value of %end_color (see /help color).
+Improved error checking of /def, /quote, /recall.
+Improved handling of return value of failed /sh.
+Fixed bug in error checking /def name. (35a20)
+Fixed multiple beeps when one beep was combined with multiple attributes.
+Fixed bug in calling /localecho while not connected.
+Fixed nonblocking connect on AIX.
+Fixed fatal bug occurring when !visual & refreshtime >= 1000000.
+Fixed fatal bug in visual mode with a terminal width between 56 and 58. (35a17)
+Fixed rare fatal bug occurring after deleting keybindings.
+Fixed '\0' being sent as '\0200'.
+Fixed flow control and spurious "SQ" on some slow terminals.
+Fixed blocking during /quote ! with a delayed process. (35a18)
+Fixed /edit options -t, -h, -T.
+Fixed bug in glob matching under nonstandard compilers. (35a17)
+Fixed possible busy wait.
+Workaround for bug in BSD/386 make.
+
+3.5 alpha 20 (6/16/96)
+------------
+Added -w and -g options to /trigger.
+Added -q option to /fg to ignore queued text.
+/push, /pop, /enqueue, /dequeue (in stack-q.tf) can work on local variables.
+Improved error checking of /def arguments.
+%redef defaults to "on".
+REDEF hook comes after, not before, keybinding redefinition.
+Fixed /ps -s displaying dead processes. (35a19)
+Fixed /qdef in quoter.tf.
+Fixed compile problem in port.h under nonstandard compilers. (35a19)
+Fixed fatal bug in /recordline -i at multiple of histsize.
+Fixed /beep argument bug.
+Fixed deferring of "/dokey newline" in a macro. (35a17)
+Eliminated obsolete arguments to /def -1.
+
+3.5 alpha 19 (5/27/96)
+------------
+/echo -e writes text to tferr.
+Hook messages are written to tferr.
+Improved example under "/help def".
+Added -s option to /eval to control the substitution level.
+/xtitle works even behind a more prompt.
+Added -s "short form" option to /listsockets and /ps.
+Added moresize() to get number of lines queued at more prompt.
+Fixed bugs in /cat: error message, and extra evaluation.
+Fixed bug in getopts() handling of options followed by no arguments. (35a11)
+Fixed bug in executing other macros during read() (and /paste).
+Fixed bug in handling TELNET protocol combined with 8-bit character sets.
+Fixed documentation of DISCONNECT hook.
+
+3.5 alpha 18 (4/19/96)
+------------
+Fixed (sometimes fatal) bug trying to send text in unconnected mode. (35a17)
+Fixed bug in getting telnet options from wrong connection. (35a17)
+Fixed telnet NAWS sending only to current connection. (35a10)
+Fixed telnet NAWS not working at initial connect. (35a17)
+Workaround for NextStep namespace violation. (35a17)
+
+3.5 alpha 17 (4/13/96)
+------------
+Added read() function to read lines of keyboard input.
+Added echo() function.
+substr() arguments can count from end of string; right() is obsolete.
+Added %PL and %PR subs to get left and right ends of regexp match.
+Expression and command subs ($[] and $()) work in variable sub defaults.
+/paste handles lines beginning with '/', and does not record input history.
+Visual mode defaults to "on" unless explicitly set "off" in .tfrc.
+Warns when memory is low.
+RFC 854/1123 compliance: transmits CR NL at end of line in NVT mode; escapes
+  IAC; supports BINARY and WILL SGA requests.
+Redefining worlds that are in use is allowed.
+Drastically increased speed of pipes ("/quote !").
+Fixed toupper() and tolower() handling of international characters? (35a16)
+Fixed compiling problem in prototype under nonstandard compilers. (35a16)
+Fixed fatal bug in accepting NUL character as input on some systems. (35a16)
+Fixed rare bug in using /quote -S inside another /quote.
+Fixed <sys/select.h> problem on some systems (BSD). (35a16)
+Created tinyfugue mailing list (see "/help mailing list").
+
+3.5 alpha 16 (3/10/96)
+------------
+Honors LANG locale and supports international character sets.
+Added right() function.
+/localecho replaces %always_echo; improved echo handling on telnet servers.
+Added -q option to /def to avoid "Trigger in world <name>" messages.
+Hilites and gags of hooks are applied even if %{hook}=off.
+Return and backspace keys works even if keybindings are undefined.
+Changed default value of %wordpunct.
+Improved format of automatically generated helpfile.
+Fixed problem installing in paths containing "~" on some systems. (35a14)
+Fixed %sub=on and %sub=full. (35a11)
+Fixed /cat. (35a15)
+Fixed -m option of gags defined by /watchname.
+Fixed /help addworld and addtelnet. (35a15)
+Fixed bug in using input recall immediately after /histsize -i.
+
+3.5 alpha 15 (2/11/96)
+------------
+Fixed <sys/stat.h> compiling problem on some systems (FreeBSD, OS/2). (35a14)
+Fixed subsection headers in automatically generated help file. (35a14)
+Fixed input insert display on terminals with insert_char (eg, xterm). (35a14)
+Fixed problem installing in paths containing "~" on some systems. (35a14)
+Fixed fatal problem in displaying error messages during startup.
+Fixed loss of %Pn variables in a trigger with a partial hilite.
+Improved efficiency of triggers and other pattern matching.
+
+3.5 alpha 14 (1/21/96)
+------------
+/addworld warns when passwords are found in world-readable files.
+"/recall -v" recalls lines that don't match pattern.
+"/recordline -t" allows setting of line's timestamp.
+Changing %TZ refreshes clock on status bar.
+MAIL hook will not recurse (allowing "/hook MAIL = /sh mail" to work).
+Improved efficiency of glob patterns ending in "*".
+Decreased annoying delay in cursor refresh in visual mode.
+Helpfile is generated automatically from html source.
+Fixed fatal bug in displaying long prompts (now only last line is displayed).
+Fixed bug in displaying very long input lines in visual mode.
+Fixed declaration error in search.h under nonstandard compilers.
+Fixed handling of uppercase keywords (/IF, /WHILE, etc.). (35a12)
+Fixed listing and saving of macros defined with /def -PC. (35a9)
+Fixed declaration problem under HP-UX compiler.
+Fixed output handling when %emulation is changed (including /xtitle).
+Internal changes.
+
+3.5 alpha 13 (10/8/95)
+------------
+Options parsed by getopts() can take numeric arguments.
+Fixed fatal bug in handling background prompt with ansi attributes. (35a11)
+
+3.5 alpha 12 (9/24/95)
+------------
+Fixed fatal macro bug occuring during startup on some systems (including
+  OS/2, Linux, and IRIX). (35a11)
+Fixed minor bug in telnet NAWS when a window dimension is 255. (35a10)
+
+3.5 alpha 11 (9/17/95)
+------------
+Added getopts() function to parse macro options.
+Displays attributes in server prompts with emulation=ansi_attr.
+The SEND hook (and therefore aliases) can be called recursively.  Use
+  "/send <text>" instead of "<text>" to avoid the SEND hook.
+Macros and file loading (and therefore startup) are faster.
+Fixed default %end_color for background colors. (35a9)
+Fixed bug in telnet NAWS on little-endian machines (Intel). (35a10)
+
+3.5 alpha 10 (8/31/95)
+------------
+Hidden keyboard input (e.g. passwords) are gagged in history and not visible
+  with keyboard recall functions.
+Added telnet NAWS option to send window size to server.
+Added time() and ftime() functions.
+Fixed use of combined background and foreground color. (35a9)
+Fixed bugs in emulation=ansi_attr handling of codes at start and end of line.
+Fixed /help index alignment bugs. (35a)
+Fixed strip of leading space in /def (also affects filenames $LOGFILE and
+    $WORLDFILE) (35a9)
+Fixed handling of bell (^G) under emulation=ansi_attr.
+Removed unnecessary stuff from output of /qdef in quoter.tf.
+Removed %emulation=canon.
+
+3.5 alpha 9 (8/12/95)
+-----------
+Added ascii() and char() functions.
+Supports ANSI background color attributes from server if %emulation=ansi_attr.
+Supports ANSI background color attributes in -aC options.
+Function idle("world") gives idle time of world's socket.
+/ps displays times in hh:mm:ss format.
+Nonprintable characters are displayed as printable bold-reverse (but
+  %emulation still determines how characters from a socket are interpreted).
+Nonprintable characters may be input literally from the keyboard.
+Nonprintable characters in prompts do not cause wrapping problems anymore
+  (but are still not treated as attributes).
+Added -d option to /quote to determine how generated text is used.
+Added ESC-space keybinding to collapse spaces.
+Echoes new command during ^old^new style history substitution.
+Removed %emulation=canon functionality.
+Fixed bug in getting a few special variables from environment. (35a8)
+Fixed fatal bug in ?: in unevaluated branch (includes a bug in complete.tf).
+Fixed need to escape '\' in an unquoted command part of a /quote (e.g.,
+  in an OS/2 filename).
+
+3.5 alpha 8 (7/16/95)
+-----------
+Added convenient "/if (expr)" and "/while (expr)" syntax.
+Added ability to connect via proxy server (firewall).  See: /help proxy.
+Added "/!command" syntax for negating return values.
+Added spell.tf library, to do spelling checking by typing ESC-s.
+Allows /connect to closing world in DISCONNECT hook.
+Fixed prompt update after socket disconnect.
+Fixed installation problem on systems without getpwnam().
+
+3.5 alpha 7 (7/1/95)
+-----------
+Command and macro substitutions are allowed inside expressions.
+Gags are applied when text arrives instead of when it is displayed, making
+  the "More" line counter more intuitive.
+Improved error and warning messages.
+Added %{gethostbyname} variable, set to "blocking" by default under unix.
+Fixed /histsize: empty history bug, and downsizing memory leak.
+Fixed fatal bug in /send -w to a nonexistant world.
+Fixed regexp scope bugs (including a bug in the ^W keybinding). (35a4)
+Fixed bug in handling bad environment values for special variables (it would
+  usually just say "Killed" and exit).
+Fixed bug in assigning variable to itself.
+Fixed problem on OS/2 with full tcp/ip. (35a5)
+
+3.5 alpha 6 (5/29/95)
+-----------
+Second operand of ?: operator is optional.
+Increased range of "more" counter.
+Fixed error in /listsockets under nonstandard C libraries (in particular,
+  those on SunOS 4.x and ULTRIX). (35a5)
+Fixed problem on OS/2 with resolved host addresses containing 0x0d. (35a5)
+
+3.5 alpha 5 (5/21/95)
+-----------
+New /listsockets format, includes idle time and world type.
+With emulation=ansi_attr, server attributes now continue across lines.
+Supports nonblocking hostname lookup on OS/2 as well as UNIX.
+Fixed /dc. (35a4)
+Fixed bug in using /histsize on a non-existant or unused world. (34a3)
+Fixed select on closed pipe (35a4).
+Fixed compile-time rand()/random() problem on OS/2 (35a4).
+Fixed hostname resolution on IRIX 5 (without breaking socket stuff on other
+  systems, I hope).
+
+3.5 alpha 4 (5/7/95)
+-----------
+/eval inherits positional parameters (%1, etc) from calling macro.
+New "{...}" expression operands for variable and parameter substitution,
+  eliminates need for many temporary variables, messy multiple '%', and
+  $[...] in /test.
+Nonblocking hostname lookup for UNIX, and better error messages.
+Third argument to substr() is optional, defaults to full length of string.
+Improved prompting-world detection heuristics in stdlib.tf.
+Fixed problems with leading "-" in /changes, /complete, and /replace.
+Fixed bug that could make a dead socket impossible to bring into foreground.
+Fixed unexpected loss of regexp substitution values (e.g., %P1).
+Fixed bug in hooks under nonstandard compilers.
+Workarounds for several instances of ULTRIX brain damage.
+
+3.5 alpha 3 (4/8/95)
+-----------
+Ported to OS/2 by Andreas Sahlbach (asa@stardiv.de).
+Text generated by /quote without a prefix is transmitted directly, not
+  interpreted, so leading '/' and spaces remain intact.
+The character ^@ is allowed in keybindings.
+Added systype() expression function.
+Added /finger in finger.tf.
+%{emulation} now defaults to "ansi_attr"; display control codes received
+  from the server (which were never officially accepted) are now explicitly
+  stripped.  See:  /help emulation.
+Added kbmatch(), /kb_goto_match, and ^[- keybinding to match parentheses.
+New default filenames for /load* and /save*.
+Reorganized installation to work with multiple architectures.
+Workaround for ULTRIX sh bug causing installation failure if missing 'strip'.
+Fix for DG/UX version of inet_addr() (not fixed in 34a9).
+Renamed files to fit within 8.3 FAT filesystem restrictions.
+Fixed interpretation of ~ in TFLIBDIR in /changes.
+Fixed rare bug involving /quote ! processes that pause between lines.
+
+3.4 alpha 16 (1/8/95)
+------------
+Fixed bug in glob patterns containing '*' followed by an escaped special
+  character (e.g., "*\*").
+Fixed "sh: illegal i/o" problem during installation on ULTRIX. (34a)
+
+3.4 alpha 15 (1/2/95)
+------------
+Fixed (often fatal) bug in substr() with large 3rd argument (as in /escape
+  and /tr). (34a13)
+Fixed minor display quirks when entering visual mode on some systems. (34a11)
+Changed parsing of ambiguous special substitutions like "%Lx" to be "%{Lx}"
+  instead of "%{L}x", but "%L1x" is still parsed as "%{L1}x". (34a12)
+
+3.4 alpha 14 (12/30/94)
+------------
+Fixed instalation problem on SunOS 4.1.3 (possibly others). (34a13)
+
+3.4 alpha 13 (12/28/94)
+------------
+Faster and theoretically more reliable function testing in autoconfig.
+Fixed portability to systems without strchr() and strcspn().
+Internal changes to facilitate future ports to other operating systems.
+
+3.4 alpha 12 (12/17/94)
+------------
+Fixed bug in parsing undelimited parameter subs (e.g., "%1x"). (34a)
+Fixed fatal bug in failed bamf, and minor bug in successful bamf.
+Fixed fatal bug occurring when one process /kills another (as in /tick).
+Fixed installation bug occurring in some shells.
+
+3.4 alpha 11 (12/4/94)
+------------
+%{clock} can be set to "12-hour" or "24-hour" format.
+Can automatically detect the need for lp=on for some typeless worlds.
+Optimized output.
+/mapcar and /maplist (in lisp.tf) no longer evaluate their arguments.
+More useful return value for /listworlds.
+Improved mail check.
+Fixed compilation error on HP-UX (34a3).
+Fixed fatal bug in handling small terminal resizes.
+Fixed fatal bug in /trigger (34a3).
+Fixed handling of '\', '%%', '$$' in variable substitution defaults (34a3).
+autoconfig works with stupid linkers that return a useless exit status.
+
+3.4 alpha 10 (10/9/94)
+------------
+Fixed fatal bug occuring when history becomes full (34a9).
+
+3.4 alpha 9 (10/9/94)
+-----------
+Added /dokey RECALLBEG and RECALLEND (ESC < and ESC >) to jump to ends of
+  input history.
+If not set in the environment, default values for %{TFLIBRARY} and %{TFHELP}
+  are derived at runtime from %{TFLIBDIR}.
+Added "~user" home directory filename expansion, as in modern shells.
+Added filename() function to do filename expansion in expressions.
+File commands behave better when operating on a directory.
+Fixed fatal bug in watchdog and watchname when connecting to a world (34a8).
+Fixed bug in /dokey RECALLB (^P) causing it to stop early (34a8).
+Support for the DGUX version of inet_addr() (not really fixed until 35a3).
+Fixed handling of plain '%' during newline expansion.
+
+3.4 alpha 8 (9/25/94)
+-----------
+/histsize now works at any point, not just when history is small.
+Fixed infinite loop in SIGQUIT (^\) handler on systems with BSD-like signals.
+Fixed fatal bug in backward-wrapping delete in visual mode on some terminals.
+Installation no longer gives the option of removing old files; it caused too
+  many problems with users who answered 'y' without reading the list first.
+Porting fix: elimiated 'signed' type (34a).
+Better preprocessor and library testing in autoconfig.
+Improved make output and core dump messages.
+
+3.4 alpha 7 (8/28/94)
+-----------
+Improved messages for expression syntax errors.
+Fixed bug on systems without strcasecmp(), causing many startup errors (33b).
+Fixed bug causing all evaluation to stop after a user syntax error in an
+  &, |, or ?: expression (34a3).
+Workaround for fatal error due to overly large termcap entries/continuations.
+Porting improvements in autoconfig for stupid systems.
+In quoter.tf, /qmud takes an optional -w<world> argument.
+
+3.4 alpha 6 (8/17/94)
+-----------
+Standardized /sys.
+Fixed %{oldslash} (34a).
+Fixed bugs in prompt refresh in nonvisual mode (34a).
+
+3.4 alpha 5 (8/16/94)
+-----------
+Added to file-xfer.tf library: /putfile_MUCK, /putfile_LP, /putfile_UNIX,
+  /getfile_MUCK, /getfile_LP, /getfile_UNIX.
+Fixed: glob pattern "{}" matches empty string (34a).
+Elminated beep in /grab (34a).
+
+3.4 alpha 4 (8/16/94)
+-----------
+Added the ?: conditional operator, as in C.
+Documented some previously undocumented library commands.
+Fixed handling of whitespace in /recall between range and pattern.
+Fixed compile-time header problems involving time_t and errno. (34a3)
+In file-xfer.tf, fixed /putfile's handling of lines beginning with "/".
+
+3.4 alpha 3 (8/14/94)
+-----------
+In visual mode, uses terminal's insert/delete if available (e.g., vt220
+  and ANSI, but not vt100).  Very nice at low baud rates.
+Can interpret ansi attribute codes from server: /set emulation=ansi_attr.
+Can work with almost any display codes from server: /set emulation=raw.
+Added variables %{tabsize} and %{emulation}, removed %{catch_ctrls}.
+Default values for variable substitutions may now contain nested variable
+  and macro substitutions (e.g., %{USER-%{LOGNAME-nobody}}).
+Added more default keybindings (see "/help keys").
+Expression operators '&' and '|' now stop evaluating as soon as value is
+  known ("short-circuit").
+Added strncmp() to compare first n characters of strings.
+Added idle() to get time since last keypress.
+Added /histsize and %{histsize} to control history sizes.
+Added macro name completion to completion.tf library.
+Added /paste and /endpaste to quote pasting.
+Added hooks SIGUSR1 and SIGUSR2.
+Added /signal to send a signal to tf.
+Added getpid() to get tf's process id.
+More useful return values for synchronous /repeats and command /quotes.
+A set high bit on an input character is converted to ESC.  See /help %istrip.
+Increased speed of macro processing, startup, etc.
+Supports nonblocking connect if used with SOCKS 4.2beta.
+/BREAK takes an optional argument specifing the number of levels to break.
+Under linux, nonblocking connect failure now hooks CONFAIL, not DISCONNECT.
+Removed improper evaluation of $[...] in unexecuted /if and /while branches.
+Fixed bug in /BREAK followed by a nested /WHILE.
+Fixed bug in detecting new mail in a previously nonexistant mail file.
+Fixed bug: lines from background world were reversed in global history/log.
+Fixed refreshing of input in noecho mode (password entry) with visual=off.
+Fixed bug causing writing into variable argument of toupper(), tolower(),
+  or builtin command called as a function.
+Fixed bugs in idea of current socket in CONFAIL hook and immediately after
+  /fg and (successful or failed) /connect.
+Fixed bug in /purgeworld'ing a nonexistant "default" world.
+Reverted to pre-33b16 parsing of '\' in option arguments (not a bug, but
+  caused unexpected behavior of incorrectly written user macros).
+Improved debugging information for potential internal errors.
+Internal changes.
+
+3.3 beta 16 (6/10/94)
+-----------
+Fixed bug in trying to redefine a connected world (33b12).
+Porting fix for old versions of gcc (33b15).
+Minor change in parsing '\' in option arguments.
+
+3.3 beta 15 (6/4/94)
+-----------
+Sped up macro processing, socket input, etc.
+Workaround for systems that have strcasecmp() but don't declare it (33b14).
+
+3.3 beta 14 (6/3/94)
+-----------
+Fixed bug in using "/log off" when no logs were open (33b10).
+Miscellaneous minor improvements, mostly internal.
+
+3.3 beta 13 (5/28/94)
+-----------
+Fixed fatal bug in opening unnamed worlds (33b12).
+
+3.3 beta 12 (5/27/94)
+-----------
+More meaningful return values for /recall and /time.
+Fixed bug in using /edit without -m on a macro defined with -m.
+Fixed bugs in input display when local echo is off.
+Fixed bugs in redefining worlds and undefining "default" world.
+Fixed use of "on" with /watchname and /watchdog, and bug in /watchname.
+
+3.3 beta 11 (5/25/94)
+-----------
+Fixed bug in using /connect not followed by (automatic) /fg.
+Fixed fatal bug in nonvisual --More-- prompt with lp==on.
+Fixed minor bug in /quitdone.
+Added attributes to --More-- prompt in nonvisual mode.
+
+3.3 beta 10 (5/22/94)
+-----------
+Added line counter to more prompt in visual mode.
+Added synchronous /quote and /repeat for immediate, inline processing.
+"/log off" turns off all logs; use "/log -g off" to turn off global log only.
+Improved handling of very large amounts of text from server.
+Fixed bug in error handling in /undefn.
+Porting fix for sys_errlist[] declaration (NetBSD).
+Ported to nonstandard systems with bcopy & bzero but not memcpy & memset.
+Fixed bug in using /recall with wraplog==on (33b7?).
+Fixed minor bug in using "nw" or "se" in map.tf.
+Improved /qmac in quoter.tf.
+
+3.3 beta 9 
+----------
+Added help topics for some library utilities.
+In alias.tf, arguments to aliases now make more sense.
+Added /dokey selflush ("selective flush") bound to ^[J.
+Gracefully handles wrapping when text contains ansi display attribute codes.
+Fixed obscure bug in using current socket right after disconnecting from it.
+
+3.3 beta 8 (5/10/94)
+----------
+Fixed bug in wrapped input lines in nonvisual mode (33b7).
+Fixed minor quirks with input/output display in nonvisual mode (33b7).
+
+3.3 beta 7 (5/9/94)
+----------
+Added support for SOCKS firewall proxy connections (ala rtelnet).
+Improved error messages.
+Improved handling of printing large amounts of text.
+Removed restriction that world be connected for /echo -w<world>.
+Fixed bug in handling invalid variable values.
+Fixed obscure bug in fall-thru triggers/hooks which define another matching
+  trigger/hook of lower priority.
+Fixed obscure bug in a PROCESS hook that kills its own process.
+Fixed obscure bug in typing ^@ at startup.
+Fixed bug in /savehilite (33b6).
+Plugged memory leak in macro specification commands.
+Internal changes.
 
 3.3 beta 6 (4/28/94)
 ----------
@@ -14,54 +550,46 @@ Fixed porting problems (33b5).
 ----------
 Added %{max_iter} to control runaway /while loops.
 Improved /listsockets format.
-Improved control when very large amounts of text come from server.
 Added options to /fg.
-Workaround for Solaris brain damage causing problems with index() in libtermcap
-  and internal error in find_and_run_matches().
+Workaround for Solaris brain damage.
 Eliminated spurious error message when reading compressed file.
 Fixed bug in wrapping input with insert=off.
 Fixed small omissions in tf.help.
 Internal changes.
 
-3.3 beta 4
+3.3 beta 4 
 ----------
 Minor fix in idea of current world after /fg in fall-thru triggers/hooks.
 Minor fix for recall messages while logging.
 Fix for empty /cat text.
 Internal changes.
 
-3.3 beta 3
+3.3 beta 3 
 ----------
 In completion.tf, added /complete_input_history (ESC i).
 In lisp.tf, added /unique.
 Fixed error checking in rand().
-Fixed bug in failed keybinding redef (caused core on Linux) (33a?).
+Fixed bug in failed keybinding redef (caused core on Linux) (33a).
 Fixed potentially fatal bug in oneshots.
 
 3.3 beta 2 (3/9/94)
 ----------
-Fixed "OOPS" problem with simulated scrolling on deficient terminals (33a?).
-Fixed error on old systems without FD_SET() and friends, e.g. AIX (33a?).
+Fixed "OOPS" problem with simulated scrolling on deficient terminals (33a).
+Fixed error on old systems without FD_SET() and friends, e.g. AIX (33a).
 Fixed a few other minor problems with porting to strange systems.
 
 3.3 beta 1 (3/3/94)
 ----------
 Changes since 3.2 beta 4:
+Added /substitute, /connect, /fg, /dokey dword, /prompt, PROMPT hook, mod(),
+  kblen(), kbwordleft(), kbwordright(), %{wordpunct}, %{telopt}.
 Partial hilites enhanced to work on multiple matches on the same line.
-Regexp subexpressions can now be accessed as Pn variables as well as %Pn subs.
+Regexp subexpressions can be accessed as Pn variables as well as %Pn subs.
 "/recall /n pattern" recalls the last <n> lines that match <pattern>,
   instead of searching for <pattern> in the last <n> lines.
-Added /substitute, to modify triggering text in place.
-Added mod() function.
-Improved "randomness" of random numbers (rand(), %R, multiple triggers).
-Nicer interaction with external writes to terminal in visual mode.
-Added /connect and /fg.
+Improved "randomness" of random numbers.
 Made word editing functions more like those in emacs, bash, tcsh.
-Added %{wordpunct} to fine-tune word editing functions.
-Added /prompt command and PROMPT hook, for configurable prompt detection.
 Added support for up to 16 colors.
-Added functions kblen(), kbwordleft() and kbwordright().
-Added /dokey dword.
 The SEND hook can be activated by any text command, not just command line.
 The SEND hook always prevents sending of the original text (previous versions
   of TF required a gag to do so).  Use "/send %*" in the hook body if you
@@ -73,70 +601,41 @@ Several improvements in display of major editing operations (visual and
 /dokey redraw (^L) now does something useful in non-visual mode.
 Increased speed of macro execution by about 15%.
 Improved visual input scroll for terminals without scroll regions.
-Added %{telopt} variable for debugging telnet option processing.
-Improved appearace of external messages (e.g. "write") in nonvisual mode.
-Portability fix for compilers that can't do structure assignment.
-Installation avoids bug in bash (sh on Linux).
-Fixed some minor problems with empty commands.
-Fixed bug in handling expression errors.
-Fixed potentially fatal porting bug in init_variables().
-Fixed portability to systems without structure assignment.
-Fixed fatal bug in handling nonstandard environment strings missing "=" (3.0).
-Fixed obscure bug in expression assignment to an unset special variable (3.1).
-Fixed obscure bug in /export (3.0).
-Fixed obscure bug in file opening.
-Fixed /edit -m, -P, and -an.
-Fixed bug in /log -w of unconnected world.
-Fixed bug in prompt redisplay after a local command in visual mode.
-Fixed use of color in hiliteattr.
-Fixed /listhilite, /savehilite, and /purgehilite.
-Fixed bug in deleting in noecho mode.
-Fixed bug in deleting past beginning of visual window.
-Fixed bug in worldqueue.tf when used with other switching commands.
-Fixed bug in /tickoff in tick.tf.
-Fixed obscure bug in groups of fall-thru macros simultaneously matched by
-  multiple triggers/hooks/deletions.
-Fixed installation problem in finding libraries on some systems.
-Should now work on any Cray that has a standard bsearch().
-Removed %{quoted_args} (previously undocumented, inconsistent, and useless).
+Improved appearace of external messages (e.g. "write") in visual mode.
+Fixes for bugs and portability.
+Removed %{quoted_args}.
 
 
-3.2 beta 4
+3.2 beta 4 
 ----------
 Fixed a bug that prevented %P subs from working after a regexp trigger.
 
-3.2 beta 3
+3.2 beta 3 
 ----------
 Fixed bug in /hook causing macros to be defined with -t"" -aCred.
 
-3.2 beta 2
+3.2 beta 2 
 ----------
 Fixed fatal bug in /hook.
 
 3.2 beta 1 (12/19/93)
 ---------------------
+Added rand(), kbdel(), %{scroll}, %{clock}.
 Added REGULAR EXPRESSIONS, and ability to extract arbitrary pieces of
   of matched text using %Pn.  See: patterns, matching, regmatch, %Pn.
-"Partial hilites" - hilite part of a line.  (see /partial, /def -P).
-Installed utilities directory, includes:  many advanced keybindings
-  (completion, transpose, last word, etc.); /alias; /at; /putfile;
-  speedwalk (like tintin); mapping (like tintin); shell utilities;
-  quoting utilities; logging utilities; /rwho; Diku tick counter (like
-  tintin); and many other useful utilities.  See: /help utilities.
-Added clock to status bar, and %{clock} variable to disable it.
-More useful return values for macro creation commands, /quote, /repeat,
-  and /dokey.
+Added "Partial hilites" - hilite part of a line.  (see /partial, /def -P).
+Installed utilities directory, includes:  many advanced keybindings;
+  /alias; /at; /putfile; speedwalk; mapping; shell utilities; quoting
+  utilities; logging utilities; /rwho; Diku tick counter; etc.
+More useful return values for macro creation, /quote, /repeat, and /dokey.
 Symbolic values and type checking for special variables.
 In expressions, "=" does comparison, not assignment.  ("==" still compares).
 In expressions, ":=" does assignment.
 Assignment expressions can create a new global (not local) variable.
 Mecho nests, and doesn't echo invisible macros.
 /send can send a blank line.
-Replaced /rand with rand().
 Added ability to avoid automatic switch when pending connect completes.
 Control constructs (/if and /while) can be used from command line.
-Added kbdel() user function.
-Added %{scroll} and simulated scrolling for terminals without scroll regions.
 Detects and warns about some common user macro mistakes.
 Better handling of toggling %{lp} (e.g., when switching worlds).
 Better error messages for files.
@@ -147,21 +646,21 @@ Improved installation portability.
 Increased speed of macro execution by about 15%.
 
 
-3.1 beta 5
+3.1 beta 5 
 ----------
 Fixed divide-by-zero in user expressions.
 Improved error handling for some other expression errors.
 Renamed "signal.h" for stupid compilers.
 
-3.1 beta 4
+3.1 beta 4 
 ----------
 Fixed bug in "[^...]" patterns.
 
-3.1 beta 3
+3.1 beta 3 
 ----------
 Fixed ULTRIX time_t bug (really).
 
-3.1 beta 1
+3.1 beta 1 
 ----------
 New inline nonblocking connect.  Should work automagically on all platforms.
 Added many useful and educational macros in utilities directory.
@@ -170,40 +669,30 @@ Added expression functions.
 New expression functions: strcmp, strstr, strchr, strrchr, strlen, substr,
   strrep, toupper, tolower, kbhead, kbtail, kbpoint, kbgoto.
 Added = (assignment) and , (comma) operators to expressions.
-Replaced -~ operator with strcmp() function.
 Macros and builtin commands can be called from expressions as functions.
-  (Passing multiple args to macros-as-functions *will* change in the future).
-Added /escape.
+Added /escape, %{ignore_sigquit}, %{quoted_args}, removed -DQUOTED_ARGS.
 Recognizes "*^H" as LP editor prompt (useful with /lpquote).
 Handles ^H from server.
-Added %{ignore_sigquit}.
-Replaced -DQUOTED_ARGS with %{quoted_args} (subject to change; not recomended).
 Error checking for patterns in /hilite, /gag, /trig*.
 For backward compatibility with pre-3.0, default world type does not change
   any flags (lp, always_echo).
-Installation can make symbolic link.  See Config.
-Installation does better job of finding needed libraries.
+Autoconfig is even smarter.
 Bug fixes for lp prompts (background worlds, etc).
 Bug fix for negative numbers stored as strings.
 Bug fix for redefining worlds with -T.
 Fixed signal (TSTP, ^Z) delay on SVR4.
 Fixed mysterious and rare "2" hilite bug (3.0)
 Fixed world leak in /dc on pending socket.
-Autoconfig tests for time_t, signal handler returns, stdarg.h, etc.
-Better path check in autoconfig.
-Less trust of __STDC__.
 Other portability stuff.
 
-3.0 beta 2
+3.0 beta 2 
 ----------
 Added time arithmetic in expressions.
 Bug fix: identifers in expressions can contain '_' chracters.
-Bug fix: added -T<type> option to /addworld to support extended /add* commands.
+Bug fix: added -T option to /addworld to support extended /add* commands.
 Added <type> argument to WORLD and LOGIN hooks.  May break a few old macros.
 PROCESS and KILL hooks are silent by default.
-Porting: some shells don't like :> in autoconfig; replaced with touch.
-Porting: Makefile doesn't assume MAKE is pre-defined.
-Porting: Autoconfig detects need for -lnsl, uses better PATH, finds more libc's.
+Portability improvements in installation.
 
 3.0 beta 1 (9/11/93)
 --------------------
@@ -211,7 +700,7 @@ NEW COMMANDS:
 /addlp, /addlpp, /addtelnet, /addtiny, /eval, /export, /expr, /for,
 /if, /let, /not, /rand, /recordline, /restrict, /set, /setenv, /shift,
 /suspend, /telnet, /test, /time, /toggle, /unset, /while.
-
+ 
 NEW FEATURES:
 Installation is completely automated and configurable.
 Examples directory.
@@ -231,13 +720,13 @@ Added -n option to /send.
 Added -a (append) option to /save and /saveworld.
 Secure public installation with /restrict.
 Allows macros to override builtin commands.  Use "/@name" to call builtin.
-
+ 
 NEW RUNTIME OPTIONS:
 Variable-controlled features:  MAIL, TERM, TFCONNECT, TFHELP, TFLIBRARY,
   always_echo, backslash, barattr, bg_output, catch_ctrls, hiliteattr,
   maildelay, max_recur, oldslash, prompt_sec, prompt_usec, refreshtime,
   snarf, sockmload, time_format, wraplog.
-
+ 
 FIXES/IMPROVEMENTS:
 Much improved handling of LP/Diku prompts (see "prompts").
 Using RECALLB and RECALLF (^P and ^N) will not destroy current line.
@@ -249,7 +738,7 @@ Removed flaky +|- args from /list -t -b -h.  Use "", "{}", or "0" instead.
 Optimized [] in patterns.
 Uses termcap definitions for arrow keys.
 Supports standout (bold) and underline on more terminals.
-Better support for /visual on wimpy terminals (no "cs" or "ce" termcap entry).
+Better /visual support on wimpy terminals (no "cs" or "ce" termcap entry).
 Supports nonblocking connect on BSD 4.3 Reno and later systems.
 Expands tabs from mud and in /quote and /load input.
 Handles changes in window size during /sh and suspension.
@@ -266,16 +755,15 @@ Many portability fixes.
 Many other bug fixes.
 
 
-2.1 beta 2
+2.1 beta 2 
 ----------
 Bug fixes
 
 2.1 beta 1 (9/22/92)
 --------------------
-Added BAMF, SHELL, and LOGIN hooks.
+Added BAMF, SHELL, LOGIN hooks; /retry; file compression; multi-shots.
 Added logging by world (/log -ligw).
 Hooks are more like triggers:  multiple hooks, argument patterns, priority.
-File compression.
 Keybindings are now macros (/def -b).
 Fixed nonblocking connect.
 Added redirected output for /quote and /repeat with -w option.
@@ -283,13 +771,11 @@ Added "/world <host> <port>" semantics.
 Added local command quoting (/quote `).
 Improved argument substitution:  %{} syntax, orthogonal default values.
 Added -f<file> command line option.
-Added /retry to library.
 /repeat and keybinding bodies go through macro expansion.
-Added multi-shots.
 Bug fixes.
 Removed /stty.
 
-2.0 beta 2 - 7
+2.0 beta 2 - 7 
 --------------
 Bug fixes
 
@@ -297,39 +783,30 @@ Bug fixes
 -------------------
 Made installation easier and automated
 New command line syntax:  removed '-', added '-fln' options
-Added standard macro library
-Added hooks (and commands /hook and /unhook)
-Added background triggers, and /background
-Added world-specific triggers (/def -w)
-Added /list (with new format and -s option), /load, /save, /purge, and /send
-Added -a and -w options to /echo
-Added underline, reverse, flash, dim, bell, and norecord attributes
-Added -i invisible macro option
-Added /input (useful for inline keybindings)
+Added standard macro library, replacing many builtin commands.
+Added hooks; /hook; /unhook; /background; /def -w; /def -i; /input; /list;
+  /load; /save; /purge; /send; /echo -a; /echo -w; attributes underline,
+  reverse, flash, dim, bell, norecord.
 Added world histories, local history, global history, and /recall -lig
 Nonblocking /more
 Nonblocking world connections
 Filenames defined with BINDFILE, HELPFILE, LOGFILE, and WORLDFILE macros
 Added command menu at ^C (exit, borg off, kill processes)
-Replaced builtins /loaddef, /loadhilite, /loadgag, /loadtrig, /savedef,
-  /savehilite, /savegag, /savetrig, /listdef, /listhilite, /listgag,
-  /listtrig, /purgedef, /purgehilite, /purgegag, /purgedeft, and /purgetrig 
-  with (invisible) standard library macros
 Removed /tinytalk, /intr, /intrborg, /refill, /core, and /activity
 /bamf on assumes UnterMUD portals; use /bamf old for old-style bamfing.
 /listworlds doesn't display passwords unless given -c option
 Bug fixes and optimizations
 
-1.5.5 beta3
+1.5.5 beta3 
 -----------
 Bug fix
 
-1.5.5 beta2
+1.5.5 beta2 
 -----------
 Bug fixes for time.h, killing /repeats, etc.
 Fixed /ps output
 
-1.5.5 beta1
+1.5.5 beta1 
 -----------
 Autologin support for untermud cyberportals, with '/bamf unter' command
 Removed /listbind, /act, /reply, /nointr, /nowrap, /nostty, /nolog,
@@ -344,12 +821,12 @@ Removed -DIRIX and -DMANUAL_SWITCH compile flags
 
 1.5.4 beta1 (8/20/91, by Ken Keys)
 -----------
-Added activity notice for non-current worlds, /activity to enable or disable it
+Added activity notice for background worlds, /activity to enable/disable it.
 Improved /more paging
 Increased sizes of command and socket recall buffers
 Fixed bug in matching (illegal) patterns of the form "x{y}"
 With /intrborg on (default), ^C will query to turn off /borg.
-Removed extra iteration from /repeat loop (thanks to OliverJones)
+Removed extra iteration from /repeat loop (thanks to David Moore (OliverJones))
 Improved mail check
 Ascii code subs of form "\nnn" are done where ever newline subs are done
 Replaced SUPPRESS_REDEFS compile-time option with "quiet" option to /redef
@@ -359,31 +836,28 @@ Added logging flag to status line
 
 1.5.3 beta1 (5/4/91)
 -----------
-Added in Madwand's TF status patch
-Fixed portals and erroneous portal format in tf.help
-Fixed -DOLD_LPPROMPTS option
-The <world name> line will be displayed only if -DLOUD_WORLDS is defined.
- 
+Added in Madwand's TF status patch, -DLOUD_WORLDS option.
+Fixed portals, -DOLD_LPPROMPTS option
+
 1.5.2 beta5 (3/9/91)
 -----------
 Fixed a bug with macros deleting themselves
 Fixed a bug with triggers doing /dc
- 
+
 1.5.2 beta4 (3/5/91)
 -----------
 Recursion maximum in expand.c
-Added support for AT&T WINS
-Added -DREFRESH_TIME
+Added support for AT&T WINS; -DREFRESH_TIME option
 /stty on is default
- 
+
 1.5.2 beta3 (2/28/91)
 -----------
 Process handling changed
- 
+
 1.5.2 beta2 (2/24/91)
 -----------
 Bug fix
- 
+
 1.5.2 beta (2/23/91)
 ----------
 World macro files changed
@@ -418,14 +892,11 @@ Bug fixes
 ----------
 Removed /dbs, /packet, /clunused, /bs, /cursopt, /hn, /techo
 Added /mecho, /bind, /unbind, /listbind, /savebind, /loadbind,
-      /dokey, /grab, /cat, /trigger
-Added /sub full option
+  /dokey, /grab, /cat, /trigger, /sub full
 Expanded /recall format
-Allowed quoting out of history buffer
 No string maximum lengths
-Added %L, %-L, %R, %E argument subs, and default args
-Added [] and {} pattern matching
-Added mail checking
+Added %L, %-L, %R, %E argument subs, and default args; [] and {} pattern
+  matching; mail checking; quoting from history.
 
 1.4.17 beta (12/10/90)
 -----------
@@ -433,14 +904,13 @@ Bug fixes
 
 1.4.16 beta (12/10/90)
 -----------
-Nothing external
+Internal
 
 1.4.15 beta (12/9/90)
 -----------
 Bug fixes
 Macro arguments no longer undergo reentrance substitution.
-Added one-shot triggers
-Added argument grouping by single and double quotes
+Added one-shot triggers; argument grouping by single and double quotes
 Changed default editing keys
 
 1.4.14 beta (12/8/90)
@@ -448,15 +918,14 @@ Changed default editing keys
 Bug fixes
 Added multiple character key sequences
 "/world -<name>" will do a /world without logging in.
-Disconnecting will move to the top world if there's worlds left.
-Added individual time arguments for /quote and /repeat
+Disconnecting will move to the top world.
+Added time options for /quote and /repeat
 
 1.4.13 beta (12/4/90)
 -----------
 Bug fixes
-Removed /sendtries
+Removed /sendtries, /fastquote
 /world_* substitutions expanded to work everywhere macros do
-Removed /fastquote
 /ptime now works in milliseconds and is a definite value
 
 1.4.12 beta (12/1/90)
@@ -470,13 +939,10 @@ Added default arguments
 Expanded %n lastname substitution to macros from triggers.
 /tinytalk flag expanded to work with /nogag and /nohilite.
 Rewrote output drivers.
-Corrected helpfile.
 
 1.4.10 beta (11/26/90)
 -----------
 Bug fixes
-Rewrote helpfile
-Changes to docs file
 Expanded default world fields to include macro file
 Allowed worlds to leave out char and password even if there's no default.
 
@@ -505,8 +971,7 @@ Added /qecho (echo /quote text before sending)
 1.4.4 beta (11/23/90)
 ----------
 Bug fixes
-Added /quitdone flag quites upon disconnection from last MUD.
-Changed default location of helpfile to ~/tf.help
+Added /quitdone.
 
 1.4.3 beta (11/22/90)
 ----------
@@ -521,11 +986,9 @@ Bug fixes
 ----------
 Bug fixes
 /tinytalk flag expanded
-Added /lp (display partial lines)
-Added /lpquote (wait for "*^H" before doing /quote and /repeat processes)
-Added /more flag (does paging).
-Expanded /keys to twelve keys (recall and socket keys being additional)
-Changed /keys to use things like "^b" or "E-^x" instead of "2" or "E-24"
+Added /lp, /lpquote, /more
+Added recall and socket keys to /keys.
+Changed /keys syntax.
 Removed /crypt.
 
 1.4.0 beta (11/18/90)
@@ -538,87 +1001,65 @@ This is the last time a version was released with code changes without
 
 1.4.0 beta (11/17/90)
 ----------
-Renamed /clear to /clearfull (and made it somewhat obsolete).
-Added /cleardone (clear rather than scroll when you hit <return>).
-Changed input window handling to scroll upon <return>.
-Added input window arrow keys
-Added /keys (reconfigures editing keys)
+Added /cleardone; /keys; /dc; /listsockets; arrow keys; /addworld file field.
 Removed /pf.
-Added macro file field to /addworld
 Changed ^P and ^N keys to [ESC]P and [ESC]N
 Added multi-mudding, with [ESC]B and [ESC]F
-Added /dc (disconnects from current world)
-Added /listsockets (lists current sockets)
 Allowed running Fugue without connecting
 Represented tabs as '@' to make tab handling work
 
-1.3.0 beta
+1.3.0 beta 
 ----------
-Added /shpause (wait for keypress before returning to Fugue after shell)
-Added /addworld, /noworld, /saveworld, /loadworld
+Added /shpause, /addworld, /noworld, /saveworld, /loadworld, /clunused,
+  /ptime, /qctries
 Allowed config file to begin with commands
 Changed /savedef to save only macros without triggers
- (/savedef, /savetrig, /savehilite and /savegag thus have no overlaps)
-Added /clunused (removes the input window when there's no text waiting)
 Changed /quote to work without alarm()
-Added /ptime to determine max. microseconds to wait between quote lines
- when /fastquote is on
-Added /qctries (max number of seconds to attempt to open temporary file
- for a command quote).
 
-1.2.6 beta
+1.2.6 beta 
 ----------
 Bug fixes
 Trigger functions work on basis of hilites first, then gags, then nothing
 Expanded /stty to check window size
-Added /packet (waits until 512 chars of output are available before sending
-  off packets).
+Added /packet (waits for 512 chars of output before sending packets).
 Expanded /tinytalk to cause /stty, /log, /logme, /login and /quiet flags
   to turn on when called with no arguments.
 
-1.2.5 beta
+1.2.5 beta 
 ----------
 Bug fixes
-Changed /edit to allow specifying macros by name ("#<num>") or trigger
- ("$<trig>").
+/edit allows specifying macros by name, number, or trigger.
 Added -DHARDCODE and non-termcap compile modes
 
-1.2.4 beta
+1.2.4 beta 
 ----------
 Changed /echo to do local echo
-Added /kecho (echoes keyboard input)
-Added /techo (echoes trigger input)
+Added /kecho (echoes keyboard input), /techo (echoes trigger input)
 
-1.2.2 beta
+1.2.2 beta 
 ----------
-Added /tinytalk (some tinytalk compatibility)
-Added /no<flag> commands
+Added /tinytalk (some tinytalk compatibility), /no<flag> commands
 
-1.2.1 beta
+1.2.1 beta 
 ----------
 Bug fixes
-Added /visual (determines whether to use visual mode)
-Added /gpri and /hpri (set priority of subsequent hilites and gags)
+Added /visual, /gpri, /hpri.
 
-1.2.0 beta
+1.2.0 beta 
 ----------
 Changed code organization
 Added -f switch on /def for function
 Added /trig, /trigp, /trigpc, /trigc, /act from TF 1.1.2 and tinywar
 Changed /listdef command to use switches.
 Allowed unnamed macros
-Added /untrigt, /undeft, /purgedeft
-Added /hn command (removes blank line between output and divider by
- holding newlines)
+Added /untrigt; /undeft; /purgedeft; /hn (removes blank line between output
+  and divider by holding newlines)
 
-1.1.5 beta
+1.1.5 beta 
 ----------
 Bug fixes
 Removed /nointr, /nolog, /nostty, etc.
-Added /sh back in
-Added /sub (determines whether to substitute newlines and crypts)
-Added /refill (refills screen upon redrawing)
-Added /edit (changes /def without redefining)
+Added /sh back in; /sub; /refill; /edit
 
 ----------
 
