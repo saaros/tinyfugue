@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: variable.c,v 35004.20 1997/03/27 01:04:54 hawkeye Exp $ */
+/* $Id: variable.c,v 35004.26 1997/10/18 21:55:53 hawkeye Exp $ */
 
 
 /**************************************
@@ -28,14 +28,15 @@
 
 static Var   *FDECL(findlevelvar,(CONST char *name, List *level));
 static Var   *FDECL(findlocalvar,(CONST char *name));
-static int    FDECL(set_special_var,(Var *var, CONST char *val, Toggler **fpp));
+static int    FDECL(set_special_var,(Var *var, CONST char *val, Toggler **fpp, CONST char **oldvaluep));
 static Var   *FDECL(newglobalvar,(CONST char *name, CONST char *value));
 static char  *FDECL(new_env,(Var *var));
 static void   FDECL(append_env,(char *str));
 static char **FDECL(find_env,(CONST char *str));
 static void   FDECL(remove_env,(CONST char *str));
 static void   FDECL(replace_env,(char *str));
-static void   FDECL(listvar,(int exportflag));
+static int    FDECL(listvar,(CONST char *name, CONST char *value,
+                    int mflag, int exportflag, int shortflag));
 
 #define findglobalvar(name)   (Var *)hash_find(name, var_table)
 #define findspecialvar(name) \
@@ -75,12 +76,10 @@ extern char **environ;
 #define VAREXPORT  040	/* exported to environment */
 
 
-/* Special variables.
- * Omitted last field (node) is implicitly initialized to NULL.
- */
+/* Special variables. */
 Var special_var[] = {
 #define varcode(id, name, val, type, enums, ival, func) \
-    { name, val, 0, type, enums, ival, func }
+    { name, val, 0, type, enums, ival, func, NULL, NULL }
 #include "varlist.h"
 #undef varcode
 };
@@ -141,7 +140,7 @@ void init_variables()
             var->node = hash_insert((GENERIC*)var, var_table);
         } else {
             /* overwrite a pre-defined special variable */
-            set_special_var(var, value ? value : "", NULL);
+            set_special_var(var, value ? value : "", NULL, NULL);
             /* We do NOT call the var->func here, because the modules they
              * reference have not been initialized yet.  The init_*() calls
              * in main.c should call the funcs in the appropraite order.
@@ -220,6 +219,13 @@ CONST char *getvar(name)
     return (var = findglobalvar(name)) ? var->value : NULL;
 }
 
+/* function form of findglobalvar() */
+Var *ffindglobalvar(name)
+    CONST char *name;
+{
+    return findglobalvar(name);
+}
+
 /* If np is nonnull, ival of var will be put there. */
 CONST char *getnearestvar(name, np)
     CONST char *name;
@@ -275,6 +281,7 @@ Var *newlocalvar(name, value)
     var->flags = VARSTR;
     /* var->ival = atol(value); */ /* never used */
     var->func = NULL;
+    var->status = NULL;
     inlist((GENERIC *)var, (List*)(localvar->head->datum), NULL);
     if (findglobalvar(name)) {
         do_hook(H_SHADOW, "%% Warning:  Local variable \"%s\" overshadows global variable of same name.", "%s", name);
@@ -295,6 +302,7 @@ static Var *newglobalvar(name, value)
     var->flags = VARSTR;
     /* var->ival = atol(value); */ /* never used */
     var->func = NULL;
+    var->status = NULL;
     return var;
 }
 
@@ -377,9 +385,11 @@ Var *setvar(name, value, exportflag)
 {
     Var *var;
     Toggler *func = NULL;
+    CONST char *oldvalue = NULL;
+    static int depth = 0;
 
     if ((var = findspecialvar(name))) {
-        if (!set_special_var(var, value, &func))
+        if (!set_special_var(var, value, &func, &oldvalue))
             return NULL;
     } else if ((var = findglobalvar(name))) {
         if (value != var->value) {
@@ -399,7 +409,19 @@ Var *setvar(name, value, exportflag)
         var->flags |= VAREXPORT;
     }
 
-    if (func) (*func)();
+    if (func && depth==0) {
+        if (!(*func)()) {
+            /* restore old value (bug: doesn't un-export or un-set) */
+            depth++;
+            setvar(name, oldvalue ? oldvalue : "", exportflag);
+            depth--;
+        }
+    }
+    if (var->status)
+        update_status_field(var, -1);
+    if (oldvalue)
+        FREE(oldvalue);
+
     return var;
 }
 
@@ -422,8 +444,8 @@ int do_set(args, exportflag, localflag)
     int i;
 
     if (!*args) {
-        if (!localflag) listvar(exportflag);
-        return !localflag;
+        if (!localflag)
+            return listvar(NULL, NULL, MATCH_SIMPLE, exportflag, 0);
     }
 
     for (value = args + 1; ; value++) {
@@ -475,6 +497,50 @@ int do_set(args, exportflag, localflag)
     return 1;
 }
 
+int handle_listvar_command(args)
+    char *args;
+{
+    int mflag, opt;
+    int exportflag = -1, error = 0, shortflag = 0;
+    char *name = NULL, *value = NULL;
+
+    mflag = matching;
+
+    startopt(args, "m:gxs");
+    while ((opt = nextopt(&args, NULL))) {
+        switch (opt) {
+            case 'm':
+                error = ((mflag = enum2int(args, enum_match, "-m")) < 0);
+                break;
+            case 'g':
+                exportflag = 0;
+                break;
+            case 'x':
+                exportflag = 1;
+                break;
+            case 's':
+                shortflag = 1;
+                break;
+            default:
+                return 0;
+          }
+    }
+    if (error) return 0;
+
+    if (*args) {
+        name = args;
+        for (value = name; *value && !isspace(*value); value++);
+        if (*value) {
+            *value++ = '\0';
+            while(isspace(*value)) value++;
+        }
+        if (!*value)
+            value = NULL;
+    }
+
+    return listvar(name, value, mflag, exportflag, shortflag);
+}
+
 int handle_export_command(name)
     char *name;
 {
@@ -506,6 +572,11 @@ int handle_unset_command(name)
     if (var->flags & VAREXPORT) remove_env(name);
     FREE(var->value);
 
+    if (var->status) {
+        var->status = NULL;
+        update_status_field(var, -1);
+    }
+
     if (!(var->flags & VARSPECIAL)) {
         FREE(var->name);
         FREE(var);
@@ -515,7 +586,8 @@ int handle_unset_command(name)
         var->node = NULL;
         oldval = var->ival;
         var->ival = 0;
-        if (oldval && var->func) (*var->func)();
+        if ((oldval || var->flags & VARSTR) && var->func)
+            (*var->func)();
     }
     return 1;
 }
@@ -523,10 +595,11 @@ int handle_unset_command(name)
 /*********/
 
 /* Set a special variable, with proper coersion of the value. */
-static int set_special_var(var, value, fpp)
+static int set_special_var(var, value, fpp, oldvaluep)
     Var *var;
     CONST char *value;
     Toggler **fpp;
+    CONST char **oldvaluep;
 {
     static char buffer[20];
     long oldival = var->ival;
@@ -545,7 +618,9 @@ static int set_special_var(var, value, fpp)
         if (fpp) *fpp = (var->ival != oldival) ? var->func : NULL;
 
     } else if (var->flags & VARSTR) {
-        /* var->ival = atol(value); */ /* never used */
+        /* Do NOT set ival.  Some variables (hilite) have a special value
+         * set by their change function; other string variables ignore it.
+         */
         if (fpp) *fpp = var->func;
 
     } else /* integer */ {
@@ -565,27 +640,60 @@ static int set_special_var(var, value, fpp)
 
     var->len = strlen(value);
     var->value = STRNDUP(value, var->len);
-    if (oldvalue) FREE(oldvalue);
+    if (oldvaluep) {
+        *oldvaluep = oldvalue;
+    } else {
+        if (oldvalue) FREE(oldvalue);
+    }
     return 1;
 }
 
-static void listvar(exportflag)
-    int exportflag;
+
+static int listvar(name, value, mflag, exportflag, shortflag)
+    CONST char *name, *value;
+    int mflag;
+    int exportflag;  /* 1 exported; 0 global; -1 both */
+    int shortflag;
 {
     int i;
     ListEntry *node;
     Var *var;
+    int count = 0;
+    Pattern pname, pvalue;
+
+    init_pattern_str(&pname, NULL);
+    init_pattern_str(&pvalue, NULL);
+
+    if (name)
+        if (!init_pattern(&pname, name, mflag))
+            goto listvar_end;
+
+    if (value)
+        if (!init_pattern(&pvalue, value, mflag))
+            goto listvar_end;
 
     for (i = 0; i < var_table->size; i++) {
         if (var_table->bucket[i]) {
             for (node = var_table->bucket[i]->head; node; node = node->next) {
                 var = (Var*)node->datum;
-                if (!(var->flags & VAREXPORT) == !exportflag)
-                    oprintf("/%s %s=%s", exportflag ? "setenv" : "set",
+                if (exportflag >= 0 && !(var->flags & VAREXPORT) != !exportflag)                    continue;
+                if (name && !patmatch(&pname, var->name)) continue;
+                if (value && !patmatch(&pvalue, var->value)) continue;
+                if (shortflag)
+                    oprintf("%s", var->name);
+                else
+                    oprintf("/%s %s=%s",
+                        (var->flags & VAREXPORT) ? "setenv" : "set",
                         var->name, var->value);
+                count++;
             }
         }
     }
+
+listvar_end:
+    free_pattern(&pname);
+    free_pattern(&pvalue);
+    return count;
 }
 
 #ifdef DMALLOC

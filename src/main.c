@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: main.c,v 35004.16 1997/04/04 02:21:45 hawkeye Exp $ */
+/* $Id: main.c,v 35004.24 1997/10/02 10:39:01 hawkeye Exp $ */
 
 
 /***********************************************
@@ -32,7 +32,7 @@
 #include "command.h"
 #include "keyboard.h"
 #include "variable.h"
-#include "tty.h"
+#include "tty.h"	/* no_tty */
 
 CONST char sysname[] = UNAME;
 
@@ -40,7 +40,7 @@ CONST char sysname[] = UNAME;
  * to the version number, and put a brief description of the modifications
  * in the mods[] string.
  */
-CONST char version[] = "TinyFugue version 3.5 beta 4";
+CONST char version[] = "TinyFugue version 4.0 alpha 1";
 CONST char mods[] = "";
 
 CONST char copyright[] =
@@ -65,7 +65,6 @@ int main(argc, argv)
     char *opt, *argv0 = argv[0], *configfile = NULL;
     int worldflag = TRUE;
     int autologin = -1, quietlogin = -1, autovisual = TRUE;
-    extern int no_tty;
 
     while (--argc > 0 && (*++argv)[0] == '-') {
         if (!(*argv)[1]) { argc--; argv++; break; }
@@ -128,8 +127,8 @@ int main(argc, argv)
     SRAND(getpid());			/* seed random generator */
     init_malloc();			/* malloc.c   */
     init_tfio();			/* tfio.c     */
-    init_tfscreen();			/* open output queue */
     init_util1();			/* util.c     */
+    init_expand();			/* expand.c   */
     init_signals();			/* signals.c  */
     init_variables();			/* variable.c */
     init_sock();			/* socket.c   */
@@ -161,21 +160,24 @@ int main(argc, argv)
 
     main_loop();
 
+    kill_procs();
+    fix_screen();
+    reset_tty();
+
 #ifdef DMALLOC
     free_macros();
-    handle_purgeworld_command("*");
+    free_worlds();
     free_histories();
-    free_term();
+    free_output();
     free_vars();
     free_keyboard();
     free_search();
     free_expand();
     free_help();
+    free_reserve();
     debug_mstats("tf");
 #endif
 
-    fix_screen();
-    reset_tty();
     return 0;
 }
 

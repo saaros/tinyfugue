@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tf.h,v 35004.9 1997/03/27 01:04:47 hawkeye Exp $ */
+/* $Id: tf.h,v 35004.10 1997/09/01 08:42:12 hawkeye Exp $ */
 
 #ifndef TF_H
 #define TF_H
@@ -90,7 +90,9 @@ typedef struct Aline {         /* shared line, with attributes */
 #endif
 
 #define VEC_TYPEDEF(type, size) \
-    typedef struct { long bits[(((size) + LONGBITS - 1) / LONGBITS)]; } (type)
+    typedef struct { \
+        unsigned long bits[(((size) + LONGBITS - 1) / LONGBITS)]; \
+    } (type)
 
 #define VEC_SET(n,p)   ((p)->bits[(n)/LONGBITS] |= (1L << ((n) % LONGBITS)))
 #define VEC_CLR(n,p)   ((p)->bits[(n)/LONGBITS] &= ~(1L << ((n) % LONGBITS)))

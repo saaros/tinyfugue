@@ -1,4 +1,4 @@
-# $Id: Makefile,v 35000.8 1997/03/27 01:13:24 hawkeye Exp $
+# $Id: Makefile,v 35000.12 1997/11/06 07:25:21 hawkeye Exp $
 ########################################################################
 #
 #  TinyFugue - programmable mud client
@@ -83,14 +83,14 @@ help ./tf-lib/tf-help: _always_
 
 tar ../tf-$(TFVER).tar: ./src/*.[ch] srcdist distclean
 	@-cd ./src; echo Possible garbage in ./src/: \
-	    `ls *out *err *foo* *bar* *.new *.old *.ok *.c.* *.tf \
+	    `ls *in *out *err *foo* *bar* *.new *.old *.ok *.c.* *.tf \
 	    2>/dev/null`
 	@wd=`pwd`; [ "`basename $$wd`" = "work" ] || \
 	    echo 'WARNING: You are not in the "work" directory.'
 	@echo 'Press return to archive tf-$(TFVER).'
 	@read foo
 	rm -rf ../tf-$(TFVER)
-	-for dir in "/" /src/ /src/regexp/ /tf-lib/ /unix/ /os2/; do \
+	-for dir in "/" /src/ /src/regexp/ /tf-lib/ /unix/ /os2/ /win32/; do \
 	    mkdir ../tf-$(TFVER)$${dir}; \
 	    cp .$${dir}* ../tf-$(TFVER)$${dir}; \
 	    chmod ugo+r ../tf-$(TFVER)$${dir}*; \
@@ -100,36 +100,35 @@ tar ../tf-$(TFVER).tar: ./src/*.[ch] srcdist distclean
 	cd ..; tar -cf tf-$(TFVER).tar tf-$(TFVER)
 
 dist: ./tf-lib/tf-help ../tf-$(TFVER).tar
-	cd ..; gzip -c tf-$(TFVER).tar > tf-$(TFVER).tar.gz
-	cd ..; compress tf-$(TFVER).tar
-	cd ..; info-zip -qlr tf-$(TFVER).zip tf-$(TFVER)
-	cd ..; chmod ugo+r tf-$(TFVER).tar.gz tf-$(TFVER).tar.Z tf-$(TFVER).zip
+	cd ..; gzip tf-$(TFVER).tar
+	cd ..; zip -qlr tf-$(TFVER).zip tf-$(TFVER)
+	cd ..; chmod ugo+r tf-$(TFVER).tar.gz tf-$(TFVER).zip
 
 gzdist: ./tf-lib/tf-help ../tf-$(TFVER).tar
 	cd ..; gzip tf-$(TFVER).tar
 
 local:
-	TFDEV_EXE='/usr/local/bin/tf-$(TFVER)' \
+	TFDEV_TF='/usr/local/bin/tf-$(TFVER)' \
 	    TFDEV_LIBDIR='/usr/local/lib/tf-$(TFVER)-lib' \
-	    TFDEV_SYMLINK='/usr/local/bin/tf' ./unixmake files
+	    TFDEV_SYMLINK='/usr/local/bin/tf' ./unixmake config
 
 devlocal:
-	CC=tfcc TFDEV_CCFLAGS='-g' TFDEV_EXE='/usr/local/bin/tf-$(TFVER)' \
+	CC=tfcc TFDEV_CCFLAGS='-g' TFDEV_TF='/usr/local/bin/tf-$(TFVER)' \
 	    TFDEV_LIBDIR='/usr/local/lib/tf-$(TFVER)-lib' TFDEV_STRIP=':' \
-	    TFDEV_SYMLINK='/usr/local/bin/tf' ./unixmake files
+	    TFDEV_SYMLINK='/usr/local/bin/tf' ./unixmake config
 
 devhome:
-	CC=tfcc TFDEV_CCFLAGS='-g' TFDEV_EXE="$$HOME/bin/tf-$(TFVER)" \
+	CC=tfcc TFDEV_CCFLAGS='-g' TFDEV_TF="$$HOME/bin/tf-$(TFVER)" \
 	    TFDEV_LIBDIR="$$HOME/lib/tf-$(TFVER)-lib" TFDEV_STRIP=':' \
 	    TFDEV_SYMLINK="$$HOME/bin/tf" \
-	    TFDEV_QUIET=yes TFDEV_DMALLOC=0 ./unixmake files
+	    TFDEV_QUIET=yes TFDEV_DMALLOC=0 ./unixmake config
 
 dev:
-	CC=tfcc TFDEV_CCFLAGS='-g' TFDEV_EXE="$$HOME/bin/tf-$(TFVER)" \
+	CC=tfcc TFDEV_CCFLAGS='-g' TFDEV_TF="$$HOME/bin/tf-$(TFVER)" \
 	    TFDEV_LIBDIR="$$HOME/lib/tf-$(TFVER)-lib" TFDEV_STRIP=':' \
-	    TFDEV_QUIET=yes TFDEV_DMALLOC=0 ./unixmake files
+	    TFDEV_QUIET=yes TFDEV_DMALLOC=0 ./unixmake config
 
-laurel: devhome
+laurel: devhome files
 	cp CHANGES $$HOME/public_html/tf/
 
 _always_:

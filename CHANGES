@@ -1,6 +1,62 @@
 Only the most recent version will have detailed changes described.
 Some fixes are followed by the version in which the problem first appeared.
 
+4.0 alpha 1 (11/6/97)
+----------
+Ported to Win32.
+%0 is the name of the executing macro.  This will break all existing code
+  that uses %0 like %*.
+Macros called as functions map function arguments to positional parameters.
+  This will break existing code that expects a single function argument
+  to be split into parameters by words.
+Added /return (the old /return in map.tf is now called /revert).
+Added the ability to format the visual status line ("/help %status_fields").
+Added %| pipes ("/help evaluation").
+Added floating point arithmetic.
+Added sin(), cos(), tan(), asin(), acos(), atan().
+Added abs(), exp(), log(), log10(), pow(), sqrt(), trunc().
+Added tfopen(), tfclose(), tfread(), tfwrite() ("/help tfio").
+Added inread(), nactive(), nlog(), nmail(), world_info(), fg_world().
+Added /listvar.
+Added %meta_esc.
+Added /echo -p.
+/listsockets -T<type> <name>.
+/listworlds -u -m<style> -T<type>.
+/purgeworld -T<type>.
+/send -T<type>.
+/load -q.
+/unworld and /undef take multiple <name> arguments.
+Added /edmac, /edvar, and /edworld in tools.tf.
+Added NOMACRO hook.
+getopts() supports numeric option arguments.
+Improved mecho detail.
+Macros can be called by number with "/#" syntax ("/help evaluation").
+Counter in visual More prompt is better updated.
+Partial attributes are always preserved by /recall.
+Clearing input buffer resets index for /dokey SEARCH[BF] functions.
+Optimized macro processing.
+Improved interactive response when sockets are very active.
+/list -s option may be mixed with other options.
+Fixed /substitute within /trigger
+Fixed support for 8-bit locales, including support for LC_CTYPE, LC_TIME,
+  and LC_ALL variables.  See "/help locale".
+Fixed "tcsetattr: Bad file number" and disabled keyboard. (35b4)
+Fixed rare sometimes fatal bug in handling server attributes with lp=on
+  and a slow connection.
+Fixed duplicate command when /speedwalk and /mark (map.tf) are used together.
+Fixed compilation error involving conditional and hstrerror under some
+  lame compilers (socket.c:788).
+Fixed output misdirection during a read() inside a command sub.
+Fixed rare bug causing command line to execute in wrong world when a
+  simultaneous background trigger occured.
+Fixed /world with no arguments.
+Fixed fatal input bug after /histsize -i. (35a21)
+Fixed bug which disabled history recording after /recall on an empty history.
+Fixed memory leaks in synchronous processes, etc.
+Fixed "/lp off" while at a prompt.
+Fixed opening of new descriptors after standard input redirection.
+Fixed bug in handling trailing '-' in a glob [] character class.
+
 3.5 beta 4 (4/4/97)
 ----------
 Fixed keyboard lockup or "Bad file number" during fast input. (35b3)

@@ -1,4 +1,4 @@
-# $Id: unix.mak,v 35004.13 1997/10/22 07:26:34 hawkeye Exp $
+# $Id: unix.mak,v 35004.10 1997/05/11 08:13:37 hawkeye Exp $
 ########################################################################
 #  TinyFugue - programmable mud client
 #  Copyright (C) 1994, 1995, 1996, 1997 Ken Keys
@@ -19,16 +19,16 @@ SHELL      = /bin/sh
 BUILDERS   = Makefile
 
 
-install:  _failmsg _all $(TF) LIBRARY $(MANPAGE) $(SYMLINK)
+install:  _failmsg _all $(EXE) LIBRARY $(MANPAGE) $(SYMLINK)
 	@echo '#####################################################' > exitmsg
 	@echo '## TinyFugue installation successful.' >> exitmsg
 	@echo "## You can safely delete everything in `cd ..; pwd`". >> exitmsg
-	@DIR=`echo $(TF) | sed 's;/[^/]*$$;;'`; \
+	@DIR=`echo $(EXE) | sed 's;/[^/]*$$;;'`; \
 	echo ":$(PATH):" | egrep ":$${DIR}:" >/dev/null 2>&1 || { \
 	    echo ; \
 	    echo "Note:  $$DIR is not in your PATH."; \
 	    echo "To run tf, you will need to type its path name"; \
-	    echo "(e.g., $(TF)),"; \
+	    echo "(e.g., $(EXE)),"; \
 	    echo "or add $$DIR to your PATH."; \
 	} >> exitmsg
 
@@ -37,7 +37,7 @@ all files:  _all
 	@echo '## TinyFugue build successful.' >> exitmsg
 	@echo '## Use "unixmake install" to install the files.' >> exitmsg
 
-_all:  tf$(X) ../tf-lib/tf-help.idx
+_all:  $(TF) ../tf-lib/tf-help.idx
 
 _failmsg:
 	@echo '#####################################################' > exitmsg
@@ -57,20 +57,20 @@ regexp.o: $(BUILDERS) config.h
 	rm regexp/err
 	mv regexp/regexp.o .
 
-TF tf$(X):     $(OBJS) $(BUILDERS)
-	$(CC) $(CFLAGS) -o tf$(X) $(OBJS) $(LIBS)
+tf TF $(TF):     $(OBJS) $(BUILDERS)
+	$(CC) $(CFLAGS) -o $(TF) $(OBJS) $(LIBS)
 #	@# Some stupid linkers return ok status even if they fail.
-	@test -f tf$(X)
+	@test -f $(TF)
 #	@# ULTRIX's sh errors here if strip isn't found, despite "true".
-	-test -z "$(STRIP)" || $(STRIP) tf$(X) || true
+	-test -z "$(STRIP)" || $(STRIP) $(TF) || true
 
-$(TF): tf$(X) $(BUILDERS)
-	-@rm -f $(TF)
-	cp tf$(X) $(TF)
-	chmod $(MODE) $(TF)
+EXE $(EXE): $(TF) $(BUILDERS)
+	-@rm -f $(EXE)
+	cp $(TF) $(EXE)
+	chmod $(MODE) $(EXE)
 
-SYMLINK $(SYMLINK): $(TF)
-	test -z "$(SYMLINK)" || { rm -f $(SYMLINK) && ln -s $(TF) $(SYMLINK); }
+SYMLINK $(SYMLINK): $(EXE)
+	test -z "$(SYMLINK)" || { rm -f $(SYMLINK) && ln -s $(EXE) $(SYMLINK); }
 
 LIBRARY $(LIBDIR): ../tf-lib/tf-help ../tf-lib/tf-help.idx
 	@echo '## Creating library directory...'
@@ -136,10 +136,10 @@ Makefile: ../unix/Config ../unix/vars.mak ../unix/unix.mak ../unix/tfconfig
 dist: tf.1.catman ../tf-lib/tf-help.idx
 
 uninstall:
-	@echo "Remove $(LIBDIR) $(TF) $(MANPAGE)"
-	@echo "Is this okay? (y/n)"
+	@echo Remove $(LIBDIR) $(EXE) $(MANPAGE)
+	@echo Is this okay? (y/n)
 	@read response; test "$response" = "y"
-	rm -f $(TF) $(MANPAGE)
+	rm -f $(EXE) $(MANPAGE)
 	rm -rf $(LIBDIR)
 
 clean distclean cleanest:
@@ -157,8 +157,8 @@ dep: *.c
 		| sed 's; $$; $$(BUILDERS) ;' \
 		> dep
 
-tf.pixie: tf$(X)
-	pixie -o tf.pixie tf$(X)
+tf.pixie: $(TF)
+	pixie -o tf.pixie $(TF)
 
 lint:
 	lint -woff 128 $(CCFLAGS) -DHAVE_PROTOTYPES $(SOURCE) $(LIBRARIES)

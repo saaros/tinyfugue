@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: help.c,v 35004.7 1997/03/27 01:04:27 hawkeye Exp $ */
+/* $Id: help.c,v 35004.11 1997/11/06 06:12:42 hawkeye Exp $ */
 
 /*
  * Fugue help handling
@@ -27,7 +27,7 @@
 
 STATIC_BUFFER(indexfname);
 
-#define HELPLEN  (80+1)		/* maximum length of lines in help file */
+#define HELPLEN  (240+1)	/* maximum length of lines in help file */
 
 int handle_help_command(args) 
     char *args;
@@ -47,6 +47,7 @@ int handle_help_command(args)
         return 0;
     }
 
+#ifndef __CYGWIN32__
     if (helpfile->type == TF_FILE) {
         /* regular file: use index */
         Sprintf(indexfname, 0, "%s.idx", name);
@@ -55,8 +56,10 @@ int handle_help_command(args)
             tfclose(helpfile);
             return 0;
         }
-    } else {
-        /* pipe: use brute-force search */
+    } else
+#endif
+    {
+        /* use brute-force search */
         indexfile = helpfile;
     }
 
@@ -69,7 +72,7 @@ int handle_help_command(args)
     while (offset < 0 && fgets(input, HELPLEN, indexfile->u.fp) != NULL) {
         minor_buffer[0] = '\0';
         for (place = input; isdigit(*place); place++);
-        if (*place == '@') {
+        if (*place == '&') {
             major_buffer[0] = '\0';
             spare = major_buffer;
             major_buffer = input;
@@ -103,16 +106,16 @@ int handle_help_command(args)
     if (indexfile != helpfile)
         fseek(helpfile->u.fp, offset, SEEK_SET);
 
-    /* find offset, skip lines matching ^[@#], and remember last topic */
+    /* find offset, skip lines matching ^[&#], and remember last topic */
 
     while (fgets(input, HELPLEN, helpfile->u.fp) != NULL) {
         if (*input) input[strlen(input)-1] = '\0';
-        if (*input != '@' && *input != '#') break;
+        if (*input != '&' && *input != '#') break;
         if (*minor_buffer) {
             spare = minor_buffer;
             minor_buffer = input;
             input = spare;
-        } else if (*input == '@') {
+        } else if (*input == '&') {
             spare = major_buffer;
             major_buffer = input;
             input = spare;
@@ -124,20 +127,21 @@ int handle_help_command(args)
     if (*minor_buffer) {
         for (minor_topic = minor_buffer; isdigit(*minor_topic); minor_topic++);
         minor_topic++;
-        oprintf("Help on: %s: %s", major_topic, minor_topic);
+        tfprintf(tfout, "Help on: %s: %s", major_topic, minor_topic);
     } else {
-        oprintf("Help on: %s", major_topic);
+        tfprintf(tfout, "Help on: %s", major_topic);
     }
 
-    while (*input != '@') {
-        if (*input != '#') oputs(input);
+    while (*input != '&') {
+        if (*input != '#') tfputansi(input, tfout);
         else if (*minor_buffer) break;
         if (fgets(input, HELPLEN, helpfile->u.fp) == NULL) break;
         if (*input) input[strlen(input)-1] = '\0';
     }
 
     if (*minor_buffer)
-        oprintf("For more complete information, see \"%s\".", major_topic);
+        tfprintf(tfout, "For more complete information, see \"%s\".",
+            major_topic);
 
     tfclose(helpfile);
     return 1;

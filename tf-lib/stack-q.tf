@@ -2,7 +2,7 @@
 ;;;; Lets you keep stacks and queues of words.  /pop and /dequeue give their
 ;;;; results via /echo; use $(/pop) and $(/dequeue) to capture their results.
 
-/~loaded stack_queue.tf
+/~loaded stack-q.tf
 
 /require lisp.tf
 

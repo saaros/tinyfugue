@@ -20,7 +20,7 @@
 			        kbdel(kbpoint() - strlen(P0))
 /def -i dokey_dch	= /@test kbdel(kbpoint() + 1)
 /def -i dokey_deol	= /@test kbdel(kblen())
-/def -i dokey_dline	= /dokey dline
+/def -i dokey_dline	= /@test kbgoto(0), kbdel(kblen())
 /def -i dokey_down	= /@test kbgoto(kbpoint() + wrapsize)
 /def -i dokey_dword	= /@test kbdel(kbwordright())
 /def -i dokey_end	= /@test kbgoto(kblen())
@@ -75,16 +75,13 @@
     /set insert=%{old_insert}
 
 /def -i kb_transpose_chars = \
-    /if ( kbpoint() > 0 ) \
-        /let old_insert=$[+insert]%;\
-        /set insert=0%;\
-        /if (kbpoint()==kblen()) /dokey_left%; /endif%;\
-        /dokey_left%;\
-        /@test input(strcat(substr(kbtail(),1,1), substr(kbtail(),0,1))) %;\
-        /set insert=%{old_insert}%;\
-    /else \
-        /beep 1%;\
-    /endif
+    /if ( kbpoint() <= 0 ) /beep 1%; /return 0%; /endif%; \
+    /let old_insert=$[+insert]%;\
+    /set insert=0%;\
+    /if (kbpoint()==kblen()) /dokey_left%; /endif%;\
+    /dokey_left%;\
+    /@test input(strcat(substr(kbtail(),1,1), substr(kbtail(),0,1))) %;\
+    /set insert=%{old_insert}
 
 /def -i kb_last_argument = \
     /input $(/last $(/recall -i - -2))

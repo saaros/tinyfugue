@@ -1,6 +1,6 @@
 ;;;; emacs style keybindings for TinyFugue
 
-/~loaded bind-emacs.tf
+/~loaded kb-emacs.tf
 
 /def -i -b"^a"		= /dokey_home
 /def -i -b"^b"		= /dokey_left

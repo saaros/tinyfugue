@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: process.c,v 35004.15 1997/03/27 01:04:39 hawkeye Exp $ */
+/* $Id: process.c,v 35004.18 1997/09/14 05:04:36 hawkeye Exp $ */
 
 /************************
  * Fugue processes.     *
@@ -114,14 +114,14 @@ int handle_ps_command(args)
             next = p->timer - now;
             if (next >= 0)
                 sprintf(nbuf, "%2ld:%02ld:%02ld",
-                    next / 3600, (next / 60) % 60, next % 60);
+                    (long)next/3600, (long)(next/60) % 60, (long)next % 60);
             else
                 sprintf(nbuf, "%8s", "pending");
         }
         sprintf(obuf, "%-8s ", p->world ? p->world->name : "");
         if (p->ptime >= 0) {
-            sprintf(obuf+9, "%2ld:%02ld:%02ld",
-                p->ptime / 3600, (p->ptime / 60) % 60, p->ptime % 60);
+            sprintf(obuf+9, "%2ld:%02ld:%02ld", (long)p->ptime/3600,
+                (long)(p->ptime/60) % 60, (long)p->ptime % 60);
         } else {
             strcpy(obuf+9, p->ptime == -2 ? "S       " : "        ");
         }
@@ -220,6 +220,17 @@ static void nukeproc(proc)
     FREE(proc);
 }
 
+void nuke_dead_procs()
+{
+    Proc *proc, *next;
+
+    for (proc = proclist; proc; proc = next) {
+        next = proc->next;
+        if (proc->state == PROC_DEAD)
+            nukeproc(proc);
+    }
+}
+
 void kill_procs()
 {
     while (proclist) {
@@ -265,20 +276,16 @@ int handle_kill_command(args)
 /* Run all processes that should be run, and set proctime to the time
  * of the next earliest process.
  */
-void runall()
+int runall()
 {
-    Proc *proc, *next;
+    Proc *proc;
     TIME_T now = time(NULL);
     int resched;	/* consider this process in proctime calculation? */
 
     runall_depth++;
     proctime = 0;
-    for (proc = proclist; proc; proc = next) {
-        next = proc->next;
-        if (proc->state == PROC_DEAD) {
-            nukeproc(proc);
-            continue;
-        }
+    for (proc = proclist; proc; proc = proc->next) {
+        if (proc->state == PROC_DEAD) continue;
         if (proc->type == P_QSHELL) {
             if (is_active(fileno(proc->input->u.fp))) {
                 if (!(resched = runproc(proc)))
@@ -297,6 +304,7 @@ void runall()
         }
     }
     runall_depth--;
+    return 1;  /* for setvar() call */
 }
 
 static int runproc(p)

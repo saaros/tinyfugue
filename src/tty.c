@@ -5,15 +5,13 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tty.c,v 35004.9 1997/04/02 23:50:21 hawkeye Exp $ */
+/* $Id: tty.c,v 35004.10 1997/04/11 02:26:40 hawkeye Exp $ */
 
 /*
  * TTY driver routines.
  */
 
 #include "config.h"
-#include <errno.h>
-extern int errno;
 #include "port.h"
 
 #ifdef EMXANSI
@@ -98,41 +96,45 @@ void init_tty()
     no_tty = !isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO);
     cbreak_noecho_mode();
 
+    if (!no_tty) {
+
 #ifdef USE_TERMIOS
-    *bs = old_tty.c_cc[VERASE];
-    *dline = old_tty.c_cc[VKILL];
+        *bs = old_tty.c_cc[VERASE];
+        *dline = old_tty.c_cc[VKILL];
 # ifdef VWERASE /* Not POSIX, but many systems have it. */
-    *bword = old_tty.c_cc[VWERASE];
+        *bword = old_tty.c_cc[VWERASE];
 # endif
 # ifdef VREPRINT /* Not POSIX, but many systems have it. */
-    *refresh = old_tty.c_cc[VREPRINT];
+        *refresh = old_tty.c_cc[VREPRINT];
 # endif
 # ifdef VLNEXT /* Not POSIX, but many systems have it. */
-    *lnext = old_tty.c_cc[VLNEXT];
+        *lnext = old_tty.c_cc[VLNEXT];
 # endif
 #endif
 
 #ifdef USE_HPUX_TERMIO
-    *bs = old_tty.c_cc[VERASE];
-    *dline = old_tty.c_cc[VKILL];
-    if (ioctl(STDIN_FILENO, TIOCGLTC, &chars) < 0) perror("TIOCGLTC ioctl");
-    else {
-        *bword = chars.t_werasc;
-        *refresh = chars.t_rprntc;
-        /* *lnext = chars.t_lnextc; */  /* ?? Screw it, use default. */
-    }
+        *bs = old_tty.c_cc[VERASE];
+        *dline = old_tty.c_cc[VKILL];
+        if (ioctl(STDIN_FILENO, TIOCGLTC, &chars) < 0) perror("TIOCGLTC ioctl");
+        else {
+            *bword = chars.t_werasc;
+            *refresh = chars.t_rprntc;
+            /* *lnext = chars.t_lnextc; */  /* ?? Screw it, use default. */
+        }
 #endif
 
 #ifdef USE_SGTTY
-    *bs = old_tty.sg_erase;
-    *dline = old_tty.sg_kill;
-    if (ioctl(STDIN_FILENO, TIOCGLTC, &chars) < 0) perror("TIOCGLTC ioctl");
-    else {
-        *bword = chars.t_werasc;
-        *refresh = chars.t_rprntc;
-        *lnext = chars.t_lnextc;
-    }
+        *bs = old_tty.sg_erase;
+        *dline = old_tty.sg_kill;
+        if (ioctl(STDIN_FILENO, TIOCGLTC, &chars) < 0) perror("TIOCGLTC ioctl");
+        else {
+            *bword = chars.t_werasc;
+            *refresh = chars.t_rprntc;
+            *lnext = chars.t_lnextc;
+        }
 #endif
+
+    }
 
     bs[1] = dline[1] = bword[1] = refresh[1] = lnext[1] = '\0';
     /* Note that some systems use \0 to disable, others use \377; we must

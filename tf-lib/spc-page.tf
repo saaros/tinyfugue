@@ -4,7 +4,7 @@
 ;; I personally don't like it, but you might if you can't get the hang of
 ;; pressing TAB.  To enable space-page, just load this file.
 
-/~loaded space_page.tf
+/~loaded spc-page.tf
 
 /def -i pager = \
     /purge -ib" "%; \

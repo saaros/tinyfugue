@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: enumlist.h,v 35000.2 1997/03/27 01:04:24 hawkeye Exp $ */
+/* $Id: enumlist.h,v 35000.3 1997/08/26 07:16:32 hawkeye Exp $ */
 
 /* It may not be easy to read, but it keeps the constants and the array in the
  * same place, so they can't get out of sync.
@@ -16,13 +16,6 @@ bicode(BAMF_OFF,   "off"),
 bicode(BAMF_UNTER, "on"),
 bicode(BAMF_OLD,   "old"),
 bicode(BAMF_COUNT, NULL)
-};
-
-bicode(enum {,      static CONST char *enum_clock[] = {)
-bicode(CLOCK_OFF,   "off"),
-bicode(CLOCK_12,    "12-hour"),
-bicode(CLOCK_24,    "24-hour"),
-bicode(CLOCK_COUNT, NULL)
 };
 
 bicode(enum {,          static CONST char *enum_emul[] = {)
@@ -41,3 +34,13 @@ bicode(MATCH_REGEXP, "regexp"),
 bicode(MATCH_COUNT,  NULL)
 };
 
+bicode(enum {,       CONST char *enum_status[] = {)
+bicode(STAT_MORE,    "more"),
+bicode(STAT_WORLD,   "world"),
+bicode(STAT_READ,    "read"),
+bicode(STAT_ACTIVE,  "active"),
+bicode(STAT_LOGGING, "log"),
+bicode(STAT_MAIL,    "mail"),
+bicode(STAT_CLOCK,   "clock"),
+bicode(STAT_COUNT,   NULL)
+};

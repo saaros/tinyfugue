@@ -1,5 +1,7 @@
 ;; simple grep
 
+/~loaded grep.tf
+
 /def -i _fgrep = \
     /@test (strstr({*}, pattern) >= 0) & echo({*})
 

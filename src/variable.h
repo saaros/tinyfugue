@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: variable.h,v 35004.11 1997/03/27 01:04:55 hawkeye Exp $ */
+/* $Id: variable.h,v 35004.12 1997/08/26 07:16:34 hawkeye Exp $ */
 
 #ifndef VARIABLE_H
 #define VARIABLE_H
@@ -17,6 +17,7 @@
 extern void NDECL(init_variables);
 extern CONST char *FDECL(getnearestvar,(CONST char *name, long *ival));
 extern CONST char *FDECL(getvar,(CONST char *name));
+extern Var *FDECL(ffindglobalvar,(CONST char *name));
 extern Var *FDECL(setnearestvar,(CONST char *name, CONST char *value));
 extern Var *FDECL(setvar,(CONST char *name, CONST char *value, int exportflag));
 extern void FDECL(setivar,(CONST char *name, long value, int exportflag));

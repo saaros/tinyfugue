@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.c,v 35004.23 1997/03/27 01:04:52 hawkeye Exp $ */
+/* $Id: util.c,v 35004.36 1997/10/25 23:38:29 hawkeye Exp $ */
 
 
 /*
@@ -20,8 +20,6 @@
 #ifdef LOCALE_H
 # include LOCALE_H
 #endif
-#include <errno.h>
-extern int errno;
 #include <sys/types.h>
 #include <sys/stat.h>
 #include "port.h"
@@ -81,6 +79,7 @@ void init_util1()
     tf_ctype['\n'] |= IS_STATMETA;
     tf_ctype['\\'] |= IS_STATMETA | IS_STATEND;
     tf_ctype[';']  |= IS_STATEND;
+    tf_ctype['|']  |= IS_STATEND;
 
     tf_ctype['b']  |= IS_KEYSTART;  /* break */
     tf_ctype['d']  |= IS_KEYSTART;  /* do, done */
@@ -397,16 +396,17 @@ int regsubstr(dest, n)
         return -1;
     if (n < -2 || !(re->endp[n >= 0 ? n : 0])) {
         internal_error(__FILE__, __LINE__);
+        eprintf("invalid subexp %d", n);
         return -1;
     }
     if (n == -1) {
-        Stringncat(dest, reginfo->str, re->startp[0] - reginfo->str);
+        Stringfncat(dest, reginfo->str, re->startp[0] - reginfo->str);
         return re->startp[0] - reginfo->str;
     } else if (n == -2) {
         Stringcat(dest, re->endp[0]);
         return strlen(re->endp[0]);
     } else {
-        Stringncat(dest, re->startp[n], re->endp[n] - re->startp[n]);
+        Stringfncat(dest, re->startp[n], re->endp[n] - re->startp[n]);
         return re->endp[n] - re->startp[n];
     }
 }
@@ -417,8 +417,8 @@ void regerror(msg)
     eprintf("regexp error: %s", msg);
 }
 
-/* call with (pat, NULL, 0) to zero-out pat.
- * call with (pat, str, 0) to init pat with some outside string (ie, strdup).
+/* call with (pat, NULL, -1) to zero-out pat.
+ * call with (pat, str, -1) to init pat with some outside string (ie, strdup).
  * call with (pat, str, mflag) to init pat with some outside string.
  */
 int init_pattern(pat, str, mflag)
@@ -426,16 +426,35 @@ int init_pattern(pat, str, mflag)
     CONST char *str;
     int mflag;
 {
+    return init_pattern_str(pat, str) && init_pattern_mflag(pat, mflag);
+}
+
+int init_pattern_str(pat, str)
+    Pattern *pat;
+    CONST char *str;
+{
     pat->re = NULL;
-    pat->str = NULL;
-    if (!str) return 1;
-    if (mflag == MATCH_REGEXP) {
-        if (!(pat->re = regcomp((char*)str))) return 0;
-    } else if (mflag == MATCH_GLOB) {
-        if (!smatch_check(str)) return 0;
-    }
-    pat->str = STRDUP(str);
+    pat->mflag = -1;
+    pat->str = (!str) ? NULL : STRDUP(str);
     return 1;
+}
+
+int init_pattern_mflag(pat, mflag)
+    Pattern *pat;
+    int mflag;
+{
+    if (!pat->str || pat->mflag >= 0) return 1;
+    pat->mflag = mflag;
+    if (mflag == MATCH_GLOB) {
+        if (smatch_check(pat->str)) return 1;
+    } else if (mflag == MATCH_REGEXP) {
+        if ((pat->re = regcomp((char*)pat->str))) return 1;
+    } else if (mflag == MATCH_SIMPLE) {
+        return 1;
+    }
+    FREE(pat->str);
+    pat->str = NULL;
+    return 0;
 }
 
 void free_pattern(pat)
@@ -447,44 +466,44 @@ void free_pattern(pat)
     pat->re  = NULL;
 }
 
-int patmatch(pat, str, mflag)
-    Pattern *pat;
+int patmatch(pat, str)
+    CONST Pattern *pat;
     CONST char *str;
-    int mflag;
 {
     if (!pat->str || !*pat->str) return 1;
-    if (mflag == MATCH_SIMPLE) return !strcmp(pat->str, str);
-    if (mflag == MATCH_GLOB) return !smatch(pat->str, str);
-    if (mflag == MATCH_REGEXP) return regexec(pat->re, (char *)str);
+    if (pat->mflag == MATCH_GLOB)   return !smatch(pat->str, str);
+    if (pat->mflag == MATCH_REGEXP) return regexec(pat->re, (char *)str);
+    if (pat->mflag == MATCH_SIMPLE) return !strcmp(pat->str, str);
+    eprintf("internal error: pat->mflag == %d", pat->mflag);
     return 0;
 }
 
-/* pat is a pointer to a string of the form "[...]..."
- * ch is compared against the character class described by pat.
- * If ch matches, cmatch() returns a pointer to the char after ']' in pat;
+/* class is a pointer to a string of the form "[...]..."
+ * ch is compared against the character class described by class.
+ * If ch matches, cmatch() returns a pointer to the char after ']' in class;
  * otherwise, cmatch() returns NULL.
  */
-static char *cmatch(pat, ch)
-    CONST char *pat;
+static char *cmatch(class, ch)
+    CONST char *class;
     int ch;
 {
     int not;
 
     ch = lcase(ch);
-    if ((not = (*++pat == '^'))) ++pat;
+    if ((not = (*++class == '^'))) ++class;
 
     while (1) {
-        if (*pat == ']') return (char*)(not ? pat + 1 : NULL);
-        if (*pat == '\\') ++pat;
-        if (pat[1] == '-') {
-            char lo = *pat;
-            pat += 2;
-            if (*pat == '\\') ++pat;
-            if (ch >= lcase(lo) && ch <= lcase(*pat)) break;
-        } else if (lcase(*pat) == ch) break;
-        ++pat;
+        if (*class == ']') return (char*)(not ? class + 1 : NULL);
+        if (*class == '\\') ++class;
+        if (class[1] == '-' && class[2] != ']') {
+            char lo = *class;
+            class += 2;
+            if (*class == '\\') ++class;
+            if (ch >= lcase(lo) && ch <= lcase(*class)) break;
+        } else if (lcase(*class) == ch) break;
+        ++class;
     }
-    return not ? 0 : (estrchr(++pat, ']', '\\') + 1);
+    return not ? NULL : (estrchr(++class, ']', '\\') + 1);
 }
 
 /* smatch_check() should be used on pat to check pattern syntax before
@@ -763,30 +782,45 @@ char nextopt(arg, num)
     return opt;
 }
 
-void ch_locale()
+int ch_locale()
 {
 #ifdef HAVE_setlocale
     CONST char *lang;
 
-    lang = getvar("LANG");
-    if (!lang) lang = "";
-    if (!setlocale(LC_ALL, lang))
-        eprintf("Invalid locale \"%s\".", lang);
+#define tf_setlocale(cat, name, value) \
+    do { \
+        lang = setlocale(cat, value); \
+        if (lang) { \
+            eprintf("%s category set to \"%s\" locale.", name, lang); \
+        } else { \
+            eprintf("Invalid locale for %s.", name); \
+        } \
+    } while (0)
+
+    tf_setlocale(LC_CTYPE, "LC_CTYPE", "");
+    tf_setlocale(LC_TIME,  "LC_TIME",  "");
+
+    return 1;
+#else
+    eprintf("Locale support is unavailable.");
+    return 1;
 #endif /* HAVE_setlocale */
 }
 
-void ch_maildelay()
+int ch_maildelay()
 {
     mail_update = 0;
+    return 1;
 }
 
-void ch_mailfile()
+int ch_mailfile()
 {
     if (MAIL) {
         mail_mtime = -2;
         mail_size = -2;
         ch_maildelay();
     }
+    return 1;
 }
 
 void init_util2()
@@ -798,10 +832,12 @@ void init_util2()
 
     if (MAIL) {  /* was imported from environment */
         ch_mailfile();
+#ifdef MAILDIR
     } else if ((name = getvar("LOGNAME")) || (name = getvar("USER"))) {
         Sprintf(Stringinit(path), 0, "%s/%s", MAILDIR, name);
         setvar("MAIL", path->s, FALSE);
         Stringfree(path);
+#endif
     } else {
         eputs("% Warning:  Can't figure out name of mail file.");
     }
@@ -848,30 +884,30 @@ void check_mail()
         stat(expand_filename(MAIL), &buf) < 0)
     {
         /* Checking disabled, or there is no mail file. */
-        if (mail_flag) { mail_flag = 0; status_bar(STAT_MAIL); }
+        if (mail_flag) { mail_flag = 0; update_status_field(NULL, STAT_MAIL); }
         buf.st_mtime = -1;
         buf.st_size = -1;
 
     } else if (buf.st_size == 0) {
         /* There is no mail (the file exists, but is empty). */
-        if (mail_flag) { mail_flag = 0; status_bar(STAT_MAIL); }
+        if (mail_flag) { mail_flag = 0; update_status_field(NULL, STAT_MAIL); }
     } else if (mail_size == -2) {
         /* There is mail, but this is the first time we've checked.
          * There is no way to tell if it has been read yet; assume it has. */
-        if (mail_flag) { mail_flag = 0; status_bar(STAT_MAIL); }
+        if (mail_flag) { mail_flag = 0; update_status_field(NULL, STAT_MAIL); }
         oprintf("%% You have mail in %s", MAIL);  /* not "new", so not a hook */
     } else if (buf.st_mtime > buf.st_atime) {
         /* There is unread mail. */
-        if (!mail_flag) { mail_flag = 1; status_bar(STAT_MAIL); }
+        if (!mail_flag) { mail_flag = 1; update_status_field(NULL, STAT_MAIL); }
         if (buf.st_mtime > mail_mtime)
             do_hook(H_MAIL, "%% You have new mail in %s", "%s", MAIL);
     } else if (mail_size < 0 && buf.st_mtime == buf.st_atime) {
         /* File did not exist last time; assume new mail is unread. */
-        if (!mail_flag) { mail_flag = 1; status_bar(STAT_MAIL); }
+        if (!mail_flag) { mail_flag = 1; update_status_field(NULL, STAT_MAIL); }
         do_hook(H_MAIL, "%% You have new mail in %s", "%s", MAIL);
     } else if (buf.st_mtime > mail_mtime || buf.st_mtime < buf.st_atime) {
         /* Mail has been read. */
-        if (mail_flag) { mail_flag = 0; status_bar(STAT_MAIL); }
+        if (mail_flag) { mail_flag = 0; update_status_field(NULL, STAT_MAIL); }
     } /* else {
         There has been no change since the last check.  Do nothing.
     } */
@@ -946,7 +982,7 @@ char *tftime(fmt, t)
     static smallstr buf;
 
     if (strcmp(fmt, "@") == 0) {
-        sprintf(buf, "%ld", t);
+        sprintf(buf, "%ld", (long)t);
         return buf;
     } else {
 #ifdef HAVE_strftime
@@ -964,7 +1000,8 @@ void internal_error(file, line)
     CONST char *file;
     int line;
 {
-    eprintf("Internal error at %s:%d.  %s", file, line,
+    extern CONST char version[];
+    eprintf("Internal error at %s:%d, %s.  %s", file, line, version,
         "Please report this to the author, and describe what you did.");
 }
 

@@ -6,7 +6,7 @@
 ;;;; General Public License.  See the file "COPYING" for details.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;; $Id: stdlib.tf,v 35000.12 1997/03/27 01:06:32 hawkeye Exp $
+;;; $Id: stdlib.tf,v 35000.20 1997/10/25 23:06:04 hawkeye Exp $
 
 ;;; TF macro library
 
@@ -25,6 +25,25 @@
 ;;; conflicts with the user's namespace; you should not give your own
 ;;; macros names beginning with "~".  Also, you probably don't want to
 ;;; use the -i flag in defining your personal macros, although you can.
+
+
+;;; visual status bar
+
+/set status_fields \
+    @more:8:Br @world @read:6 @active:11 @log:5 @mail:6 insert:6 @clock:5
+
+/set status_int_more \
+     moresize() == 0 ? "" : \
+     moresize() > 9999 ? "MuchMore" : \
+     pad("More", 0, moresize(), 4)
+/set status_int_world   ${world_name}
+/set status_int_read    nread() ? "(Read)" : ""
+/set status_int_active  nactive() ? pad("(Active:", 0, nactive(), 2, ")") : ""
+/set status_int_log     nlog() ? "(Log)" : ""
+/set status_int_mail    nmail() ? "(Mail)" : ""
+/set status_var_insert  insert ? "" : "(Over)"
+/set status_int_clock   ftime("%I:%M", time())
+
 
 ;;; file compression
 
@@ -58,13 +77,14 @@
 /def -i sys = /quote -S -decho \\!!%{*-:}
 
 
-;;; /send [-nW] [-w<world>] text
+;;; /send [-nW] [-T<type>] [-w<world>] text
 /def -i send = \
-    /if (!getopts("nWw:", "")) /break%; /endif%; \
-    /let text=%; \
-    /@test text:={*}%; \
+    /if (!getopts("nWT:w:", "")) /break%; /endif%; \
+    /let text=%{*}%; \
     /if (opt_W) \
         /~send $(/listsockets -s)%; \
+    /elseif (opt_T !~ "") \
+        /~send $(/listsockets -s -T%{opt_T})%; \
     /else \
         /@test send(text, {opt_w-${world_name}}, !opt_n)%; \
     /endif
@@ -88,7 +108,22 @@
 ;; /world [-nlq] [<name>]
 ;; /world [-nlq] <host> <port>
 
-/def -i world = /if /!@fg -s %*%; /then /@connect %*%; /endif
+/def -i world = \
+    /let args=%*%; \
+    /if (args =~ "") \
+        /let args=$(/nth 1 $(/listworlds -s))%; \
+        /if (args =/ "default") \
+            /let args=$(/nth 2 $(/listworlds -s))%; \
+        /endif%; \
+    /endif%; \
+    /if /!@fg -s %args%; \
+    /then /@connect %args%; \
+    /endif
+
+
+;; /purgeworld <name>...
+/def -i purgeworld = /unworld $(/listworlds -s %*)
+
 
 ;; for loop.
 ; syntax:  /for <var> <start> <end> <command>
@@ -148,7 +183,7 @@
         /if (line =/ "/quit" | line =/ "/help*") \
             /echo -e %% Type "/endpaste" to end /paste.%; \
         /endif%; \
-        /send - %{*-:|} %{line}%; \
+        /send - %{*-%{paste_prefix-:|}} %{line}%; \
     /done
 
 ;; other useful stuff.
@@ -188,9 +223,11 @@
 /eval /def -iFp%{maxpri} -agG -hPROXY proxy_hook = /proxy_command
 
 /def -i proxy_command = \
-    telnet ${world_host} ${world_port}%;\
+    telnet ${world_host} ${world_port}%; \
     /trigger -hCONNECT ${world_name}%; \
-    /trigger -hLOGIN ${world_name}
+    /if (${world_character} !~ "") \
+        /trigger -hLOGIN ${world_name}%; \
+    /endif
 
 ;; Heuristics to detect worlds that use prompts, but have not been classified
 ;; as such by the user's /addworld definition.
@@ -359,8 +396,8 @@
     /endif
 
 /def -i require = \
-    /if /@test _loaded_libs !/ "*{%{1}}*"%; /then \
-        /load %{TFLIBDIR}/%{1}%;\
+    /if /@test _loaded_libs !/ "*{%{L}}*"%; /then \
+        /load %{-L} %{TFLIBDIR}/%{L}%;\
     /endif
 
 ;; meta-character quoter
@@ -461,7 +498,7 @@
     /if ( {#} == 0 ) /echo $[rand()]%;\
     /elseif ( {#} == 1 ) /echo $[rand({1})]%;\
     /elseif ( {#} == 2 ) /echo $[rand({1}, {2})]%;\
-    /else /echo -e %% rand: too many arguments%;\
+    /else /echo -e %% %0: too many arguments%;\
     /endif
 
 ; Since the default page key (TAB) is not obvious to a new user, we display
@@ -526,6 +563,7 @@
 /def -i mecho = /~do_prefix m %*
 /def -i qecho = /~do_prefix q %*
 
+
 ;;; Other standard libraries
 
 /def -hload -ag ~gagload
@@ -534,6 +572,13 @@
 /eval /load %TFLIBDIR/color.tf
 /eval /load %TFLIBDIR/changes.tf
 /undef ~gagload
+
+
+;;; constants
+
+/set pi=3.141592654
+/set e=2.718281828
+
 
 ;;; Load local public config file
 

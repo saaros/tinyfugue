@@ -29,6 +29,6 @@
         /undef alias_call_%1%; \
         /undef alias_body_%1%; \
     /else \
-        /echo -e - %% unalias: "%1": no such alias%; \
+        /echo -e - %% %0: "%1": no such alias%; \
     /endif
 

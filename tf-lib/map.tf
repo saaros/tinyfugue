@@ -8,7 +8,7 @@
 ;;; /map <dir>		Add <dir> to remembered path.
 ;;; /mark		Reset path and enable mapping.
 ;;; /path		Display remembered path.
-;;; /return		Move in the opposite direction of the last remembered
+;;; /revert		Move in the opposite direction of the last remembered
 ;;;			  movement, and remove that last movement from the path.
 ;;; /savepath <name>	Create a macro <name> to execute the current path.
 ;;;			  Note: macro is not written to a file.
@@ -31,6 +31,7 @@
             /map %%*%;\
 ;       _map_send catches and sends anything _map_hook caught, unless there was
 ;       a non-fall-thru hook of intermediate priority that blocked it.
+;       note: _map_send is tested by speedwalk.tf.
 	/def -i -mglob -h'send {n|s|e|w|ne|sw|nw|se|u|d}' _map_send = \
             /send %%*
 
@@ -57,19 +58,19 @@
 
 /def -i unpath	= /set path=$(/all_but_last %path)
 
-/def -i return = \
+/def -i revert = \
 	/let dir=$(/last %path)%;\
 	/unpath%;\
 ;       These directions must be listed in complementary pairs.
-	/_return_aux n s e w ne sw nw se u d%;
+	/_revert_aux n s e w ne sw nw se u d%;
 
-/def -i _return_aux = \
+/def -i _revert_aux = \
 	/if ( {#} == 0 ) \
-		/echo -e %% Don't know how to return from "%dir".%;\
+		/echo -e %% Don't know how to revert from "%dir".%;\
 		/set path=%path %dir%;\
 	/elseif ( dir =~ "%1" ) /send - %2%;\
 	/elseif ( dir =~ "%2" ) /send - %1%;\
-	/else   /_return_aux %-2%;\
+	/else   /_revert_aux %-2%;\
 	/endif
 
 

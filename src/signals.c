@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: signals.c,v 35004.14 1997/03/27 01:04:43 hawkeye Exp $ */
+/* $Id: signals.c,v 35004.18 1997/10/22 07:29:35 hawkeye Exp $ */
 
 /* Signal handling, core dumps, job control, and interactive shells */
 
@@ -208,7 +208,6 @@ static RETSIG SIG_IGN(sig)
 static void handle_interrupt()
 {
     int c;
-    extern int no_tty;
 
     if (no_tty)
         die("Interrupt, exiting.", 0);
@@ -265,40 +264,45 @@ static RETSIG core_handler(sig)
         fputs("Abnormal termination - SIGQUIT\n", stderr);
     }
     setsighandler(sig, SIG_DFL);
-    panic_fix_screen();
-    reset_tty();
     if (sig != SIGQUIT) {
+        panic_fix_screen();
         coremsg();
-        fprintf(stderr, "> Abnormal termination - signal %d\n\n", sig);
+        fprintf(stderr, "> Abnormal termination - signal %d\r\n\n", sig);
 #ifdef PLATFORM_UNIX
-        fputs("If you can, follow these instructions to get a stack trace.\n",
+        fputs("If you can, follow these instructions to get a stack trace.\r\n",
             stderr);
-        fputs("If you haven't already done so, in the \"Config\" file set\n",
+        fputs("If you haven't already done so, in the 'Config' file set\r\n",
             stderr);
-        fputs("CCFLAGS='-g' and STRIP='', and run \"make\" again.  Then do:\n",
+        fputs("CCFLAGS='-g' and STRIP='', and rerun 'make'.  Then do:\r\n",
             stderr);
         fputs("\n", stderr);
-        fputs("cd src\n", stderr);
-        fputs("script\n", stderr);
-        fputs("gdb -q tf   ;# if gdb is unavailable, use \"dbx tf\" instead.\n",
+        fputs("cd src\r\n", stderr);
+        fputs("script\r\n", stderr);
+        fputs("gdb -q tf   ;# if gdb is unavailable, use 'dbx tf' instead.\r\n",
             stderr);
-        fputs("run\n", stderr);
-        fputs("(do whatever is needed to reproduce the core dump)\n", stderr);
-        fputs("where\n", stderr);
-        fputs("quit\n", stderr);
-        fputs("exit\n", stderr);
-        fputs("\n", stderr);
-        fputs("and mail the \"typescript\" file to the address above.\n",
+        fputs("run\r\n", stderr);
+        fputs("(do whatever is needed to reproduce the core dump)\r\n", stderr);
+        fputs("where\r\n", stderr);
+        fputs("quit\r\n", stderr);
+        fputs("exit\r\n", stderr);
+        fputs("\r\n", stderr);
+        fputs("and mail the \"typescript\" file to the address above.\r\n",
             stderr);
         fputs("\n", stderr);
 #else
-        fputs("If you can, get a stack trace and send it to the author.\n",
+        fputs("If you can, get a stack trace and send it to the author.\r\n",
             stderr);
 #endif
-        fputs("If you can't or don't get a stack trace, at least describe\n",
+        fputs("If you can't or don't get a stack trace, at least describe\r\n",
             stderr);
-        fputs("what you were doing at the time of this crash.\n", stderr);
+        fputs("what you were doing at the time of this crash.\r\n", stderr);
     }
+
+    fputs("\nPress any key.\r\n", stderr);
+    fflush(stderr);
+    igetchar();
+    reset_tty();
+
     raise(sig);
 }
 
@@ -313,8 +317,8 @@ void crash(internal, fmt, file, line, n)
     if (internal) coremsg();
     fprintf(stderr, "> %s:  %s, line %d\n",
         internal ? "Internal error" : "Aborting", file, line);
-    fprintf(stderr, "> TERM=%s, visual=%ld, emulation=%ld, lp=%ld\n",
-        TERM, visual, emulation, lpflag);
+    fprintf(stderr, "> TERM=%s, visual=%ld, emulation=%ld, lp=%ld, sub=%ld\n",
+        TERM, visual, emulation, lpflag, sub);
     fputs("> ", stderr);
     fprintf(stderr, fmt, n);
     fputs("\n\n", stderr);
@@ -324,9 +328,9 @@ void crash(internal, fmt, file, line, n)
 static void coremsg()
 {
     extern CONST char version[], sysname[];
-    fputs("Please report this message verbatim to hawkeye@tcp.com.\n", stderr);
+    fputs("Please report the following message verbatim to hawkeye@tf.tcp.com.\n", stderr);
     fputs("Also describe what you were doing in tf when this\n", stderr);
-    fputs("occured, and if you can repeat it.\n\n", stderr);
+    fputs("occured, and whether you can repeat it.\n\n", stderr);
     fprintf(stderr, "> %s\n", version);
     if (*sysname) fprintf(stderr, "> %s\n", sysname);
 }

@@ -140,7 +140,7 @@ Last Resort
 
 If you think TF won't compile because of a bug or incompatibility with
 your system (you followed all the instructions, and it still won't
-work), email the author at hawkeye@tcp.com.  Please include the version
+work), email the author at hawkeye@tf.tcp.com.  Please include the version
 number of TF, and describe the type of system on which you are trying
 to compile, or at the very least, the address of the system.  Use
 "uname -a", if available, to get the system type; if not, look at the
@@ -151,7 +151,7 @@ mailing a report.
 
 
   For bug reports, questions, suggestions, etc., I can be reached by
-  email at hawkeye@tcp.com.  Please provide the following information:
+  email at hawkeye@tf.tcp.com.  Please provide the following information:
 
     The version of TF (type "/version" in tf).
     The operating system version (on unix, type "uname -a" in the shell).

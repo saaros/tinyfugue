@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: globals.h,v 35000.7 1997/03/27 01:04:27 hawkeye Exp $ */
+/* $Id: globals.h,v 35000.9 1997/08/26 07:16:33 hawkeye Exp $ */
 
 #ifndef GLOBALS_H
 #define GLOBALS_H
@@ -14,7 +14,7 @@
  * Global user variables *
  *************************/
 
-typedef void NDECL((Toggler));
+typedef int NDECL((Toggler));
 
 typedef struct Var {
     CONST char *name;
@@ -25,6 +25,7 @@ typedef struct Var {
     long ival;			/* integer value */
     Toggler *func;		/* called when ival changes */
     struct ListEntry *node;	/* backpointer to node in list */
+    GENERIC *status;		/* status line field to update on change */
 } Var;
 
 
@@ -81,6 +82,7 @@ enum Vars {
 #define max_iter	getintvar(VAR_max_iter)
 #define max_recur	getintvar(VAR_max_recur)
 #define mecho		getintvar(VAR_mecho)
+#define meta_esc	getintvar(VAR_meta_esc)
 #define more		getintvar(VAR_more)
 #define mprefix		getstrvar(VAR_mprefix)
 #define oldslash	getintvar(VAR_oldslash)
@@ -99,6 +101,7 @@ enum Vars {
 #define shpause		getintvar(VAR_shpause)
 #define snarf		getintvar(VAR_snarf)
 #define sockmload	getintvar(VAR_sockmload)
+#define status_fields	getstrvar(VAR_status_fields)
 #define sub		getintvar(VAR_sub)
 #define tabsize		getintvar(VAR_tabsize)
 #define telopt		getintvar(VAR_telopt)

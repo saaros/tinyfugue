@@ -9,7 +9,7 @@
 ;;;; enabled, typing "ne3ses" will send "n", "e", "s", "s", "s", "e", "s".
 
 
-/~loaded speedwalk.tf
+/~loaded spedwalk.tf
 
 /eval \
     /def -i speedwalk = \
@@ -18,8 +18,8 @@
             /undef ~speedwalk%%;\
         /else \
             /echo -e %%% Speedwalk enabled.%%;\
-;           /def -iFp%{maxpri} -hsend ~speedwalk = \
-            /def -iFp%{maxpri} -mregexp -h'send ^[nsewud0-9]+$$$' ~speedwalk = \
+;           NOT fallthru, so _map_send in map.tf won't catch it too.
+            /def -ip%{maxpri} -mregexp -h'send ^[nsewud0-9]+$$$' ~speedwalk = \
                 /~do_speedwalk %%%*%%;\
         /endif
 
@@ -50,4 +50,4 @@
     /if /ismacro _map_hook%; /then \
         /_map_hook %*%;\
     /endif%;\
-    /send - %*
+    /send %*

@@ -5,7 +5,7 @@
 
 /def rfact = \
     /if ( {1} < 0 ) \
-        /echo -e %% factorial: negative argument%; \
+        /echo -e %% %0: negative argument%; \
     /elseif ( {1} == 0 ) \
         /echo 1%; \
     /else \
@@ -16,7 +16,7 @@
 
 /def ifact = \
     /if ( {1} < 0 ) \
-        /echo -e %% factorial: negative argument%; \
+        /echo -e %% %0: negative argument%; \
     /else \
         /let n=%1%; \
         /let result=1%; \

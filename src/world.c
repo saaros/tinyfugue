@@ -5,19 +5,12 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: world.c,v 35004.16 1997/03/27 01:04:57 hawkeye Exp $ */
+/* $Id: world.c,v 35004.23 1997/10/18 21:55:53 hawkeye Exp $ */
 
 
 /********************************************************
  * Fugue world routines.                                *
  ********************************************************/
-
-#include <sys/types.h>
-#include <sys/stat.h>
-#ifndef S_IROTH
-# define S_IROTH 00004
-# define S_IRGRP 00040
-#endif
 
 #include "config.h"
 #include "port.h"
@@ -32,10 +25,14 @@
 #include "commands.h"
 #include "socket.h"
 
+#define LW_HIDE		001
+#define LW_UNNAMED	002
+#define LW_SHORT	004
+
 extern int restrict;
 
-static int  FDECL(list_worlds,(CONST char *pattern, struct TFILE *file,
-    int complete, int shortflag));
+static int  FDECL(list_worlds,(CONST Pattern *name, CONST Pattern *type,
+    struct TFILE *file, int flags));
 static void FDECL(free_fields,(World *w));
 static void FDECL(free_world,(World *w));
 
@@ -64,6 +61,18 @@ static void free_world(w)
     }
 #endif
     FREE(w);
+}
+
+void free_worlds()
+{
+    World *next;
+
+    if (defaultworld)
+        free_world(defaultworld);
+    for ( ; hworld; hworld = next) {
+        next = hworld->next;
+        free_world(hworld);
+    }
 }
 
 /* A NULL name means unnamed; world will be given a temp name. */
@@ -119,14 +128,14 @@ World *new_world(name, character, pass, host, port, mfile, type, flags)
     result->flags     |= flags;
 
 #ifdef PLATFORM_UNIX
+# ifndef __CYGWIN32__
     if (*pass && loadfile && (loadfile->mode & (S_IROTH | S_IRGRP)) &&
         !loadfile->warned)
     {
-        eprintf("Warning: %s  %s \"chmod 600 '%s'\".",
-            "file contains passwords readable by others.",
-            "It can be fixed with the shell command", loadfile->name);
+        eprintf("Warning: file contains passwords and is readable by others.");
         loadfile->warned++;
     }
+# endif /* __CYGWIN32__ */
 #endif /* PLATFORM_UNIX */
 
     if (is_redef)
@@ -221,74 +230,75 @@ int handle_unworld_command(args)
     char *args;
 {
     World *w;
+    int result = 0;
+    CONST char *name;
 
-    if (defaultworld && cstrcmp(args, "default") == 0) {
-        free_world(defaultworld);
-        defaultworld = NULL;
-        return 1;
-    } else if (*args && (w = find_world(args))) {
-        return nuke_world(w);
+    while (*(name = stringarg(&args, NULL))) {
+        if (defaultworld && cstrcmp(name, "default") == 0) {
+            free_world(defaultworld);
+            defaultworld = NULL;
+        } else if ((w = find_world(name))) {
+            result += nuke_world(w);
+        } else {
+            eprintf("No world %s", name);
+        }
     }
-    eprintf("No world %s", args);
-    return 0;
-}
-
-int handle_purgeworld_command(args)
-    char *args;
-{
-    World *world, *next;
-    Pattern pat;
-
-    if (!*args || !init_pattern(&pat, args, matching)) return 0;
-    if (defaultworld && patmatch(&pat, "default", matching)) {
-        free_world(defaultworld);
-        defaultworld = NULL;
-    }
-    for (world = hworld; world; world = next) {
-        next = world->next;
-        if (patmatch(&pat, world->name, matching)) nuke_world(world);
-    }
-    free_pattern(&pat);
-    return 1;
+    return result;
 }
 
 
 int handle_listworlds_command(args)
     char *args;
 {
-    int complete = FALSE, shortflag = FALSE;
+    int flags = LW_HIDE, mflag = matching, error = 0, result;
     char c;
+    extern CONST char *enum_match[];
+    Pattern type, name;
 
-    startopt(args, "cs");
+    init_pattern_str(&type, NULL);
+    init_pattern_str(&name, NULL);
+    startopt(args, "T:uscm:");
     while ((c = nextopt(&args, NULL))) {
         switch (c) {
-            case 'c':  complete = TRUE; break;
-            case 's':  shortflag = TRUE; break;
+            case 'T':  free_pattern(&type);
+                       error += !init_pattern_str(&type, args);
+                       break;
+            case 'u':  flags |= LW_UNNAMED; break;
+            case 's':  flags |= LW_SHORT; break;
+            case 'c':  flags &= ~LW_HIDE; break;
+            case 'm':  error = ((mflag = enum2int(args, enum_match, "-m")) < 0);
+                       break;
             default:   return 0;
         }
     }
-    return list_worlds(*args ? args : NULL, NULL, complete, shortflag);
+    if (error) return 0;
+    init_pattern_mflag(&type, mflag);
+    if (*args) error += !init_pattern(&name, args, mflag);
+    if (error) return 0;
+    result = list_worlds(*args?&name:NULL, type.str?&type:NULL, NULL, flags);
+    free_pattern(&name);
+    free_pattern(&type);
+    return result;
 }
 
-static int list_worlds(args, file, complete, shortflag)
-    CONST char *args;
+static int list_worlds(name, type, file, flags)
+    CONST Pattern *name, *type;
     TFILE *file;
-    int complete, shortflag;
+    int flags;
 {
     World *p;
     int first = 1, count = 0;
-    Pattern pat;
     STATIC_BUFFER(buf);
 
-    if (!init_pattern(&pat, args, matching)) return 0;
     Stringterm(buf, 0);
     for (p = defaultworld; p || first; p = first ? hworld : p->next, first=0)
     {
-        if (!p || p->flags & WORLD_TEMP) continue;
-        if (args && !patmatch(&pat, p->name, matching)) continue;
+        if (!p || (!(flags & LW_UNNAMED) && p->flags & WORLD_TEMP)) continue;
+        if (name && !patmatch(name, p->name)) continue;
+        if (type && !patmatch(type, p->type)) continue;
         count++;
-        if (shortflag) {
-            Sprintf(buf, SP_APPEND, "%s ", p->name);
+        if (flags & LW_SHORT) {
+            tfputs(p->name, file ? file : tfout);
         } else {
             Stringcpy(buf, "/addworld ");
             if (*p->type) Sprintf(buf, SP_APPEND, "-T'%q' ", '\'', p->type);
@@ -296,17 +306,13 @@ static int list_worlds(args, file, complete, shortflag)
             Sprintf(buf, SP_APPEND, "%s ", p->name);
             if (*p->character) {
                 Sprintf(buf, SP_APPEND, "%s ", p->character);
-                if (complete) Sprintf(buf, SP_APPEND, "%s ", p->pass);
+                if (!(flags & LW_HIDE)) Sprintf(buf, SP_APPEND, "%s ", p->pass);
             }
             if (*p->host) Sprintf(buf, SP_APPEND, "%s %s ", p->host, p->port);
             if (*p->mfile) Stringcat(buf, p->mfile);
             tfputs(buf->s, file ? file : tfout);
         }
     }
-    if (shortflag) {
-        tfputs(buf->s, file ? file : tfout);
-    }
-    free_pattern(&pat);
     return count;
 }
 
@@ -337,7 +343,7 @@ int handle_saveworld_command(args)
     }
     oprintf("%% %sing world definitions to %s", *mode == 'a' ? "Append" :
         "Writ", file->name);
-    result = list_worlds(NULL, file, TRUE, FALSE);
+    result = list_worlds(NULL, NULL, file, 0);
     tfclose(file);
     return result;
 }

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.c,v 35004.30 1997/04/02 23:50:16 hawkeye Exp $ */
+/* $Id: output.c,v 35004.46 1997/09/16 07:39:20 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -14,6 +14,10 @@
  * Written by Ken Keys (Hawkeye).
  * Handles all screen-related phenomena.
  *****************************************************************/
+
+#define TERM_vt100	1
+#define TERM_vt220	2
+#define TERM_ansi	3
 
 #include "config.h"
 #include "port.h"
@@ -27,6 +31,7 @@
 #include "search.h"
 #include "tty.h"	/* init_tty(), get_window_wize() */
 #include "variable.h"
+#include "expand.h"	/* evalexpr() */
 
 #ifdef EMXANSI
 # define INCL_VIO
@@ -34,12 +39,9 @@
 #endif
 
 /* Terminal codes and capabilities.
- * The codes below are for vt100.  Some additional vt220 and ANSI codes not
- *   shared by vt100 are also given in #if 0 blocks.
- * To hardcode for a different terminal, edit the codes below.
  * Visual mode requires at least clear_screen and cursor_address.  The other
  *   codes are good to have, but are not strictly necessary.
- * Scrolling in visual mode requires change_scroll_region (preferred), or
+ * Scrolling in visual mode requires set_scroll_region (preferred), or
  *   insert_line and delete_line (may appear jumpy), or EMXANSI.
  * Fast insert in visual mode requires insert_start and insert_end (preferred),
  *   or insert_char.
@@ -54,43 +56,56 @@
 
 #ifdef HARDCODE
 # define origin 1      /* top left corner is (1,1) */
-# define TERMCODE(id, code)   static CONST char *(id) = (code);
+# if HARDCODE == TERM_vt100
+#  define TERMCODE(id, vt100, vt220, ansi)   static CONST char *(id) = (vt100);
+# else
+#  if HARDCODE == TERM_vt220
+#   define TERMCODE(id, vt100, vt220, ansi)   static CONST char *(id) = (vt220);
+#  else
+#   if HARDCODE == TERM_ansi
+#    define TERMCODE(id, vt100, vt220, ansi)   static CONST char *(id) = (ansi);
+#   endif
+#  endif
+# endif
 #else
 # define origin 0      /* top left corner is (0,0) */
-# define TERMCODE(id, code)   static CONST char *(id) = NULL;
+# define TERMCODE(id, vt100, vt220, ansi)   static CONST char *(id) = NULL;
 #endif
 
-TERMCODE (clear_screen,		"\033[H\033[J")
-TERMCODE (clear_to_eos,		"\033[J")
-TERMCODE (clear_to_eol,		"\033[K")
-TERMCODE (cursor_address,	"\033[%d;%dH")  /* (in printf format) */
-TERMCODE (enter_ca_mode,	NULL)           /* enable cursor motion mode */
-TERMCODE (exit_ca_mode,		NULL)           /* disable cursor motion mode */
-TERMCODE (change_scroll_region,	"\033[%d;%dr")  /* (in printf format) */
-#if 0
-TERMCODE (insert_line,		"\033[L")	/* vt220, ansi */
-TERMCODE (delete_line,		"\033[M")	/* vt220, ansi */
-TERMCODE (delete_char,		"\033[P")	/* vt220, ansi */
-TERMCODE (insert_char,		"\033[@")	/* vt220, ansi */
-TERMCODE (insert_start,		"\033[4h")	/* vt220 */
-TERMCODE (insert_end,		"\033[4l")	/* vt220 */
+/*				vt100		vt220		ansi */
+/*				-----		-----		---- */
+#ifdef __CYGWIN32__  /* "\033[J" is broken in CYGWIN32 b18. */
+TERMCODE (clear_screen,		NULL,		NULL,		NULL)
+TERMCODE (clear_to_eos,		NULL,		NULL,		NULL)
 #else
-TERMCODE (insert_line,		NULL)		/* vt100 */
-TERMCODE (delete_line,		NULL)		/* vt100 */
-TERMCODE (delete_char,		NULL)		/* vt100 */
-TERMCODE (insert_char,		NULL)		/* vt100 */
-TERMCODE (insert_start,		NULL)		/* vt100, ansi */
-TERMCODE (insert_end,		NULL)		/* vt100, ansi */
+TERMCODE (clear_screen,		"\033[H\033[J", "\033[H\033[J", "\033[H\033[J")
+TERMCODE (clear_to_eos,		"\033[J",	"\033[J",	"\033[J")
 #endif
-TERMCODE (underline,		"\033[4m")
-TERMCODE (reverse,		"\033[7m")
-TERMCODE (flash,		"\033[5m")
-TERMCODE (dim,			NULL)
-TERMCODE (bold,			"\033[1m")
-TERMCODE (attr_off,		"\033[m")  /* turn off all attrs */
-TERMCODE (underline_off,	NULL)      /* only used if !attr_off */
-TERMCODE (standout,		NULL)      /* only used if !bold */
-TERMCODE (standout_off,		NULL)      /* only used if !bold */
+TERMCODE (clear_to_eol,		"\033[K",	"\033[K",	"\033[K")
+TERMCODE (cursor_address,	"\033[%d;%dH",	"\033[%d;%dH",	"\033[%d;%dH")
+TERMCODE (enter_ca_mode,	NULL,		NULL,		NULL)
+TERMCODE (exit_ca_mode,		NULL,		NULL,		NULL)
+TERMCODE (set_scroll_region,	"\033[%d;%dr",	"\033[%d;%dr",	NULL)
+TERMCODE (insert_line,		NULL,		"\033[L",	"\033[L")
+TERMCODE (delete_line,		NULL,		"\033[M",	"\033[M")
+TERMCODE (delete_char,		NULL,		"\033[P",	"\033[P")
+#ifdef __CYGWIN32__  /* "\033[@" is broken in CYGWIN32 b18. */
+TERMCODE (insert_char,		NULL,		NULL,		NULL)
+#else
+TERMCODE (insert_char,		NULL,		"\033[@",	"\033[@")
+#endif
+TERMCODE (insert_start,		NULL,		NULL,		"\033[4h")
+TERMCODE (insert_end,		NULL,		NULL,		"\033[4l")
+TERMCODE (underline,		"\033[4m",	"\033[4m",	"\033[4m")
+TERMCODE (reverse,		"\033[7m",	"\033[7m",	"\033[7m")
+TERMCODE (flash,		"\033[5m",	"\033[5m",	"\033[5m")
+TERMCODE (dim,			NULL,		NULL,		NULL)
+TERMCODE (bold,			"\033[1m",	"\033[1m",	"\033[1m")
+TERMCODE (attr_off,		"\033[m",	"\033[m",	"\033[m")
+/* these are only used if others are missing */
+TERMCODE (underline_off,	NULL,		NULL,		NULL)
+TERMCODE (standout,		NULL,		NULL,		NULL)
+TERMCODE (standout_off,		NULL,		NULL,		NULL)
 
 #ifdef HARDCODE
 # define key_ku "\033[A"
@@ -107,6 +122,16 @@ TERMCODE (standout_off,		NULL)      /* only used if !bold */
 /* end HARDCODE section */
 
 
+typedef struct status_field {
+    char *name;
+    int internal;
+    Var *var;
+    int width;
+    int rightjust;
+    int column;
+    attr_t attrs;
+} StatusField;
+
 static void  NDECL(init_term);
 static int   FDECL(fbufputc,(int c));
 static void  NDECL(bufflush);
@@ -122,10 +147,13 @@ static void  FDECL(scroll_input,(int n));
 static void  FDECL(ictrl_put,(CONST char *s, int n));
 static int   FDECL(ioutputs,(CONST char *str, int len));
 static void  FDECL(ioutall,(int kpos));
+static void  FDECL(format_status_field,(StatusField *field));
 static void  FDECL(attributes_off,(attr_t attrs));
 static void  FDECL(attributes_on,(attr_t attrs));
 static void  FDECL(color_on,(long color));
 static void  FDECL(hwrite,(Aline *line, int offset));
+static void  FDECL(set_attr,(Aline *aline, char *dest, attr_t *starting,
+             attr_t *current));
 static int   NDECL(check_more);
 static int   FDECL(clear_more,(int new));
 static Aline *NDECL(wrapline);
@@ -166,10 +194,13 @@ static void  NDECL(output_scroll);
 
 #define Wrap (wrapsize ? wrapsize : columns)
 #define more_attrs (F_BOLD | F_REVERSE)
-#define morewait 20
+#define moremin 1
+#define morewait 50
 
 extern int keyboard_pos;            /* position of logical cursor in keybuf */
 extern Stringp keybuf;              /* input buffer */
+extern TIME_T clock_update;         /* when clock needs to be updated */
+extern CONST char *enum_status[];
 
 STATIC_BUFFER(outbuf);              /* output buffer */
 static int top_margin = -1, bottom_margin = -1;	/* scroll region */
@@ -185,9 +216,13 @@ static attr_t have_attr = 0;        /* available attributes */
 static Aline *currentline = NULL;   /* current logical line for printing */
 static int wrap_offset;             /* physical offset into currentline */
 static int screen_mode = -1;        /* -1=unset, 0=nonvisual, 1=visual */
+static int output_disabled = 1;     /* is it safe to oflush()? */
 static int can_have_visual = FALSE;
+static List status_field_list[1];
+static int status_left = 0, status_right = 0;  /* size of status line pieces */
+
 #ifndef EMXANSI
-# define has_scroll_region (change_scroll_region != NULL)
+# define has_scroll_region (set_scroll_region != NULL)
 #else
 # define has_scroll_region (1)
 #endif
@@ -252,12 +287,10 @@ static Keycode keycodes[] = {  /* this list is sorted! */
 int lines   = DEFAULT_LINES;
 int columns = DEFAULT_COLUMNS;
 int need_refresh = 0;               /* does input need refresh? */
+int need_more_refresh = 0;          /* does visual more prompt need refresh? */
 int sockecho = TRUE;                /* echo input? */
 unsigned int tfscreen_size;         /* # of lines in tfscreen */
 int paused = FALSE;                 /* output paused */
-TFILE *tfscreen;                    /* text waiting to be displayed */
-TFILE *tfout;                       /* pointer to current output queue */
-TFILE *tferr;                       /* pointer to current error queue */
 
 #ifdef TERMCAP
 extern int   FDECL(tgetent,(char *buf, CONST char *name));
@@ -312,21 +345,14 @@ void bell(n)
 
 /********************/
 
-void change_term()
+int change_term()
 {
     int old = visual;
     setvar("visual", "0", FALSE);
     init_term();
     if (old) setvar("visual", "1", FALSE);
     rebind_key_macros();
-}
-
-void init_tfscreen()
-{
-    tfout = tferr = tfscreen = tfopen(NULL, "q");
-    tfscreen_size = 0;
-    (moreprompt = new_aline("--More--", more_attrs))->links++;
-    prompt = fgprompt();
+    return 1;
 }
 
 /* Initialize output data. */
@@ -334,6 +360,7 @@ void init_output()
 {
     CONST char *str;
 
+    init_list(status_field_list);
     init_tty();
 
     /* Window size: clear defaults, then try:
@@ -344,9 +371,13 @@ void init_output()
     if (lines <= 0 || columns <= 0) get_window_size();
     ystatus = lines - isize;
 
+    prompt = fgprompt();
+    (moreprompt = new_aline("--More--", more_attrs))->links++;
+
     init_term();
     ch_hilite();
     setup_screen(-1);
+    output_disabled = 0;
 }
 
 /********************
@@ -373,7 +404,7 @@ static void init_term()
     have_attr = 0;
     can_have_visual = FALSE;
     clear_screen = clear_to_eos = clear_to_eol = NULL;
-    change_scroll_region = insert_line = delete_line = NULL;
+    set_scroll_region = insert_line = delete_line = NULL;
     delete_char = insert_char = insert_start = insert_end = NULL;
     enter_ca_mode = exit_ca_mode = cursor_address = NULL;
     standout = underline = reverse = flash = dim = bold = NULL;
@@ -393,7 +424,7 @@ static void init_term()
         enter_ca_mode        = tgetstr("ti", &area);
         exit_ca_mode         = tgetstr("te", &area);
         cursor_address       = tgetstr("cm", &area);
-        change_scroll_region = tgetstr("cs", &area);
+        set_scroll_region    = tgetstr("cs", &area);
         delete_char          = tgetstr("dc", &area);
         insert_char          = tgetstr("ic", &area);
         insert_start         = tgetstr("im", &area);
@@ -431,8 +462,8 @@ static void init_term()
             /* Don't use secondary xterm buffer. */
             enter_ca_mode = exit_ca_mode = NULL;
             /* Many old xterm termcaps mistakenly omit "cs". */
-            if (!change_scroll_region && strcmp(TERM, "xterm") == 0)
-                change_scroll_region = "\033[%i%d;%dr";
+            if (!set_scroll_region && strcmp(TERM, "xterm") == 0)
+                set_scroll_region = "\033[%i%d;%dr";
         }
     }
 
@@ -454,7 +485,7 @@ static void init_term()
     setivar("wrapsize", columns - 1, FALSE);
     outcount = lines;
     ix = 1;
-    can_have_visual = clear_screen && cursor_address;
+    can_have_visual = (clear_screen || clear_to_eol) && cursor_address;
     setivar("scroll", has_scroll_region||(insert_line&&delete_line), FALSE);
     have_attr = F_BELL;
     if (underline) have_attr |= F_UNDERLINE;
@@ -472,8 +503,8 @@ static void setscroll(top,bottom)
 #ifdef EMXANSI
     bufflush();
 #else
-    if (!change_scroll_region) return;
-    tpgoto(change_scroll_region, (bottom), (top));
+    if (!set_scroll_region) return;
+    tpgoto(set_scroll_region, (bottom), (top));
     cx = cy = -1;   /* cursor position is undefined */
 #endif
     bottom_margin = bottom;
@@ -491,8 +522,11 @@ static void xy(x,y)
         bufputc('\r');
     } else if (x == 1 && y > cy && y < cy + 5 &&       /* optimization... */
       cy >= top_margin && y <= bottom_margin) {        /* if '\n' is safe */
-        if (cx != 1) bufputc('\r');
+        /* Some broken emulators (including CYGWIN32 b18) lose
+         * attributes when \r\n is printed, so we print \n\r instead.
+         */
         bufputnc('\n', y - cy);
+        if (cx != 1) bufputc('\r');
     } else if (y == cy && x < cx && x > cx - 7) {      /* optimization */
         bufputnc('\010', cx - x);
     } else {                                           /* direct movement */
@@ -503,7 +537,12 @@ static void xy(x,y)
 
 static void clr()
 {
-    tp(clear_screen);
+    if (clear_screen)
+        tp(clear_screen);
+    else {
+        clear_lines(1, lines);
+        xy(1, 1);
+    }
     cx = 1;  cy = 1;
 }
 
@@ -550,6 +589,7 @@ void setup_screen(clearlines)
     top_margin = 1;
     bottom_margin = lines;
     screen_mode = visual;
+    output_disabled++;
 
     if (!visual) {
         if (paused) prompt = moreprompt;
@@ -557,7 +597,7 @@ void setup_screen(clearlines)
 #ifdef SCREEN
     } else {
         prompt = fgprompt();
-        if (isize > lines - 3) setivar("isize", lines - 3, FALSE);
+        if (isize > lines - 2) setivar("isize", lines - 2, FALSE);
         ystatus = lines - isize;
         outcount = ystatus - 1;
         if (enter_ca_mode) tp(enter_ca_mode);
@@ -569,7 +609,7 @@ void setup_screen(clearlines)
             if (clearlines) clr();
             if (scroll) setivar("scroll", 0, FALSE);
         }
-        status_bar(STAT_ALL);
+        update_status_line();
         ix = iendx = oy = 1;
         iy = iendy = istarty = ystatus + 1;
         ipos();
@@ -577,6 +617,7 @@ void setup_screen(clearlines)
     }
 
     set_refresh_pending(REF_LOGICAL);
+    output_disabled--;
 }
 
 int redraw()
@@ -590,98 +631,251 @@ int redraw()
     return 1;
 }
 
-void status_bar(seg)
-    int seg;
+int ch_status_fields()
 {
-    extern int mail_flag;           /* should mail flag on status bar be lit? */
-    extern int active_count;        /* number of active sockets */
-    extern int read_depth;          /* number of nested read()s */
-#ifndef NO_HISTORY
-    extern int log_count;           /* number of open log files */
-#else
-    #define log_count 0
-#endif
+    char *name, *s, *t;
+    int width, column, zerofound = 0;
+    STATIC_BUFFER(scratch);
+    ListEntry *last = status_field_list->tail;
+    StatusField *field;
+    ListEntry *node;
+
+    /* validate and insert new fields */
+    Stringcpy(scratch, status_fields);
+    s = scratch->s;
+    width = 0;
+    while (1) {
+        field = NULL;
+        name = stringarg(&s, NULL);
+        if (!*name) break;
+        field = XMALLOC(sizeof(*field));
+        field->attrs = 0;
+        if ((t = strchr(name, ':'))) {
+            *t++ = '\0';
+            field->width = atoi(t);
+            while (isdigit(*t)) t++;
+            if (*t == ':') {
+                t++;
+                if ((field->attrs = parse_attrs(&t)) < 0)
+                    goto ch_status_fields_error;
+            }
+            if (*t) {
+                eprintf("Field %s followed by garbage: %s", name, t);
+                goto ch_status_fields_error;
+            }
+        } else {
+            field->width = 0;
+        }
+        if ((field->rightjust = field->width < 0))
+            field->width = -field->width;
+        if (field->width == 0) {
+            if (zerofound) {
+                eprintf("Only one zero width field is allowed.");
+                goto ch_status_fields_error;
+            }
+            zerofound++;
+        } else {
+            width += field->width + 1;
+        }
+        if (*name == '@') {
+            name++;
+            field->var = NULL;
+            field->internal = enum2int(name, enum_status, "status_fields");
+            if (field->internal < 0) {
+                goto ch_status_fields_error;
+            }
+        } else {
+            field->internal = -1;
+            field->var = ffindglobalvar(name);
+            if (!field->var) {
+                eprintf("%s: no such global variable, ignored.", name);
+                continue;
+            }
+        }
+        field->name = STRDUP(name);
+        inlist(field, status_field_list, status_field_list->tail);
+    }
+    if (width > columns) {
+        eprintf("status width %d would be larger than screen", width);
+        goto ch_status_fields_error;
+    }
+
+    /* delete old fields and clean up referents */
+    for (node = last; node; node = last) {
+        last = node->prev;
+        field = (StatusField*)unlist(node, status_field_list);
+        if (field->var)
+            field->var->status = NULL;
+        FREE(field->name);
+        FREE(field);
+    }
+
+    /* update new fields */
+    for (node = status_field_list->head; node; node = node->next) {
+        field = (StatusField*)node->datum;
+        if (field->var)
+            field->var->status = field;
+    }
+
+    clock_update = -1;
+    status_left = status_right = 0;
+    column = 0;
+    for (node = status_field_list->head; node; node = node->next) {
+        field = (StatusField*)node->datum;
+        status_left = field->column = column;
+        if (field->width == 0) break;
+        column += field->width + 1;
+    }
+    column = 0;
+    for (node = status_field_list->tail; node; node = node->prev) {
+        field = (StatusField*)node->datum;
+        if (field->width == 0) break;
+        field->column = column - field->width;
+        status_right = -(column -= (field->width + 1));
+    }
+
+    update_status_line();
+    return 1;
+
+ch_status_fields_error:
+    if (field)
+        FREE(field);
+    /* delete new fields */
+    if (last) {
+        for (node = last->next; node; node = last) {
+            last = node->next;
+            field = (StatusField*)unlist(node, status_field_list);
+            FREE(field->name);
+            FREE(field);
+        }
+    }
+    return 0;
+}
+
+static void format_status_field(field)
+    StatusField *field;
+{
+    STATIC_BUFFER(varname);
+    STATIC_BUFFER(scratch);
+    CONST char *expression, *old_command;
+    extern CONST char *current_command;
+    int width;
+
+    output_disabled++;
+    Stringterm(scratch, 0);
+    Stringcpy(varname, "status_");
+    Stringcat(varname, field->var ? "var_" : "int_");
+    Stringcat(varname, field->name);
+    expression = getnearestvar(varname->s, NULL);
+    if (expression) {
+        old_command = current_command;
+        current_command = varname->s;
+        evalexpr(scratch, expression);
+        current_command = old_command;
+    } else if (field->var) {
+        evalexpr(scratch, field->name);
+    }
+
+    width = field->width ? field->width :
+        columns - status_right - status_left;
+    if (width > columns - (cx - 1))
+        width = columns - (cx - 1);
+    if (scratch->len > width)
+        Stringterm(scratch, width);
+
+    if (field->rightjust && scratch->len < width) {
+        bufputnc('_', width - scratch->len);  cx += width - scratch->len;
+    }
+    if (field->attrs) attributes_on(field->attrs);
+    bufputs(scratch->s);  cx += scratch->len;
+    if (field->attrs) attributes_off(field->attrs);
+    if (!field->rightjust && scratch->len < width) {
+        bufputnc('_', width - scratch->len);  cx += width - scratch->len;
+    }
+
+    if (field->internal == STAT_MORE)
+        need_more_refresh = 0;
+    if (field->internal == STAT_CLOCK) {
+        clock_update = time(NULL);
+        clock_update += 60 - (localtime(&clock_update))->tm_sec;
+    }
+
+    if (field->var && !field->var->status)   /* var was unset */
+        field->var = NULL;
+    output_disabled--;
+}
+
+void update_status_field(var, internal)
+    Var *var;
+    int internal;
+{
+    ListEntry *node;
+    StatusField *field;
 
     if (screen_mode < 1) return;
-    if (!(seg & STAT_MORE))
-        oflush();  /* make sure output window is up to date first */
 
-    if (seg & STAT_MORE) {
-        xy(1, ystatus);
-        if (paused) {
-            attributes_on(more_attrs);
-            if (moresize < morewait) bufputs("--More--");
-            else if (moresize > 9999) bufputs("MuchMore");
-            else bufprintf1("More%4u", moresize);
-            attributes_off(more_attrs);
-        } else bufputs("________");
-        bufputc('_');  cx += 9;
-    }
-    if (seg & STAT_WORLD) {
-        CONST char *name;
-        int hole, max;
-        xy(10, ystatus);
-        hole = max = columns - 47 - 10 - 1;
-        if ((name = fgname())) {
-            bufputns(name, max);
-            if ((hole -= strlen(name)) < 0) hole = 0;
-        }
-        bufputnc('_', hole + 1);
-        cx += max + 1;
-    }
-    if (seg & STAT_READ) {
-        xy(columns - 47, ystatus);
-        bufputs(read_depth ? "(Read)_" : "_______");  cx += 7;
-    }
-    if (seg & STAT_ACTIVE) {
-        xy(columns - 40, ystatus);
-        if (active_count) bufprintf1("(Active:%2d)_", active_count);
-        else bufputs("____________");
-        cx += 12;
-    }
-    if (seg & STAT_LOGGING) {
-        xy(columns - 28, ystatus);
-        bufputs(log_count ? "(Log)_" : "______");  cx += 6;
-    }
-    if (seg & STAT_MAIL) {
-        xy(columns - 22, ystatus);
-        bufputs(mail_flag ? "(Mail)_" : "_______");  cx += 7;
-    }
-    if (seg & STAT_INSERT) {
-        xy(columns - 15, ystatus);
-        bufputs(insert ? "___________" : "(Typeover)_");  cx += 11;
-    }
-    if (seg & STAT_CLOCK) {
-        xy(columns - 4, ystatus);
-#ifdef HAVE_strftime
-        if (clock_flag) {
-            extern TIME_T clock_update;
-            bufputs(tftime(clock_flag == CLOCK_24 ? "%H:%M" : "%I:%M",
-                time(&clock_update)));
-            clock_update += 60 - (localtime(&clock_update))->tm_sec;
-        } else
-#endif
-            bufputs("_____");
-        cx += 5;
+    for (node = status_field_list->head; node; node = node->next) {
+        field = (StatusField*)node->datum;
+        if (var && field->var != var) continue;
+        if (internal >= 0 && field->internal != internal) continue;
+
+        xy((field->column < 0 ? columns : 0) + field->column + 1,  ystatus);
+        format_status_field(field);
     }
 
     bufflush();
     set_refresh_pending(REF_PHYSICAL);
 }
 
-void tog_insert()
+void update_status_line()
 {
-    status_bar(STAT_INSERT);
+    ListEntry *node;
+    StatusField *field;
+    int right = 0;
+
+    if (screen_mode < 1) return;
+
+    xy(1, ystatus);
+
+    for (node = status_field_list->head; node; node = node->next) {
+        field = (StatusField*)node->datum;
+
+        if (right) {
+            bufputc('_'); cx++;
+            if (cx - 1 >= columns) break;
+        }
+
+        format_status_field(field);
+        if (cx - 1 >= columns) break;
+
+        if (!right && field->width > 0) {
+            bufputc('_'); cx++;
+            if (cx - 1 >= columns) break;
+        }
+
+        if (field->width == 0)
+            right = 1;
+    }
+
+    if (cx - 1 < columns)
+        bufputnc('_', columns - (cx - 1));
+
+    bufflush();
+    set_refresh_pending(REF_PHYSICAL);
 }
 
-/* used by %{visual} and %{isize} */
-void ch_visual()
+/* used by %{visual}, %{isize}, SIGWINCH */
+int ch_visual()
 {
-    if (screen_mode < 0)  /* e.g., called from init_variables() */
-        return;
-    if (visual && (!can_have_visual || columns < 58 || lines < 5)) {
+    if (screen_mode < 0) {  /* e.g., called from init_variables() */
+        /* do nothing */
+    } else if (visual && (!can_have_visual)) {
+        eprintf("Visual mode is not supported on this terminal.");
         setvar("visual", "0", FALSE);
-        eprintf("visual mode not supported");
+    } else if (visual && (lines < 3 || columns < status_left + status_right)) {
+        eprintf("Screen is too small for visual mode.");
+        setvar("visual", "0", FALSE);
+        /* return 0 would work if called from setvar(), but not SIGWINCH. */
     } else {
         int addlines = isize;
         cx = cy = -1;                       /* in case of resize */
@@ -697,6 +891,7 @@ void ch_visual()
         setup_screen(addlines > 0 ? addlines : 0);
         transmit_window_size();
     }
+    return 1;
 }
 
 void fix_screen()
@@ -1141,6 +1336,7 @@ int igoto(place)
 
 void do_refresh()
 {
+    if (visual && need_more_refresh) update_status_field(NULL, STAT_MORE);
     if (need_refresh >= REF_LOGICAL) logical_refresh();
     else if (need_refresh >= REF_PHYSICAL) physical_refresh();
 }
@@ -1247,11 +1443,12 @@ static void attributes_on(attrs)
     if (attrs & F_HILITE)
         attrs |= hiliteattr;
 
+    /* Some emulators only show the last, so we put the most important last. */
+    if (have_attr & attrs & F_DIM)       tp(dim);
+    if (have_attr & attrs & F_BOLD)      tp(bold ? bold : standout);
     if (have_attr & attrs & F_UNDERLINE) tp(underline);
     if (have_attr & attrs & F_REVERSE)   tp(reverse);
     if (have_attr & attrs & F_FLASH)     tp(flash);
-    if (have_attr & attrs & F_DIM)       tp(dim);
-    if (have_attr & attrs & F_BOLD)      tp(bold ? bold : standout);
 
     if (attrs & F_FGCOLOR)  color_on(attr2fgcolor(attrs));
     if (attrs & F_BGCOLOR)  color_on(attr2bgcolor(attrs));
@@ -1338,16 +1535,12 @@ void reset_outcount()
 /* return TRUE if okay to print */
 static int check_more()
 {
-    extern int no_tty;
-
-    if (paused) return FALSE;
-    if (!more || no_tty) return TRUE;
-    if (outcount-- > 0) return TRUE;
-
-    /* status bar will be updated in oflush() to avoid scroll region problems */
-    paused = 1;
-    do_hook(H_MORE, NULL, "");
-    return FALSE;
+    if (!paused && more && !no_tty && outcount-- <= 0) {
+        /* status bar is updated in oflush() to avoid scroll region problems */
+        paused = 1;
+        do_hook(H_MORE, NULL, "");
+    }
+    return !paused;
 }
 
 static int clear_more(new)
@@ -1357,7 +1550,7 @@ static int clear_more(new)
     paused = 0;
     outcount = new;
     if (visual) {
-        status_bar(STAT_MORE);
+        update_status_field(NULL, STAT_MORE);
         if (!scroll) outcount = ystatus - 1;
     } else {
         prompt = fgprompt();
@@ -1367,10 +1560,11 @@ static int clear_more(new)
     return 1;
 }
 
-void tog_more()
+int tog_more()
 {
     if (!more) clear_more(outcount);
     else reset_outcount();
+    return 1;
 }
 
 int dokey_page()
@@ -1509,14 +1703,14 @@ void screenout(aline)
         aline->attrs &= ~F_HWRITE;
     if (aline->attrs & F_GAG && gag)
         return;
-    if (!currentline && !tfscreen->u.queue->head) {
+    if (!output_disabled && !currentline && !tfscreen->u.queue->head) {
         /* shortcut if screen queue is empty (a common case) */
         (currentline = aline)->links++;
     } else {
         aline->links++;
         enqueue(tfscreen->u.queue, aline);
         tfscreen_size++;
-        if (!paused) oflush();
+        oflush();
     }
 }
 
@@ -1525,22 +1719,27 @@ void oflush()
     static int lastsize;
     int waspaused;
 
-    if (!(waspaused = paused)) lastsize = 0;
+    if (output_disabled) return;
 
-    if (screen_mode < 1) output_novisual();
+    if (!(waspaused = paused)) {
+        lastsize = 0;
+        if (screen_mode < 1) output_novisual();
 #ifdef SCREEN
-    else if (scroll) output_scroll();
-    else output_noscroll();
+        else if (scroll) output_scroll();
+        else output_noscroll();
 #endif
+    }
 
     if (paused) {
-        if (visual) {
-            if (!waspaused ||
-                (lastsize < 10000 && moresize / morewait > lastsize / morewait))
-                    status_bar(STAT_MORE);
-        } else if (!waspaused) {
-            prompt = moreprompt;
-            set_refresh_pending(REF_LOGICAL);
+        if (!visual) {
+            if (!waspaused) {
+                prompt = moreprompt;
+                set_refresh_pending(REF_LOGICAL);
+            }
+        } else if (moresize / morewait > lastsize / morewait) {
+            update_status_field(NULL, STAT_MORE);
+        } else {
+            need_more_refresh = 1;
         }
         lastsize = moresize;
     }
@@ -1587,7 +1786,7 @@ static void output_scroll()
     while ((line = wrapline()) != NULL) {
         if (has_scroll_region) {
             setscroll(1, ystatus - 1);
-            if (cy != ystatus - 1) xy(1, ystatus - 1);
+            if (cy != ystatus - 1) xy(columns, ystatus - 1);
             crnl(1);
             /* Some brain damaged emulators lose attributes under cursor
              * when that '\n' is printed.  Too bad. */
@@ -1608,34 +1807,52 @@ static void output_scroll()
  * Interfaces with rest of program *
  ***********************************/
 
-void tog_clock()
-{
-#ifdef HAVE_strftime
-    status_bar(STAT_CLOCK);
-#else
-    if (clock_flag) {
-        eprintf("clock is not supported on systems without strftime().");
-        setvar("clock", "off", FALSE);
-    }
-#endif
-}
-
-void ch_hilite()
+int ch_hilite()
 {
     CONST char *str;
+    attr_t attrs;
 
-    if (!(str = getstrvar(VAR_hiliteattr))) return;
-    if ((intvar(VAR_hiliteattr) = parse_attrs((char **)&str)) < 0) {
+    if (!(str = getstrvar(VAR_hiliteattr))) {
         intvar(VAR_hiliteattr) = 0;
+        return 1;
+    } else if ((attrs = parse_attrs((char **)&str)) >= 0) {
+        intvar(VAR_hiliteattr) = attrs;
+        return 1;
+    } else {
+        return 0;
     }
+}
+
+static void set_attr(aline, dest, starting, current)
+    Aline *aline;
+    char *dest;
+    attr_t *starting, *current;
+{
+    int i;
+    /* starting_attrs is set by the attrs parameter and/or
+     * codes at the beginning of the line.  If no visible mid-line
+     * changes occur, there is no need to allocate aline->partials
+     * (which would nearly triple the size of the aline).
+     */
+    if (dest == aline->str) {
+        /* start of visible line */
+        *starting = *current;
+    } else if (*starting != *current && !aline->partials) {
+        /* first mid-line attr change */
+        aline->partials = (short*)XMALLOC(sizeof(short)*aline->len);
+        for (i = 0; i < dest - aline->str; ++i)
+            aline->partials[i] = *starting;
+    }
+    if (aline->partials)
+        aline->partials[dest - aline->str] = *current;
 }
 
 #define ANSI_CSI        (char)0233    /* ANSI terminal Command Sequence Intro */
 
 /* Interpret embedded codes from a subset of ansi codes:
  * ansi attribute/color codes are converted to tf partial or line attrs;
- * tabs and backspaces were handled in handle_socket_input();
  * all other codes are ignored.
+ * (tabs and backspaces were handled in handle_socket_input())
  */
 attr_t handle_ansi_attr(aline, attrs)
     Aline *aline;
@@ -1647,10 +1864,10 @@ attr_t handle_ansi_attr(aline, attrs)
     attr_t starting_attrs = attrs;
 
     for (s = t = aline->str; *s; s++) {
-        if (*s == ANSI_CSI || (*s == '\033' && *++s == '[')) {
+        if (*s == ANSI_CSI || (s[0] == '\033' && s[1] == '[' && s++)) {
             new = attrs;
-            s++;
             do {
+                s++;
                 i = strtoint(&s);
                 if (!i) new = 0;
                 else if (i >= 30 && i <= 37)
@@ -1668,29 +1885,14 @@ attr_t handle_ansi_attr(aline, attrs)
                     case 27:  new &= ~F_REVERSE;    break;
                     default:  /* ignore it */       break;
                 }
-            } while (*s == ';' && *++s);
+            } while (s[0] == ';' && s[1]);
 
             if (*s == 'm') {           /* attribute command */
                 attrs = new;
             } /* ignore any other CSI command */
 
         } else if (isprint(*s)) {
-            /* starting_attrs is set by the attrs parameter and/or
-             * codes at the beginning of the line.  If no visible mid-line
-             * changes occur, there is no need to allocate aline->partials
-             * (which would nearly triple the size of the aline).
-             */
-            if (t == aline->str) {
-                /* start of visible line */
-                starting_attrs = attrs;
-            } else if (starting_attrs != attrs && !aline->partials) {
-                /* first mid-line attr change */
-                aline->partials = (short*)XMALLOC(sizeof(short)*aline->len);
-                for (i = 0; i < t - aline->str; ++i)
-                    aline->partials[i] = starting_attrs;
-            }
-            if (aline->partials)
-                aline->partials[t - aline->str] = attrs;
+            set_attr(aline, t, &starting_attrs, &attrs);
             *t++ = *s;
 
         } else if (*s == '\07') {
@@ -1708,12 +1910,68 @@ attr_t handle_ansi_attr(aline, attrs)
     return attrs;
 }
 
-#ifdef DMALLOC
-void free_term()
+/* Convert embedded '@' codes to internal partial or line attrs. */
+attr_t handle_inline_attr(aline, attrs)
+    Aline *aline;
+    attr_t attrs;
 {
+    char *s, *t, *end;
+    int off;
+    attr_t new;
+    attr_t starting_attrs = attrs;
+
+    for (s = t = aline->str; *s; s++) {
+        if (s[0] == '@' && s[1] == '{') {
+            s+=2;
+            if ((off = (*s == '~'))) s++;
+            end = strchr(s, '}');
+            if (!end) {
+                eprintf("unmatched @{");
+                return -1;
+            }
+            *end = '\0';
+            new = parse_attrs(&s);
+            *end = '}';
+            if (new < 0) return new;
+            s = end;
+            if (new & F_FGCOLOR) attrs &= ~F_FGCOLORMASK;
+            if (new & F_BGCOLOR) attrs &= ~F_BGCOLORMASK;
+            if (new == F_NORM) attrs &= ~F_HWRITE;
+            else if (off) attrs &= ~new;
+            else attrs |= new;
+            if (new & F_BELL) aline->attrs |= F_BELL;
+
+        } else if (isprint(*s)) {
+            set_attr(aline, t, &starting_attrs, &attrs);
+            if (s[0] == '@' && s[1] == '@')
+                s++;
+            *t++ = *s;
+        }
+    }
+
+    *t = '\0';
+    aline->len = t - aline->str;
+    if (!aline->partials) {
+        /* No mid-line changes, so apply starting_attrs to entire line */
+        aline->attrs |= starting_attrs;
+    }
+
+    return attrs;
+}
+
+#ifdef DMALLOC
+void free_output()
+{
+    StatusField *f;
+
     tfclose(tfscreen);
     Stringfree(outbuf);
     free_aline(moreprompt);
+    while (status_field_list->head) {
+        f = (StatusField*)unlist(status_field_list->head, status_field_list);
+        FREE(f->name);
+        FREE(f);
+    }
 }
 #endif
 

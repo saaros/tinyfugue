@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: varlist.h,v 35000.11 1997/04/02 23:48:25 hawkeye Exp $ */
+/* $Id: varlist.h,v 35000.15 1997/09/10 07:04:57 hawkeye Exp $ */
 
 /* It may not be easy to read in 80 columns, but it keeps the constants and
  * the array in the same place, so they can't get out of sync.
@@ -17,11 +17,14 @@
 
 #ifdef HAVE_setlocale
 varcode(VAR_LANG       , "LANG"         , NULL   , VARSTR , NULL      , 0     , ch_locale),
+varcode(VAR_LC_ALL     , "LC_ALL"       , NULL   , VARSTR , NULL      , 0     , ch_locale),
+varcode(VAR_LC_CTYPE   , "LC_CTYPE"     , NULL   , VARSTR , NULL      , 0     , ch_locale),
+varcode(VAR_LC_TIME    , "LC_TIME"      , NULL   , VARSTR , NULL      , 0     , ch_locale),
 #endif /* HAVE_setlocale */
 varcode(VAR_MAIL       , "MAIL"         , NULL   , VARSTR , NULL      , 0     , ch_mailfile),
 varcode(VAR_TERM       , "TERM"         , NULL   , VARSTR , NULL      , 0     , change_term),
 varcode(VAR_TFLIBDIR   , "TFLIBDIR"     , LIBDIR , VARSTR , NULL      , 0     , NULL),
-varcode(VAR_TZ         , "TZ"           , NULL   , VARSTR , NULL      , 0     , tog_clock),
+varcode(VAR_TZ         , "TZ"           , NULL   , VARSTR , NULL      , 0     , NULL),
 varcode(VAR_background , "background"   , NULL   , VARENUM, enum_flag , TRUE  , tog_bg),
 varcode(VAR_backslash  , "backslash"    , NULL   , VARENUM, enum_flag , TRUE  , NULL),
 varcode(VAR_bamf       , "bamf"         , NULL   , VARENUM, enum_bamf , FALSE , NULL),
@@ -30,7 +33,6 @@ varcode(VAR_bg_output  , "bg_output"    , NULL   , VARENUM, enum_flag , TRUE  , 
 varcode(VAR_borg       , "borg"         , NULL   , VARENUM, enum_flag , TRUE  , NULL),
 varcode(VAR_cleardone  , "cleardone"    , NULL   , VARENUM, enum_flag , FALSE , NULL),
 varcode(VAR_clearfull  , "clearfull"    , NULL   , VARENUM, enum_flag , FALSE , NULL),
-varcode(VAR_clock      , "clock"        , NULL   , VARENUM, enum_clock, TRUE  , tog_clock),
 varcode(VAR_async_conn , "connect"	, NULL   , VARENUM, enum_block, TRUE  , NULL),
 varcode(VAR_emulation  , "emulation"    , NULL   , VARENUM, enum_emul , EMUL_ANSI_ATTR, NULL),
 varcode(VAR_gag        , "gag"          , NULL   , VARENUM, enum_flag , TRUE  , NULL),
@@ -45,7 +47,7 @@ varcode(VAR_hiliteattr , "hiliteattr"   , "B"    , VARSTR , NULL      , 0     , 
 varcode(VAR_histsize   , "histsize"     , NULL   , VARPOS , NULL      , 1000  , NULL),
 varcode(VAR_hook       , "hook"         , NULL   , VARENUM, enum_flag , TRUE  , NULL),
 varcode(VAR_hpri       , "hpri"         , NULL   , VARINT , NULL      , 0     , NULL),
-varcode(VAR_insert     , "insert"       , NULL   , VARENUM, enum_flag , TRUE  , tog_insert),
+varcode(VAR_insert     , "insert"       , NULL   , VARENUM, enum_flag , TRUE  , NULL),
 varcode(VAR_isize      , "isize"        , NULL   , VARPOS , NULL      , 3     , ch_visual),
 varcode(VAR_istrip     , "istrip"       , NULL   , VARENUM, enum_flag , FALSE , NULL),
 varcode(VAR_kecho      , "kecho"        , NULL   , VARENUM, enum_flag , FALSE , NULL),
@@ -58,6 +60,7 @@ varcode(VAR_matching   , "matching"     , NULL   , VARENUM, enum_match, 1     , 
 varcode(VAR_max_iter   , "max_iter"     , NULL   , VARINT , NULL      , 1000  , NULL),
 varcode(VAR_max_recur  , "max_recur"    , NULL   , VARINT , NULL      , 100   , NULL),
 varcode(VAR_mecho      , "mecho"        , NULL   , VARENUM, enum_mecho, 0     , NULL),
+varcode(VAR_meta_esc   , "meta_esc"     , NULL   , VARENUM, enum_flag , TRUE  , NULL),
 varcode(VAR_more       , "more"         , NULL   , VARENUM, enum_flag , FALSE , tog_more),
 varcode(VAR_mprefix    , "mprefix"      , "+"    , VARSTR , NULL      , 0     , NULL),
 varcode(VAR_oldslash   , "oldslash"     , NULL   , VARENUM, enum_flag , TRUE  , NULL),
@@ -76,6 +79,7 @@ varcode(VAR_scroll     , "scroll"       , NULL   , VARENUM, enum_flag , FALSE , 
 varcode(VAR_shpause    , "shpause"      , NULL   , VARENUM, enum_flag , FALSE , NULL),
 varcode(VAR_snarf      , "snarf"        , NULL   , VARENUM, enum_flag , FALSE , NULL),
 varcode(VAR_sockmload  , "sockmload"    , NULL   , VARENUM, enum_flag , FALSE , NULL),
+varcode(VAR_status_fields, "status_fields", NULL , VARSTR , NULL      , 0     , ch_status_fields),
 varcode(VAR_sub        , "sub"          , NULL   , VARENUM, enum_sub  , SUB_KEYWORD , NULL),
 varcode(VAR_tabsize    , "tabsize"      , NULL   , VARPOS , NULL      , 8     , NULL),
 varcode(VAR_telopt     , "telopt"       , NULL   , VARENUM, enum_flag , FALSE , NULL),

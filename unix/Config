@@ -62,6 +62,7 @@ FLAGS=''
 # FLAGS="$FLAGS -DNO_HISTORY"; # Disable /recall, /log, ^P, etc.
 # FLAGS="$FLAGS -DNO_PROCESS"; # Disable /repeat and /quote.
 # FLAGS="$FLAGS -DNO_NETDB"  ; # Disable hostname resolving and service names.
+# FLAGS="$FLAGS -DNO_FLOAT"  ; # Disable floating point math.
 
 
 ### Terminal Driver.
@@ -76,23 +77,25 @@ FLAGS=''
 ### Terminal Handling.
 # By default, tfconfig will try to use one of several different libraries
 # with termcap interfaces, including termcap, ncurses, and curses; if they
-# all fail, tfconfig will choose "HARDCODE".  You can explicitly set
-# TERMINAL below to the name of a termcap-compatible library or "HARDCODE".
-# With HARDCODE, TF will work only on a vt100 or compatible terminal (or,
-# you can edit the control sequences at the top of output.c to make it work
-# on another type of terminal).  Some space can be saved (at the expense of
+# all fail, tfconfig will choose "HARDCODE TERM_vt100".  You can explicitly
+# set TERMINAL below to the name of a termcap-compatible library or to one
+# of the HARDCODE options.  With HARDCODE, TF will work only on the
+# corresponding terminal type.  Some space can be saved (at the expense of
 # flexibility) by using HARDCODE.
 
 # TERMINAL='your_termcap_library'
-# TERMINAL='HARDCODE'
+# TERMINAL='HARDCODE TERM_vt100'
+# TERMINAL='HARDCODE TERM_vt220'
+# TERMINAL='HARDCODE TERM_ansi'
 
 
 ### Mail Directory.
-# If the MAIL environment variable is not set at runtime, TF will assume
-# mail is kept in a central spool directory.  Normally, the tfconfig script
-# can find the mail directory by itself; you only need to set MAILDIR below
-# if your system keeps mail in an unusual place.  If it keeps incoming mail
-# in the recipient's home, see the example in tf-lib/local-eg.tf.
+# If the MAIL environment variable is set at runtime, TF will use that.
+# Otherwise, TF will assume mail is kept in a central spool directory.
+# Normally, the tfconfig script can find the mail directory by itself;
+# you only need to set MAILDIR below if your system keeps mail in an unusual
+# place.  If it keeps incoming mail in the recipient's home, see the example
+# in tf-lib/local-eg.tf.
 
 # MAILDIR='/weird/mail/directory'
 

@@ -1,7 +1,7 @@
 ;;;; File transfer macros
 ;; see "/help /putfile" and "/help /getfile".
 
-/~loaded file-xfer.tf
+/~loaded filexfer.tf
 
 /def -i putfile = /putfile_MUCK %*
 

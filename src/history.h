@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: history.h,v 35004.4 1997/03/27 01:04:29 hawkeye Exp $ */
+/* $Id: history.h,v 35004.5 1997/08/23 11:03:21 hawkeye Exp $ */
 
 #ifndef HISTORY_H
 #define HISTORY_H
@@ -21,7 +21,7 @@ extern Aline *FDECL(recall_input,(int dir, int searchflag));
 extern int    FDECL(is_watchdog,(struct History *hist, Aline *aline));
 extern int    FDECL(is_watchname,(struct History *hist, Aline *aline));
 extern String*FDECL(history_sub,(CONST char *pattern));
-extern void   FDECL(flush_hist,(struct History *hist));
+extern void   NDECL(sync_input_hist);
 
 #define record_global(aline)  recordline(globalhist, (aline))
 #define record_local(aline)   recordline(localhist, (aline))

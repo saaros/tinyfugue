@@ -5,9 +5,8 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: keylist.h,v 35000.2 1997/03/27 01:04:31 hawkeye Exp $ */
+/* $Id: keylist.h,v 35000.3 1997/08/24 21:25:29 hawkeye Exp $ */
 
-bicode( DOKEY_DLINE	, "DLINE"    ),
 bicode( DOKEY_FLUSH	, "FLUSH"    ),
 bicode( DOKEY_HPAGE	, "HPAGE"    ),
 bicode( DOKEY_LINE	, "LINE"     ),

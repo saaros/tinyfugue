@@ -1,0 +1,20 @@
+                           TinyFugue for Win32
+
+
+At this time, TF for win32 is available only in source form.  To compile
+it, you will need the Cygwin Development Kit (cdk.exe), available at
+http://www.cygnus.com/misc/gnu-win32/.  Once you have the CDK installed,
+follow the instructions for compiling TF under UNIX.
+
+The CDK is rather large (over 13M), and not for the novice user.  If you
+have trouble with it, DON'T ASK ME.  I plan to make a binary release of TF
+(which will require only the 500K cygwin.dll) when I get the time, so wait
+for that if you can't deal with the CDK.
+
+There are several known problems with the win32 version of tf, mostly due
+to shortcomings of cygwin:
+ * Scrolling in visual mode is jumpy.
+ * /quote ! (and code that calls it, like /sys) is not supported.
+ * Compressed files are not supported.
+ * Nonblocking hostname resolution (%gethostbyname) is not supported.
+

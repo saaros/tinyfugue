@@ -35,7 +35,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-/~loaded completion.tf
+/~loaded complete.tf
 
 /require lisp.tf
 
@@ -149,12 +149,7 @@
         /let part=$[substr(part, 1)]%;\
         /let _completion_suffix=}%;\
     /endif%;\
-    /_complete_from_list %part \
-        $(/quote -S /_complete_variable `/set%%;/setenv)
-
-/def -i _complete_variable = \
-    /let name=%-1%;\
-    /@test echo(substr(name, 0, strchr(name, '=')))%;\
+    /_complete_from_list %part $(/listvar -s)
 
 
 /def -i complete_macroname = \
@@ -173,11 +168,7 @@
 
 
 /def -i complete_worldname = \
-    /_complete_from_list %1 $(/quote -S /_complete_worldname `/listworlds %{1}*)
-
-/def -i _complete_worldname = \
-    /shift $[{2} =/ "-T*"]%;\
-    /echo - %{2}
+    /_complete_from_list %1 $(/listworlds -s %{1}*)
 
 
 ;; /complete_context <word>

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: hooklist.h,v 35000.3 1997/03/27 01:04:30 hawkeye Exp $ */
+/* $Id: hooklist.h,v 35000.4 1997/11/02 19:03:28 hawkeye Exp $ */
 
 /* It may not be easy to read, but it keeps the constants and the array in the
  * same place, so they can't get out of sync.
@@ -25,6 +25,7 @@ bicode(H_LOG,        "LOG"),
 bicode(H_LOGIN,      "LOGIN"),
 bicode(H_MAIL,       "MAIL"),
 bicode(H_MORE,       "MORE"),
+bicode(H_NOMACRO,    "NOMACRO"),
 bicode(H_PENDING,    "PENDING"),
 bicode(H_PROCESS,    "PROCESS"),
 bicode(H_PROMPT,     "PROMPT"),

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: macro.h,v 35004.11 1997/03/27 01:04:32 hawkeye Exp $ */
+/* $Id: macro.h,v 35004.16 1997/09/16 07:39:57 hawkeye Exp $ */
 
 #ifndef MACRO_H
 #define MACRO_H
@@ -24,13 +24,15 @@ typedef struct Macro {
     int pri, num;
     attr_t attr, subattr;
     short subexp;
-    short prob, shots, invis, temp, dead, fallthru, mflag, quiet;
+    short prob, shots, invis;
+    short flags, fallthru, quiet;
 } Macro;
 
 extern void   NDECL(init_macros);
 extern attr_t FDECL(parse_attrs,(char **argp));
 extern long   FDECL(parse_hook,(char **args));
 extern Macro *FDECL(find_macro,(CONST char *name));
+extern Macro *FDECL(find_num_macro,(int num)); 
 extern Macro *FDECL(new_macro,(CONST char *trig, CONST char *binding,
                  long hook, CONST char *hargs, CONST char *body,
                  int pri, int prob, attr_t attr, int invis, int mflag));

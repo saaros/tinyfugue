@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expand.h,v 35004.5 1997/03/27 01:04:24 hawkeye Exp $ */
+/* $Id: expand.h,v 35004.9 1997/10/02 10:39:01 hawkeye Exp $ */
 
 #ifndef EXPAND_H
 #define EXPAND_H
@@ -17,6 +17,9 @@
 #define SUB_FULL     2  /* all subs and command execution                    */
 #define SUB_MACRO    3  /* all subs and command execution, from macro        */
 
-extern int   FDECL(process_macro,(CONST char *body, CONST char *args, int subs));
+extern void NDECL(init_expand);
+extern void FDECL(evalexpr,(Stringp dest, CONST char *args));
+extern int  FDECL(process_macro,(CONST char *body, CONST char *args, int subs));
+extern String *NDECL(do_mprefix);
 
 #endif /* EXPAND_H */

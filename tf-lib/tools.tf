@@ -8,18 +8,28 @@
 /def -i shl = /sys %*
 
 
-;;; Re-edit
-; Stick an existing macro definition in the input window for editing.
-; syntax:  /reedit <macroname>
+; Put an existing definition in the input window for editing.
+; syntax:  /ed{mac,var,world} <name>
 
-/def -i reedit = /grab $(/cddr $(/list -i - %{L-@}))
+/def -i edmac = /grab $(/cddr $(/list -i - %{L-@}))
+/def -i edvar = /grab $(/listvar - %{L-@})
+/def -i edworld = /grab $(/listworlds -c - %{L-@})
+
+/def -i reedit = /edmac %*
 
 
 ;;; name - change your name (on a TinyMUD style mud)
 ; syntax:  /name [<name>]
 
 /def -i name =\
-    @name me=%{1-${world_character}} ${world_password}
+    /if (${world_type} =/ "tiny.mush*") \
+        @name me=%{1-${world_character}}%;\
+    /elseif (${world_type} =/ "tiny*") \
+        @name me=%{1-${world_character}} ${world_password}%;\
+    /else \
+        /echo -e %% %0: Assuming this is a TinyMUD-like server.%;\
+        @name me=%{1-${world_character}} ${world_password}%;\
+    /endif
 
 
 ;;; getline - grab the nth line from history and stick it in the input buffer

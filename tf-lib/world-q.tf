@@ -8,7 +8,7 @@
 ;;; repeatedly, you can visit all your active worlds.  If the queue is
 ;;; empty, ``ESC w'' will switch you to the last world you visited.
 
-/~loaded worldqueue.tf
+/~loaded world-q.tf
 
 /require stack-q.tf
 /require lisp.tf
@@ -24,7 +24,9 @@
 /def -iFp1 -h"WORLD" prev_world_hook =\
     /set prev_world=%{fg_world}%;\
     /set fg_world=${world_name}%;\
-    /set active_worlds=$(/remove %{fg_world} %{active_worlds})
+    /if (fg_world !~ "") \
+        /set active_worlds=$(/remove %{fg_world} %{active_worlds})%; \
+    /endif
 
 ; don't remember world "rwho".
 /def -ip2 -msimple -h"WORLD rwho" prev_rwho_hook

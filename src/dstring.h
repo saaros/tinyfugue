@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: dstring.h,v 35004.7 1997/03/27 01:04:23 hawkeye Exp $ */
+/* $Id: dstring.h,v 35004.8 1997/08/16 11:09:57 hawkeye Exp $ */
 
 #ifndef DSTRING_H
 #define DSTRING_H
@@ -36,6 +36,7 @@ typedef struct String {
 #define Stringcat(dst, src)	dScat(dst, src, __FILE__, __LINE__)
 #define SStringcat(dst, src)	dSScat(dst, src, __FILE__, __LINE__)
 #define Stringncat(dst, src, n)	dSncat(dst, src, n, __FILE__, __LINE__)
+#define Stringfncat(dst, src, n) dSfncat(dst, src, n, __FILE__, __LINE__)
 
 #define FL	CONST char *file, int line
 
@@ -50,6 +51,7 @@ extern String *FDECL(dSncpy,(Stringp dest, CONST char *src, unsigned n, FL));
 extern String *FDECL(dScat, (Stringp dest, CONST char *src, FL));
 extern String *FDECL(dSScat,(Stringp dest, CONST Stringp src, FL));
 extern String *FDECL(dSncat,(Stringp dest, CONST char *src, unsigned n, FL));
+extern String *FDECL(dSfncat,(Stringp dest, CONST char *src, unsigned n, FL));
 
 #undef FL
 

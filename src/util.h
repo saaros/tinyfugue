@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.h,v 35004.10 1997/03/27 01:04:53 hawkeye Exp $ */
+/* $Id: util.h,v 35004.15 1997/10/18 21:55:52 hawkeye Exp $ */
 
 #ifndef UTIL_H
 #define UTIL_H
@@ -15,6 +15,7 @@
 typedef struct Pattern {
     char *str;
     regexp *re;
+    int mflag;
 } Pattern;
 
 #undef CTRL
@@ -23,7 +24,7 @@ typedef struct Pattern {
 
 /* map char to or from "safe" character set */
 #define mapchar(c)    ((c) ? (c) & 0xFF : 0x80)
-#define unmapchar(c)  (((c) == (char)0x80) ? 0x0 : (c))
+#define unmapchar(c)  ((char)(((c) == (char)0x80) ? 0x0 : (c)))
 
 /* Map character into set allowed by locale */
 #define localize(c)  ((isprint(c) || iscntrl(c)) ? (c) : (c) & 0x7F)
@@ -79,16 +80,19 @@ extern int    FDECL(regexec_in_scope,(regexp *re, CONST char *str));
 extern void  *FDECL(new_reg_scope,(regexp *re, CONST char *str));
 extern int    FDECL(regsubstr,(struct String *dest, int n));
 extern int    FDECL(init_pattern,(Pattern *pat, CONST char *str, int mflag));
-extern int    FDECL(patmatch,(Pattern *pat, CONST char *str, int mflag));
+extern int    FDECL(init_pattern_str,(Pattern *pat, CONST char *str));
+extern int    FDECL(init_pattern_mflag,(Pattern *pat, int mflag));
+#define copy_pattern(dst, src)  (init_pattern(dst, (src)->str, (src)->mflag))
+extern int    FDECL(patmatch,(CONST Pattern *pat, CONST char *str));
 extern void   FDECL(free_pattern,(Pattern *pat));
 extern int    FDECL(smatch,(CONST char *pat, CONST char *str));
 extern int    FDECL(smatch_check,(CONST char *s));
 extern char  *FDECL(stripstr,(char *s));
 extern void   FDECL(startopt,(CONST char *args, CONST char *opts));
 extern char   FDECL(nextopt,(char **arg, long *num));
-extern void   NDECL(ch_locale);
-extern void   NDECL(ch_mailfile);
-extern void   NDECL(ch_maildelay);
+extern int    NDECL(ch_locale);
+extern int    NDECL(ch_mailfile);
+extern int    NDECL(ch_maildelay);
 extern void   NDECL(check_mail);
 extern long   FDECL(parsetime,(char **strp, int *istime));
 extern TIME_T FDECL(abstime,(long hms));

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: makehelp.c,v 35004.4 1997/03/27 01:04:34 hawkeye Exp $ */
+/* $Id: makehelp.c,v 35004.6 1997/07/31 06:49:26 hawkeye Exp $ */
 
 
 /**************************************************************
@@ -21,11 +21,11 @@ int main(argc, argv)
     int argc;
     char **argv;
 {
-    char line[81];
+    char line[240+1];
     long offset = 0;
 
     while (fgets(line, sizeof(line), stdin) != NULL) {
-        if ((line[0] == '@' || line[0] == '#') && line[1])
+        if ((line[0] == '&' || line[0] == '#') && line[1])
             printf("%ld%s", offset, line);
         offset = ftell(stdin);
     }

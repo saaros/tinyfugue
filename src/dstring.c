@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: dstring.c,v 35004.4 1997/03/27 01:04:22 hawkeye Exp $ */
+/* $Id: dstring.c,v 35004.5 1997/08/16 11:09:57 hawkeye Exp $ */
 
 
 /*********************************************************************
@@ -177,6 +177,7 @@ String *dSScat(dest, src, file, line)
     return dest;
 }
 
+/* slow version of dSncat, verifies that length of input >= n */
 String *dSncat(dest, src, n, file, line)
     Stringp dest;
     CONST char *src;
@@ -189,6 +190,24 @@ String *dSncat(dest, src, n, file, line)
 
     if ((int)n < 0) core("dSncat: n==%ld", file, line, (long)n);
     if (n > len) n = len;
+    dest->len += n;
+    lcheck(dest, file, line);
+    strncpy(dest->s + oldlen, src, n);
+    dest->s[dest->len] = '\0';
+    return dest;
+}
+
+/* fast version of dSncat, assumes length of input >= n */
+String *dSfncat(dest, src, n, file, line)
+    Stringp dest;
+    CONST char *src;
+    unsigned int n;
+    CONST char *file;
+    int line;
+{
+    unsigned int oldlen = dest->len;
+
+    if ((int)n < 0) core("dSfncat: n==%ld", file, line, (long)n);
     dest->len += n;
     lcheck(dest, file, line);
     strncpy(dest->s + oldlen, src, n);

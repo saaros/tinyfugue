@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.h,v 35004.13 1997/03/27 01:04:38 hawkeye Exp $ */
+/* $Id: output.h,v 35004.18 1997/08/27 11:04:34 hawkeye Exp $ */
 
 #ifndef OUTPUT_H
 #define OUTPUT_H
@@ -16,18 +16,6 @@
 #ifdef HARDCODE
 # define SCREEN
 #endif
-
-/* status_bar segments */
-#define STAT_MORE	0001
-#define STAT_WORLD	0002
-#define STAT_READ	0004
-#define STAT_ACTIVE	0010
-#define STAT_LOGGING	0020
-#define STAT_MAIL	0040
-#define STAT_INSERT	0100
-#define STAT_CLOCK	0200
-#define STAT_BAR	0400   /* parts of bar not covered by others */
-#define STAT_ALL	0777   /* the entire status bar */
 
 /* refresh types */
 #define REF_PHYSICAL  1
@@ -42,16 +30,16 @@ extern int paused;
 extern int lines, columns;
 
 extern void FDECL(bell,(int n));
-extern void NDECL(init_tfscreen);
 extern void NDECL(init_output);
-extern void NDECL(change_term);
+extern int  NDECL(change_term);
 extern void FDECL(setup_screen,(int clearlines));
 extern int  NDECL(redraw);
 extern void NDECL(oflush);
-extern void NDECL(tog_more);
-extern void NDECL(ch_visual);
-extern void NDECL(tog_insert);
-extern void FDECL(status_bar,(int seg));
+extern int  NDECL(tog_more);
+extern int  NDECL(ch_visual);
+extern int  NDECL(ch_status_fields);
+extern void FDECL(update_status_field,(Var *var, int internal));
+extern void NDECL(update_status_line);
 extern void NDECL(fix_screen);
 extern void NDECL(panic_fix_screen);
 extern void FDECL(iput,(int len));
@@ -69,8 +57,8 @@ extern void NDECL(reset_outcount);
 extern void FDECL(screenout,(Aline *aline));
 extern void FDECL(update_prompt,(Aline *newprompt));
 extern int  FDECL(wraplen,(CONST char *str, int len, int indent));
-extern void NDECL(tog_clock);
-extern void NDECL(ch_hilite);
+extern int  NDECL(ch_hilite);
+extern attr_t      FDECL(handle_inline_attr,(Aline *aline, attr_t attrs));
 extern attr_t      FDECL(handle_ansi_attr,(Aline *aline, attr_t attrs));
 extern CONST char *FDECL(get_keycode,(CONST char *name));
 

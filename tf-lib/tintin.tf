@@ -18,8 +18,8 @@
 /def -i antisubstitute = /def -p9999 -t'$(/escape ' %*)'
 /def -i all	= /send -W -- %*
 /def -i bell	= /beep %*
-/def -i boss	= /@echo -e Not implemented.
-/def -i char	= /@echo -e Not implemented.
+/def -i boss	= /@echo -e %0: Not implemented.
+/def -i char	= /@echo -e %0: Not implemented.
 ;/def echo	= /toggle mecho%; /: The name "/echo" conflicts with tf builtin.
 /def -i end	= /quit
 ;gag		builtin
@@ -33,11 +33,11 @@
 ;map		(see map.tf)
 ;mark		(see map.tf)
 /def -i math	= /@test %1 := %-1
-/def -i message	= /@echo -e Not implemented; use hooks with gags.
+/def -i message	= /@echo -e %0: Not implemented; use hooks with gags.
 /def -i -mregexp -p2 -h'send ^#([0-9]+) ' #rep_hook = /repeat -S %P1 %PR
 /def -i nop	= /:
 ;path		(see map.tf)
-/def -i presub =/@echo -e Use the -F flag in triggers that call /substitute.
+/def -i presub =/@echo -e %0: Use the -F flag in triggers that call /substitute.
 ;redraw		not needed (always on)
 ;return		(see map.tf)
 /def -i read	= /load %*
@@ -61,7 +61,7 @@
 		/if /ismacro _snoop_%1%; /then \
 			/@echo %% Snooping %1 disabled.%;\
 			/undef _snoop_%1%;\
-			/undef _snoopbg%1%;\
+			/undef _snoopbg_%1%;\
 		/else \
 			/@echo %% Snooping %1 enabled.%;\
 			/def -i -w%1 -hbackground -ag _snoopbg_%1%;\
@@ -91,7 +91,7 @@
 /def -i write	= /if ( {#} == 1 ) \
 			/save %1%;\
 		/else \
-			/@echo -e %% usage: /write <filename>%;\
+			/@echo -e %% usage: /%0 <filename>%;\
 		/endif
 
 /def -i zap	= /dc %*

@@ -18,14 +18,14 @@ dmalloc.$O: dmalloc.c config.h port.h $(TF_H) $(BUILDERS)
 dstring.$O: dstring.c config.h port.h malloc.h dstring.h signals.h $(BUILDERS)
 expand.$O: expand.c config.h port.h dstring.h $(TF_H) util.h tfio.h macro.h \
 	signals.h socket.h search.h output.h keyboard.h expand.h commands.h \
-	command.h variable.h world.h funclist.h $(BUILDERS)
+	command.h variable.h world.h tty.h funclist.h $(BUILDERS)
 help.$O: help.c config.h port.h dstring.h $(TF_H) tfio.h commands.h $(BUILDERS)
 history.$O: history.c config.h port.h dstring.h $(TF_H) util.h tfio.h \
 	history.h socket.h world.h output.h macro.h commands.h search.h \
 	$(BUILDERS)
 keyboard.$O: keyboard.c config.h port.h dstring.h $(TF_H) util.h tfio.h \
 	macro.h keyboard.h output.h history.h expand.h search.h commands.h \
-	keylist.h $(BUILDERS)
+	tty.h keylist.h $(BUILDERS)
 macro.$O: macro.c config.h port.h dstring.h $(TF_H) util.h tfio.h search.h \
 	world.h macro.h keyboard.h expand.h socket.h commands.h command.h \
 	hooklist.h $(BUILDERS)
@@ -34,8 +34,8 @@ main.$O: main.c config.h port.h dstring.h $(TF_H) util.h tfio.h history.h \
 	variable.h tty.h $(BUILDERS)
 makehelp.$O: makehelp.c config.h port.h $(BUILDERS)
 malloc.$O: malloc.c config.h port.h signals.h malloc.h $(BUILDERS)
-output.$O: output.c config.h port.h dstring.h $(TF_H) util.h tfio.h \
-	socket.h output.h macro.h search.h tty.h variable.h $(BUILDERS)
+output.$O: output.c config.h port.h dstring.h $(TF_H) util.h tfio.h socket.h \
+	output.h macro.h search.h tty.h variable.h expand.h $(BUILDERS)
 process.$O: process.c config.h port.h dstring.h $(TF_H) util.h tfio.h \
 	history.h world.h process.h socket.h expand.h commands.h $(BUILDERS)
 search.$O: search.c config.h port.h malloc.h search.h $(BUILDERS)

@@ -92,14 +92,20 @@
 
 
 ;; Other common keyboard-specific mappings
-;Insert
-/defaultbind ^[[2~	/@test insert := !insert
 ;F1
 /defaultbind ^[[11~	/help
 /defaultbind ^[OP	/help
+;Insert
+/defaultbind ^[[2~	/@test insert := !insert
+;Delete
+/defaultbind ^[[3~	/dokey_dch
 ;PgDn
 /defaultbind ^[[6~	/dokey page
 /defaultbind ^[Os	/dokey page
+;Home
+/defaultbind ^[[1~	/dokey_home
+;End
+/defaultbind ^[[4~	/dokey_end
 
 
 ;; clean up

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: keyboard.c,v 35004.18 1997/04/02 23:49:31 hawkeye Exp $ */
+/* $Id: keyboard.c,v 35004.25 1997/10/22 07:28:59 hawkeye Exp $ */
 
 /**************************************************
  * Fugue keyboard handling.
@@ -13,7 +13,6 @@
  **************************************************/
 
 #include "config.h"
-#include <errno.h>
 #include "port.h"
 #include "dstring.h"
 #include "tf.h"
@@ -26,8 +25,8 @@
 #include "expand.h"	/* process_macro() */
 #include "search.h"
 #include "commands.h"
+#include "tty.h"	/* no_tty */
 
-extern int errno;
 static int literal_next = FALSE;
 static TrieNode *keynode = NULL;	/* current node matched by input */
 
@@ -37,7 +36,6 @@ TIME_T keyboard_time = 0;
 
 static int  NDECL(dokey_newline);
 static int  FDECL(replace_input,(Aline *aline));
-static int  NDECL(kill_input);
 static void FDECL(handle_input_string,(CONST char *input, unsigned int len));
 
 
@@ -122,17 +120,18 @@ void unbind_key(macro)
 }
 
 /* returns 0 at EOF, 1 otherwise */
-int handle_keyboard_input()
+int handle_keyboard_input(int read_flag)
 {
     char buf[64];
     CONST char *s;
-    int i, count;
+    int i, count = 0;
     static int key_start = 0;
     static int input_start = 0;
     static int place = 0;
-    static int is_open = 1;
+    static int eof = 0;
+    extern int read_depth;
 
-    if (is_open) {
+    if (!eof && read_flag) {
         /* read a block of text */
         if ((count = read(STDIN_FILENO, buf, sizeof(buf))) < 0) {
             /* error or interrupt */
@@ -141,26 +140,35 @@ int handle_keyboard_input()
         } else if (count > 0) {
             /* something was read */
             keyboard_time = time(NULL);
-        } else if (place == 0) {
+        } else {
             /* nothing was read, and nothing is buffered */
-            is_open = 0;
-            close(STDIN_FILENO);
+            if (no_tty) {
+                eof = 1;
+                /* Don't close stdin; we don't want the fd to be reused. */
+#if 0
+            } else {
+                internal_error(__FILE__, __LINE__);
+                eputs("read 0 from stdin tty");
+#endif
+            }
         }
-    } else if (place == 0) {
-        return is_open;
     }
+
+    if (count == 0 && place == 0)
+        return !eof;
 
     for (i = 0; i < count; i++) {
         if (istrip) buf[i] &= 0x7F;
         if (!isprint(buf[i]) && buf[i] & 0x80) {
-            Stringadd(current_input, '\033');
+            if (meta_esc)
+                Stringadd(current_input, '\033');
             buf[i] &= 0x7F;
         }
         Stringadd(current_input, mapchar(buf[i]));
     }
 
     s = current_input->s;
-    if (!s) return is_open; /* no good chars; current_input not yet allocated */
+    if (!s) return !eof; /* no good chars; current_input not yet allocated */
     while (place < current_input->len) {
         if (!keynode) keynode = keytrie;
         if ((pending_input = pending_line))
@@ -208,7 +216,9 @@ int handle_keyboard_input()
         place = key_start = 0;
     }
     input_start = key_start;
-    return is_open;
+    if (pending_line && !read_depth)
+        handle_input_line();
+    return !eof;
 }
 
 /* Update the input window and keyboard buffer. */
@@ -217,6 +227,12 @@ static void handle_input_string(input, len)
     unsigned int len;
 {
     if (len == 0) return;
+
+    /* if this is a fresh line, input history is already synced;
+     * if user deleted line, input history is already synced;
+     * if called from replace_input, we don't want input history synced.
+     */
+    if (keybuf->len) sync_input_hist();
 
     if (keyboard_pos == keybuf->len) {                    /* add to end */
         Stringncat(keybuf, input, len);
@@ -267,7 +283,6 @@ int handle_dokey_command(args)
 
     switch (ptr - efunc_table) {
 
-    case DOKEY_DLINE:      return kill_input();
     case DOKEY_FLUSH:      return screen_flush(FALSE);
     case DOKEY_HPAGE:      return dokey_hpage();
     case DOKEY_LINE:       return dokey_line();
@@ -307,20 +322,12 @@ static int replace_input(aline)
         bell(1);
         return 0;
     }
-    if (keybuf->len) kill_input();
-    handle_input_string(aline->str, aline->len);
-    return 1;
-}
-
-static int kill_input()
-{
     if (keybuf->len) {
         Stringterm(keybuf, keyboard_pos = 0);
         logical_refresh();
-    } else {
-        bell(1);
     }
-    return keyboard_pos;
+    handle_input_string(aline->str, aline->len);
+    return 1;
 }
 
 int do_kbdel(place)
@@ -337,6 +344,7 @@ int do_kbdel(place)
     } else {
         bell(1);
     }
+    sync_input_hist();
     return keyboard_pos;
 }
 

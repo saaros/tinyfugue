@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: port.h,v 35004.16 1997/04/02 23:50:17 hawkeye Exp $ */
+/* $Id: port.h,v 35004.19 1997/09/26 08:52:55 hawkeye Exp $ */
 
 #ifndef PORT_H
 #define PORT_H
@@ -87,6 +87,11 @@
 
 
 /* standard stuff */
+
+#include <errno.h>
+#ifndef errno
+extern int errno;  /* Some systems don't define errno in errno.h. Duh. */
+#endif
 
 #include <stdio.h>
 
@@ -247,7 +252,16 @@ extern char *sys_errlist[];
 
 
 #ifndef HAVE_strtod
-# undef USE_FLOAT
+# define NO_FLOAT
+#endif
+
+
+#ifndef PATH_MAX
+# ifdef MAXPATHLEN
+#  define PATH_MAX MAXPATHLEN
+# else
+#  define PATH_MAX 1024
+# endif
 #endif
 
 

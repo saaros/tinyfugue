@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: keyboard.h,v 35004.5 1997/03/27 01:04:31 hawkeye Exp $ */
+/* $Id: keyboard.h,v 35004.6 1997/07/30 08:49:38 hawkeye Exp $ */
 
 #ifndef KEYBOARD_H
 #define KEYBOARD_H
@@ -17,7 +17,7 @@ extern struct Macro *FDECL(find_key,(CONST char *key));
 extern int           FDECL(do_kbdel,(int place));
 extern int           FDECL(do_kbword,(int dir));
 extern int           NDECL(do_kbmatch);
-extern int           NDECL(handle_keyboard_input);
+extern int           FDECL(handle_keyboard_input,(int read_flag));
 extern int           NDECL(handle_input_line);
 
 #endif /* KEYBOARD_H */

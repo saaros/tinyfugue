@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.c,v 35004.18 1997/04/02 23:50:20 hawkeye Exp $ */
+/* $Id: tfio.c,v 35004.29 1997/09/16 07:38:19 hawkeye Exp $ */
 
 
 /***********************************
@@ -17,7 +17,6 @@
  ***********************************/
 
 #include "config.h"
-#include <errno.h>
 #include <sys/types.h>
 #ifdef SYS_SELECT_H
 # include SYS_SELECT_H
@@ -49,25 +48,23 @@
 #include "signals.h"	/* shell_status() */
 #include "variable.h"	/* getvar() */
 
-extern int errno;
+int read_depth = 0;     /* nesting level of user reads of keyboard */
+TFILE *tfkeyboard;      /* user input */
+TFILE *tfscreen;        /* text waiting to be displayed */
+TFILE *tfin;            /* pointer to current input queue */
+TFILE *tfout;           /* pointer to current output queue */
+TFILE *tferr;           /* pointer to current error queue */
+
 extern int restrict;
-extern TFILE *tfscreen;
 
 static TFILE *filemap[FD_SETSIZE];
 static int selectable_tfiles = 0;
+static List userfilelist[1];
+static int max_handle = 0;
 
 static void FDECL(fileputs,(CONST char *str, FILE *fp));
 static void FDECL(queueputa,(Aline *aline, TFILE *file));
 
-
-#ifndef HAVE_DRIVES
-# define is_absolute_path(path) \
-            ((path)[0] == '/' || (path)[0] == '~')
-#else
-# define is_absolute_path(path) \
-            ((path)[0] == '/' || (path)[0] == '~' || \
-            (isalpha((path)[0]) && (path)[1] == ':'))
-#endif
 
 void init_tfio()
 {
@@ -75,6 +72,15 @@ void init_tfio()
 
     for (i = 0; i < sizeof(filemap)/sizeof(*filemap); i++)
         filemap[i] = NULL;
+    init_list(userfilelist);
+
+    /* tfkeyboard's queue is never actually used, it's just a place holder */
+    tfin = tfkeyboard = tfopen(NULL, "q");
+    tfkeyboard->mode = S_IRUSR;
+
+    tfout = tferr = tfscreen = tfopen(NULL, "q");
+    tfscreen->mode = S_IWUSR;
+    tfscreen_size = 0;
 }
 
 /* tfname
@@ -135,7 +141,6 @@ char *expand_filename(str)
  * Mode "p" will open a command pipe for reading.
  * Modes "w", "r", and "a" open a regular file for read, write, or append.
  * If mode is "r", and the file is not found, will look for a compressed copy.
- * If still not found, and file is relative, tfopen will look in %TFLIBDIR.
  * If tfopen() fails, it will return NULL with errno set as in fopen();
  * if found file is a directory, tfopen() will return NULL with errno==EISDIR.
  */
@@ -146,9 +151,8 @@ TFILE *tfopen(name, mode)
     FILE *fp;
     TFILE *result = NULL;
     CONST char *prog, *suffix;
-    char *newname;
+    char *newname = NULL;
     STATIC_BUFFER(buffer);
-    STATIC_BUFFER(libfile);
     struct stat buf;
     MODE_T st_mode = 0;
 
@@ -157,6 +161,9 @@ TFILE *tfopen(name, mode)
         if (!(result = (TFILE *)MALLOC(sizeof(TFILE)))) return NULL;
         result->type = TF_QUEUE;
         result->name = NULL;
+        result->handle = -1;
+        result->node = NULL;
+        result->mode = S_IRUSR | S_IWUSR;
         result->u.queue = (Queue *)XMALLOC(sizeof(Queue));
         init_queue(result->u.queue);
         return result;
@@ -168,10 +175,17 @@ TFILE *tfopen(name, mode)
     }
 
     if (*mode == 'p') {
+#ifdef __CYGWIN32__
+        eprintf("TF does not support pipes under cygwin32.");
+        errno = EPIPE;
+        return NULL;
+#endif
         if (!(fp = popen(name, "r"))) return NULL;
         result = (TFILE *)XMALLOC(sizeof(TFILE));
         result->type = TF_PIPE;
         result->name = STRDUP(name);
+        result->handle = -1;
+        result->node = NULL;
         result->u.fp = fp;
         result->off = result->len = 0;
         filemap[fileno(fp)] = result;
@@ -210,26 +224,26 @@ TFILE *tfopen(name, mode)
         }
     }
 
-
-    /* If file did not exist and is relative, look in TFLIBDIR. */
-    if (!fp && *mode == 'r' && errno == ENOENT && !is_absolute_path(name)) {
-        if (!TFLIBDIR || !*TFLIBDIR || !is_absolute_path(TFLIBDIR)) {
-            eprintf("warning: invalid value for %%TFLIBDIR");
-        } else {
-            Sprintf(libfile, 0, "%s/%s", TFLIBDIR, name);
-            return tfopen(expand_filename(libfile->s), mode);
-        }
-    }
-
     if (fp) {
         errno = EAGAIN;  /* in case malloc fails */
         if (!(result = (TFILE*)MALLOC(sizeof(TFILE)))) return NULL;
         result->type = type;
         result->name = newname;
+        result->handle = 0;
+        result->node = NULL;
         result->u.fp = fp;
         result->off = result->len = 0;
         result->mode = st_mode;
+        if (*mode == 'r' || *mode == 'p') {
+            result->mode |= S_IRUSR;
+            result->mode &= ~S_IWUSR;
+        } else {
+            result->mode &= ~S_IRUSR;
+            result->mode |= S_IWUSR;
+        }
         result->warned = 0;
+    } else {
+        if (newname) FREE(newname);
     }
 
     return result;
@@ -262,6 +276,8 @@ int tfclose(file)
     default:
         result = -1;
     }
+    if (file->node)
+        unlist(file->node, userfilelist);
     FREE(file);
     return result;
 }
@@ -331,6 +347,46 @@ void tfputs(str, file)
     } else {
         fileputs(str, file->u.fp);
     }
+}
+
+/* tfputansi
+ * Print to a TFILE, with embedded ANSI display codes.
+ */
+int tfputansi(str, file)
+    CONST char *str;
+    TFILE *file;
+{
+    int ok = 1;
+    Aline *aline;
+
+    if (file->type != TF_NULL) {
+        (aline = new_aline(str, 0))->links++;
+        ok = (handle_ansi_attr(aline, 0) >= 0);
+        if (ok)
+            tfputa(aline, file);
+        free_aline(aline);
+    }
+    return ok;
+}
+
+/* tfputp
+ * Print to a TFILE, with embedded 'partial hilites'.
+ */
+int tfputp(str, file)
+    CONST char *str;
+    TFILE *file;
+{
+    int ok = 1;
+    Aline *aline;
+
+    if (file->type != TF_NULL) {
+        (aline = new_aline(str, 0))->links++;
+        ok = (handle_inline_attr(aline, 0) >= 0);
+        if (ok)
+            tfputa(aline, file);
+        free_aline(aline);
+    }
+    return ok;
 }
 
 /* tfputa
@@ -410,7 +466,7 @@ void vSprintf(buf, flags, fmt, ap)
     while (*fmt) {
         if (*fmt != '%' || *++fmt == '%') {
             for (q = fmt + 1; *q && *q != '%'; q++);
-            Stringncat(buf, fmt, q - fmt);
+            Stringfncat(buf, fmt, q - fmt);
             fmt = q;
             continue;
         }
@@ -463,7 +519,7 @@ void vSprintf(buf, flags, fmt, ap)
                     Stringadd(buf, *sval++);
                 }
                 for (q = sval; *q && *q != quote && *q != '\\'; q++);
-                Stringncat(buf, sval, q - sval);
+                Stringfncat(buf, sval, q - sval);
             }
             break;
         default:
@@ -522,6 +578,7 @@ void tfprintf VDEF((TFILE *file, CONST char *fmt, ...))
     va_end(ap);
     tfputs(buffer->s, file);
 }
+
 
 /* Sprintf
  * Print into a String.  See vSprintf().
@@ -600,7 +657,39 @@ String *tfgetS(str, file)
     Stringp str;
     TFILE *file;
 {
-    if (file->type == TF_QUEUE) {
+    if (file == tfkeyboard) {
+        /* This is a hack.  It's a useful feature, but doing it correctly
+         * without blocking tf would require making the macro language
+         * suspendable, which would have required a major redesign.  The
+         * nested main_loop() method was easy to add, but leads to a few
+         * quirks, like the odd handling of /dokey newline.
+         */
+        TFILE *oldtfout, *oldtfin;
+        extern Stringp keybuf;
+        extern int keyboard_pos, runall_depth;
+
+        if (runall_depth) {
+            eprintf("can't read keyboard from a process.");
+            return NULL;
+        }
+        if (read_depth) eprintf("warning: nested keyboard read");
+        oldtfout = tfout;
+        oldtfin = tfin;
+        tfout = tfscreen;
+        tfin = tfkeyboard;
+        read_depth++; update_status_field(NULL, STAT_READ);
+        main_loop();
+        read_depth--; update_status_field(NULL, STAT_READ);
+        tfout = oldtfout;
+        tfin = oldtfin;
+        if (interrupted())
+            return NULL;
+
+        SStringcpy(str, keybuf);
+        Stringterm(keybuf, keyboard_pos = 0);
+        return str;
+
+    } else if (file->type == TF_QUEUE) {
         Aline *aline;
         do {
             if (!(aline = dequeue(file->u.queue))) return NULL;
@@ -610,6 +699,7 @@ String *tfgetS(str, file)
         Stringcpy(str, aline->str);
         free_aline(aline);
         return str;
+
     } else {
         int next;
 
@@ -628,7 +718,7 @@ String *tfgetS(str, file)
                     Stringnadd(str, ' ', tabsize - str->len % tabsize);
                 }
                 while (isprint(file->buf[next]) && next < file->len) next++;
-                Stringncat(str, file->buf + file->off, next - file->off);
+                Stringfncat(str, file->buf + file->off, next - file->off);
                 file->off = next;
             }
             file->off = 0;
@@ -687,7 +777,7 @@ Aline *dnew_aline(str, attrs, len, file, line)
     aline->attrs = attrs;
     aline->partials = NULL;
     aline->links = 0;
-    aline->time = time(NULL);
+    aline->time = -1;  /* this will be set by caller, if caller needs it */
     return aline;
 }
 
@@ -706,5 +796,47 @@ void dfree_aline(aline, file, line)
         if (aline->partials) FREE(aline->partials);
         FREE(aline);  /* struct and string */
     }
+}
+
+
+/**************
+ * User level *
+ **************/
+
+int handle_tfopen_func(name, mode)
+    CONST char *name, *mode;
+{
+    TFILE *file;
+
+    if (mode[1] || !strchr("rwapq", mode[0])) {
+        eprintf("invalid mode '%s'", mode);
+        return -1;
+    }
+    file = tfopen(expand_filename(name), mode);
+    if (!file) {
+        eprintf("%s: %s", name, strerror(errno));
+        return -1;
+    }
+
+    file->node = inlist(file, userfilelist, userfilelist->tail);
+    if (!file->node) {
+        eprintf("%s: %s", name, strerror(errno));
+        return -1;
+    }
+    file->handle = ++max_handle;
+    return file->handle;
+}
+
+TFILE *find_tfile(handle)
+    int handle;
+{
+    ListEntry *node;
+
+    for (node = userfilelist->head; node; node = node->next) {
+        if (((TFILE*)node->datum)->handle == handle)
+            return (TFILE*)node->datum;
+    }
+    eprintf("%d: %s", handle, strerror(EBADF));
+    return NULL;
 }
 

@@ -27,6 +27,6 @@
         /unset _kb_stack_%{_kb_stack_top}%;\
         /set _kb_stack_top=$[_kb_stack_top - 1]%;\
     /else \
-        /echo -e %% Keyboard stack is empty.%;\
+        /echo -e %% %0: Keyboard stack is empty.%;\
     /endif
 

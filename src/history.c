@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: history.c,v 35004.19 1997/03/27 01:04:28 hawkeye Exp $ */
+/* $Id: history.c,v 35004.31 1997/10/18 21:55:51 hawkeye Exp $ */
 
 
 /****************************************************************
@@ -26,7 +26,7 @@
 #include "history.h"
 #include "socket.h"		/* xworld() */
 #include "world.h"
-#include "output.h"		/* status_bar(), etc */
+#include "output.h"		/* update_status_field(), etc */
 #include "macro.h"		/* add_macro(), new_macro() */
 #include "commands.h"
 #include "search.h"		/* List in recall_history() */
@@ -129,7 +129,8 @@ void free_history(hist)
         FREE(hist->alines);
         if (hist->logfile) {
             tfclose(hist->logfile);
-            if (!--log_count) status_bar(STAT_LOGGING);
+            --log_count;
+            update_status_field(NULL, STAT_LOGGING);
         }
     }
 }
@@ -138,6 +139,7 @@ static void save_to_hist(hist, aline)
     History *hist;
     Aline *aline;
 {
+    if (aline->time < 0) aline->time = time(NULL);
     if (!hist->alines)
         alloc_history(hist, hist->maxsize ? hist->maxsize : histsize);
     if (hist->size == hist->maxsize) {
@@ -194,21 +196,29 @@ static void hold_input(str)
     extern int sockecho;
 
     free_aline(input->alines[input->last]);
-    input->alines[input->last] =
-        new_aline(str, sockecho ? 0 : F_GAG);
+    input->alines[input->last] = new_aline(str, sockecho ? 0 : F_GAG);
     input->alines[input->last]->links++;
+    input->alines[input->last]->time = time(NULL);
 }
 
 void record_input(str)
     CONST char *str;
 {
-    char *last = input->alines[nmod(input->last-1, input->size)]->str;
-    if (*str && strcmp(str, last) != 0) {
-        hold_input(str);
-        save_to_hist(input, blankline);
-        if (input->logfile && !nolog) save_to_log(input, str);
-    }
+    char *prev_line;
+
     input->index = input->last;
+
+    if (!*str) return;
+    if (input->size > 1) {
+        prev_line = input->alines[nmod(input->last-1, input->maxsize)]->str;
+        if (strcmp(str, prev_line) == 0) return;
+    }
+
+    hold_input(str);
+    save_to_hist(input, blankline);
+    input->index = input->last;
+
+    if (input->logfile && !nolog) save_to_log(input, str);
 }
 
 /* recall_input() parameter combinations:
@@ -258,17 +268,17 @@ Aline *recall_input(dir, searchflag)
 int handle_recall_command(args)
     char *args;
 {
-    int n0, n1, istime, i, mflag = matching, want, count, truth = !0;
+    int n0, n1, istime, i, ii, mflag = matching, want, count, truth = !0;
     long n_or_t = 0;
     TIME_T t0, t1, now = time(NULL);
     int numbers, timestamps = FALSE;
     attr_t attrs = 0;
+    short *partials = NULL;
     char opt;
     Pattern pat;
     World *world = xworld();
     History *hist = NULL;
     Aline *aline;
-    extern TFILE *tfscreen;
     extern CONST char *enum_match[];
     static List stack[1] = {{ NULL, NULL }};
     STATIC_BUFFER(buffer);
@@ -279,7 +289,7 @@ int handle_recall_command(args)
         (endmsg = new_aline("---- Recall end ----", 0))->links = 1;
     }
 
-    init_pattern(&pat, NULL, 0);
+    init_pattern_str(&pat, NULL);
     startopt(args, "ligw:a:f:tm:v");
     while ((opt = next_hist_opt(&args, &hist, NULL))) {
         switch (opt) {
@@ -352,12 +362,12 @@ int handle_recall_command(args)
     if (*args && !init_pattern(&pat, args, mflag))
         return 0;
 
+    if (empty(hist)) return 0;          /* (after parsing, before searching) */
+
     if (tfout == tfscreen) {
         norecord++;                     /* don't save this output in history */
         oputa(startmsg);
     }
-
-    if (empty(hist)) return 0;          /* (after parsing, before searching) */
 
     if (n0 < hist->total - hist->size) n0 = hist->total - hist->size;
     if (n1 >= hist->total) n1 = hist->total - 1;
@@ -372,7 +382,7 @@ int handle_recall_command(args)
             aline = hist->alines[i];
             if (aline->time > t1 || aline->time < t0) continue;
             if (gag && (aline->attrs & F_GAG & attrs)) continue;
-            if (!patmatch(&pat, aline->str, mflag) == truth) continue;
+            if (!patmatch(&pat, aline->str) == truth) continue;
             want--;
             Stringterm(buffer, 0);
             if (numbers)
@@ -382,16 +392,25 @@ int handle_recall_command(args)
                 Sprintf(buffer, SP_APPEND, "[%s] ",
                     tftime(time_format, aline->time));
             }
+
             /* share aline if possible: copy only if different */
-            /* BUG: partials don't get copied.  To do so we would have
-             * to malloc; copy, shifted right by buffer->len; and fill
-             * in the first buffer->len attrs with 0.
-             */
-            if (timestamps || numbers) {
-                Stringncat(buffer, aline->str, aline->len);
+            partials = NULL;
+            if (aline->partials &&
+                (buffer->len || (aline->attrs & ~attrs & F_ATTR)))
+            {
+                partials = XMALLOC(sizeof(short) * (buffer->len+aline->len));
+                for (ii = 0; ii < buffer->len; ii++)
+                    partials[ii] = 0;
+                memcpy(partials + buffer->len, aline->partials,
+                    sizeof(short) * aline->len);
+            }
+            if (buffer->len) {
+                Stringfncat(buffer, aline->str, aline->len);
                 aline = new_aline(buffer->s, aline->attrs & attrs);
+                if (partials) aline->partials = partials;
             } else if (aline->attrs & ~attrs & F_ATTR) {
                 aline = new_aline(aline->str, aline->attrs & attrs);
+                if (partials) aline->partials = partials;
             }
 
             inlist((GENERIC*)aline, stack, NULL);
@@ -429,7 +448,7 @@ int is_watchname(hist, aline)
     }
     if (nmatches < wnmatch) return 0;
     Stringcpy(buf, "{");
-    Stringncat(buf, aline->str, end - aline->str);
+    Stringfncat(buf, aline->str, end - aline->str);
     Stringcat(buf, "}*");
     oprintf("%% Watchname: gagging \"%S\"", buf);
     return add_macro(new_macro(buf->s, "", 0, NULL, "", gpri, 100, F_GAG, 0,
@@ -471,7 +490,7 @@ String *history_sub(pattern)
     if (!loc) return NULL;
     i = nmod(input->last - i, input->maxsize);
     Stringterm(buffer, 0);
-    Stringncat(buffer, L[i]->str, loc - L[i]->str);
+    Stringfncat(buffer, L[i]->str, loc - L[i]->str);
     Stringcat(buffer, replace);
     Stringcat(buffer, loc + ((replace - 1) - pattern));
     return buffer;
@@ -536,6 +555,7 @@ int handle_recordline_command(args)
     History *history = globalhist;
     char opt;
     long timestamp = -1;
+    Aline *aline;
 
     startopt(args, "lgiw:t#");
     while ((opt = next_hist_opt(&args, &history, &timestamp))) {
@@ -549,9 +569,10 @@ int handle_recordline_command(args)
             input->alines[nmod(input->last - 1, input->maxsize)]->time =
                 (TIME_T)timestamp;
     } else {
-        recordline(history, new_aline(args, 0));
+        aline = new_aline(args, 0);
         if (timestamp >= 0)
-            history->alines[history->last]->time = (TIME_T)timestamp;
+            aline->time = (TIME_T)timestamp;
+        recordline(history, aline);
     }
     nolog--;
     return 1;
@@ -600,12 +621,13 @@ int handle_log_command(args)
                 globalhist->logfile = NULL;
                 mapworld(stoplog);
                 log_count = 0;
-                status_bar(STAT_LOGGING);
+                update_status_field(NULL, STAT_LOGGING);
             }
         } else if (history->logfile) {
             tfclose(history->logfile);
             history->logfile = NULL;
-            if (!--log_count) status_bar(STAT_LOGGING);
+            --log_count;
+            update_status_field(NULL, STAT_LOGGING);
         }
         return 1;
     } else if (cstrcmp(args, "ON") == 0 || !*args) {
@@ -627,7 +649,8 @@ int handle_log_command(args)
     }
     do_hook(H_LOG, "%% Logging to file %s", "%s", logfile->name);
     history->logfile = logfile;
-    if (!log_count++) status_bar(STAT_LOGGING);
+    log_count++;
+    update_status_field(NULL, STAT_LOGGING);
     return 1;
 }
 
@@ -684,10 +707,9 @@ int handle_histsize_command(args)
     return hist->maxsize;
 }
 
-void flush_hist(hist)
-    History *hist;
+void sync_input_hist()
 {
-    hist->index = hist->last;
+    input->index = input->last;
 }
 
 #endif /* NO_HISTORY */

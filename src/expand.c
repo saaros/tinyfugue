@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expand.c,v 35004.31 1997/03/27 01:01:55 hawkeye Exp $ */
+/* $Id: expand.c,v 35004.66 1997/11/06 06:13:07 hawkeye Exp $ */
 
 
 /********************************************************************
@@ -24,17 +24,17 @@
 #include "tf.h"
 #include "util.h"
 #include "tfio.h"
-#include "world.h"	/* world_info() */
 #include "macro.h"
 #include "signals.h"	/* interrupted() */
 #include "socket.h"	/* send_line(), sockidle() */
 #include "search.h"
-#include "output.h"	/* igoto(), status_bar() */
+#include "output.h"	/* igoto(), update_status_field() */
 #include "keyboard.h"	/* kb*() */
 #include "expand.h"
 #include "commands.h"
 #include "command.h"
 #include "variable.h"
+#include "tty.h"	/* no_tty */
 
 
 /* keywords: must be sorted and numbered sequentially */
@@ -73,24 +73,26 @@ typedef struct Arg {
 
 typedef struct Value {
     int type;
-    int len;
+    int len;				/* length of u.sval */
+    int count;				/* reference count */
     union {
         long ival;
         double fval;
-        CONST char *sval;
+        CONST char *sval;		/* string value or identifier name */
         struct Value *next;		/* for valpool */
     } u;
 } Value;
 
 #define STACKSIZE 128
 
-int user_result = 0;			/* result of last user command */
-int read_depth = 0;			/* read() flag */
+Value *user_result = NULL;		/* result of last user command */
+Value *default_result = NULL;		/* result of empty list */
+int recur_count = 0;			/* expansion nesting count */
 
+static int argtop = 0;			/* top of function argument stack */
 static CONST char *argtext = NULL;	/* shifted argument text */
 static Arg *argv = NULL;		/* shifted argument vector */
 static int argc = 0;			/* shifted argument count */
-static int recur_count = 0;		/* expansion nesting count */
 static int cmdsub_count = 0;		/* cmdsub nesting count */
 static CONST char *ip;			/* instruction pointer */
 static int condition = 1;		/* checked by /if and /while */
@@ -107,15 +109,16 @@ static CONST char *keyword_table[] = {
 
 static int    NDECL(keyword);
 static int    FDECL(list,(Stringp dest, int subs));
-static int    NDECL(end_statement);
 static int    FDECL(statement,(Stringp dest, int subs));
 static Value *FDECL(newint,(long i));
-static Value *FDECL(newstrid,(CONST char *str, int len, int type));
-#ifdef USE_FLOAT
+static Value *FDECL(newstrid,(CONST char *str, int len, int type,
+              CONST char *file, int line));
+#ifndef NO_FLOAT
 static Value *FDECL(newfloat,(double f));
 static double FDECL(valfloat,(Value *val));
 static int    FDECL(mathtype,(Value *val));
-#endif /* USE_FLOAT */
+#endif /* NO_FLOAT */
+static int    FDECL(valbool,(Value *val));
 static long   FDECL(valint,(Value *val));
 static int    FDECL(vallen,(Value *val));
 static CONST char *FDECL(valstr,(Value *val));
@@ -140,25 +143,31 @@ static int    NDECL(unary_expr);
 static int    NDECL(primary_expr);
 static int    FDECL(pushval,(Value *val));
 static int    FDECL(reduce,(int op, int n));
+static Value *FDECL(function_switch,(int symbol, int n, CONST char *parent));
 static Value *FDECL(do_function,(int n));
 static CONST char *NDECL(error_text);
 static void   FDECL(parse_error,(CONST char *type, CONST char *expect));
 
+#define set_user_result(val) \
+    do { freeval(user_result); user_result = val; } while(0)
+#define copy_user_result(val) \
+    do { freeval(user_result); (user_result = val)->count++; } while(0)
+
 #define dollarsub(dest) \
     ((*ip == '[') ? exprsub(dest) : (*ip == '(') ? cmdsub(dest) : macsub(dest))
 
-#define newstr(s,l)  (newstrid(s,l,TYPE_STR))
-#define newid(s,l)   (newstrid(s,l,TYPE_ID))
+#define newstrliteral(s)  (newstrid(s, sizeof(s), TYPE_STR, __FILE__, __LINE__))
+#define newstr(s,l)       (newstrid(s, l, TYPE_STR, __FILE__, __LINE__))
+#define newid(s,l)        (newstrid(s, l, TYPE_ID, __FILE__, __LINE__))
 
 #define is_end_of_statement(p) ((p)[0] == '%' && is_statend((p)[1]))
 #define is_end_of_cmdsub(p) (cmdsub_count && *(p) == ')')
-
-#ifndef NO_EXPR  /* with NO_EXPR defined, many keybindings can't work! */
 
 /* get Nth operand from stack (counting backwards from top) */
 #define opd(N)      (stack[stacktop-(N)])
 #define opdfloat(N) valfloat(opd(N))
 #define opdint(N)   valint(opd(N))
+#define opdbool(N)  valbool(opd(N))
 #define opdstr(N)   valstr(opd(N))
 #define opdlen(N)   vallen(opd(N))
 
@@ -181,7 +190,14 @@ enum func_id {
 
 
 extern CONST char *current_command;
+extern int read_depth;
+extern int invis_flag;
 
+
+void init_expand()
+{
+    default_result = newint(1);
+}
 
 static int expr()
 {
@@ -208,6 +224,21 @@ static int expr()
     return ok;
 }
 
+void evalexpr(dest, args)
+    Stringp dest;
+    CONST char *args;
+{
+    CONST char *saved_ip = ip;
+
+    ip = args;
+    if (expr()) {
+        if (*ip) parse_error("expression", "operand");
+        Stringcpy(dest, opdstr(1));
+        freeval(stack[--stacktop]);
+    }
+    ip = saved_ip;
+}
+
 int handle_test_command(args)
     char *args;
 {
@@ -216,28 +247,89 @@ int handle_test_command(args)
 
     ip = args;
     if (expr()) {
-        if (*ip) parse_error("expression", "operand");
-        else result = opdint(1);
-        freeval(stack[--stacktop]);
+        if (*ip) {
+            parse_error("expression", "operand");
+            set_user_result(NULL);
+        } else {
+            copy_user_result(stack[--stacktop]);
+            freeval(stack[stacktop]);
+        }
     }
     ip = saved_ip;
     return result;
 }
-#else /* NO_EXPR */
 
-static int expr()
-{
-    eprintf("expressions are not supported.");
-    return 0;
-}
-
-int handle_test_command(args)
+int handle_return_command(args)
     char *args;
 {
-    return atol(args);
+    int result;
+
+    result = handle_test_command(args);
+    breaking = -1;
+    return result;
 }
 
-#endif /* NO_EXPR */
+/* handle_command
+ * Execute a single command line that has already been expanded.
+ * note: cmd_line will be written into.
+ */
+int handle_command(cmd_line)
+    String *cmd_line;
+{
+    CONST char *old_command;
+    Handler *handler = NULL;
+    Macro *macro = NULL;
+    int error = 0, truth = 1;
+    char *str, *end;
+    extern int pending_line, read_depth;
+
+    str = cmd_line->s + 1;
+    if (!*str || isspace(*str)) return 0;
+    old_command = current_command;
+    current_command = str;
+    while (*str && !isspace(*str)) str++;
+    if (*str) *str++ = '\0';
+    while (isspace(*str)) str++;
+    for (end = cmd_line->s + cmd_line->len - 1; isspace(*end); end--);
+    *++end = '\0';
+    while (*current_command == '!') {
+        truth = !truth;
+        current_command++;
+    }
+    if (*current_command == '@') {
+        if (!(handler = find_command(current_command+1))) {
+            eprintf("not a builtin command");
+            error++;
+        }
+    } else if (!(macro = find_macro(current_command)) &&
+        !(handler = find_command(current_command)))
+    {
+        do_hook(H_NOMACRO, "%% %s: no such command or macro", "%s",
+            current_command);
+        error++;
+    }
+
+    if (macro) {
+        error = !do_macro(macro, str);
+    } else if (handler) {
+        int result = (*handler)(str);
+        if (handler != handle_test_command &&    /* set their own results */
+            handler != handle_return_command)
+        {
+            set_user_result(newint(result));
+        }
+    }
+
+    current_command = NULL;
+    if (pending_line && !read_depth)  /* "/dokey newline" and not in read() */
+        error = !handle_input_line();
+    current_command = old_command;
+    if (!truth) {
+        truth = !valbool(user_result);
+        set_user_result(newint(truth));
+    }
+    return !error;
+}
 
 int process_macro(body, args, subs)
     CONST char *body, *args;
@@ -246,7 +338,7 @@ int process_macro(body, args, subs)
     Stringp buffer;
     Arg *true_argv = NULL;		/* unshifted argument vector */
     int vecsize = 20, error = 0;
-    int saved_cmdsub, saved_argc, saved_breaking;
+    int saved_cmdsub, saved_argc, saved_breaking, saved_argtop;
     Arg *saved_argv;
     CONST char *saved_ip;
     CONST char *saved_argtext;
@@ -263,9 +355,11 @@ int process_macro(body, args, subs)
     saved_argv = argv;
     saved_argtext = argtext;
     saved_breaking = breaking;
+/*    saved_argtop = argtop; */
 
     ip = body;
     cmdsub_count = 0;
+/*    argtop = 0; */
 
     newvarscope(scope);
 
@@ -287,7 +381,7 @@ int process_macro(body, args, subs)
 
     if (!error) {
         Stringninit(buffer, 96);
-        if (!list(buffer, subs)) user_result = 0;
+        if (!list(buffer, subs)) set_user_result(NULL);
         Stringfree(buffer);
     }
 
@@ -300,8 +394,27 @@ int process_macro(body, args, subs)
     argv = saved_argv;
     argtext = saved_argtext;
     breaking = saved_breaking;
+/*    argtop = saved_argtop; */
     recur_count--;
-    return user_result;
+    return !!user_result;
+}
+
+String *do_mprefix()
+{
+    STATIC_BUFFER(buffer);
+    int i;
+
+    Stringterm(buffer, 0);
+    for (i = 0; i < recur_count + cmdsub_count; i++)
+        Stringcat(buffer, mprefix);
+    Stringadd(buffer, ' ');
+    return buffer;
+}
+
+#define keyword_mprefix() \
+{ \
+    if (mecho > invis_flag) \
+       tfprintf(tferr, "%S/%s", do_mprefix(), keyword_table[block-BREAK]); \
 }
 
 static int list(dest, subs)
@@ -309,14 +422,17 @@ static int list(dest, subs)
     int subs;
 {
     int oldcondition, oldevalflag, oldblock;
-    int is_a_command, is_a_condition;
-    int iterations = 0, failed = 0;
-    CONST char *start = NULL;
-    STATIC_BUFFER(mprefix_deep);
-    static CONST char unexpect_msg[] = "unexpected %s in %s block";
+    int is_a_command, is_a_condition, is_special;
+    int iterations = 0, failed = 0, result = 0;
+    CONST char *blockstart = NULL, *exprstart;
+    static CONST char unexpect_msg[] = "unexpected /%s in %s block";
+    TFILE *orig_tfin = tfin, *orig_tfout = tfout;
+    TFILE *inpipe = NULL, *outpipe = NULL;
+    STATIC_BUFFER(scratch);
 
-#define unexpected(token, blk) \
-    eprintf(unexpect_msg, token, blk ? keyword_table[blk - BREAK] : "outer");
+#define unexpected(innerblock, outerblock) \
+    eprintf(unexpect_msg, keyword_table[innerblock - BREAK], \
+        outerblock ? keyword_table[outerblock - BREAK] : "outer");
 
     /* Do NOT strip leading space here.  This allows user to type and send
      * lines with leading spaces (but completely empty lines are handled
@@ -324,18 +440,15 @@ static int list(dest, subs)
      * or keyword will be skipped.
      */
 
-#if 1
-    if (!*ip || is_end_of_cmdsub(ip)) user_result = 1;/* empty list returns 1 */
-#else
-    user_result = 1;  /* empty list returns 1 */
-#endif
+    if (!*ip || is_end_of_cmdsub(ip))
+        copy_user_result(default_result);  /* empty list returns 1 */
 
-    if (block == WHILE) start = ip;
+    if (block == WHILE) blockstart = ip;
 
     do /* while (*ip) */ {
         if (breaking && !block) {
             breaking--;
-            return 1;
+            result = 1;  goto list_exit;
         }
 #if 1
         if (subs >= SUB_NEWLINE)
@@ -343,10 +456,10 @@ static int list(dest, subs)
                 ++ip;
 #endif
 
-        is_a_command = is_a_condition = FALSE;
+        is_special = is_a_command = is_a_condition = FALSE;
         if (interrupted()) {
             eprintf("%% macro evaluation interrupted.");
-            return 0;
+            goto list_exit;
         }
         Stringterm(dest, 0);
         /* Lines begining with one "/" are tf commands.  Lines beginning
@@ -357,7 +470,7 @@ static int list(dest, subs)
             is_a_command = TRUE;
             oldblock = block;
             if (subs >= SUB_KEYWORD) {
-                block = keyword();
+                is_special = block = keyword();
                 if (subs == SUB_KEYWORD)
                     subs += (block != 0);
             }
@@ -368,14 +481,20 @@ static int list(dest, subs)
             if (*ip == '(') {
                 is_a_condition = TRUE;
                 oldblock = block;
+                exprstart = ip;
                 ip++; /* skip '(' */
-                if (!expr()) return 0;
+                if (!expr()) goto list_exit;
                 if (stack[--stacktop])
-                    user_result = valint(stack[stacktop]);
+                    copy_user_result(stack[stacktop]);
                 freeval(stack[stacktop]);
                 if (*ip != ')') {
-                    parse_error("condition", "')' after if/while condition");
-                    return 0;
+                    parse_error("condition", "operator or ')'");
+                    goto list_exit;
+                }
+                if (!breaking && evalflag && condition && mecho > invis_flag) {
+                    SStringcpy(scratch, do_mprefix());
+                    Stringncat(scratch, exprstart, ip - exprstart + 1);
+                    tfputs(scratch->s, tferr);
                 }
                 while(isspace(*++ip)); /* skip ')' and spaces */
                 block = (block == WHILE) ? DO : THEN;
@@ -388,10 +507,12 @@ static int list(dest, subs)
         }
 
         if (is_a_command || is_a_condition) {
+
             switch(block) {
             case WHILE:
                 oldevalflag = evalflag;
                 oldcondition = condition;
+                if (!breaking && evalflag && condition) keyword_mprefix();
                 if (!list(dest, subs)) failed = 1;
                 else if (block == WHILE) {
                     parse_error("macro", "/do");
@@ -402,47 +523,52 @@ static int list(dest, subs)
                 }
                 evalflag = oldevalflag;
                 condition = oldcondition;
+                if (!breaking && evalflag && condition) keyword_mprefix();
                 block = oldblock;
-                if (failed) return 0;
-                continue;
+                if (failed) goto list_exit;
+                break;
             case DO:
                 if (oldblock != WHILE) {
-                    unexpected("/do", oldblock);
+                    unexpected(block, oldblock);
                     block = oldblock;
-                    return 0;
+                    goto list_exit;
                 }
                 evalflag = evalflag && condition;
-                condition = user_result;
+                condition = valbool(user_result);
                 if (breaking) breaking++;
+                if (!breaking && evalflag && condition) keyword_mprefix();
                 continue;
             case BREAK:
                 if (!breaking && evalflag && condition) {
+                    keyword_mprefix();
                     if ((breaking = atoi(ip)) <= 0) breaking = 1;
                 }
                 block = oldblock;
                 continue;
             case DONE:
                 if (oldblock != DO) {
-                    unexpected("/done", oldblock);
+                    unexpected(block, oldblock);
                     block = oldblock;
-                    return 0;
+                    goto list_exit;
                 }
                 if (breaking || !condition || !evalflag) {
                     if (breaking) breaking--;
                     evalflag = 0;  /* don't eval any trailing garbage */
-                    return end_statement();
+                    while (isspace(*ip)) ip++;
+                    result = 1;  goto list_exit;
                 } else if (++iterations > max_iter && max_iter) {
                     eprintf("too many iterations");
                     block = oldblock;
-                    return 0;
+                    goto list_exit;
                 } else {
-                    ip = start;
+                    ip = blockstart;
                     block = WHILE;
                     continue;
                 }
             case IF:
                 oldevalflag = evalflag;
                 oldcondition = condition;
+                if (!breaking && evalflag && condition) keyword_mprefix();
                 if (!list(dest, subs)) {
                     failed = 1;
                 } else if (block == IF || block == ELSEIF) {
@@ -454,73 +580,111 @@ static int list(dest, subs)
                 }
                 evalflag = oldevalflag;
                 condition = oldcondition;
+                if (!breaking && evalflag && condition) keyword_mprefix();
                 block = oldblock;
-                if (failed) return 0;
-                continue;
+                if (failed) goto list_exit;
+                break;
             case THEN:
                 if (oldblock != IF && oldblock != ELSEIF) {
-                    unexpected("/then", oldblock);
+                    unexpected(block, oldblock);
                     block = oldblock;
-                    return 0;
+                    goto list_exit;
                 }
                 evalflag = evalflag && condition;
-                condition = user_result;
+                condition = valbool(user_result);
+                if (!breaking && evalflag && condition) keyword_mprefix();
                 continue;
             case ELSEIF:
-                if (oldblock != THEN) {
-                    unexpected("/elseif", oldblock);
-                    block = oldblock;
-                    return 0;
-                }
-                condition = !condition;
-                continue;
             case ELSE:
                 if (oldblock != THEN) {
-                    unexpected("/else", oldblock);
+                    unexpected(block, oldblock);
                     block = oldblock;
-                    return 0;
+                    goto list_exit;
                 }
                 condition = !condition;
+                if (!breaking && evalflag && condition) keyword_mprefix();
                 continue;
             case ENDIF:
                 if (oldblock != THEN && oldblock != ELSE) {
-                    unexpected("/endif", oldblock);
+                    unexpected(block, oldblock);
                     block = oldblock;
-                    return 0;
+                    goto list_exit;
                 }
-                return end_statement();
+                while (isspace(*ip)) ip++;
+                result = 1;  goto list_exit;
             default:
                 /* not a control statement */
                 ip--;
                 block = oldblock;
+                if (!statement(dest, subs)) goto list_exit;
                 break;
             }
+
+        } else /* !(is_a_command || is_a_condition) */ {
+            if (inpipe) {
+                eprintf("Piping input to a server command is not allowed.");
+                goto list_exit;
+            }
+            if (!statement(dest, subs))
+                goto list_exit;
         }
 
-        if (!statement(dest, subs)) return 0;
-
-        if (!breaking && evalflag && condition && (dest->len || !snarf)) {
-            extern int invis_flag;
-            if (subs == SUB_MACRO && (mecho - invis_flag) > 0) {
-                int i;
-                Stringterm(mprefix_deep, 0);
-                for (i = 0; i < recur_count + cmdsub_count; i++)
-                    Stringcat(mprefix_deep, mprefix);
-                tfprintf(tferr, "%S %S", mprefix_deep, dest);
+        if (ip[0] == '%' && ip[1] == '|') { /* this stmnt pipes into next one */
+            if (!is_a_command) {
+                eprintf("Piping output of a server command is not allowed.");
+                goto list_exit;
+            } else if (is_special) {
+                eprintf("Piping output of a compound command is not allowed.");
+                goto list_exit;
             }
+            tfout = outpipe = tfopen(NULL, "q");
+        }
 
+        if (!is_special && !breaking && evalflag && condition &&
+            (dest->len || !snarf))
+        {
+            if ((subs == SUB_MACRO || is_a_command) && (mecho > invis_flag))
+                tfprintf(tferr, "%S%s%S", do_mprefix(),
+                    is_a_command ? "" : "SEND: ", dest);
             if (is_a_command) {
-                user_result = handle_command(dest);
+                handle_command(dest);  /* sets user_result */
             } else {
                 if (!do_hook(H_SEND, NULL, "%S", dest)) {
-                    user_result = send_line(dest->s, dest->len, TRUE);
+                   set_user_result(newint(send_line(dest->s, dest->len, TRUE)));
                 }
             }
         }
 
-        if (is_end_of_cmdsub(ip)) break;
+        if (inpipe) tfclose(inpipe);  /* previous stmnt piped into this one */
+        inpipe = outpipe;
+        tfin = inpipe ? inpipe : orig_tfin;
+        outpipe = NULL;
+        tfout = orig_tfout;
+
+        if (is_end_of_cmdsub(ip)) {
+            break;
+        } else if (is_end_of_statement(ip)) {
+            ip += 2;
+            while (isspace(*ip)) ip++;
+        } else if (*ip) {
+            parse_error("macro", "end of statement");
+            goto list_exit;
+        }
+
     } while (*ip);
-    return 1;
+
+    result = 1;
+
+    if (inpipe) {
+        eprintf("'%|' must be followed by another command.");
+        result = 0;
+    }
+
+list_exit:
+    tfin = orig_tfin;
+    tfout = orig_tfout;
+    if (inpipe) tfclose(inpipe);
+    return result;
 }
 
 static int keyword()
@@ -544,18 +708,6 @@ static int keyword()
     return BREAK + (result - keyword_table);
 }
 
-static int end_statement()
-{
-    while (isspace(*ip)) ip++;
-    if (!*ip) return 1;
-    if (is_end_of_statement(ip)) {
-        ip += 2;
-        while (isspace(*ip)) ip++;
-        return 1;
-    }
-    parse_error("macro", "end of statement");
-    return 0;
-}
 
 static int statement(dest, subs)
     Stringp dest;
@@ -576,14 +728,13 @@ static int statement(dest, subs)
             ++ip;
             if (!slashsub(dest)) return 0;
         } else if (*ip == '%' && subs >= SUB_NEWLINE) {
-            ++ip;
-            if (is_end_of_statement(ip-1)) {
+            if (is_end_of_statement(ip)) {
                 while (dest->len && isspace(dest->s[dest->len-1]))
                     Stringterm(dest, dest->len-1);  /* nuke spaces before %; */
-                ++ip;
-                while (isspace(*ip)) ip++; /* skip space after %; */
                 break;
-            } else if (*ip == '%') {
+            }
+            ++ip;
+            if (*ip == '%') {
                 while (*ip == '%') Stringadd(dest, *ip++);
             } else if (subs >= SUB_FULL) {
                 if (!varsub(dest)) return 0;
@@ -604,7 +755,7 @@ static int statement(dest, subs)
         } else {
             /* is_statmeta() is much faster than all those if statements. */
             for (start = ip++; *ip && !is_statmeta(*ip); ip++);
-            Stringncat(dest, start, ip - start);
+            Stringfncat(dest, start, ip - start);
         }
     }
 
@@ -639,7 +790,7 @@ static CONST char *error_text()
             while (isalnum(*end)) end++;
         }
         Stringcpy(buf, "'");
-        Stringncat(buf, ip, end - ip);
+        Stringfncat(buf, ip, end - ip);
         Stringcat(buf, "'");
         return buf->s;
     } else {
@@ -655,9 +806,7 @@ static void parse_error(type, expect)
 }
 
 
-#ifndef NO_EXPR
-
-#ifdef USE_FLOAT
+#ifndef NO_FLOAT
 static Value *newfloat(f)
     double f;
 {
@@ -665,6 +814,7 @@ static Value *newfloat(f)
 
     if (breaking || !evalflag || !condition) return NULL;
     palloc(val, Value, valpool, u.next);
+    val->count = 1;
     val->type = TYPE_FLOAT;
     val->u.fval = f;
     val->len = -1;
@@ -698,7 +848,7 @@ static int mathtype(val)
     if (isdigit(*str)) return TYPE_FLOAT;
     return TYPE_INT;
 }
-#endif /* USE_FLOAT */
+#endif /* NO_FLOAT */
 
 static Value *newint(i)
     long i;
@@ -707,23 +857,25 @@ static Value *newint(i)
 
     if (breaking || !evalflag || !condition) return NULL;
     palloc(val, Value, valpool, u.next);
+    val->count = 1;
     val->type = TYPE_INT;
     val->u.ival = i;
     val->len = -1;
     return val;
 }
 
-static Value *newstrid(str, len, type)
-    CONST char *str;
-    int len, type;
+static Value *newstrid(str, len, type, file, line)
+    CONST char *str, *file;
+    int len, type, line;
 {
     Value *val;
     char *new;
 
     if (breaking || !evalflag || !condition) return NULL;
     palloc(val, Value, valpool, u.next);
+    val->count = 1;
     val->type = type;
-    new = strncpy((char *)XMALLOC(len + 1), str, len);
+    new = strncpy((char *)xmalloc(len + 1, file, line), str, len);
     new[len] = '\0';
     val->u.sval = new;
     val->len = len;
@@ -734,8 +886,20 @@ static void freeval(val)
     Value *val;
 {
     if (!val) return;   /* val may have been placeholder for short-circuit */
+    if (--val->count) return;
     if (val->type == TYPE_STR || val->type == TYPE_ID) FREE(val->u.sval);
     pfree(val, valpool, u.next);
+}
+
+/* return boolean value of item */
+static int valbool(val)
+    Value *val;
+{
+    if (!val) return 0;
+#ifndef NO_FLOAT
+    if (mathtype(val) == TYPE_FLOAT) return !!val->u.fval;
+#endif
+    return !!valint(val);
 }
 
 /* return integer value of item */
@@ -746,7 +910,7 @@ static long valint(val)
     long result;
 
     if (val->type == TYPE_INT) return val->u.ival;
-#ifdef USE_FLOAT
+#ifndef NO_FLOAT
     if (val->type == TYPE_FLOAT) return (int)val->u.fval;
 #endif
     str = val->u.sval;
@@ -759,7 +923,7 @@ static long valint(val)
     return (isdigit(*str)) ? parsetime((char **)&str, NULL) : 0;
 }
 
-#ifdef USE_FLOAT
+#ifndef NO_FLOAT
 /* return floating value of item */
 static double valfloat(val)
     Value *val;
@@ -774,12 +938,12 @@ static double valfloat(val)
     str = val->u.sval;
     if (val->type == TYPE_ID) {
         str = getnearestvar(str, &i);
-        if (i) return (double)i;
+        if (i || !str) return (double)i;
     }
     result = strtod(str, (char**)&str);
     return result;
 }
-#endif /* USE_FLOAT */
+#endif /* NO_FLOAT */
 
 /* return string value of item */
 static CONST char *valstr(val)
@@ -792,8 +956,12 @@ static CONST char *valstr(val)
         case TYPE_INT:  sprintf(buffer, "%ld", val->u.ival); return buffer;
         case TYPE_STR:  return val->u.sval;
         case TYPE_ID:   return (str=getnearestvar(val->u.sval,NULL)) ? str : "";
-#ifdef USE_FLOAT
-        case TYPE_FLOAT: sprintf(buffer, "%g", val->u.fval); return buffer;
+#ifndef NO_FLOAT
+        case TYPE_FLOAT:
+            sprintf(buffer, "%.10g", val->u.fval);
+            if (!strchr(buffer, '.'))
+                strcat(buffer, ".0");
+            return buffer;
 #endif
     }
     return NULL; /* impossible */
@@ -826,7 +994,7 @@ static int reduce(op, n)
     Var *var;
     char buf[16];
     long i; /* scratch */
-#ifdef USE_FLOAT
+#ifndef NO_FLOAT
     double f[3];
     int do_float = FALSE;
 #endif
@@ -849,11 +1017,12 @@ static int reduce(op, n)
         opd(1)->type == TYPE_ID && !getnearestvar(opd(1)->u.sval, NULL))
     {
         /* common error: "/if /test expr /then ..." */
+        /* common error: "/if (expr /then ..." */
         eprintf("%% warning: possibly missing %s before /%s", "%; or )",
             opd(1)->u.sval);
     }
 
-#ifdef USE_FLOAT
+#ifndef NO_FLOAT
     switch (op) {
     case '>':
     case '<':
@@ -905,18 +1074,20 @@ static int reduce(op, n)
         case '+':       val = newfloat(((n>1) ? f[2] : 0) + f[1]); break;
         case '-':       val = newfloat(((n>1) ? f[2] : 0) - f[1]); break;
         case '*':       val = newfloat(f[2] * f[1]);               break;
-
-        case '/':       if (f[1] == 0.0)
-                            eprintf("division by zero");
-                        else
-                            val = newfloat(f[2] / f[1]);
-                        break;
+        case '/':       val = newfloat(f[2] / f[1]);               break;
         case '!':       val = newint(!f[1]);                       break;
         default:        break;
         }
-
+        if (val->type == TYPE_FLOAT &&
+            (val->u.fval == HUGE_VAL || val->u.fval == -HUGE_VAL))
+        {
+            /* note: only single-char ops can overflow */
+            eprintf("%c operator: arithmetic overflow", op);
+            freeval(val);
+            val = NULL;
+        }
     } else
-#endif /* USE_FLOAT */
+#endif /* NO_FLOAT */
 
     if ((op == OP_ASSIGN || op == OP_PREINC || op == OP_PREDEC) &&
         (opd(n)->type != TYPE_ID))
@@ -924,7 +1095,6 @@ static int reduce(op, n)
         eprintf("illegal object of assignment");
 
     } else {
-        CONST char *old_command;
         switch (op) {
         case OP_ASSIGN: var = setnearestvar(opd(2)->u.sval, opdstr(1));
                         val = var ? newstr(var->value,var->len) : newstr("",0);
@@ -961,10 +1131,7 @@ static int reduce(op, n)
                             val = newint(opdint(2) / i);
                         break;
         case '!':       val = newint(!opdint(1));                        break;
-        case OP_FUNC:   old_command = current_command;
-                        val = do_function(n);
-                        current_command = old_command;
-                        break;
+        case OP_FUNC:   val = do_function(n);                            break;
         default:        internal_error(__FILE__, __LINE__);
                         eprintf("%% reduce: internal error: unknown op %c", op);
                         break;
@@ -977,42 +1144,23 @@ static int reduce(op, n)
     return !!val;
 }
 
-static Value *do_function(n)
-    int n;    /* number of operands (including function id) */
+static Value *function_switch(symbol, n, parent)
+    int symbol, n;
+    CONST char *parent;
 {
-    Value *val;
-    Handler *handler;
-    ExprFunc *funcrec;
-    Macro *macro;
     int oldblock;
     long i, j, len;
-#ifdef USE_FLOAT
-    double f;
-#endif /* USE_FLOAT */
     char c;
-    CONST char *id, *str, *ptr;
+    CONST char *str, *ptr;
     extern Stringp keybuf;
-    extern int keyboard_pos, no_tty, runall_depth;
+    extern int keyboard_pos, log_count, mail_flag;
     extern TIME_T keyboard_time;
     regexp *re;
     FILE *file;
+    TFILE *tfile;
     STATIC_BUFFER(scratch);
 
-    if (opd(n)->type != TYPE_ID) {
-        eprintf("function name must be an identifier.");
-        return NULL;
-    }
-    current_command = id = opd(n--)->u.sval;
-
-    funcrec = (ExprFunc *)binsearch((GENERIC*)id, (GENERIC*)functab,
-        sizeof(functab)/sizeof(ExprFunc), sizeof(ExprFunc), strstructcmp);
-
-    if (funcrec) {
-        if (n < funcrec->min || n > funcrec->max) {
-            eprintf("%s: incorrect number of arguments", id);
-            return NULL;
-        }
-        switch (funcrec - functab) {
+        switch (symbol) {
 
         case FN_COLUMNS:
             return newint(columns);
@@ -1023,6 +1171,9 @@ static Value *do_function(n)
         case FN_ECHO:
             oputa(new_aline(opdstr(1), 0));
             return newint(1);
+
+        case FN_ECHOP:
+            return newint(tfputp(opdstr(1), tfout));
 
         case FN_SEND:
             i = handle_send_function(opdstr(n), (n>1 ? opdstr(n-1) : NULL),
@@ -1041,8 +1192,52 @@ static Value *do_function(n)
             fclose(file);
             return newint(1);
 
+        case FN_TFOPEN:
+            return newint(handle_tfopen_func(
+                n<2 ? "" : opdstr(2), n<1 ? "q" : opdstr(1)));
+
+        case FN_TFCLOSE:
+            tfile = find_tfile(opdint(1));
+            if (!tfile) return newint(-1);
+            tfclose(tfile);
+            return newint(1);
+
+        case FN_TFWRITE:
+            tfile = (n > 1) ? find_tfile(opdint(2)) : tfout;
+            if (!tfile) return newint(-1);
+            if (!(tfile->mode & S_IWUSR)) {
+                eprintf("attempted write to non-writable file");
+                return newint(0);
+            }
+            str = opdstr(1);
+            tfputs(str, tfile);
+            return newint(1);
+
+        case FN_TFREAD:
+            tfile = (n > 1) ? find_tfile(opdint(2)) : tfin;
+            if (!tfile) return newint(-1);
+
+            if (!(tfile->mode & S_IRUSR)) {
+                eprintf("attempted read from non-readable file");
+                return newint(-1);
+            }
+            if (opd(1)->type != TYPE_ID) {
+                eprintf("arg %d: illegal object of assignment", n);
+                return newint(-1);
+            }
+
+            oldblock = block;  /* condition and evalflag are already correct */
+            block = 0;
+            j = -1;
+            if (tfgetS(scratch, tfile)) {
+                if (setnearestvar(opd(1)->u.sval, scratch->s))
+                    j = scratch->len;
+            }
+            block = oldblock;
+            return newint(j);
+
         case FN_ASCII:
-            return newint(unmapchar(*opdstr(1)));
+            return newint((0x100 + unmapchar(*opdstr(1))) & 0xFF);
 
         case FN_CHAR:
             c = mapchar(localize(opdint(1)));
@@ -1061,21 +1256,50 @@ static Value *do_function(n)
         case FN_MORESIZE:
             return newint(moresize);
 
-#ifdef USE_FLOAT
+#ifndef NO_FLOAT
         case FN_SQRT:
-            f = opdfloat(1);
-#if 0
-            if (f < 0.0) {
-                eprintf("%s: invalid argument", id);
-                return NULL;
-            }
-#endif
-            return newfloat(sqrt(f));
+            return newfloat(sqrt(opdfloat(1)));
+
+        case FN_SIN:
+            return newfloat(sin(opdfloat(1)));
+
+        case FN_COS:
+            return newfloat(cos(opdfloat(1)));
+
+        case FN_TAN:
+            return newfloat(tan(opdfloat(1)));
+
+        case FN_ASIN:
+            return newfloat(asin(opdfloat(1)));
+
+        case FN_ACOS:
+            return newfloat(acos(opdfloat(1)));
+
+        case FN_ATAN:
+            return newfloat(atan(opdfloat(1)));
+
+        case FN_EXP:
+            return newfloat(exp(opdfloat(1)));
+
+        case FN_LOG:
+            return newfloat(log(opdfloat(1)));
+
+        case FN_LOG10:
+            return newfloat(log10(opdfloat(1)));
+
+        case FN_POW:
+            return newfloat(pow(opdfloat(2), opdfloat(1)));
 
         case FN_TRUNC:
-            f = opdfloat(1);
-            return newint((int)f);
-#endif /* USE_FLOAT */
+            return newint((int)opdfloat(1));
+
+        case FN_ABS:
+            return (mathtype(opd(1)) == TYPE_INT) ?
+                newint(abs(opdint(1))) : newfloat(fabs(opdfloat(1)));
+#else
+        case FN_ABS:
+            return newint(abs(opdint(1)));
+#endif /* NO_FLOAT */
 
         case FN_RAND:
             if (n == 0) return newint(RAND());
@@ -1101,6 +1325,13 @@ static Value *do_function(n)
 
         case FN_FILENAME:
             str = expand_filename(opdstr(1));
+            return newstr(str, strlen(str));
+
+        case FN_FG_WORLD:
+            return ((str=fgname())) ? newstr(str, strlen(str)) : newstr("", 0);
+
+        case FN_WORLDINFO:
+            str = world_info(n<2 ? NULL : opdstr(2), opdstr(1));
             return newstr(str, strlen(str));
 
         case FN_GETPID:
@@ -1222,12 +1453,17 @@ static Value *do_function(n)
             if (n>1) {
                 CONST char *init = opdstr(n-1);
                 for (ptr = str; *ptr; ptr++) {
+                    if (!isalnum(*ptr)) {
+                        eprintf("invalid option specifier: %c", *ptr);
+                        return newint(0);
+                    }
                     Stringadd(Stringcpy(scratch, "opt_"), *ptr);
                     newlocalvar(scratch->s, init);
-                    if (ptr[1] == ':') ptr++;
+                    if (ptr[1] == ':' || ptr[1] == '#') ptr++;
                 }
             }
 
+            current_command = parent;
             startopt(argtext, str);
             while (i = 1, (c = nextopt((char **)&ptr, &i))) {
                 if (isalpha(c)) {
@@ -1253,58 +1489,127 @@ static Value *do_function(n)
             return newint(1);
 
         case FN_READ:
-            /* This is a hack.  It's a useful feature, but doing it correctly
-             * without blocking tf would require making the macro language
-             * suspendable, which would have required a major redesign.  The
-             * nested main_loop() method was easy to add, but leads to a few
-             * quirks, like the odd handling of /dokey newline.
-             */
-            if (runall_depth) {
-                eprintf("can't read() from a process.");
-                return newstr("", 0);
-            }
-            if (read_depth) eprintf("warning: nested read()");
             oldblock = block;  /* condition and evalflag are already correct */
             block = 0;
-            read_depth++; status_bar(STAT_READ);
-            main_loop();
-            read_depth--; status_bar(STAT_READ);
+            j = !!tfgetS(scratch, tfin);
             block = oldblock;
-            if (interrupted())
-                return NULL;
-            val = newstr(keybuf->s, keybuf->len);
-            Stringterm(keybuf, keyboard_pos = 0);
-            return val;
+            return !j ? newstr("", 0) : newstr(scratch->s, scratch->len);
+
+        case FN_NREAD:
+            return newint(read_depth);
+
+        case FN_NACTIVE:
+            return newint(nactive(n ? opdstr(1) : NULL));
+
+        case FN_NLOG:
+            return newint(log_count);
+
+        case FN_NMAIL:
+            return newint(mail_flag);
 
         case FN_SYSTYPE:
-#ifdef PLATFORM_UNIX
-            return newstr("unix", 4);
+
+#ifdef __CYGWIN32__
+            return newstrliteral("cygwin32");
 #else
-# ifdef PLATFORM_OS2
-            return newstr("os/2", 4);
+# ifdef PLATFORM_UNIX
+            return newstrliteral("unix");
 # else
-            return newstr("unknown", 7);
+#  ifdef PLATFORM_OS2
+            return newstrliteral("os/2");
+#  else
+            return newstrliteral("unknown");
+#  endif
 # endif
 #endif
 
         default:
-            tfprintf(tferr, "%% %s: not supported", id);
+            eprintf("not supported");
             return NULL;
-
         }
+}
+
+static Value *do_function(n)
+    int n;    /* number of operands (including function id) */
+{
+    Value *val;
+    ExprFunc *funcrec;
+    Macro *macro = NULL;
+    Handler *handler = NULL;
+    CONST char *id, *old_command;
+    STATIC_BUFFER(scratch);
+
+    if (opd(n)->type != TYPE_ID) {
+        eprintf("function name must be an identifier.");
+        return NULL;
+    }
+    id = opd(n--)->u.sval;
+    old_command = current_command;
+
+    funcrec = (ExprFunc *)binsearch((GENERIC*)id, (GENERIC*)functab,
+        sizeof(functab)/sizeof(ExprFunc), sizeof(ExprFunc), strstructcmp);
+
+    if (funcrec) {
+        if (n < funcrec->min || n > funcrec->max) {
+            eprintf("%s: incorrect number of arguments", id);
+            return NULL;
+        }
+        current_command = id;
+        errno = 0;
+        val = function_switch(funcrec - functab, n, old_command);
+#ifndef NO_FLOAT
+        if (errno == EDOM) {
+            eprintf("argument outside of domain");
+            freeval(val);
+            val = NULL;
+        } else if (errno == ERANGE) {
+            eprintf("result outside of range");
+            freeval(val);
+            val = NULL;
+        }
+#endif
+        current_command = old_command;
+        return val;
 
     } else if ((macro = find_macro(id)) || (handler = find_command(id))) {
-        if (n > 1) {
-            tfprintf(tferr, "%% %s:  command or macro called as function must have 0 or 1 argument", id);
+        int saved_argtop, saved_argc;
+        Arg *saved_argv;
+
+        if (handler && n > 1) {
+            eprintf("%s: command called as function must have 0 or 1 argument",
+                id);
             return NULL;
         }
-        j = (macro) ?
-            do_macro(macro, opdstr(1)) :
-            (*handler)(Stringcpy(scratch, n ? opdstr(1) : "")->s);
-        return newint(j);
+        current_command = id;
+
+        if (macro) {
+            saved_argtop = argtop;
+            saved_argc = argc;
+            saved_argv = argv;
+            argtop = stacktop;
+            argc = n;
+            argv = NULL;
+
+            if (do_macro(macro, NULL))
+                user_result->count++;
+            else
+                set_user_result(NULL);
+
+            argtop = saved_argtop;
+            argc = saved_argc;
+            argv = saved_argv;
+        } else if (handler) {
+            int result = (*handler)(Stringcpy(scratch, n ? opdstr(1) : "")->s);
+            if (handler != handle_test_command)
+                set_user_result(newint(result));
+            user_result->count++;
+        }
+
+        current_command = old_command;
+        return user_result;
     }
 
-    tfprintf(tferr, "%% %s: no such function", id);
+    eprintf("%s: no such function", id);
     return NULL;
 }
 
@@ -1342,7 +1647,7 @@ static int conditional_expr()
         oldevalflag = evalflag;
         oldcondition = condition;
         evalflag = evalflag && condition && !breaking;
-        condition = evalflag && opdint(1);
+        condition = evalflag && opdbool(1);
 
         while (isspace(*++ip));
         if (*ip == ':') {
@@ -1372,14 +1677,17 @@ static int or_expr()
     /* This is more like flow-control than expression, so we handle the stack
      * here instead of calling reduce().
      */
-    int oldcondition = condition;
+    int i, oldcondition = condition;
     if (!and_expr()) return 0;
     while (*ip == '|') {
         ip++;
-        condition = evalflag && condition && !breaking && !opdint(1);
-        if (condition) freeval(stack[--stacktop]);    /* discard left value */
+        condition = evalflag && condition && !breaking && !(i = opdbool(1));
+        freeval(stack[--stacktop]);
         if (!and_expr()) return 0;
-        if (!condition) freeval(stack[--stacktop]);   /* discard right value */
+        i = i || opdbool(1);
+        freeval(stack[--stacktop]);
+        condition = 1;
+        pushval(newint(i));
     }
     condition = oldcondition;
     return 1;
@@ -1390,14 +1698,17 @@ static int and_expr()
     /* This is more like flow-control than expression, so we handle the stack
      * here instead of calling reduce().
      */
-    int oldcondition = condition;
+    int i, oldcondition = condition;
     if (!relational_expr()) return 0;
     while (*ip == '&') {
         ip++;
-        condition = evalflag && condition && !breaking && opdint(1);
-        if (condition) freeval(stack[--stacktop]);    /* discard left value */
+        condition = evalflag && condition && !breaking && (i = opdbool(1));
+        freeval(stack[--stacktop]);
         if (!relational_expr()) return 0;
-        if (!condition) freeval(stack[--stacktop]);   /* discard right value */
+        i = i && opdbool(1);
+        freeval(stack[--stacktop]);
+        condition = 1;
+        pushval(newint(i));
     }
     condition = oldcondition;
     return 1;
@@ -1506,23 +1817,29 @@ static int primary_expr()
     char quote;
     STATIC_BUFFER(static_buffer);
     int result;
+    double d;
     Stringp buffer;  /* gotta be reentrant */
 
     while (isspace(*ip)) ip++;
     if (isdigit(*ip)) {
-#ifdef USE_FLOAT
+#ifndef NO_FLOAT
         for (end = ip+1; isdigit(*end); end++);
         if (*end == '.' || ucase(*end) == 'E') {
-            if (!pushval(newfloat(strtod(ip, (char**)&ip)))) return 0;
+            d = strtod(ip, (char**)&ip);
+            if (d == HUGE_VAL || d == -HUGE_VAL) {
+                eprintf("float literal: arithmetic overflow");
+                return 0;
+            }
+            if (!pushval(newfloat(d))) return 0;
         } else
-#endif /* USE_FLOAT */
+#endif /* NO_FLOAT */
         {
             if (!pushval(newint(parsetime((char **)&ip, NULL)))) return 0;
         }
-#ifdef USE_FLOAT
+#ifndef NO_FLOAT
     } else if (ip[0] == '.' && isdigit(ip[1])) {
         if (!pushval(newfloat(strtod(ip, (char**)&ip)))) return 0;
-#endif /* USE_FLOAT */
+#endif /* NO_FLOAT */
     } else if (is_quote(*ip)) {
         Stringterm(static_buffer, 0);
         quote = *ip;
@@ -1591,16 +1908,6 @@ static int exprsub(dest)
     return result;
 }
 
-#else /* NO_EXPR */
-
-static int exprsub(dest)
-    Stringp dest;
-{
-    eprintf("expressions are not supported.");
-    return 0;
-}
-
-#endif /* NO_EXPR */
 
 static int cmdsub(dest)
     Stringp dest;
@@ -1636,7 +1943,7 @@ static int cmdsub(dest)
         if (!((aline->attrs & F_GAG) && gag)) {
             if (!first) Stringadd(dest, ' ');
             first = 0;
-            Stringncat(dest, aline->str, aline->len);
+            Stringfncat(dest, aline->str, aline->len);
         }
         free_aline(aline);
     }
@@ -1687,7 +1994,7 @@ static int macsub(dest)
             if (!varsub(buffer)) return 0;
         } else {
             for (s = ip++; *ip && !ispunct(*ip) && !isspace(*ip); ip++);
-            Stringncat(buffer, s, ip - s);
+            Stringfncat(buffer, s, ip - s);
         }
     }
     if (bracket) {
@@ -1703,7 +2010,8 @@ static int macsub(dest)
 
     if ((body = macro_body(buffer->s))) Stringcat(dest, body);
     else tfprintf(tferr, "%% macro not defined: %S", buffer);
-    if (mecho) tfprintf(tferr, "%s $%S --> %s", mprefix, buffer, body);
+    if (mecho > invis_flag)
+        tfprintf(tferr, "%S$%S --> %s", do_mprefix(), buffer, body);
     return 1;
 }
 
@@ -1725,12 +2033,13 @@ static int varsub(dest)
     String *dest;	/* if NULL, string result will be pushed onto stack */
 {
     CONST char *value, *start;
-    int bracket, except, ell = FALSE, pee = FALSE, n = -1;
+    int bracket, except, ell = FALSE, pee = FALSE, star = FALSE, n = -1;
     int first, last, empty = 0;
     STATIC_BUFFER(selector);
     Stringp buffer;	/* used when dest==NULL and a Stringp is needed */
     int stackflag;
     Value *val = NULL;
+    int result = 0;
 
     if ((stackflag = !dest)) {
         Stringzero(buffer);
@@ -1739,31 +2048,27 @@ static int varsub(dest)
 
     if (*ip == '%') {
         while (*ip == '%') conditional_add(dest, *ip++);
-        if (stackflag) return pushval(newstr(dest->s, dest->len));
-        return 1;
+        result = 1;
+        goto varsub_exit;
     }
     if (!*ip || isspace(*ip)) {
         conditional_add(dest, '%');
-        if (stackflag) return pushval(newstr(dest->s, dest->len));
-        return 1;
+        result = 1;
+        goto varsub_exit;
     }
 
-    if ((bracket = (*ip == '{' /*}*/ ))) ip++;
+    if ((bracket = (*ip == '{'))) ip++;
 
-    if (ip[0] == '#' && (!bracket || ip[1] == /*{*/ '}')) {
+    if (ip[0] == '#' && (!bracket || ip[1] == '}')) {
         ++ip;
         if (!breaking && evalflag && condition) {
             Sprintf(dest, SP_APPEND, "%d", argc);
-            if (stackflag)
-                val = newstr(dest->s, dest->len);
         }
         empty = FALSE;
-    } else if (ip[0] == '?' && (!bracket || ip[1] == /*{*/ '}')) {
+    } else if (ip[0] == '?' && (!bracket || ip[1] == '}')) {
         ++ip;
         if (!breaking && evalflag && condition) {
-            Sprintf(dest, SP_APPEND, "%d", user_result);
-            if (stackflag)
-                val = newstr(dest->s, dest->len);
+            Stringcat(dest, valstr(user_result));
         }
         empty = FALSE;
 
@@ -1772,14 +2077,13 @@ static int varsub(dest)
             ++ip;
         }
         start = ip;
-        if ((ell = (ucase(*ip) == 'L')) || (pee = (ucase(*ip) == 'P'))) {
+        if ((ell = (ucase(*ip) == 'L')) || (pee = (ucase(*ip) == 'P')) ||
+            (star = (*ip == '*')))
+        {
             ++ip;
         }
-        if (isdigit(*ip)) {
+        if (!star && isdigit(*ip)) {
             n = strtoint(&ip);
-        } else if (*ip == '*') {
-            ++ip;
-            n = 0;
         }
 
         /* This is strange, for backward compatibility.  Some examples:
@@ -1793,7 +2097,8 @@ static int varsub(dest)
          * "%L1x"   == parameter "L1" followed by literal "x".
          * "%{L1x}" == variable "L1x".
          */
-        if (n < 0 || (bracket && (ell || pee))) {
+        Stringterm(selector, 0);
+        if ((n < 0 && !star) || (bracket && (ell || pee))) {
             /* is non-special, or could be non-special if followed by alnum_ */
             if (isalnum(*ip) || (*ip == '_')) {
                 ell = pee = FALSE;
@@ -1808,15 +2113,15 @@ static int varsub(dest)
             if (pee) {
                 if (n < 0) n = 1;
                 empty = (regsubstr(dest, n) <= 0);
-                if (stackflag && !empty)
-                    val = newstr(dest->s, dest->len);
                 n = -1;
             } else if (ell) {
                 if (n < 0) n = 1;
                 if (except) first = 0, last = argc - n - 1;
                 else first = last = argc - n;
-            } else if (n == 0) {
+            } else if (star) {
                 first = 0, last = argc - 1;
+            } else if (n == 0) {
+                Stringcat(dest, current_command);
             } else if (n > 0) {
                 if (except) first = n, last = argc - 1;
                 else first = last = n - 1;
@@ -1827,29 +2132,37 @@ static int varsub(dest)
                 } else empty = TRUE;
             } else if (cstrcmp(selector->s, "PL") == 0) {
                 empty = (regsubstr(dest, -1) <= 0);
-                if (stackflag && !empty)
-                    val = newstr(dest->s, dest->len);
             } else if (cstrcmp(selector->s, "PR") == 0) {
                 empty = (regsubstr(dest, -2) <= 0);
-                if (stackflag && !empty)
-                    val = newstr(dest->s, dest->len);
             } else {
                 value = getnearestvar(selector->s, NULL);
                 if (!(empty = !value || !*value))
                     Stringcat(dest, value);
-                if (stackflag && !empty)
-                    val = newstr(dest->s, dest->len);
             }
 
-            if (n >= 0) {
+            if (star || n > 0) {
                 empty = (first > last || first < 0 || last >= argc);
                 if (!empty) {
-                    if (stackflag) {
-                        val = newstr(argv[first].start,
-                            argv[last].end - argv[first].start);
+                    if (argtop) {
+                        if (stackflag && first == last) {
+                            (val = stack[argtop-argc+first])->count++;
+                        } else {
+                            int i;
+                            for (i = first; ; i++) {
+                                Stringcat(dest, valstr(stack[argtop-argc+i]));
+                                if (i == last) break;
+                                Stringadd(dest, ' ');
+                            }
+                        }
                     } else {
-                        Stringncat(dest, argv[first].start,
-                            argv[last].end - argv[first].start);
+
+                        if (stackflag) {
+                            val = newstr(argv[first].start,
+                                argv[last].end - argv[first].start);
+                        } else {
+                            Stringfncat(dest, argv[first].start,
+                                argv[last].end - argv[first].start);
+                        }
                     }
                 }
             }
@@ -1867,26 +2180,26 @@ static int varsub(dest)
         while (*ip) {
             if (is_end_of_statement(ip) || is_end_of_cmdsub(ip)) {
                 break;
-            } else if (bracket && *ip == /*{*/ '}') {
+            } else if (bracket && *ip == '}') {
                 break;
             } else if (!bracket && isspace(*ip)) {
                 break;
             } else if (*ip == '%') {
                 ++ip;
-                if (!varsub(dest)) return 0;
+                if (!varsub(dest)) goto varsub_exit;
             } else if (*ip == '$') {
                 ++ip;
-                if (!dollarsub(dest)) return 0;
+                if (!dollarsub(dest)) goto varsub_exit;
             } else if (*ip == '/') {
                 ++ip;
-                if (!slashsub(dest)) return 0;
+                if (!slashsub(dest)) goto varsub_exit;
             } else if (*ip == '\\') {
                 ++ip;
-                if (!backsub(dest)) return 0;
+                if (!backsub(dest)) goto varsub_exit;
             } else {
                 for (start = ip++; *ip && isalnum(*ip); ip++);
                 if (!breaking && evalflag && condition)
-                    Stringncat(dest, start, ip - start);
+                    Stringfncat(dest, start, ip - start);
             }
         }
 
@@ -1896,19 +2209,21 @@ static int varsub(dest)
     if (bracket) {
         if (*ip != /*{*/ '}') {
             eprintf("unmatched %%{ or bad substitution" /*}*/);
-            return 0;
+            goto varsub_exit;
         } else ip++;
     }
 
-    if (stackflag && empty) {
-        /* create a value for the default */
-        if (dest->s)
-            val = newstr(dest->s, dest->len);
-        else
-            val = newstr("", 0);
+    result = 1;
+varsub_exit:
+    if (stackflag) {
+        if (result) {
+            pushval(val ? val : newstr(dest->s ? dest->s : "", dest->len));
+        } else {
+            if (val) freeval(val);
+        }
+        Stringfree(dest);
     }
-
-    return stackflag ? pushval(val) : 1;
+    return result;
 }
 
 static void conditional_add(s, c)
@@ -1925,13 +2240,14 @@ int handle_shift_command(args)
     int count;
     int error;
 
-    if (!argv) return 0;
     count = (*args) ? atoi(args) : 1;
     if (count < 0) return 0;
     if ((error = (count > argc))) count = argc;
     argc -= count;
-    argv += count;
-    if (argc) argtext = argv[0].start;
+    if (argv) {  /* true if macro was called as command, not as function */
+        argv += count;
+        if (argc) argtext = argv[0].start;
+    }
     return !error;
 }
 
@@ -1939,6 +2255,8 @@ int handle_shift_command(args)
 void free_expand()
 {
     Value *val;
+    freeval(user_result);
+    freeval(default_result);
     while (valpool) {
        val = valpool;
        valpool = valpool->u.next;

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: command.c,v 35004.18 1997/04/02 23:50:13 hawkeye Exp $ */
+/* $Id: command.c,v 35004.31 1997/10/30 06:28:15 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -13,7 +13,6 @@
  *****************************************************************/
 
 #include "config.h"
-#include <errno.h>
 #include "port.h"
 #include "dstring.h"
 #include "tf.h"
@@ -39,11 +38,11 @@ TFILE *loadfile = NULL;
 int    loadline = 0;
 int wnmatch = 4, wnlines = 5, wdmatch = 2, wdlines = 5;
 
-extern int errno;
 extern int restrict;
 extern int quit_flag;
 
 static char *pattern, *body;
+static int quietload = 0;
 
 static int  FDECL(do_watch,(char *args, CONST char *name, int *wlines,
                   int *wmatch, int flag));
@@ -111,6 +110,7 @@ static CONST Command cmd_table[] =
   { "LET"         , handle_let_command         },
   { "LIST"        , handle_list_command        },
   { "LISTSOCKETS" , handle_listsockets_command },
+  { "LISTVAR"     , handle_listvar_command     },
   { "LISTWORLDS"  , handle_listworlds_command  },
   { "LOAD"        , handle_load_command        },
   { "LOCALECHO"   , handle_localecho_command   },
@@ -118,13 +118,13 @@ static CONST Command cmd_table[] =
   { "PROMPT"      , handle_prompt_command      },
   { "PS"          , handle_ps_command          },
   { "PURGE"       , handle_purge_command       },
-  { "PURGEWORLD"  , handle_purgeworld_command  },
   { "QUIT"        , handle_quit_command        },
   { "QUOTE"       , handle_quote_command       },
   { "RECALL"      , handle_recall_command      },
   { "RECORDLINE"  , handle_recordline_command  },
   { "REPEAT"      , handle_repeat_command      },
   { "RESTRICT"    , handle_restrict_command    },
+  { "RETURN"      , handle_return_command      },
   { "SAVE"        , handle_save_command        },
   { "SAVEWORLD"   , handle_saveworld_command   },
   { "SET"         , handle_set_command         },
@@ -154,60 +154,6 @@ static CONST Command cmd_table[] =
  * Find, process and run commands/macros *
  *****************************************/
 
-/* handle_command
- * Execute a single command line that has already been expanded.
- * note: cmd_line will be written into.
- */
-int handle_command(cmd_line)
-    String *cmd_line;
-{
-    CONST char *old_command;
-    Handler *handler;
-    Macro *macro;
-    int result, builtin = 0, truth = 1;
-    char *str, *end;
-    extern int pending_line, read_depth;
-
-    str = cmd_line->s + 1;
-    if (!*str || isspace(*str)) return 0;
-    old_command = current_command;
-    current_command = str;
-    while (*str && !isspace(*str)) str++;
-    if (*str) *str++ = '\0';
-    while (isspace(*str)) str++;
-    for (end = cmd_line->s + cmd_line->len - 1; isspace(*end); end--);
-    *++end = '\0';
-    while (*current_command) {
-        if (*current_command == '@')
-            builtin = 1;
-        else if (*current_command == '!')
-            truth = !truth;
-        else
-            break;
-        current_command++;
-    }
-    if (builtin) {
-        if ((handler = find_command(current_command))) {
-            result = (*handler)(str);
-        } else {
-            eprintf("not a builtin command");
-            result = 0;
-        }
-    } else if ((macro = find_macro(current_command))) {
-        result = do_macro(macro, str);
-    } else if ((handler = find_command(current_command))) {
-        result = (*handler)(str);
-    } else {
-        eprintf("no such command or macro");
-        result = 0;
-    }
-    current_command = NULL;
-    if (pending_line && !read_depth)  /* "/dokey newline" and not in read() */
-        result = handle_input_line();
-    current_command = old_command;
-    return truth ? result : !result;
-}
-
 Handler *find_command(name)
     CONST char *name;
 {
@@ -222,8 +168,9 @@ static int handle_trigger_command(args)
     char *args;
 {
     World *world = NULL;
-    int usedefault = TRUE, globalflag = FALSE, opt;
+    int usedefault = TRUE, is_global = FALSE, result = 0, opt;
     long hook = 0;
+    Aline *old_incoming_text;
 
     if (!borg) return 0;
 
@@ -232,7 +179,7 @@ static int handle_trigger_command(args)
         switch (opt) {
             case 'g':
                 usedefault = FALSE;
-                globalflag = TRUE;
+                is_global = TRUE;
                 break;
             case 'w':
                 usedefault = FALSE;
@@ -251,19 +198,24 @@ static int handle_trigger_command(args)
     }
 
     if (usedefault) {
-        globalflag = TRUE;
+        is_global = TRUE;
         world = xworld();
     }
 
-    return find_and_run_matches(args, hook, NULL, world, globalflag);
+    old_incoming_text = incoming_text;
+    (incoming_text = new_aline(args, 0))->links = 1;
 
+    result = find_and_run_matches(args, hook, &incoming_text, world, is_global);
+
+    free_aline(incoming_text);
+    incoming_text = old_incoming_text;
+    return result;
 }
 
 static int handle_substitute_command(args)
     char *args;
 {
     Aline *old;
-    extern Aline *incoming_text;
 
     if (!incoming_text) {
         eprintf("not called from trigger");
@@ -271,6 +223,7 @@ static int handle_substitute_command(args)
     }
     old = incoming_text;
     (incoming_text = new_aline(args, old->attrs))->links = 1;
+    incoming_text->time = old->time;
     free_aline(old);
     return 1;
 }
@@ -405,14 +358,6 @@ static int handle_version_command(args)
     return 1;
 }
 
-#ifndef PATH_MAX
-# ifdef MAXPATHLEN
-#  define PATH_MAX MAXPATHLEN
-# else
-#  define PATH_MAX 1024
-# endif
-#endif
-
 static int handle_lcd_command(args)
     char *args;
 {
@@ -440,10 +385,11 @@ static int handle_echo_command(args)
     char c;
     attr_t attrs = 0;
     World *world = NULL;
-    int raw = FALSE;
+    int retval = 1, raw = FALSE, partials = FALSE;
     TFILE *tfile = tfout;
+    Aline *aline;
 
-    startopt(args, "a:ew:r");
+    startopt(args, "a:ew:pr");
     while ((c = nextopt(&args, NULL))) {
         switch (c) {
         case 'a': case 'f':
@@ -458,6 +404,9 @@ static int handle_echo_command(args)
                 return 0;
             }
             break;
+        case 'p':
+            partials = TRUE;
+            break;
         case 'r':
             raw = TRUE;
             break;
@@ -466,13 +415,22 @@ static int handle_echo_command(args)
         }
     }
 
-    if (raw)
+    if (raw) {
         write(STDOUT_FILENO, args, strlen(args));
-    else if (world)
-        world_output(world, new_aline(args, attrs));
-    else
-        tfputa(new_aline(args, attrs), tfile);
-    return 1;
+    } else {
+        (aline = new_aline(args, attrs))->links++;
+        if (partials)
+            if (handle_inline_attr(aline, attrs) < 0)
+                retval = 0;
+        if (retval) {
+            if (world)
+                world_output(world, aline);
+            else
+                tfputa(aline, tfile);
+        }
+        free_aline(aline);
+    }
+    return retval;
 }
 
 static int handle_restrict_command(args)
@@ -507,14 +465,28 @@ int do_file_load(args, tinytalk)
     int done = 0, error = 0;
     TFILE *old_file = loadfile;
     int old_lineno = loadline;
+    STATIC_BUFFER(libfile);
 
-    if ((loadfile = tfopen(expand_filename(args), "r")) == NULL) {
+    loadfile = tfopen(expand_filename(args), "r");
+    if (!loadfile && !tinytalk && errno == ENOENT && !is_absolute_path(args)) {
+        /* Relative file was not found, so look in %TFLIBDIR. */
+        if (!TFLIBDIR || !*TFLIBDIR || !is_absolute_path(TFLIBDIR)) {
+            eprintf("warning: invalid value for %%TFLIBDIR");
+        } else {
+            Sprintf(libfile, 0, "%s/%s", TFLIBDIR, args);
+            loadfile = tfopen(expand_filename(libfile->s), "r");
+        }
+    }
+
+    if (!loadfile) {
         if (!tinytalk || errno != ENOENT)
             do_hook(H_LOADFAIL, "%% %s: %s", "%s %s", args, strerror(errno));
         loadfile = old_file;
         return 0;
     }
-    do_hook(H_LOAD, "%% Loading commands from %s.", "%s", loadfile->name);
+
+    do_hook(H_LOAD, quietload ? NULL : "%% Loading commands from %s.",
+        "%s", loadfile->name);
     oflush();  /* Load could take awhile, so flush pending output first. */
 
     Stringninit(line, 80);
@@ -636,7 +608,12 @@ static int handle_watchname_command(args)
 static int handle_undef_command(args)              /* Undefine a macro. */
     char *args;
 {
-    return remove_macro(args, 0, 0);
+    char *name;
+    int result = 0;
+
+    while (*(name = stringarg(&args, NULL)))
+        result += remove_macro(name, 0, 0);
+    return result;
 }
 
 static int handle_save_command(args)
@@ -654,13 +631,25 @@ static int handle_save_command(args)
 static int handle_load_command(args)
     char *args;
 {                   
+    int quiet = 0, result = 0;
+    char c;
+
     if (restrict >= RESTRICT_FILE) {
         eprintf("restricted");
         return 0;
     }
-    if (*args) return do_file_load(args, FALSE);
-    eprintf("missing filename");
-    return FALSE;
+
+    startopt(args, "q");
+    while ((c = nextopt(&args, NULL))) {
+        if (c == 'q') quiet = 1;
+        else return 0;
+    }
+
+    quietload += quiet;
+    if (*args) result = do_file_load(args, FALSE);
+    else eprintf("missing filename");
+    quietload -= quiet;
+    return result;
 }
 
 /*

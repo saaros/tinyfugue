@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: malloc.c,v 35004.5 1997/03/27 01:04:34 hawkeye Exp $ */
+/* $Id: malloc.c,v 35004.6 1997/09/16 07:39:20 hawkeye Exp $ */
 
 #include "config.h"
 #include "port.h"
@@ -80,3 +80,10 @@ void xfree(ptr, file, line)
     if (!reserve)
         init_malloc();
 }
+
+#ifdef DMALLOC
+void free_reserve()
+{
+    FREE(reserve);
+}
+#endif
