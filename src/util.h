@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.h,v 35004.17 1997/11/19 08:12:52 hawkeye Exp $ */
+/* $Id: util.h,v 35004.20 1998/04/11 20:16:58 hawkeye Exp $ */
 
 #ifndef UTIL_H
 #define UTIL_H
@@ -27,7 +27,7 @@ typedef struct Pattern {
 #define unmapchar(c)  ((char)(((c) == (char)0x80) ? 0x0 : (c)))
 
 /* Map character into set allowed by locale */
-#define localize(c)  ((isprint(c) || iscntrl(c)) ? (c) : (c) & 0x7F)
+#define localize(c)  ((is_print(c) || is_cntrl(c)) ? (c) : (c) & 0x7F)
 
 /* Modulo arithmetic: remainder is positive, even if numerator is negative. */
 #define nmod(n, d)   (((n) >= 0) ? ((n)%(d)) : ((d) - ((-(n)-1)%(d)) - 1))
@@ -93,6 +93,11 @@ extern int    FDECL(smatch_check,(CONST char *s));
 extern char  *FDECL(stripstr,(char *s));
 extern void   FDECL(startopt,(CONST char *args, CONST char *opts));
 extern char   FDECL(nextopt,(char **arg, long *num));
+#ifdef HAVE_tzset
+extern int    NDECL(ch_timezone);
+#else
+# define ch_timezone NULL
+#endif
 extern int    NDECL(ch_locale);
 extern int    NDECL(ch_mailfile);
 extern int    NDECL(ch_maildelay);

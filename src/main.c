@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: main.c,v 35004.32 1997/12/14 21:24:42 hawkeye Exp $ */
+/* $Id: main.c,v 35004.39 1998/04/10 20:30:05 hawkeye Exp $ */
 
 
 /***********************************************
@@ -44,11 +44,11 @@ CONST char sysname[] = UNAME;
  * to the version number, and put a brief description of the modifications
  * in the mods[] string.
  */
-CONST char version[] = "TinyFugue version 4.0 alpha 4";
+CONST char version[] = "TinyFugue version 4.0 alpha 7";
 CONST char mods[] = "";
 
 CONST char copyright[] =
-    "Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys (hawkeye@tcp.com)";
+    "Copyright (C) 1993 - 1998 Ken Keys (hawkeye@tcp.com)";
 
 CONST char contrib[] =
 #ifdef PLATFORM_OS2
@@ -66,7 +66,7 @@ int main(argc, argv)
     int argc;
     char *argv[];
 {
-    char *opt, *argv0 = argv[0], *configfile = NULL;
+    char *opt, *argv0 = argv[0], *configfile = NULL, *command = NULL;
     int worldflag = TRUE;
     int autologin = -1, quietlogin = -1, autovisual = TRUE;
 
@@ -91,6 +91,11 @@ int main(argc, argv)
                 configfile = STRDUP(opt);
                 while (*opt) opt++;
                 break;
+            case 'c':
+                if (command) FREE(command);
+                command = STRDUP(opt);
+                while (*opt) opt++;
+                break;
             default:
                 fprintf(stderr, "%s: illegal option -- %c\n", argv0, *--opt);
                 goto error;
@@ -98,19 +103,20 @@ int main(argc, argv)
     }
     if (argc > 2) {
     error:
-        fprintf(stderr, "Usage: %s [-f[<file>]] [-nlq] [<world>]\n", argv0);
-        fprintf(stderr, "       %s [-f[<file>]] <host> <port>\n", argv0);
+        fprintf(stderr, "Usage: %s [-f[<file>]] [-c<cmd>] [-nlq] [<world>]\n", argv0);
+        fprintf(stderr, "       %s [-f[<file>]] [-c<cmd>] <host> <port>\n", argv0);
         fputs("Options:\n", stderr);
-        fputs("  -f         don't read personal config file\n", stderr);
-        fputs("  -f<file>   read <file> instead of config file\n", stderr);
-        fputs("  -n         no connection\n", stderr);
-        fputs("  -l         no automatic login\n", stderr);
-        fputs("  -q         quiet login\n", stderr);
-        fputs("  -v         no automatic visual mode\n", stderr);
+        fputs("  -f        don't load personal config file\n", stderr);
+        fputs("  -f<file>  load <file> instead of config file\n", stderr);
+        fputs("  -c<cmd>   execute <cmd> after loading config file\n", stderr);
+        fputs("  -n        no connection\n", stderr);
+        fputs("  -l        no automatic login\n", stderr);
+        fputs("  -q        quiet login\n", stderr);
+        fputs("  -v        no automatic visual mode\n", stderr);
         fputs("Arguments:\n", stderr);
-        fputs("  <host>     hostname or IP address\n", stderr);
-        fputs("  <port>     port number or name\n", stderr);
-        fputs("  <world>    connect to <world> defined by /addworld\n", stderr);
+        fputs("  <host>    hostname or IP address\n", stderr);
+        fputs("  <port>    port number or name\n", stderr);
+        fputs("  <world>   connect to <world> defined by addworld()\n", stderr);
         exit(1);
     }
 
@@ -145,11 +151,16 @@ int main(argc, argv)
     read_configuration(configfile);
     if (configfile) FREE(configfile);
 
-    /* if %visual was not explicitly set, turn it on */
-    if (autovisual && getintvar(VAR_visual) < 0 && !no_tty)
-        setvar("visual", "1", FALSE);
+    if (command) {
+        process_macro(command, NULL, sub);
+        FREE(command);
+    }
 
-    if (worldflag) {
+    /* If %visual was not explicitly set, set it now. */
+    if (getintvar(VAR_visual) < 0 && !no_tty)
+        setivar("visual", autovisual, FALSE);
+
+    if (argc > 0 || worldflag) {
         if (autologin < 0) autologin = login;
         if (quietlogin < 0) quietlogin = quietflag;
         if (argc == 0)

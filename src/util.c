@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.c,v 35004.42 1997/11/20 07:17:00 hawkeye Exp $ */
+/* $Id: util.c,v 35004.46 1998/04/11 20:16:58 hawkeye Exp $ */
 
 
 /*
@@ -50,8 +50,8 @@ char tf_ctype[0x100];
 static char *FDECL(cmatch,(CONST char *pat, int ch));
 
 #ifndef CASE_OK
-int lcase(x) char x; { return isupper(x) ? tolower(x) : x; }
-int ucase(x) char x; { return islower(x) ? toupper(x) : x; }
+int lcase(x) char x; { return is_upper(x) ? tolower(x) : x; }
+int ucase(x) char x; { return is_lower(x) ? toupper(x) : x; }
 #endif
 
 void init_util1()
@@ -82,15 +82,17 @@ void init_util1()
 
     tf_ctype['b']  |= IS_KEYSTART;  /* break */
     tf_ctype['d']  |= IS_KEYSTART;  /* do, done */
-    tf_ctype['e']  |= IS_KEYSTART;  /* else, elseif, endif */
+    tf_ctype['e']  |= IS_KEYSTART;  /* else, elseif, endif, exit */
     tf_ctype['i']  |= IS_KEYSTART;  /* if */
+    tf_ctype['r']  |= IS_KEYSTART;  /* return */
     tf_ctype['t']  |= IS_KEYSTART;  /* then */
     tf_ctype['w']  |= IS_KEYSTART;  /* while */
 
     tf_ctype['B']  |= IS_KEYSTART;  /* BREAK */
     tf_ctype['D']  |= IS_KEYSTART;  /* DO, DONE */
-    tf_ctype['E']  |= IS_KEYSTART;  /* ELSE, ELSEIF, ENDIF */
+    tf_ctype['E']  |= IS_KEYSTART;  /* ELSE, ELSEIF, ENDIF, EXIT */
     tf_ctype['I']  |= IS_KEYSTART;  /* IF */
+    tf_ctype['R']  |= IS_KEYSTART;  /* RETURN */
     tf_ctype['T']  |= IS_KEYSTART;  /* THEN */
     tf_ctype['W']  |= IS_KEYSTART;  /* WHILE */
 }
@@ -107,9 +109,9 @@ char *ascii_to_print(str)
         c = unmapchar(*str);
         if (c == '^' || c == '\\') {
             Stringadd(Stringadd(buffer, '\\'), c);
-        } else if (isprint(c)) {
+        } else if (is_print(c)) {
             Stringadd(buffer, c);
-        } else if (iscntrl(c)) {
+        } else if (is_cntrl(c)) {
             Stringadd(Stringadd(buffer, '^'), CTRL(c));
         } else {
             Sprintf(buffer, 0, "\\0x%2x", c);
@@ -131,7 +133,7 @@ char *print_to_ascii(src)
         if (*src == '^') {
             Stringadd(dest, *++src ? mapchar(CTRL(*src)) : '^');
             if (*src) src++;
-        } else if (*src == '\\' && isdigit(*++src)) {
+        } else if (*src == '\\' && is_digit(*++src)) {
             char c;
             c = strtochr((char**)&src);
             Stringadd(dest, mapchar(c));
@@ -155,12 +157,12 @@ char strtochr(sp)
 
     if (**sp != '0') {
         c = atoi(*sp);
-        while (isdigit(*++(*sp)));
+        while (is_digit(*++(*sp)));
     } else if (lcase(*++(*sp)) == 'x') {
-        for ((*sp)++, c = 0; isxdigit(**sp); (*sp)++)
-            c = c * 0x10 + lcase(**sp) - (isdigit(**sp) ? '0' : ('a' - 10));
+        for ((*sp)++, c = 0; is_xdigit(**sp); (*sp)++)
+            c = c * 0x10 + lcase(**sp) - (is_digit(**sp) ? '0' : ('a' - 10));
     } else {
-        for (c = 0; isdigit(**sp); (*sp)++)
+        for (c = 0; is_digit(**sp); (*sp)++)
             c = c * 010 + **sp - '0';
     }
     return (char)(c & 0xFF);
@@ -170,9 +172,9 @@ int strtoint(sp)
     char **sp;
 {
     int i;
-    while (isspace(**sp)) ++*sp;
+    while (is_space(**sp)) ++*sp;
     i = atoi(*sp);
-    while (isdigit(**sp)) ++*sp;
+    while (is_digit(**sp)) ++*sp;
     return i;
 }
 
@@ -180,9 +182,9 @@ long strtolong(sp)
     char **sp;
 {
     long i;
-    while (isspace(**sp)) ++*sp;
+    while (is_space(**sp)) ++*sp;
     i = atol(*sp);
-    while (isdigit(**sp)) ++*sp;
+    while (is_digit(**sp)) ++*sp;
     return i;
 }
 #endif
@@ -196,7 +198,7 @@ int enum2int(str, vec, msg)
     for (i = 0; vec[i]; ++i) {
         if (cstrcmp(str, vec[i]) == 0) return i;
     }
-    if (isdigit(*str)) {
+    if (is_digit(*str)) {
         if ((val = strtoint(&str)) < i && !*str) return val;
     }
     Stringcpy(buf, vec[0]);
@@ -298,14 +300,14 @@ int numarg(str)
     char **str;
 {
     int result;
-    if (isdigit(**str)) {
+    if (is_digit(**str)) {
         result = strtoint(str);
     } else {
         eprintf("invalid or missing numeric argument");
         result = -1;
-        while (**str && !isspace(**str)) ++*str;
+        while (**str && !is_space(**str)) ++*str;
     }
-    while (isspace(**str)) ++*str;
+    while (is_space(**str)) ++*str;
     return result;
 }
 
@@ -319,12 +321,12 @@ char *stringarg(str, end)
     CONST char **end;
 {
     char *start;
-    while (isspace(**str)) ++*str;
-    for (start = *str; (**str && !isspace(**str)); ++*str) ;
+    while (is_space(**str)) ++*str;
+    for (start = *str; (**str && !is_space(**str)); ++*str) ;
     if (end) *end = *str;
     else if (**str) *((*str)++) = '\0';
     if (**str)
-        while (isspace(**str)) ++*str;
+        while (is_space(**str)) ++*str;
     return start;
 }
 
@@ -344,7 +346,7 @@ int stringliteral(dest, str)
                 eprintf("warning: the only legal escapes within this quoted string are \\\\ and \\%c.  \\\\%c is the correct way to write a literal \\%c inside a quoted string.", quote, (*str)[1], (*str)[1]);
 
         }
-        Stringadd(dest, isspace(**str) ? ' ' : **str);
+        Stringadd(dest, is_space(**str) ? ' ' : **str);
     }
     if (!**str) {
         Sprintf(dest, 0, "unmatched %c", quote);
@@ -551,7 +553,7 @@ int smatch(pat, str)
             break;
 
         case '?':
-            if (!*str || (inword && isspace(*str))) return 1;
+            if (!*str || (inword && is_space(*str))) return 1;
             str++;
             pat++;
             break;
@@ -559,24 +561,24 @@ int smatch(pat, str)
         case '*':
             while (*pat == '*' || *pat == '?') {
                 if (*pat == '?') {
-                    if (!*str || (inword && isspace(*str))) return 1;
+                    if (!*str || (inword && is_space(*str))) return 1;
                     str++;
                 }
                 pat++;
             }
             if (inword) {
-                while (*str && !isspace(*str))
+                while (*str && !is_space(*str))
                     if (!smatch(pat, str++)) return 0;
                 return smatch(pat, str);
             } else if (!*pat) {
                 return 0;
             } else if (*pat == '{') {
-             /* if (str == start || isspace(*(str - 1))) */
-                if (str == start || isspace(str[-1]))
+             /* if (str == start || is_space(*(str - 1))) */
+                if (str == start || is_space(str[-1]))
                     if (!smatch(pat, str)) return 0;
                 while (*++str)
-                  /*if (isspace(*(str - 1)) && !smatch(pat, str)) return 0; */
-                    if (isspace(str[-1]) && !smatch(pat, str)) return 0;
+                  /*if (is_space(*(str - 1)) && !smatch(pat, str)) return 0; */
+                    if (is_space(str[-1]) && !smatch(pat, str)) return 0;
                 return 1;
             } else if (*pat == '[') {
                 while (*str) if (!smatch(pat, str++)) return 0;
@@ -590,12 +592,12 @@ int smatch(pat, str)
             }
 
         case '[':
-            if (inword && isspace(*str)) return 1;
+            if (inword && is_space(*str)) return 1;
             if (!(pat = cmatch(pat, *str++))) return 1;
             break;
 
         case '{':
-            if (str != start && !isspace(*(str - 1))) return 1;
+            if (str != start && !is_space(*(str - 1))) return 1;
             {
                 CONST char *end;
                 int result = 1;
@@ -614,12 +616,12 @@ int smatch(pat, str)
                 inword = FALSE;
                 if (result) return result;
                 pat = end + 1;
-                while (*str && !isspace(*str)) str++;
+                while (*str && !is_space(*str)) str++;
             }
             break;
 
         case '}': case '|':
-            if (inword) return (*str && !isspace(*str));
+            if (inword) return (*str && !is_space(*str));
             /* else FALL THROUGH to default case */
 
         default:
@@ -677,9 +679,9 @@ char *stripstr(s)
 {
     char *end;
 
-    while (isspace(*s)) s++;
+    while (is_space(*s)) s++;
     if (*s) {
-        for (end = s + strlen(s) - 1; isspace(*end); end--);
+        for (end = s + strlen(s) - 1; is_space(*end); end--);
         *++end = '\0';
     }
     return s;
@@ -734,14 +736,14 @@ char nextopt(arg, num)
     STATIC_BUFFER(buffer);
 
     if (!inword) {
-        while (isspace(*argp)) argp++;
+        while (is_space(*argp)) argp++;
         if (*argp != '-') {
             *arg = argp;
             return '\0';
         } else {
             if (*++argp == '-') argp++;
-            if (isspace(*argp) || !*argp) {
-                for (*arg = argp; isspace(**arg); ++*arg);
+            if (is_space(*argp) || !*argp) {
+                for (*arg = argp; is_space(**arg); ++*arg);
                 return '\0';
             }
         }
@@ -753,12 +755,12 @@ char nextopt(arg, num)
     opt = *argp;
 
     /* time option */
-    if ((isdigit(opt) || opt == ':') && strchr(options, '@')) {
+    if ((is_digit(opt) || opt == ':') && strchr(options, '@')) {
         *num = parsetime(&argp, NULL);
         return '@';
 
     /* numeric option */
-    } else if (isdigit(opt) && strchr(options, '0')) {
+    } else if (is_digit(opt) && strchr(options, '0')) {
         *num = strtoint(&argp);
         return '0';
     }
@@ -781,14 +783,14 @@ char nextopt(arg, num)
                 return '?';
             }
         } else {
-            while (*argp && !isspace(*argp)) Stringadd(buffer, *argp++);
+            while (*argp && !is_space(*argp)) Stringadd(buffer, *argp++);
         }
         *arg = buffer->s;
 
     /* option takes a numeric argument */
     } else if (*q == '#') {
         argp++;
-        if (!isdigit(*argp)) {
+        if (!is_digit(*argp)) {
             eprintf("%c option requires numeric argument", opt);
             return '?';
         }
@@ -801,9 +803,17 @@ char nextopt(arg, num)
         *arg = NULL;
     }
 
-    inword = (*argp && !isspace(*argp));
+    inword = (*argp && !is_space(*argp));
     return opt;
 }
+
+#ifdef HAVE_tzset
+int ch_timezone()
+{
+    tzset();
+    return 1;
+}
+#endif
 
 int ch_locale()
 {
@@ -953,7 +963,7 @@ long parsetime(strp, istime)
 {
     static long t;
 
-    if (!isdigit(**strp) && **strp != ':') {
+    if (!is_digit(**strp) && **strp != ':') {
         eprintf("invalid or missing integer or time value");
         return -1;
     }
@@ -962,11 +972,11 @@ long parsetime(strp, istime)
         if (istime) *istime = TRUE;
         t *= 3600;
         ++*strp;
-        if (isdigit(**strp)) {
+        if (is_digit(**strp)) {
             t += strtolong(strp) * 60;
             if (**strp == ':') {
                 ++*strp;
-                if (isdigit(**strp))
+                if (is_digit(**strp))
                     t += strtolong(strp);
             }
         }

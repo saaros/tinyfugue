@@ -17,7 +17,7 @@
 
 /def -i dokey_bspc	= /@test kbdel(kbpoint() - 1)
 /def -i dokey_bword	= /@test regmatch("[^ ]* *$$", kbhead()), \
-			        kbdel(kbpoint() - strlen(P0))
+			        kbdel(kbpoint() - strlen({P0}))
 /def -i dokey_dch	= /@test kbdel(kbpoint() + 1)
 /def -i dokey_deol	= /@test kbdel(kblen())
 /def -i dokey_dline	= /@test kbgoto(0), kbdel(kblen())
@@ -41,11 +41,12 @@
 /def -i dokey_up	= /@test kbgoto(kbpoint() - wrapsize)
 /def -i dokey_wleft	= /@test kbgoto(kbwordleft())
 /def -i dokey_wright	= /@test kbgoto(kbwordright())
-/def -i dokey_page	= /dokey page
-/def -i dokey_hpage	= /dokey hpage
-/def -i dokey_line	= /dokey line
+/def -i dokey_page	= /test morescroll(lines() - (visual?isize:0) - 1)
+/def -i dokey_hpage	= /test morescroll((lines() - (visual?isize:0) - 1) / 2)
+/def -i dokey_line	= /test morescroll(1)
 /def -i dokey_flush	= /dokey flush
 /def -i dokey_selflush	= /dokey selflush
+
 
 /def -i kb_backward_kill_line = /@test kbdel(0)
 

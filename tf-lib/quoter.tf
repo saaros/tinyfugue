@@ -38,7 +38,8 @@
 
 /def -i qfile = /quote -S %{-L-%{qfile_prefix-:|}} '%{L-@}
 
-/def -i qtf = %{qtf_prefix-:|}` %*%; /quote -S %{qtf_prefix-:|} `%*
+/def -i qtf = \
+    %{qtf_prefix-:|}` %*%; /quote -s0 -S %{qtf_prefix-:|} `%*
 
 /def -i qsh = %{qsh_prefix-:|}! %*%; /quote -S %{qsh_prefix-:|} !%*
 

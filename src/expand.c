@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expand.c,v 35004.91 1997/12/14 09:07:56 hawkeye Exp $ */
+/* $Id: expand.c,v 35004.103 1998/04/10 20:30:04 hawkeye Exp $ */
 
 
 /********************************************************************
@@ -39,7 +39,7 @@
 Value *user_result = NULL;		/* result of last user command */
 int recur_count = 0;			/* expansion nesting count */
 CONST char *current_command = NULL;
-int breaking = 0;			/* flag: are we /break'ing? */
+int breaking = 0;			/* number of levels to /break */
 Arg *tf_argv = NULL;			/* shifted argument vector */
 int tf_argc = 0;			/* shifted argument count */
 int argtop = 0;				/* top of function argument stack */
@@ -53,10 +53,11 @@ static Value *default_result = NULL;	/* result of empty list */
 static int cmdsub_count = 0;		/* cmdsub nesting count */
 
 static CONST char *keyword_table[] = {
-    "BREAK", "DO", "DONE", "ELSE", "ELSEIF", "ENDIF", "IF", "THEN", "WHILE"
+    "BREAK", "DO", "DONE", "ELSE", "ELSEIF", "ENDIF",
+    "EXIT", "IF", "RETURN", "THEN", "WHILE"
 };
 
-static int    NDECL(keyword);
+static int    NDECL(keyword_parse);
 static int    FDECL(list,(Stringp dest, int subs));
 static int    FDECL(statement,(Stringp dest, int subs));
 static void   FDECL(conditional_add,(Stringp s, int c));
@@ -72,6 +73,28 @@ static CONST char *NDECL(error_text);
 void init_expand()
 {
     default_result = newint(1);
+}
+
+
+struct Value *handle_eval_command(args)
+    char *args;
+{
+    int c, subflag = SUB_MACRO;
+
+    startopt(args, "s:");
+    while ((c = nextopt(&args, NULL))) {
+        switch (c) {
+        case 's':
+            if ((subflag = enum2int(args, enum_sub, "-s")) < 0)
+                return newint(0);
+            break;
+        default:
+            return newint(0);
+        }
+    }
+    if (!process_macro(args, NULL, subflag)) return NULL;
+    user_result->count++;
+    return user_result;
 }
 
 
@@ -110,6 +133,17 @@ struct Value *handle_return_command(args)
     return result;
 }
 
+struct Value *handle_result_command(args)
+    char *args;
+{
+    struct Value *result;
+
+    result = *args ? handle_test_command(args) : NULL;
+    breaking = -1;
+    if (!argtop) oputs(valstr(result));
+    return result;
+}
+
 /* handle_command
  * Execute a single command line that has already been expanded.
  * note: cmd_line will be written into.
@@ -124,13 +158,13 @@ int handle_command(cmd_line)
     char *str, *end;
 
     str = cmd_line->s + 1;
-    if (!*str || isspace(*str)) return 0;
+    if (!*str || is_space(*str)) return 0;
     old_command = current_command;
     current_command = str;
-    while (*str && !isspace(*str)) str++;
+    while (*str && !is_space(*str)) str++;
     if (*str) *str++ = '\0';
-    while (isspace(*str)) str++;
-    for (end = cmd_line->s + cmd_line->len - 1; isspace(*end); end--);
+    while (is_space(*str)) str++;
+    for (end = cmd_line->s + cmd_line->len - 1; is_space(*end); end--);
     *++end = '\0';
     while (*current_command == '!') {
         truth = !truth;
@@ -144,7 +178,7 @@ int handle_command(cmd_line)
     } else if (!(macro = find_macro(current_command)) &&
         !(handler = find_command(current_command)))
     {
-        do_hook(H_NOMACRO, "%% %s: no such command or macro", "%s",
+        do_hook(H_NOMACRO, "!%s: no such command or macro", "%s",
             current_command);
         error++;
     }
@@ -262,7 +296,7 @@ static int list(dest, subs)
     int oldcondition, oldevalflag, oldblock;
     int is_a_command, is_a_condition, is_special;
     int iterations = 0, failed = 0, result = 0;
-    CONST char *blockstart = NULL, *exprstart;
+    CONST char *blockstart = NULL, *exprstart, *stmtstart;
     static CONST char unexpect_msg[] = "unexpected /%s in %s block";
     TFILE *orig_tfin = tfin, *orig_tfout = tfout;
     TFILE *inpipe = NULL, *outpipe = NULL;
@@ -285,18 +319,18 @@ static int list(dest, subs)
 
     do /* while (*ip) */ {
         if (breaking && !block) {
-            breaking--;
+            if (breaking > 0) breaking--;
             result = 1;  goto list_exit;
         }
 #if 1
         if (subs >= SUB_NEWLINE)
-            while (isspace(*ip) || (ip[0] == '\\' && isspace(ip[1])))
+            while (is_space(*ip) || (ip[0] == '\\' && is_space(ip[1])))
                 ++ip;
 #endif
 
         is_special = is_a_command = is_a_condition = FALSE;
         if (interrupted()) {
-            eprintf("%% macro evaluation interrupted.");
+            eprintf("macro evaluation interrupted.");
             goto list_exit;
         }
         Stringterm(dest, 0);
@@ -308,7 +342,8 @@ static int list(dest, subs)
             is_a_command = TRUE;
             oldblock = block;
             if (subs >= SUB_KEYWORD) {
-                is_special = block = keyword();
+                stmtstart = ip;
+                is_special = block = keyword_parse();
                 if (subs == SUB_KEYWORD)
                     subs += (block != 0);
             }
@@ -334,7 +369,7 @@ static int list(dest, subs)
                     Stringncat(scratch, exprstart, ip - exprstart + 1);
                     tfputs(scratch->s, tferr);
                 }
-                while(isspace(*++ip)); /* skip ')' and spaces */
+                while(is_space(*++ip)); /* skip ')' and spaces */
                 block = (block == WHILE) ? DO : THEN;
             } else if (*ip) {
                 eprintf("warning: statement starting with %s in /%s %s %s",
@@ -373,7 +408,7 @@ static int list(dest, subs)
                 }
                 evalflag = evalflag && condition;
                 condition = valbool(user_result);
-                if (breaking) breaking++;
+                if (breaking > 0) breaking++;
                 if (!breaking && evalflag && condition) keyword_mprefix();
                 continue;
             case BREAK:
@@ -390,9 +425,9 @@ static int list(dest, subs)
                     goto list_exit;
                 }
                 if (breaking || !condition || !evalflag) {
-                    if (breaking) breaking--;
+                    if (breaking > 0) breaking--;
                     evalflag = 0;  /* don't eval any trailing garbage */
-                    while (isspace(*ip)) ip++;
+                    while (is_space(*ip)) ip++;
                     result = 1;  goto list_exit;
                 } else if (++iterations > max_iter && max_iter) {
                     eprintf("too many iterations");
@@ -429,8 +464,10 @@ static int list(dest, subs)
                     goto list_exit;
                 }
                 evalflag = evalflag && condition;
-                condition = valbool(user_result);
-                if (!breaking && evalflag && condition) keyword_mprefix();
+                if (!breaking && evalflag) {
+                    condition = valbool(user_result);
+                    if (condition) keyword_mprefix();
+                }
                 continue;
             case ELSEIF:
             case ELSE:
@@ -448,11 +485,12 @@ static int list(dest, subs)
                     block = oldblock;
                     goto list_exit;
                 }
-                while (isspace(*ip)) ip++;
+                while (is_space(*ip)) ip++;
                 result = 1;  goto list_exit;
             default:
                 /* not a control statement */
-                ip--;
+                ip = stmtstart - 1;
+                is_special = 0;
                 block = oldblock;
                 if (!statement(dest, subs)) goto list_exit;
                 break;
@@ -472,7 +510,7 @@ static int list(dest, subs)
                 eprintf("Piping output of a server command is not allowed.");
                 goto list_exit;
             } else if (is_special) {
-                eprintf("Piping output of a compound command is not allowed.");
+                eprintf("Piping output of a special command is not allowed.");
                 goto list_exit;
             }
             tfout = outpipe = tfopen(NULL, "q");
@@ -503,7 +541,7 @@ static int list(dest, subs)
             break;
         } else if (is_end_of_statement(ip)) {
             ip += 2;
-            while (isspace(*ip)) ip++;
+            while (is_space(*ip)) ip++;
         } else if (*ip) {
             parse_error("macro", "end of statement");
             goto list_exit;
@@ -525,24 +563,29 @@ list_exit:
     return result;
 }
 
-static int keyword()
+CONST char **keyword(CONST char *id)
+{
+    return (CONST char **)binsearch((GENERIC*)id, (GENERIC*)keyword_table,
+        sizeof(keyword_table)/sizeof(char*), sizeof(char*), cstrstructcmp);
+}
+
+static int keyword_parse()
 {
     CONST char **result, *end;
-    char buf[sizeof("elseif")];
+    char buf[sizeof("elseif")];  /* "elseif" is the longest keyword. */
 
     if (!is_keystart(*ip)) return 0;          /* fast heuristic */
 
     end = ip + 1;
-    while (*end && !isspace(*end) && *end != '%' && *end != ')')
+    while (*end && !is_space(*end) && *end != '%' && *end != ')')
         end++;
     if (end - ip >= sizeof(buf)) return 0;    /* too long, can't be keyword */
 
     strncpy(buf, ip, end - ip);
     buf[end - ip] = '\0';
-    result = (CONST char **)binsearch((GENERIC*)buf, (GENERIC*)keyword_table,
-        sizeof(keyword_table)/sizeof(char*), sizeof(char*), cstrstructcmp);
-    if (!result) return 0;
-    for (ip = end; isspace(*ip); ip++);
+    if (!(result = keyword(buf)))
+        return 0;
+    for (ip = end; is_space(*ip); ip++);
     return BREAK + (result - keyword_table);
 }
 
@@ -567,7 +610,7 @@ static int statement(dest, subs)
             if (!slashsub(dest)) return 0;
         } else if (*ip == '%' && subs >= SUB_NEWLINE) {
             if (is_end_of_statement(ip)) {
-                while (dest->len && isspace(dest->s[dest->len-1]))
+                while (dest->len && is_space(dest->s[dest->len-1]))
                     Stringterm(dest, dest->len-1);  /* nuke spaces before %; */
                 break;
             }
@@ -587,7 +630,7 @@ static int statement(dest, subs)
 #if 0
         } else if (*ip == '\n') {
             /* simulate old behavior: \n and spaces were stripped in /load */
-            while (isspace(*ip))
+            while (is_space(*ip))
                 ip++;
 #endif
         } else {
@@ -624,8 +667,8 @@ static CONST char *error_text()
 
     if (*ip) {
         CONST char *end = ip + 1;
-        if (isalnum(*ip) || is_quote(*ip) || *ip == '/') {
-            while (isalnum(*end)) end++;
+        if (is_alnum(*ip) || is_quote(*ip) || *ip == '/') {
+            while (is_alnum(*end)) end++;
         }
         Stringcpy(buf, "'");
         Stringfncat(buf, ip, end - ip);
@@ -651,7 +694,7 @@ int exprsub(dest)
     Value *val;
 
     ip++; /* skip '[' */
-    while (isspace(*ip)) ip++;
+    while (is_space(*ip)) ip++;
     if (!expr()) return 0;
     val = stack[--stacktop];
     if (!*ip || is_end_of_statement(ip)) {
@@ -739,7 +782,7 @@ int macsub(dest)
             /* note: in case of "%{var-$mac}", we break even if !bracket. */
             /* Users shouldn't use '}' in macro names anyway. */
             break;
-        } else if (!bracket && isspace(*ip)) {
+        } else if (!bracket && is_space(*ip)) {
             break;
         } else if (*ip == '$') {
             if (ip[1] == '$') {
@@ -752,7 +795,7 @@ int macsub(dest)
             ++ip;
             if (!varsub(buffer)) return 0;
         } else {
-            for (s = ip++; *ip && !ispunct(*ip) && !isspace(*ip); ip++);
+            for (s = ip++; *ip && !is_punct(*ip) && !is_space(*ip); ip++);
             Stringfncat(buffer, s, ip - s);
         }
     }
@@ -777,7 +820,7 @@ int macsub(dest)
 static int backsub(dest)
     Stringp dest;
 {
-    if (isdigit(*ip)) {
+    if (is_digit(*ip)) {
         char c = strtochr(&ip);
         conditional_add(dest, mapchar(c));
     } else if (!backslash) {
@@ -810,7 +853,7 @@ int varsub(dest)
         result = 1;
         goto varsub_exit;
     }
-    if (!*ip || isspace(*ip)) {
+    if (!*ip || is_space(*ip)) {
         conditional_add(dest, '%');
         result = 1;
         goto varsub_exit;
@@ -841,7 +884,7 @@ int varsub(dest)
         {
             ++ip;
         }
-        if (!star && isdigit(*ip)) {
+        if (!star && is_digit(*ip)) {
             n = strtoint(&ip);
         }
 
@@ -859,10 +902,10 @@ int varsub(dest)
         Stringterm(selector, 0);
         if ((n < 0 && !star) || (bracket && (ell || pee))) {
             /* is non-special, or could be non-special if followed by alnum_ */
-            if (isalnum(*ip) || (*ip == '_')) {
+            if (is_alnum(*ip) || (*ip == '_')) {
                 ell = pee = FALSE;
                 n = -1;
-                do ip++; while (isalnum(*ip) || *ip == '_');
+                do ip++; while (is_alnum(*ip) || *ip == '_');
                 Stringncpy(selector, start, ip - start);
             }
         }
@@ -946,7 +989,7 @@ int varsub(dest)
                 break;
             } else if (bracket && *ip == '}') {
                 break;
-            } else if (!bracket && isspace(*ip)) {
+            } else if (!bracket && is_space(*ip)) {
                 break;
             } else if (*ip == '%') {
                 ++ip;
@@ -961,7 +1004,7 @@ int varsub(dest)
                 ++ip;
                 if (!backsub(dest)) goto varsub_exit;
             } else {
-                for (start = ip++; *ip && isalnum(*ip); ip++);
+                for (start = ip++; *ip && is_alnum(*ip); ip++);
                 if (!breaking && evalflag && condition)
                     Stringfncat(dest, start, ip - start);
             }

@@ -21,5 +21,5 @@
          /@test left := strcat(left, substr(right, 0, i), new)%;\
          /@test right := substr(right, i + strlen(old))%;\
     /done%;\
-    /echo - %{left}%{right}
+    /result strcat(left, right)
 

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: help.c,v 35004.13 1997/11/20 07:17:48 hawkeye Exp $ */
+/* $Id: help.c,v 35004.15 1998/01/02 09:41:36 hawkeye Exp $ */
 
 /*
  * Fugue help handling
@@ -72,7 +72,7 @@ struct Value *handle_help_command(args)
 
     while (offset < 0 && fgets(input, HELPLEN, indexfile->u.fp) != NULL) {
         minor_buffer[0] = '\0';
-        for (place = input; isdigit(*place); place++);
+        for (place = input; is_digit(*place); place++);
         if (*place == '&') {
             major_buffer[0] = '\0';
             spare = major_buffer;
@@ -88,7 +88,7 @@ struct Value *handle_help_command(args)
             place[strlen(place)-1] = '\0';
 
         if (strcmp(place, name) == 0 ||
-            (ispunct(*place) && strcmp(place + 1, name) == 0))
+            (is_punct(*place) && strcmp(place + 1, name) == 0))
         {
             offset = atol(input);
         }
@@ -123,10 +123,10 @@ struct Value *handle_help_command(args)
         }
     }
 
-    for (major_topic = major_buffer; isdigit(*major_topic); major_topic++);
+    for (major_topic = major_buffer; is_digit(*major_topic); major_topic++);
     major_topic++;
     if (*minor_buffer) {
-        for (minor_topic = minor_buffer; isdigit(*minor_topic); minor_topic++);
+        for (minor_topic = minor_buffer; is_digit(*minor_topic); minor_topic++);
         minor_topic++;
         tfprintf(tfout, "Help on: %s: %s", major_topic, minor_topic);
     } else {

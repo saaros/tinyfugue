@@ -20,8 +20,9 @@ expand.$O: expand.c config.h port.h dstring.h $(TF_H) util.h tfio.h macro.h \
 	signals.h search.h keyboard.h expand.h commands.h \
 	command.h variable.h world.h expr.h parse.h $(BUILDERS)
 expr.$O: expr.c config.h port.h dstring.h $(TF_H) util.h tfio.h macro.h \
-	signals.h socket.h search.h output.h keyboard.h expand.h commands.h \
-	command.h variable.h world.h tty.h funclist.h expr.h parse.h $(BUILDERS)
+	signals.h socket.h search.h macro.h output.h keyboard.h expand.h \
+	commands.h command.h variable.h world.h tty.h funclist.h expr.h \
+	parse.h $(BUILDERS)
 help.$O: help.c config.h port.h dstring.h $(TF_H) tfio.h commands.h $(BUILDERS)
 history.$O: history.c config.h port.h dstring.h $(TF_H) util.h tfio.h \
 	history.h socket.h world.h output.h macro.h commands.h search.h \

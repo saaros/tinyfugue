@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: signals.c,v 35004.19 1997/11/13 08:46:48 hawkeye Exp $ */
+/* $Id: signals.c,v 35004.21 1998/04/09 20:21:35 hawkeye Exp $ */
 
 /* Signal handling, core dumps, job control, and interactive shells */
 
@@ -254,7 +254,7 @@ static RETSIG core_handler(sig)
 
     if (sig == SIGQUIT) {
         fix_screen();
-        puts("SIGQUIT received.  Dump core?  (y/n)\r");
+        puts("SIGQUIT received.  Dump core and exit?  (y/n)\r");
         fflush(stdout);
         if (igetchar() != 'y') {
             setup_screen(0);

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tty.c,v 35004.10 1997/04/11 02:26:40 hawkeye Exp $ */
+/* $Id: tty.c,v 35004.12 1998/01/02 09:41:48 hawkeye Exp $ */
 
 /*
  * TTY driver routines.
@@ -141,12 +141,12 @@ void init_tty()
      * check both.  Also, some seem to leave garbage in some of the fields,
      * so we'll ignore anything that isn't a control character.
      */
-    if (iscntrl(*bs)      && *bs       && *bs != '\b' && *bs != '\177')
+    if (is_cntrl(*bs)      && *bs       && *bs != '\b' && *bs != '\177')
                                        add_ibind(bs,      "/DOKEY BSPC");
-    if (iscntrl(*bword)   && *bword)   add_ibind(bword,   "/DOKEY BWORD");
-    if (iscntrl(*dline)   && *dline)   add_ibind(dline,   "/DOKEY DLINE");
-    if (iscntrl(*refresh) && *refresh) add_ibind(refresh, "/DOKEY REFRESH");
-    if (iscntrl(*lnext)   && *lnext)   add_ibind(lnext,   "/DOKEY LNEXT");
+    if (is_cntrl(*bword)   && *bword)   add_ibind(bword,   "/DOKEY BWORD");
+    if (is_cntrl(*dline)   && *dline)   add_ibind(dline,   "/DOKEY DLINE");
+    if (is_cntrl(*refresh) && *refresh) add_ibind(refresh, "/DOKEY REFRESH");
+    if (is_cntrl(*lnext)   && *lnext)   add_ibind(lnext,   "/DOKEY LNEXT");
 }
 
 #ifdef EMXANSI

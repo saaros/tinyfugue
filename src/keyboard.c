@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: keyboard.c,v 35004.29 1997/12/11 07:11:22 hawkeye Exp $ */
+/* $Id: keyboard.c,v 35004.34 1998/04/10 20:30:04 hawkeye Exp $ */
 
 /**************************************************
  * Fugue keyboard handling.
@@ -71,6 +71,7 @@ static CONST char *efunc_table[] = {
 void init_keyboard()
 {
     Stringinit(keybuf);
+    keyboard_time = time(NULL);
 }
 
 /* Find the macro assosiated with <key> sequence. */
@@ -106,7 +107,7 @@ int bind_key(spec)   /* install Macro's binding in key structures */
     }
 
     if (macro && redef)
-        do_hook(H_REDEF, "%% Redefined %s %s", "%s %s",
+        do_hook(H_REDEF, "!Redefined %s %s", "%s %s",
             "binding", ascii_to_print(spec->bind));
 
     return 1;
@@ -159,7 +160,7 @@ int handle_keyboard_input(read_flag)
 
     for (i = 0; i < count; i++) {
         if (istrip) buf[i] &= 0x7F;
-        if (!isprint(buf[i]) && buf[i] & 0x80) {
+        if (!is_print(buf[i]) && buf[i] & 0x80) {
             if (meta_esc)
                 Stringadd(current_input, '\033');
             buf[i] &= 0x7F;
@@ -285,11 +286,8 @@ struct Value *handle_dokey_command(args)
     switch (ptr - efunc_table) {
 
     case DOKEY_FLUSH:      return newint(screen_flush(FALSE));
-    case DOKEY_HPAGE:      return newint(dokey_hpage());
-    case DOKEY_LINE:       return newint(dokey_line());
     case DOKEY_LNEXT:      return newint(literal_next = TRUE);
     case DOKEY_NEWLINE:    return newint(dokey_newline());
-    case DOKEY_PAGE:       return newint(dokey_page());
     case DOKEY_RECALLB:    return newint(replace_input(recall_input(-1,FALSE)));
     case DOKEY_RECALLBEG:  return newint(replace_input(recall_input(-2,FALSE)));
     case DOKEY_RECALLEND:  return newint(replace_input(recall_input(2,FALSE)));
@@ -349,7 +347,7 @@ int do_kbdel(place)
     return keyboard_pos;
 }
 
-#define isinword(c) (isalnum(c) || (wordpunct && strchr(wordpunct, (c))))
+#define is_inword(c) (is_alnum(c) || (wordpunct && strchr(wordpunct, (c))))
 
 int do_kbword(dir)
     int dir;
@@ -357,8 +355,8 @@ int do_kbword(dir)
     int stop = (dir < 0) ? -1 : keybuf->len;
     int place = keyboard_pos - (dir < 0);
 
-    while (place != stop && !isinword(keybuf->s[place])) place += dir;
-    while (place != stop && isinword(keybuf->s[place])) place += dir;
+    while (place != stop && !is_inword(keybuf->s[place])) place += dir;
+    while (place != stop && is_inword(keybuf->s[place])) place += dir;
     return place + (dir < 0);
 }
 

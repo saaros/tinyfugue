@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: macro.c,v 35004.47 1997/12/09 05:50:34 hawkeye Exp $ */
+/* $Id: macro.c,v 35004.59 1998/04/10 20:30:05 hawkeye Exp $ */
 
 
 /**********************************************
@@ -86,14 +86,16 @@ void init_macros()
  ***************************************/
 
 attr_t parse_attrs(argp)    /* convert attr string to bitfields */
-    char **argp;
+    char **argp;  /* We don't write **argp, but we can't declare it CONST**. */
 {
     attr_t attrs = 0, color;
-    char *end;
+    char *end, *name;
+    char buf[16];
 
     while (**argp) {
         ++*argp;
         switch((*argp)[-1]) {
+        case ',':  /* skip */            break;
         case 'n':  attrs |= F_NORM;      break;
         case 'G':  attrs |= F_NOHISTORY; break;
         case 'g':  attrs |= F_GAG;       break;
@@ -106,23 +108,24 @@ attr_t parse_attrs(argp)    /* convert attr string to bitfields */
         case 'h':  attrs |= F_HILITE;    break;
         case 'C':
             end = strchr(*argp, ',');
-            if (end) *end = '\0';
-            if ((color = enum2int(*argp, enum_color, "color")) < 0)
-                attrs = -1;
-            if (end) {
-                *end = ',';
+            if (end && end - *argp < sizeof(buf)) {
+                name = strncpy(buf, *argp, end - *argp);
+                name[end-*argp] = '\0';
                 *argp = end + 1;
-            } else
+            } else {
+                name = *argp;
                 while (**argp) ++*argp;
-            if (attrs == -1) return -1;
+            }
+            if ((color = enum2int(name, enum_color, "color")) < 0)
+                return -1;
             attrs |= color2attr(color);
             break;
         default:
-            eprintf("invalid display attribute '%c'", **argp);
+            eprintf("invalid display attribute '%c'", (*argp)[-1]);
             return -1;
         }
     }
-    return (attrs & F_NORM) ? F_NORM : attrs;
+    return attrs;
 }
 
 /* Convert hook string to bit vector; return -1 on error. */
@@ -135,7 +138,7 @@ long parse_hook(argp)
 
     if (!**argp) return ALL_HOOKS;
     for (state = '|'; state == '|'; *argp = in) {
-        for (in = *argp; *in && !isspace(*in) && *in != '|'; ++in);
+        for (in = *argp; *in && !is_space(*in) && *in != '|'; ++in);
         state = *in;
         *in++ = '\0';
         if (strcmp(*argp, "*") == 0) result = ALL_HOOKS;
@@ -182,9 +185,9 @@ static Macro *macro_spec(args, xmflag, allowshort)
     init_pattern_str(&spec->hargs, NULL);
     init_pattern_str(&spec->wtype, NULL);
     spec->world = NULL;
-    spec->pri = spec->prob = spec->shots = spec->fallthru = -1;
+    spec->pri = spec->prob = spec->shots = spec->fallthru = spec->quiet = -1;
     spec->hook = -1;
-    spec->quiet = spec->invis = 0;
+    spec->invis = 0;
     spec->attr = spec->subattr = 0;
     spec->subexp = -1;
     spec->flags = MACRO_TEMP;
@@ -527,7 +530,7 @@ void rebind_key_macros()
             if (!*code)
                 eprintf("warning: no code for key \"%s\"", p->keyname);
             else if (bind_key(p))
-                do_hook(H_REDEF, "%% Redefined %s %s", "%s %s",
+                do_hook(H_REDEF, "!Redefined %s %s", "%s %s",
                     "key", p->keyname);
             else
                 kill_macro(p);
@@ -566,9 +569,15 @@ static int complete_macro(spec)
             nuke_macro(spec);
             return 0;
         }
+        if (keyword(spec->name)) {
+            eprintf("\"%s\" is a reserved word.", spec->name);
+            nuke_macro(spec);
+            return 0;
+        }
+
         if (find_command(spec->name)) {
             do_hook(H_CONFLICT,
-                "%% warning: macro \"%s\" conflicts with the builtin command.",
+                "!warning: macro \"%s\" conflicts with the builtin command.",
                 "%s", spec->name);
         }
     }
@@ -580,8 +589,9 @@ static int complete_macro(spec)
     if (spec->invis) spec->invis = 1;
     if (spec->hook < 0) spec->hook = 0;
     if (spec->fallthru < 0) spec->fallthru = 0;
-    if (spec->attr & F_NORM || !spec->attr) spec->attr = F_NORM;
-    if (spec->subattr & F_NORM || !spec->subattr) spec->subattr = F_NORM;
+    if (spec->quiet < 0) spec->quiet = 0;
+    /* if (spec->attr & F_NORM || !spec->attr) spec->attr = F_NORM; */
+    /* if (spec->subattr & F_NORM || !spec->subattr) spec->subattr = F_NORM; */
     if (!spec->name) spec->name = STRNDUP("", 0);
     if (!spec->body) spec->body = STRNDUP("", 0);
 
@@ -614,7 +624,7 @@ static int complete_macro(spec)
     }
     if (!add_macro(spec)) return 0;
     if (macro) {
-        do_hook(H_REDEF, "%% Redefined %s %s", "%s %s", "macro", macro->name);
+        do_hook(H_REDEF, "!Redefined %s %s", "%s %s", "macro", macro->name);
         kill_macro(macro);
     }
     return spec->num;
@@ -628,7 +638,7 @@ int add_hook(args, body)                  /* define a new Macro with hook */
 
     if ((hook = parse_hook(&args)) < 0) return 0;
     if (!*args) args = NULL;
-    return add_macro(new_macro(NULL, "", hook, args, body, 0, 100, F_NORM, 0,
+    return add_macro(new_macro(NULL, "", hook, args, body, 0, 100, 0, 0,
         matching));
 }
 
@@ -683,6 +693,7 @@ struct Value *handle_edit_command(args)
     if (spec->prob < 0) spec->prob = macro->prob;
     if (spec->shots < 0) spec->shots = macro->shots;
     if (spec->fallthru < 0) spec->fallthru = macro->fallthru;
+    if (spec->quiet < 0) spec->quiet = macro->quiet;
     if (spec->attr == 0) spec->attr = macro->attr;
     if (spec->subexp < 0 && macro->subexp >= 0) {
         spec->subexp = macro->subexp;
@@ -877,6 +888,8 @@ static String *attr2str(attrs)
     STATIC_BUFFER(buffer);
 
     Stringterm(buffer, 0);
+    if (attrs & F_NORM)      Stringadd(buffer, 'n');
+    if (attrs & F_GAG)       Stringadd(buffer, 'g');
     if (attrs & F_NOHISTORY) Stringadd(buffer, 'G');
     if (attrs & F_UNDERLINE) Stringadd(buffer, 'u');
     if (attrs & F_REVERSE)   Stringadd(buffer, 'r');
@@ -888,7 +901,7 @@ static String *attr2str(attrs)
     if (attrs & F_FGCOLOR)
         Sprintf(buffer, SP_APPEND, "C%s", enum_color[attr2fgcolor(attrs)]);
     if (attrs & F_BGCOLOR) {
-        if (buffer->len) Stringadd(buffer, ',');
+        if (attrs & F_FGCOLOR) Stringadd(buffer, ',');
         Sprintf(buffer, SP_APPEND, "C%s", enum_color[attr2bgcolor(attrs)]);
     }
     return buffer;
@@ -923,7 +936,7 @@ static int list_defs(file, spec, mflag)  /* list all specified macros */
             Sprintf(buffer, 0, "%% %d: ", p->num);
             if (p->attr & F_NOHISTORY) Stringcat(buffer, "(norecord) ");
             if (p->attr & F_GAG) Stringcat(buffer, "(gag) ");
-            else if (p->attr & F_HWRITE) {
+            else if (p->attr & (F_HWRITE | F_NORM)) {
                 if (p->attr & F_UNDERLINE) Stringcat(buffer, "(underline) ");
                 if (p->attr & F_REVERSE)   Stringcat(buffer, "(reverse) ");
                 if (p->attr & F_FLASH)     Stringcat(buffer, "(flash) ");
@@ -937,7 +950,11 @@ static int list_defs(file, spec, mflag)  /* list all specified macros */
                 if (p->attr & F_BGCOLOR)
                     Sprintf(buffer, SP_APPEND, "(%s) ",
                         enum_color[attr2bgcolor(p->attr)]);
-            } else if (p->trig.str) Stringcat(buffer, "(trig) ");
+            } else if (p->subattr & (F_HWRITE | F_NORM)) {
+                Stringcat(buffer, "(partial) ");
+            } else if (p->trig.str) {
+                Stringcat(buffer, "(trig) ");
+            }
             if (p->trig.str)
                 Sprintf(buffer, SP_APPEND, "'%q' ", '\'', p->trig.str);
             if (*p->keyname) {
@@ -959,14 +976,10 @@ static int list_defs(file, spec, mflag)  /* list all specified macros */
                     p->fallthru ? "F" : "", p->pri);
             if (p->trig.str && p->prob != 100)
                 Sprintf(buffer, SP_APPEND, "-c%d ", p->prob);
-            if (p->attr & F_GAG) {
-                Stringcat(buffer, "-ag");
-                if (p->attr & F_NOHISTORY)  Stringadd(buffer, 'G');
-                Stringadd(buffer, ' ');
-            } else if (p->attr & ~F_NORM) {
+            if (p->attr) {
                 Sprintf(buffer, SP_APPEND, "-a%S ", attr2str(p->attr));
             }
-            if (p->subattr & ~F_NORM) {
+            if (p->subattr) {
                 mflag = MATCH_REGEXP;
                 Sprintf(buffer, SP_APPEND, "-P%d%S ", (int)p->subexp,
                     attr2str(p->subattr));
@@ -1109,7 +1122,8 @@ CONST char *macro_body(name)                            /* get body of macro */
 /* do_hook
  * Call macros that match <idx> and optionally the filled-in <argfmt>, and
  * prints the message in <fmt>.  Returns the number of matches that were run.
- * Note that calling do_hook() makes the caller non-atomic.  Be careful.
+ * A leading '!' in <fmt> is replaced with "% ", file name, and line number.
+ * Note that calling do_hook() makes the caller non-atomic; be careful.
  */
 int do_hook VDEF((int idx, CONST char *fmt, CONST char *argfmt, ...))
 {
@@ -1138,6 +1152,10 @@ int do_hook VDEF((int idx, CONST char *fmt, CONST char *argfmt, ...))
 
     if (fmt) {
         Stringninit(buf, 96);
+        if (*fmt == '!') {
+            eprefix(buf);
+            fmt++;
+        }
 #ifdef HAVE_STDARG
         va_start(ap, argfmt);
 #else
@@ -1146,7 +1164,7 @@ int do_hook VDEF((int idx, CONST char *fmt, CONST char *argfmt, ...))
         fmt = va_arg(ap, char *);
         argfmt = va_arg(ap, char *);
 #endif
-        vSprintf(buf, 0, fmt, ap);
+        vSprintf(buf, SP_APPEND, fmt, ap);
         va_end(ap);
         aline = new_alinen(buf->s, 0, buf->len);
     }
@@ -1197,13 +1215,13 @@ int find_and_run_matches(text, hook, alinep, world, globalflag)
     node = hook ? hooklist->head : triglist->head;
     for ( ; node && MAC(node)->pri >= lowerlimit; node = node->next) {
         macro = MAC(node);
-        if (macro->flags & MACRO_DEAD) continue;   /* killed in earlier loop */
+        if (macro->flags & MACRO_DEAD) continue;
         if (hook && !(macro->hook & hook)) continue;
         if (macro->world && macro->world != world) continue;
         if (!globalflag && !macro->world) continue;
         if (macro->wtype.str) {
             if (!world) continue;
-            if (!patmatch(&macro->wtype, world->type))
+            if (!patmatch(&macro->wtype, world->type ? world->type : ""))
                 continue;
         }
         pattern = hook ? &macro->hargs : &macro->trig;
@@ -1234,6 +1252,10 @@ int find_and_run_matches(text, hook, alinep, world, globalflag)
     return ran;
 }
 
+/* if new contains F_NORM, it replaces old; otherwise, it combines with old */
+#define add_attr(old, new) \
+    (old = (new & F_NORM) ? (new & ~F_NORM) : (old | new))
+
 /* run a macro that has been selected by a trigger or hook */
 static int run_match(macro, text, hook, aline)
     Macro *macro;         /* macro to run */
@@ -1250,19 +1272,21 @@ static int run_match(macro, text, hook, aline)
     /* Apply attributes (full and partial) to aline. */
     if (aline) {
         regexp *re = macro->trig.re;
-        aline->attrs |= macro->attr;
+        add_attr(aline->attrs, macro->attr);
         if (!hook && macro->trig.mflag == MATCH_REGEXP && aline->len && hilite
-            && (macro->subattr & ~F_NORM) && re->startp[0] < re->endp[0])
+            && macro->subattr && re->startp[0] < re->endp[0])
         {
             int i;
             short n = macro->subexp;
             if (!aline->partials) {
                 aline->partials = (short*)XMALLOC(sizeof(short)*aline->len);
-                for (i = 0; i < aline->len; ++i) aline->partials[i] = 0;
+                for (i = 0; i < aline->len; ++i)
+                    aline->partials[i] = aline->attrs;
+                aline->attrs = 0;
             }
             do {
                 for (i = re->startp[n] - text; i < re->endp[n] - text; ++i)
-                    aline->partials[i] |= macro->subattr;
+                    add_attr(aline->partials[i], macro->subattr);
             } while (*re->endp[0] &&
                 patmatch(&macro->trig, re->endp[0]));
             /* restore original startp/endp */
@@ -1274,15 +1298,15 @@ static int run_match(macro, text, hook, aline)
     if ((hook && hookflag) || (!hook && borg)) {
         if (macro->prob == 100 || RRAND(0, 99) < macro->prob) {
             if (macro->shots && !--macro->shots) kill_macro(macro);
+            if (mecho > macro->invis) {
+                char numbuf[16];
+                if (!*macro->name) sprintf(numbuf, "#%d", macro->num);
+                tfprintf(tferr, "%S%s%s: /%s", do_mprefix(),
+                    hook ? hook_name(hook)->s : "",
+                    hook ? " HOOK" : "TRIGGER",
+                    *macro->name ? macro->name : numbuf);
+            }
             if (*macro->body) {
-                if (mecho > macro->invis) {
-                    char numbuf[16];
-                    if (!*macro->name) sprintf(numbuf, "#%d", macro->num);
-                    tfprintf(tferr, "%S%s%s: /%s", do_mprefix(),
-                        hook ? hook_name(hook)->s : "",
-                        hook ? " HOOK" : "TRIGGER",
-                        *macro->name ? macro->name : numbuf);
-                }
                 do_macro(macro, text);
                 ran += !macro->quiet;
             }

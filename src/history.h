@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: history.h,v 35004.8 1997/11/17 08:34:10 hawkeye Exp $ */
+/* $Id: history.h,v 35004.10 1998/01/04 21:08:57 hawkeye Exp $ */
 
 #ifndef HISTORY_H
 #define HISTORY_H
@@ -32,7 +32,7 @@ extern void   NDECL(free_histories);
 #define record_local(aline)   recordline(localhist, (aline))
 
 extern struct History globalhist[], localhist[];
-extern int log_count;
+extern int log_count, norecord, nolog;
 
 # else /* NO_HISTORY */
 
@@ -50,6 +50,7 @@ extern int log_count;
 #define is_watchname(hist, aline)      (0)
 
 #define log_count                      (0)
+static int norecord = 0, nolog = 0;
 
 # endif /* NO_HISTORY */
 

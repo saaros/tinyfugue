@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expand.h,v 35004.14 1997/11/29 01:41:11 hawkeye Exp $ */
+/* $Id: expand.h,v 35004.16 1998/03/11 23:12:19 hawkeye Exp $ */
 
 #ifndef EXPAND_H
 #define EXPAND_H
@@ -21,6 +21,7 @@
 extern void NDECL(init_expand);
 extern int  FDECL(process_macro,(CONST char *body, CONST char *args, int subs));
 extern String *NDECL(do_mprefix);
+extern CONST char **FDECL(keyword,(CONST char *id));
 
 
 #ifdef DMALLOC

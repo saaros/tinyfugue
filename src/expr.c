@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expr.c,v 35004.5 1997/12/25 05:15:00 hawkeye Exp $ */
+/* $Id: expr.c,v 35004.21 1998/04/15 03:57:47 hawkeye Exp $ */
 
 
 /********************************************************************
@@ -36,6 +36,7 @@
 #include "variable.h"
 #include "tty.h"	/* no_tty */
 #include "history.h"	/* log_count */
+#include "world.h"	/* new_world() */
 
 
 /* note: all 2-char operators must have high bit set */
@@ -178,17 +179,17 @@ static int mathtype(val)
         str = getnearestvar(str, &result);
         if (result >= 0 || !str) return TYPE_INT;
     }
-    while (isspace(*str)) ++str;
+    while (is_space(*str)) ++str;
     while (*str == '-' || *str == '+') ++str;
-    if (str[0] == '.' && isdigit(str[1])) return TYPE_FLOAT;
-    if (!isdigit(*str)) return TYPE_INT;
+    if (str[0] == '.' && is_digit(str[1])) return TYPE_FLOAT;
+    if (!is_digit(*str)) return TYPE_INT;
     ++str;
-    while (isdigit(*str)) ++str;
+    while (is_digit(*str)) ++str;
     if (*str == '.') return TYPE_FLOAT;
     if (ucase(*str) != 'E') return TYPE_INT;
     ++str;
     if (*str == '-' || *str == '+') ++str;
-    if (isdigit(*str)) return TYPE_FLOAT;
+    if (is_digit(*str)) return TYPE_FLOAT;
     return TYPE_INT;
 }
 #endif /* NO_FLOAT */
@@ -264,9 +265,9 @@ static long valint(val)
         if (result >= 0) return result;
         if (!str) return 0;
     }
-    while (isspace(*str)) ++str;
+    while (is_space(*str)) ++str;
     if (*str == '-' || *str == '+') return atol(str);
-    if (isdigit(*str)) return parsetime((char **)&str, NULL);
+    if (is_digit(*str)) return parsetime((char **)&str, NULL);
     if (*str && pedantic)
         eprintf("warning: non-numeric string value used in numeric context");
     return 0;
@@ -486,7 +487,7 @@ static int reduce(op, n)
         case '!':       val = newint(!opdint(1));                        break;
         case OP_FUNC:   val = do_function(n);                            break;
         default:        internal_error(__FILE__, __LINE__);
-                        eprintf("%% reduce: internal error: unknown op %c", op);
+                        eprintf("%% internal error: reduce: bad op %#o", op);
                         break;
         }
     }
@@ -512,6 +513,35 @@ static Value *function_switch(symbol, n, parent)
 
         switch (symbol) {
 
+        case FN_ADDWORLD:
+            /* addworld(name, type, host, port, char, pass, file, use_proxy) */
+
+            if (restriction >= RESTRICT_WORLD) {
+                eprintf("restricted");
+                return newint(0);
+            }
+
+            str = opdstr(n-0);  /* name */
+            if (*str == '(') {
+                /* we can't allow user to assign names like "(unnamed1)" */
+                eprintf("illegal world name: %s", str);
+                return newint(0);
+            }
+
+            i = 1;  /* use_proxy */
+            if (n > 7) {
+                i = enum2int(opdstr(n-7), enum_flag, "arg 8 (use_proxy)");
+                if (i < 0) return newint(0);
+            }
+
+            return newint(!!new_world(str,  /* name */
+                n>4 ? opdstr(n-4) : "",     /* char */
+                n>5 ? opdstr(n-5) : "",     /* pass */
+                opdstr(n-2), opdstr(n-3),   /* host, port */
+                n>6 ? opdstr(n-6) : "",     /* mfile */
+                opdstr(n-1),                /* type */
+                i ? 0 : WORLD_NOPROXY));    /* flags */
+
         case FN_COLUMNS:
             return newint(columns);
 
@@ -519,15 +549,16 @@ static Value *function_switch(symbol, n, parent)
             return newint(lines);
 
         case FN_ECHO:
-            oputa(new_aline(opdstr(1), 0));
-            return newint(1);
-
-        case FN_ECHOP:
-            return newint(tfputp(opdstr(1), tfout));
+            i = (n>=3) ? enum2int(opdstr(n-2), enum_flag, "arg 3 (inline)") : 0;
+            if (i < 0) return newint(0);
+            return newint(handle_echo_func(opdstr(n),
+                (n >= 2) ? opdstr(n-1) : "",
+                i, (n >= 4) ? opdstr(n-3) : "o"));
 
         case FN_SEND:
-            i = handle_send_function(opdstr(n), (n>1 ? opdstr(n-1) : NULL),
-                (n>2 ? opdint(n-2) : 1));
+            j = n>2 ? enum2int(opdstr(n-2), enum_flag, "arg 3 (send_nl)") : 1;
+            if (j < 0) return newint(0);
+            i = handle_send_function(opdstr(n), (n>1 ? opdstr(n-1) : NULL), j);
             return newint(i);
 
         case FN_FWRITE:
@@ -547,35 +578,29 @@ static Value *function_switch(symbol, n, parent)
                 n<2 ? "" : opdstr(2), n<1 ? "q" : opdstr(1)));
 
         case FN_TFCLOSE:
-            tfile = find_tfile(opdint(1));
+            tfile = find_tfile(opdstr(1));
             if (!tfile) return newint(-1);
+            if (tfile == tfscreen || tfile == tfkeyboard) {
+                eprintf("Special file can not be closed.");
+                return newint(-1);
+            }
             tfclose(tfile);
             return newint(1);
 
         case FN_TFWRITE:
-            tfile = (n > 1) ? find_tfile(opdint(2)) : tfout;
+            tfile = (n > 1) ? find_usable_tfile(opdstr(2), S_IWUSR) : tfout;
             if (!tfile) return newint(-1);
-            if (!(tfile->mode & S_IWUSR)) {
-                eprintf("attempted write to non-writable file");
-                return newint(0);
-            }
             str = opdstr(1);
             tfputs(str, tfile);
             return newint(1);
 
         case FN_TFREAD:
-            tfile = (n > 1) ? find_tfile(opdint(2)) : tfin;
+            tfile = (n > 1) ? find_usable_tfile(opdstr(2), S_IRUSR) : tfin;
             if (!tfile) return newint(-1);
-
-            if (!(tfile->mode & S_IRUSR)) {
-                eprintf("attempted read from non-readable file");
-                return newint(-1);
-            }
             if (opd(1)->type != TYPE_ID) {
                 eprintf("arg %d: illegal object of assignment", n);
                 return newint(-1);
             }
-
             oldblock = block;  /* condition and evalflag are already correct */
             block = 0;
             j = -1;
@@ -585,6 +610,18 @@ static Value *function_switch(symbol, n, parent)
             }
             block = oldblock;
             return newint(j);
+
+        case FN_TFFLUSH:
+            tfile = find_usable_tfile(opdstr(n), S_IWUSR);
+            if (!tfile) return newint(-1);
+            if (n > 1) {
+                if ((i = enum2int(opdstr(1), enum_flag, "argument 2")) < 0)
+                    return newint(0);
+                tfile->autoflush = i;
+            } else {
+                tfflush(tfile);
+            }
+            return newint(1);
 
         case FN_ASCII:
             return newint((0x100 + unmapchar(*opdstr(1))) & 0xFF);
@@ -609,6 +646,9 @@ static Value *function_switch(symbol, n, parent)
 
         case FN_MORESIZE:
             return newint(moresize);
+
+        case FN_MORESCROLL:
+            return newint(clear_more(opdint(1)));
 
 #ifndef NO_FLOAT
         case FN_SQRT:
@@ -740,13 +780,18 @@ static Value *function_switch(symbol, n, parent)
         case FN_SUBSTR:
             str = opdstr(n);
             len = opdlen(n);
-            i = opdint(n - 1);
-            if (i < 0) i = len + i;
-            if (i < 0) i = 0;
-            if (i > len) i = len;
-            j = (n == 3) ? opdint(1) : len - i;
-            if (j < 0) j = len - i + j;
-            if (j < 0) j = 0;
+            if ((i = opdint(n - 1)) > len) {
+                i = len;
+            } else if (i < 0) {
+                i = len + i;
+                if (i < 0) i = 0;
+            }
+            if (n < 3 || (j = opdint(1)) > len - i) {
+                j = len - i;
+            } else if (j < 0) {
+                j = len - i + j;
+                if (j < 0) j = 0;
+            }
             return newstr(str + i, j);
 
         case FN_STRSTR:
@@ -816,7 +861,7 @@ static Value *function_switch(symbol, n, parent)
             if (n>1) {
                 CONST char *init = opdstr(n-1);
                 for (ptr = str; *ptr; ptr++) {
-                    if (!isalnum(*ptr)) {
+                    if (!is_alnum(*ptr)) {
                         eprintf("%s: invalid option specifier: %c",
                             functab[symbol].name, *ptr);
                         return newint(0);
@@ -829,7 +874,7 @@ static Value *function_switch(symbol, n, parent)
 
             startopt(argtext, str);
             while (i = 1, (c = nextopt((char **)&ptr, &i))) {
-                if (isalpha(c)) {
+                if (is_alpha(c)) {
                     Stringadd(Stringcpy(scratch, "opt_"), c);
                     if (ptr) {
                         newlocalvar(scratch->s, ptr);
@@ -939,6 +984,14 @@ static Value *do_function(n)
         int saved_argtop, saved_argc;
         Arg *saved_argv;
 
+        if (handler == handle_exit_command ||
+            handler == handle_result_command ||
+            handler == handle_return_command)
+        {
+            eprintf("%s: not a function", id);
+            return NULL;
+        }
+
         if (handler && n > 1) {
             eprintf("%s: command called as function must have 0 or 1 argument",
                 id);
@@ -947,10 +1000,22 @@ static Value *do_function(n)
 
         if (macro) {
             static int warned = 0;
+            int i;
+
             if (!warned && !invis_flag && n == 1 && strchr(opdstr(1), ' ')) {
                 eprintf("%s: warning: argument passing semantics for macros called as functions has changed in 4.0.  See '/help functions'.", id);
                 warned = 1;
             }
+
+            /* pass parameters by value, not by [pseudo]reference */
+            for (i = 1; i <= n; i++) {
+                val = stack[stacktop-i];
+                if (val->type == TYPE_ID) {
+                    stack[stacktop-i] = newstr(valstr(val), -1);
+                    freeval(val);
+                }
+            }
+
             saved_argtop = argtop;
             saved_argc = tf_argc;
             saved_argv = tf_argv;
@@ -1014,7 +1079,7 @@ static int conditional_expr()
         evalflag = evalflag && condition && !breaking;
         condition = evalflag && opdbool(1);
 
-        while (isspace(*++ip));
+        while (is_space(*++ip));
         if (*ip == ':') {
             /* reuse condition value as true value */
         } else {
@@ -1136,8 +1201,7 @@ static int unary_expr()
 {
     char op;
 
-    while (isspace(*ip)) ip++;
-
+    while (is_space(*ip)) ip++;
 
     if (is_unary(*ip)) {
         op = *ip++;
@@ -1155,7 +1219,7 @@ static int unary_expr()
         if (*ip == '(') {
             /* function call expression */
             int n = 1;
-            for (++ip; isspace(*ip); ip++);
+            for (++ip; is_space(*ip); ip++);
             if (*ip != ')') {
                 while (1) {
                     if (!assignment_expr()) return 0;
@@ -1169,7 +1233,7 @@ static int unary_expr()
                     ++ip;
                 }
             }
-            for (++ip; isspace(*ip); ip++);
+            for (++ip; is_space(*ip); ip++);
             if (!reduce(OP_FUNC, n)) return 0;
         }
         return 1;
@@ -1184,10 +1248,10 @@ static int primary_expr()
     double d;
     Stringp buffer;  /* gotta be reentrant */
 
-    while (isspace(*ip)) ip++;
-    if (isdigit(*ip)) {
+    while (is_space(*ip)) ip++;
+    if (is_digit(*ip)) {
 #ifndef NO_FLOAT
-        for (end = ip+1; isdigit(*end); end++);
+        for (end = ip+1; is_digit(*end); end++);
         if (*end == '.' || ucase(*end) == 'E') {
             d = strtod(ip, (char**)&ip);
             if (d == HUGE_VAL || d == -HUGE_VAL) {
@@ -1201,7 +1265,7 @@ static int primary_expr()
             if (!pushval(newint(parsetime((char **)&ip, NULL)))) return 0;
         }
 #ifndef NO_FLOAT
-    } else if (ip[0] == '.' && isdigit(ip[1])) {
+    } else if (ip[0] == '.' && is_digit(ip[1])) {
         if (!pushval(newfloat(strtod(ip, (char**)&ip)))) return 0;
 #endif /* NO_FLOAT */
     } else if (is_quote(*ip)) {
@@ -1210,8 +1274,8 @@ static int primary_expr()
             return 0;
         }
         if (!pushval(newstr(static_buffer->s, static_buffer->len))) return 0;
-    } else if (isalpha(*ip) || *ip == '_') {
-        for (end = ip + 1; isalnum(*end) || *end == '_'; end++);
+    } else if (is_alpha(*ip) || *ip == '_') {
+        for (end = ip + 1; is_alnum(*end) || *end == '_'; end++);
         if (!pushval(newid(ip, end - ip))) return 0;
         ip = end;
     } else if (*ip == '$') {
@@ -1219,7 +1283,7 @@ static int primary_expr()
         ++ip;
         Stringinit(buffer);
         if ((!warned || pedantic) && *ip == '[') {
-            eprintf("warning: $[...] substitution in expression is redundant.  Try using (...) instead.");
+            eprintf("warning: $[...] substitution in expression is legal, but redundant.  Try using (...) instead.");
             warned = 1;
         }
         result = dollarsub(buffer) && pushval(newstr(buffer->s, buffer->len));
@@ -1230,7 +1294,7 @@ static int primary_expr()
     } else if (*ip == '%') {
         static int warned = 0;
         if (!warned || pedantic) {
-            eprintf("warning: %%... substitution in expression can be confusing.  Try using {...} instead.");
+            eprintf("warning: %%... substitution in expression is legal, but can be confusing.  Try using {...} instead.");
             warned = 1;
         }
         ++ip;
@@ -1248,7 +1312,7 @@ static int primary_expr()
         return 0;
     }
     
-    while (isspace(*ip)) ip++;
+    while (is_space(*ip)) ip++;
     return 1;
 }
 

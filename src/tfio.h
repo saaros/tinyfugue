@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.h,v 35004.22 1997/11/22 09:42:20 hawkeye Exp $ */
+/* $Id: tfio.h,v 35004.29 1998/04/10 20:30:06 hawkeye Exp $ */
 
 #ifndef TFIO_H
 #define TFIO_H
@@ -43,7 +43,7 @@
 
 /* TF's analogue of stdio's FILE */
 typedef struct TFILE {
-    int handle;
+    int id;
     struct ListEntry *node;
     int type;
     char *name;
@@ -54,7 +54,9 @@ typedef struct TFILE {
     char buf[1024];
     int off, len;
     MODE_T mode;
+    char tfmode;
     short warned;
+    short autoflush;
 } TFILE;
 
 
@@ -64,12 +66,13 @@ typedef struct TFILE {
 #else
 # define is_absolute_path(path) \
             ((path)[0] == '/' || (path)[0] == '~' || \
-            (isalpha((path)[0]) && (path)[1] == ':'))
+            (is_alpha((path)[0]) && (path)[1] == ':'))
 #endif
 
 
 extern TFILE *loadfile;    /* currently /load'ing file */
-extern int loadline;       /* line number of currently /load'ing file */
+extern int loadline;       /* line number of /load'ing file */
+extern int loadstart;      /* line number of command start in /load'ing file */
 extern TFILE *tfin;        /* tf input queue */
 extern TFILE *tfout;       /* tf output queue */
 extern TFILE *tferr;       /* tf error queue */
@@ -83,7 +86,8 @@ extern int    readsafe;    /* safe to to a user kb read? */
 #define oputs(str)    tfputs(str, tfout)
 #define eputs(str)    tfputs(str, tferr)
 #define tfputc(c, file) fputc((c), (file)->u.fp)
-#define tfflush(file) fflush((file)->u.fp)           /* undefined for QUEUEs */
+#define tfflush(file) \
+    ((file->type==TF_FILE || file->type==TF_PIPE) ? fflush((file)->u.fp) : 0)
 
 extern void   NDECL(init_tfio);
 extern char  *FDECL(tfname,(CONST char *name, CONST char *macname));
@@ -101,10 +105,12 @@ extern void   VDECL(Sprintf,(struct String *buf, int flags,
 extern void   VDECL(oprintf,(CONST char *fmt, ...)) format_printf(1, 2);
 extern void   VDECL(tfprintf,(TFILE *file, CONST char *fmt, ...))
                      format_printf(2, 3);
+extern void   FDECL(eprefix,(String *buffer));
 extern void   VDECL(eprintf,(CONST char *fmt, ...)) format_printf(1, 2);
 extern char   NDECL(igetchar);
 extern int    FDECL(handle_tfopen_func,(CONST char *name, CONST char *mode));
-extern TFILE *FDECL(find_tfile,(int handle));
+extern TFILE *FDECL(find_tfile,(CONST char *handle));
+extern TFILE *FDECL(find_usable_tfile,(CONST char *handle, int mode));
 extern struct String *FDECL(tfgetS,(struct String *str, TFILE *file));
 
 extern void   FDECL(flushout_queue,(struct Queue *queue, int quiet));

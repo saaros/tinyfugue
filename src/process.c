@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: process.c,v 35004.23 1997/12/23 04:34:51 hawkeye Exp $ */
+/* $Id: process.c,v 35004.26 1998/03/29 03:52:06 hawkeye Exp $ */
 
 /************************
  * Fugue processes.     *
@@ -69,7 +69,7 @@ static int  FDECL(do_repeat,(Proc *proc));
 static int  FDECL(do_quote,(Proc *proc));
 static void FDECL(strip_escapes,(char *src));
 static int  FDECL(procopt,(CONST char *opts, char **argp, TIME_T *ptime,
-    struct World **world, int *disp));
+    struct World **world, int *disp, int *subflag));
 
 TIME_T proctime = 0;              /* when next process should be run */
 
@@ -82,22 +82,36 @@ struct Value *handle_ps_command(args)
     Proc *p;
     char obuf[18], nbuf[10];
     TIME_T now, next;
-    int opt, shortflag = FALSE;
+    int opt, shortflag = FALSE, repeatflag = FALSE, quoteflag = FALSE;
+    struct World *world = NULL;
 
-    startopt(args, "s");
+    startopt(args, "srqw:");
     while ((opt = nextopt(&args, NULL))) {
         switch(opt) {
         case 's': shortflag = TRUE; break;
+        case 'r': repeatflag = TRUE; break;
+        case 'q': quoteflag = TRUE; break;
+        case 'w':
+            if (!(world = (*args) ? find_world(args) : xworld())) {
+                eprintf("No world %s", args);
+                return newint(0);
+            }
+            break;
         default:  return newint(0);
         }
     }
 
     now = time(NULL);
+    if (!repeatflag && !quoteflag)
+        repeatflag = quoteflag = TRUE;
     if (!shortflag)
         oprintf("  PID     NEXT TYPE   DISP WORLD       PTIME COUNT COMMAND");
 
     for (p = proclist; p; p = p->next) {
         if (p->state == PROC_DEAD) continue;
+        if (!repeatflag && p->type == P_REPEAT) continue;
+        if (!quoteflag && p->type != P_REPEAT) continue;
+        if (world && p->world != world) continue;
 
         if (shortflag) {
             oprintf("%d", p->pid);
@@ -368,12 +382,12 @@ static void strip_escapes(src)
     *dest = '\0';
 }
 
-static int procopt(opts, argp, ptime, world, disp)
+static int procopt(opts, argp, ptime, world, disp, subflag)
     CONST char *opts;
     char **argp;
     TIME_T *ptime;
     struct World **world;
-    int *disp;
+    int *disp, *subflag;
 {
     char opt, *ptr;
     long num;
@@ -389,11 +403,15 @@ static int procopt(opts, argp, ptime, world, disp)
                 return FALSE;
             }
             break;
+        case 's':
+            if ((*subflag = enum2int(ptr, enum_sub, "-s")) < 0)
+                return FALSE;
+            break;
         case 'S':
             *ptime = -2; /* synch */
             break;
         case 'd':
-            if (!disp || (*disp = enum2int(ptr, enum_disp, "-d")) < 0)
+            if ((*disp = enum2int(ptr, enum_disp, "-d")) < 0)
                 return FALSE;
             break;
         case '@':
@@ -414,10 +432,10 @@ struct Value *handle_quote_command(args)
     TFILE *input, *oldout, *olderr;
     int type, result;
     TIME_T ptime;
-    int disp = -1;
+    int disp = -1, subflag = SUB_MACRO;
     struct World *world;
 
-    if (!*args || !procopt("@Sw:d:", &args, &ptime, &world, &disp))
+    if (!*args || !procopt("@Sw:d:s:", &args, &ptime, &world, &disp, &subflag))
         return newint(0);
 
     pre = args;
@@ -493,7 +511,7 @@ struct Value *handle_quote_command(args)
         olderr = tferr;
         tfout = input = tfopen(NULL, "q");
         /* tferr = input; */
-        process_macro(cmd, NULL, SUB_MACRO);
+        process_macro(cmd, NULL, subflag);
         tferr = olderr;
         tfout = oldout;
         break;
@@ -510,13 +528,11 @@ struct Value *handle_repeat_command(args)
     int count;
     TIME_T ptime;
     struct World *world;
-    int disp = -1;
 
-    if (!*args || !procopt("@Sw:", &args, &ptime, &world, &disp)) return 0;
+    if (!*args || !procopt("@Sw:", &args, &ptime, &world, NULL, NULL)) return 0;
     if ((count = numarg(&args)) <= 0) return 0;
-    if (disp < 0) disp = DISP_ECHO;
     return newproc(P_REPEAT, do_repeat, count, "", "", NULL, world, args,
-        ptime, disp);
+        ptime, DISP_ECHO);
 }
 
 #endif /* NO_PROCESS */

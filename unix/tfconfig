@@ -1,7 +1,7 @@
 #!/bin/sh
 ########################################################################
 #  TinyFugue - programmable mud client
-#  Copyright (C) 1994, 1995, 1996, 1997 Ken Keys
+#  Copyright (C) 1994 - 1998 Ken Keys
 #
 #  TinyFugue (aka "tf") is protected under the terms of the GNU
 #  General Public License.  See the file "COPYING" for details.
@@ -47,6 +47,7 @@ FLAGS=''
 GNU_C=0
 LIBDIR="${TFDEV_LIBDIR}"
 LIBS=''
+LIBSOCKS='-lsocks'
 MAILDIR=''
 # MAKE=''	;# Use the value from the environment if there is one.
 MANPAGE=''
@@ -564,6 +565,7 @@ int main() {
     strstr(NULL, NULL);
     strtod(NULL, NULL);
     strtol(NULL, NULL, 0);
+    tzset();
 
     nonexistant_function();
     return 0;
@@ -601,9 +603,9 @@ fi
 
 for sym in \
     bcopy bsearch bzero connect fileno getcwd gethostbyname getpwnam getwd \
-    h_errno hstrerror index kill memcpy memset raise setlocale sigaction \
-    srand srandom strcasecmp strchr strcmpi strcspn strerror strftime stricmp \
-    strstr strtod strtol
+    h_errno hstrerror index kill memcpy memset raise setlocale \
+    sigaction srand srandom strcasecmp strchr strcmpi strcspn strerror \
+    strftime stricmp strstr strtod strtol tzset
 do
     if egrep "(^|[^a-z_])_?_?${sym}([^a-z]|\$)" symtest.out >/dev/null; then
         echo "Did not find ${sym}, but that's ok."
@@ -760,9 +762,10 @@ if [ -n "$SOCKS" ]; then
         echo "Will link with -lresolv."
         LIBS="-lresolv $LIBS"
     fi
-    if eval "${LIBTEST} -lsocks ${LIBS} >/dev/null 2>&1" && test -f ${AOUT}; then
-        echo "Will link with -lsocks."
-        LIBS="-lsocks $LIBS"
+    if eval "${LIBTEST} ${LIBSOCKS} ${LIBS} >/dev/null 2>&1" && test -f ${AOUT};
+    then
+        echo "Will link with ${LIBSOCKS}."
+        LIBS="${LIBSOCKS} $LIBS"
         echo "#define SOCKS" >&4
         if [ -n "$SOCKS_NONBLOCK" ]; then
             echo "#define SOCKS_NONBLOCK" >&4

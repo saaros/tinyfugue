@@ -1,6 +1,62 @@
 Only the most recent version will have detailed changes described.
 Some fixes are followed by the version in which the problem first appeared.
 
+4.0 alpha 7 (4/14/98)
+-----------
+/listworlds displays in table format by default.
+Many error and warning hook messages now include filename and line number.
+Fixed bugs in calling addworld() with less than 6 arguments. (40a5)
+Fixed /echo -w. (40a5)
+Fixed word concatenation bug in /unique (lisp.tf) and command line completion
+  (complete.tf). (40a5)
+Fixed: on some systems (linux), changing %TZ did not affect the time zone.
+Fixed counting of comments in error message line numbers. (40a5)
+
+4.0 alpha 6 (4/9/98)
+-----------
+Fixed fatal error for triggers and hooks in worlds without a type. (40a5)
+Fixed value of idle() before first keypress.
+
+4.0 alpha 5 (4/9/98)
+-----------
+Added /result, which behaves like /return or /echo depending on context.
+Added -c"command" startup option.  See /help tf.
+The "n" attribute turns off pre-existing attributes.  See: /help attributes.
+Added addworld() function (which can accept arguments containing spaces).
+Replaced builtin /echo with echo().
+Tiny* LOGIN hooks put quotes around a character or password containing spaces.
+Added %binary_eol to determine end of line marker in TELNET BINARY mode.
+Added "proxy" and "login" world fields (for use as world_info(<field>) or
+  $world_<field>).
+Added tfflush(); tfwrite() flushes automatically by default.
+Added morescroll().
+Command line option -n is overridden by <world> or <host> <port>.
+Added -s option to /quote ` to control the substitution level.
+Added -rqw options to /ps.
+Duplicate input lines are not suppressed by /log -i.
+Filename completion (complete.tf) handles names starting with "~/".
+The names of bodyless triggers are mecho'd.
+Error messages during /load report the range of line numbers, not just the
+  misleading last line number, of the multiline command containing the error.
+Workaround for broken compilers that failed initialization at variable.c:86.
+Fixed evaluation of command in /qtf (in quoter.tf).
+Fixed /restrict security hole in tfopen(). (40a1)
+Fixed loss of -q flag with /edit.
+Fixed return value of /eval (and /not). (40a1)
+Fixed bug in parsing a comma after a non-color in attribute lists.
+Fixed bug in strlen(substr()).
+Fixed tfopen() with 0 arguments.
+Fixed ambiguous error message for nonblocking connect on some systems (linux).
+Fixed standard /proxy_command to honor /connect -l.
+Fixed: on some systems, 8-bit characters were not accepted as input even
+  when the locale settings were correct.
+Fixed spurious %pedantic warning in /elseif. (40a3)
+Fixed spurious %pedantic warning in /wrap [on|off].
+Fixed: executed code after /return, /while, /done inside /if or /while. (40a1)
+Fixed evaluation of variables used as function parameters. (40a1)
+Fixed /session in tintin.tf.
+Fixed incorrect "more" count after /fg -q. (35a20)
+
 4.0 alpha 4 (12/28/97)
 -----------
 Added /exit to abort a /load.

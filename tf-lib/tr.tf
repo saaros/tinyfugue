@@ -24,5 +24,5 @@
         /test dest:=strcat(dest, substr(tail,0,i), substr(new, j, 1))%;\
         /test tail:=substr(tail,i+1)%;\
     /done%;\
-    /echo -- %{dest}%{tail}
+    /result strcat(dest, tail)
 

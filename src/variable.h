@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: variable.h,v 35004.13 1997/11/17 08:34:13 hawkeye Exp $ */
+/* $Id: variable.h,v 35004.14 1998/01/02 09:41:50 hawkeye Exp $ */
 
 #ifndef VARIABLE_H
 #define VARIABLE_H

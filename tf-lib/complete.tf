@@ -130,8 +130,8 @@
 
 
 /def -i complete_filename = \
-    /quote -S /_complete_from_list %1 !\
-        echo `/bin/ls -dq %1* 2>/dev/null | \
+    /quote -S /_complete_from_list $[filename({1})] !\
+        echo `/bin/ls -dq $[filename({1})]* 2>/dev/null | \
             while read f; do \ test -d $$f && echo $$f/ || echo $$f; done`
 
 

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.c,v 35004.35 1997/12/14 21:24:43 hawkeye Exp $ */
+/* $Id: tfio.c,v 35004.51 1998/04/10 20:30:05 hawkeye Exp $ */
 
 
 /***********************************
@@ -49,9 +49,11 @@
 #include "variable.h"	/* getvar() */
 #include "keyboard.h"	/* keyboard_pos */
 #include "expand.h"	/* current_command */
+#include "commands.h"
 
 TFILE *loadfile = NULL; /* currently /load'ing file */
-int loadline = 0;       /* line number of currently /load'ing file */
+int loadline = 0;       /* line number in /load'ing file */
+int loadstart = 0;      /* line number of start of command in /load'ing file */
 int read_depth = 0;     /* nesting level of user kb reads */
 int readsafe = 0;       /* safe to do a user kb read? */
 TFILE *tfkeyboard;      /* user input */
@@ -63,7 +65,7 @@ TFILE *tferr;           /* pointer to current error queue */
 static TFILE *filemap[FD_SETSIZE];
 static int selectable_tfiles = 0;
 static List userfilelist[1];
-static int max_handle = 0;
+static int max_fileid = 0;
 
 static void FDECL(fileputs,(CONST char *str, FILE *fp));
 static void FDECL(queueputa,(Aline *aline, TFILE *file));
@@ -78,10 +80,10 @@ void init_tfio()
     init_list(userfilelist);
 
     /* tfkeyboard's queue is never actually used, it's just a place holder */
-    tfin = tfkeyboard = tfopen(NULL, "q");
+    tfin = tfkeyboard = tfopen("<stdin>", "q");
     tfkeyboard->mode = S_IRUSR;
 
-    tfout = tferr = tfscreen = tfopen(NULL, "q");
+    tfout = tferr = tfscreen = tfopen("<stdout>", "q");
     tfscreen->mode = S_IWUSR;
     tfscreen_size = 0;
 }
@@ -163,10 +165,12 @@ TFILE *tfopen(name, mode)
         errno = EAGAIN;  /* in case malloc fails */
         if (!(result = (TFILE *)MALLOC(sizeof(TFILE)))) return NULL;
         result->type = TF_QUEUE;
-        result->name = NULL;
-        result->handle = -1;
+        result->name = name ? STRDUP(name) : NULL;
+        result->id = -1;
         result->node = NULL;
         result->mode = S_IRUSR | S_IWUSR;
+        result->tfmode = *mode;
+        result->autoflush = 1;
         result->u.queue = (Queue *)XMALLOC(sizeof(Queue));
         init_queue(result->u.queue);
         return result;
@@ -187,7 +191,9 @@ TFILE *tfopen(name, mode)
         result = (TFILE *)XMALLOC(sizeof(TFILE));
         result->type = TF_PIPE;
         result->name = STRDUP(name);
-        result->handle = -1;
+        result->id = -1;
+        result->tfmode = *mode;
+        result->autoflush = 1;
         result->node = NULL;
         result->u.fp = fp;
         result->off = result->len = 0;
@@ -232,8 +238,10 @@ TFILE *tfopen(name, mode)
         if (!(result = (TFILE*)MALLOC(sizeof(TFILE)))) return NULL;
         result->type = type;
         result->name = newname;
-        result->handle = 0;
+        result->id = 0;
         result->node = NULL;
+        result->tfmode = *mode;
+        result->autoflush = 1;
         result->u.fp = fp;
         result->off = result->len = 0;
         result->mode = st_mode;
@@ -349,6 +357,7 @@ void tfputs(str, file)
         queueputa(new_aline(str, 0), file);
     } else {
         fileputs(str, file->u.fp);
+        if (file->autoflush) tfflush(file);
     }
 }
 
@@ -372,26 +381,6 @@ attr_t tfputansi(str, file, attrs)
     return attrs;
 }
 
-/* tfputp
- * Print to a TFILE, with embedded 'partial hilites'.
- */
-int tfputp(str, file)
-    CONST char *str;
-    TFILE *file;
-{
-    int ok = 1;
-    Aline *aline;
-
-    if (file->type != TF_NULL) {
-        (aline = new_aline(str, 0))->links++;
-        ok = (handle_inline_attr(aline, 0) >= 0);
-        if (ok)
-            tfputa(aline, file);
-        free_aline(aline);
-    }
-    return ok;
-}
-
 /* tfputa
  * Print an Aline to a TFILE, with embedded newline handling.
  */
@@ -406,6 +395,7 @@ void tfputa(aline, file)
         queueputa(aline, file);
     } else {
         fileputs(aline->str, file->u.fp);
+        if (file->autoflush) tfflush(file);
     }
     free_aline(aline);
 }
@@ -434,7 +424,6 @@ static void fileputs(str, fp)
     CONST char *p;
 
     while ((p = strchr(str, '\n'))) {
-        fflush(fp);
         write(fileno(fp), str, p - str);   /* up to newline */
         fputc(' ', fp);
         str = p + 1;
@@ -447,10 +436,9 @@ static void fileputs(str, fp)
 /* vSprintf
  * Similar to vsprintf, except:
  * second arg is a flag, third arg is format.
- * no length formating for %s.
  * %S is like %s, but takes a Stringp argument.
  * %q takes a char c and a string s; prints s, with \ before each c.
- * string arguments may be NULL.
+ * %s, %S, and %q arguments may be NULL.
  * newlines are not allowed in the format string (this is not enforced).
  */
 
@@ -464,6 +452,7 @@ void vSprintf(buf, flags, fmt, ap)
     CONST char *q, *sval;
     char *specptr, quote;
     String *Sval;
+    int len, min, max, leftjust;
 
     if (!(flags & SP_APPEND)) Stringterm(buf, 0);
     while (*fmt) {
@@ -476,12 +465,12 @@ void vSprintf(buf, flags, fmt, ap)
 
         specptr = spec;
         *specptr++ = '%';
-        while (*fmt && !isalpha(*fmt)) *specptr++ = *fmt++;
+        while (*fmt && !is_alpha(*fmt)) *specptr++ = *fmt++;
         if (*fmt == 'h' || lcase(*fmt) == 'l') *specptr++ = *fmt++;
         *specptr = *fmt;
         *++specptr = '\0';
 
-        switch (*fmt++) {
+        switch (*fmt) {
         case 'd':
         case 'i':
             sprintf(tempbuf, spec, va_arg(ap, int));
@@ -507,11 +496,29 @@ void vSprintf(buf, flags, fmt, ap)
         case 'c':
             Stringadd(buf, (char)va_arg(ap, int));
             break;
-        case 's':                       /* Sorry, no length formatting */
-            if ((sval = va_arg(ap, char *))) Stringcat(buf, sval);
-            break;
+        case 's':
         case 'S':
-            if ((Sval = va_arg(ap, String *))) SStringcat(buf, Sval);
+            sval = NULL;
+            Sval = NULL;
+            if (*fmt == 's') {
+                sval = va_arg(ap, char *);
+                min = max = len = sval ? strlen(sval) : 0;
+            } else {
+                Sval = va_arg(ap, String *);
+                min = max = len = Sval ? Sval->len : 0;
+            }
+            specptr = &spec[1];
+            if ((leftjust = (*specptr == '-')))
+                specptr++;
+            if (isdigit(*specptr))
+                min = strtoint(&specptr);
+            if (*specptr == '.' && (++specptr, isdigit(*specptr)))
+                max = strtoint(&specptr);
+
+            if (len > max) len = max;
+            if (!leftjust && len < min) Stringnadd(buf, ' ', min - len);
+            Stringfncat(buf, Sval ? Sval->s : sval ? sval : "", len);
+            if (leftjust && len < min) Stringnadd(buf, ' ', min - len);
             break;
         case 'q':
             if (!(quote = (char)va_arg(ap, int))) break;
@@ -529,6 +536,7 @@ void vSprintf(buf, flags, fmt, ap)
             Stringcat(buf, spec);
             break;
         }
+        fmt++;
     }
 }
 
@@ -607,6 +615,21 @@ void Sprintf VDEF((String *buf, int flags, CONST char *fmt, ...))
     va_end(ap);
 }
 
+void eprefix(buffer)
+    String *buffer;
+{
+    Stringcpy(buffer, "% ");
+    if (loadfile) {
+        Sprintf(buffer, SP_APPEND, "%s, line", loadfile->name);
+        if (loadstart == loadline)
+            Sprintf(buffer, SP_APPEND, " %d: ", loadline);
+        else
+            Sprintf(buffer, SP_APPEND, "s %d-%d: ", loadstart, loadline);
+    }
+    if (current_command)
+        Sprintf(buffer, SP_APPEND, "%s: ", current_command);
+}
+
 void eprintf VDEF((CONST char *fmt, ...))
 {
     va_list ap;
@@ -622,12 +645,7 @@ void eprintf VDEF((CONST char *fmt, ...))
     fmt = va_arg(ap, char *);
 #endif
 
-    Stringcpy(buffer, "% ");
-    if (loadfile)
-        Sprintf(buffer, SP_APPEND, "%s, line %d: ", loadfile->name, loadline);
-    if (current_command)
-        Sprintf(buffer, SP_APPEND, "%s: ", current_command);
-
+    eprefix(buffer);
     vSprintf(buffer, SP_APPEND, fmt, ap);
     va_end(ap);
     eputs(buffer->s);
@@ -717,7 +735,7 @@ String *tfgetS(str, file)
                     file->off++;
                     Stringnadd(str, ' ', tabsize - str->len % tabsize);
                 }
-                while (isprint(file->buf[next]) && next < file->len) next++;
+                while (is_print(file->buf[next]) && next < file->len) next++;
                 Stringfncat(str, file->buf + file->off, next - file->off);
                 file->off = next;
             }
@@ -740,13 +758,15 @@ void flushout_queue(src, quiet)
 {
     ListEntry *node;
     Queue *dest = tfscreen->u.queue;
+    int count = 0;
 
     if (!src->head) return;
     for (node = src->tail; node; node = node->prev) {
         record_global((Aline *)node->datum);
-        tfscreen_size++;
+        count++;
     }
     if (!quiet) {
+        tfscreen_size += count;
         src->tail->next = dest->head;
         *(dest->head ? &dest->head->prev : &dest->tail) = src->tail;
         dest->head = src->head;
@@ -807,6 +827,11 @@ int handle_tfopen_func(name, mode)
 {
     TFILE *file;
 
+    if (restriction >= RESTRICT_FILE) {
+        eprintf("restricted");
+        return -1;
+    }
+
     if (mode[1] || !strchr("rwapq", mode[0])) {
         eprintf("invalid mode '%s'", mode);
         return -1;
@@ -822,20 +847,77 @@ int handle_tfopen_func(name, mode)
         eprintf("%s: %s", name, strerror(errno));
         return -1;
     }
-    file->handle = ++max_handle;
-    return file->handle;
+    file->id = ++max_fileid;
+    return file->id;
 }
 
 TFILE *find_tfile(handle)
-    int handle;
+    CONST char *handle;
 {
     ListEntry *node;
+    int id;
 
-    for (node = userfilelist->head; node; node = node->next) {
-        if (((TFILE*)node->datum)->handle == handle)
-            return (TFILE*)node->datum;
+    if (isalpha(handle[0]) && !handle[1]) {
+        switch(lcase(handle[0])) {
+            case 'i':  return tfin;
+            case 'o':  return tfout;
+            case 'e':  return tferr;
+            default:   break;
+        }
+    } else {
+        id = atoi(handle);
+        for (node = userfilelist->head; node; node = node->next) {
+            if (((TFILE*)node->datum)->id == id)
+                return (TFILE*)node->datum;
+        }
     }
-    eprintf("%d: %s", handle, strerror(EBADF));
+    eprintf("%s: bad handle", handle);
     return NULL;
+}
+
+TFILE *find_usable_tfile(handle, mode)
+    CONST char *handle;
+    int mode;
+{
+    TFILE *tfile;
+
+    if (!(tfile = find_tfile(handle)))
+        return NULL;
+
+    if (mode) {
+        if (!(tfile->mode & mode) ||
+            (mode & S_IRUSR && (tfile == tfout || tfile == tferr)) ||
+            (mode & S_IWUSR && (tfile == tfin))) {
+            eprintf("stream %s is not %sable", handle,
+                mode == S_IRUSR ? "read" : "writ");
+            return NULL;
+        }
+    }
+
+    return tfile;
+}
+
+struct Value *handle_liststreams_command(args)
+    char *args;
+{
+    int count = 0;
+    TFILE *file;
+    ListEntry *node;
+
+    if (!userfilelist->head) {
+        oprintf("% No open streams.");
+        return 0;
+    }
+    oprintf("HANDLE MODE FLUSH NAME");
+    for (node = userfilelist->head; node; node = node->next) {
+        file = (TFILE*)node->datum;
+        oprintf("%6d   %c   %3s  %s", file->id, file->tfmode,
+            (file->tfmode == 'w' || file->tfmode == 'a') ?
+                enum_flag[file->autoflush] : "",
+            file->name ? file->name : "");
+        count++;
+    }
+
+    return newint(count);
 }
 

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.c,v 35004.64 1997/12/23 04:34:50 hawkeye Exp $ */
+/* $Id: output.c,v 35004.67 1998/01/29 06:28:48 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -160,7 +160,6 @@ static int   FDECL(set_attr_var,(int i));
 static void  FDECL(set_attr,(Aline *aline, char *dest, attr_t *starting,
              attr_t *current));
 static int   NDECL(check_more);
-static int   FDECL(clear_more,(int new));
 static Aline *NDECL(wrapline);
 static void  NDECL(output_novisual);
 #ifdef SCREEN
@@ -649,7 +648,7 @@ int ch_status_fields()
     width = 0;
     while (1) {
         field = NULL;
-        while(isspace(*s)) s++;
+        while(is_space(*s)) s++;
         if (!*s) break;
         field = XMALLOC(sizeof(*field));
         field->name = NULL;
@@ -668,7 +667,7 @@ int ch_status_fields()
             }
             field->name = STRDUP(buffer->s);
         } else if (*s == '@') {                            /* internal */
-            for (t = ++s; isalnum(*s) || *s == '_'; s++);
+            for (t = ++s; is_alnum(*s) || *s == '_'; s++);
             save = *s;
             *s = '\0';
             field->internal = enum2int(t, enum_status,
@@ -677,8 +676,8 @@ int ch_status_fields()
                 goto ch_status_fields_error;
             field->name = STRDUP(t);
             *s = save;
-        } else if (isalnum(*s) || *s == '_') {             /* variable */
-            for (t = s++; isalnum(*s) || *s == '_'; s++);
+        } else if (is_alnum(*s) || *s == '_') {             /* variable */
+            for (t = s++; is_alnum(*s) || *s == '_'; s++);
             save = *s;
             *s = '\0';
             field->name = STRDUP(t);
@@ -700,7 +699,7 @@ int ch_status_fields()
         }
 
         if (*s == ':') {
-            for (t = s + 1; *s && !isspace(*s); s++);
+            for (t = s + 1; *s && !is_space(*s); s++);
             save = *s;
             *s = '\0';
             field->attrs = parse_attrs(&t);
@@ -709,7 +708,7 @@ int ch_status_fields()
                 goto ch_status_fields_error;
         }
 
-        if (*s && !isspace(*s)) {
+        if (*s && !is_space(*s)) {
             eprintf("status_fields: garbage in field %d: %.8s", i, s);
             goto ch_status_fields_error;
         }
@@ -1065,7 +1064,7 @@ static void ictrl_put(s, n)
 
     for (attrflag = 0; n > 0; s++, n--) {
         c = unmapchar(localize(*s));
-        if (iscntrl(c)) {
+        if (is_cntrl(c)) {
             if (!attrflag)
                 attributes_on(F_BOLD | F_REVERSE), attrflag = 1;
             bufputc(CTRL(c));
@@ -1568,7 +1567,7 @@ static void hwrite(line, offset)
             new |= line->partials[i];
         }
         c = unmapchar(localize(line->str[i]));
-        ctrl = (emulation != EMUL_RAW && iscntrl(c));
+        ctrl = (emulation != EMUL_RAW && is_cntrl(c));
         if (ctrl)
             new |= F_BOLD | F_REVERSE;
         if (new != current) {
@@ -1603,7 +1602,7 @@ static int check_more()
     return !paused;
 }
 
-static int clear_more(new)
+int clear_more(new)
     int new;
 {
     if (!paused) return 0;
@@ -1625,21 +1624,6 @@ int tog_more()
     if (!more) clear_more(outcount);
     else reset_outcount();
     return 1;
-}
-
-int dokey_page()
-{
-    return clear_more((visual ? ystatus : lines) - 1);
-}
-
-int dokey_hpage() 
-{
-    return clear_more(((visual ? ystatus : lines) - 1) / 2);
-}
-
-int dokey_line()
-{
-    return clear_more(1);
 }
 
 int screen_flush(selective)
@@ -1730,9 +1714,9 @@ int wraplen(str, len, indent)
      */
     for (visible = total = 0; total < len && visible < max; total++) {
         if (incode) {
-            if (isalpha(str[total])) incode = FALSE;
+            if (is_alpha(str[total])) incode = FALSE;
         } else {
-            if (isprint(str[total]))
+            if (is_print(str[total]))
                 visible++;
             incode = (str[total] == '\33');
         }
@@ -1746,7 +1730,7 @@ int wraplen(str, len, indent)
     if (total == len) return len;
     len = total;
     if (wrapflag)
-        while (len && !isspace(str[len-1])) --len;
+        while (len && !is_space(str[len-1])) --len;
     return len ? len : total;
 }
 
@@ -1964,7 +1948,7 @@ attr_t handle_ansi_attr(aline, attrs)
                 attrs = new;
             } /* ignore any other CSI command */
 
-        } else if (isprint(*s)) {
+        } else if (is_print(*s)) {
             set_attr(aline, t, &starting_attrs, &attrs);
             *t++ = *s;
 
@@ -2014,7 +1998,7 @@ attr_t handle_inline_attr(aline, attrs)
             else attrs |= new;
             if (new & F_BELL) aline->attrs |= F_BELL;
 
-        } else if (isprint(*s)) {
+        } else if (is_print(*s)) {
             set_attr(aline, t, &starting_attrs, &attrs);
             if (s[0] == '@' && s[1] == '@')
                 s++;

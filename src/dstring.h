@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: dstring.h,v 35004.8 1997/08/16 11:09:57 hawkeye Exp $ */
+/* $Id: dstring.h,v 35004.9 1998/01/02 09:41:32 hawkeye Exp $ */
 
 #ifndef DSTRING_H
 #define DSTRING_H

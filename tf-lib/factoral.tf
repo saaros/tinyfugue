@@ -7,9 +7,9 @@
     /if ( {1} < 0 ) \
         /echo -e %% %0: negative argument%; \
     /elseif ( {1} == 0 ) \
-        /echo 1%; \
+        /result 1%; \
     /else \
-        /eval /echo -- $$[{1} * $(/rfact $[{1} - 1])]%; \
+        /result {1} * rfact({1} - 1)%; \
     /endif
 
 ;; iterative factorial - more efficient
@@ -21,8 +21,7 @@
         /let n=%1%; \
         /let result=1%; \
         /while (n) \
-            /let result=$[result * n]%; \
-            /let n=$[n - 1]%; \
+            /test (result:=result * n), --n%; \
         /done%; \
-        /echo -- %result%; \
+        /result result%; \
     /endif%; \

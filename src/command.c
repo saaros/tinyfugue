@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: command.c,v 35004.38 1997/12/14 21:24:41 hawkeye Exp $ */
+/* $Id: command.c,v 35004.50 1998/04/15 04:33:22 hawkeye Exp $ */
 
 
 /*****************************************************************
@@ -40,8 +40,6 @@ static void FDECL(split_args,(char *args));
 static HANDLER (handle_beep_command);
 static HANDLER (handle_bind_command);
 static HANDLER (handle_connect_command);
-static HANDLER (handle_echo_command);
-static HANDLER (handle_eval_command);
 static HANDLER (handle_gag_command);
 static HANDLER (handle_hilite_command);
 static HANDLER (handle_hook_command);
@@ -74,14 +72,12 @@ typedef struct Command {
 
 static CONST Command cmd_table[] =
 {
-  { "ADDWORLD"    , handle_addworld_command    },
   { "BEEP"        , handle_beep_command        },
   { "BIND"        , handle_bind_command        },
   { "CONNECT"     , handle_connect_command     },
   { "DC"          , handle_dc_command          },
   { "DEF"         , handle_def_command         },
   { "DOKEY"       , handle_dokey_command       },
-  { "ECHO"        , handle_echo_command        },
   { "EDIT"        , handle_edit_command        },
   { "EVAL"        , handle_eval_command        },
   { "EXIT"        , handle_exit_command        },
@@ -98,6 +94,7 @@ static CONST Command cmd_table[] =
   { "LET"         , handle_let_command         },
   { "LIST"        , handle_list_command        },
   { "LISTSOCKETS" , handle_listsockets_command },
+  { "LISTSTREAMS" , handle_liststreams_command },
   { "LISTVAR"     , handle_listvar_command     },
   { "LISTWORLDS"  , handle_listworlds_command  },
   { "LOAD"        , handle_load_command        },
@@ -112,6 +109,7 @@ static CONST Command cmd_table[] =
   { "RECORDLINE"  , handle_recordline_command  },
   { "REPEAT"      , handle_repeat_command      },
   { "RESTRICT"    , handle_restrict_command    },
+  { "RESULT"      , handle_result_command      },
   { "RETURN"      , handle_return_command      },
   { "SAVE"        , handle_save_command        },
   { "SAVEWORLD"   , handle_saveworld_command   },
@@ -234,10 +232,10 @@ static struct Value *handle_connect_command(args)
             default:   return newint(0);
         }
     }
-    for (port = args; *port && !isspace(*port); port++);
+    for (port = args; *port && !is_space(*port); port++);
     if (*port) {
         *port = '\0';
-        while (isspace(*++port));
+        while (is_space(*++port));
     }
     return newint(openworld(args, *port ? port : NULL, autologin, quietlogin));
 }
@@ -276,25 +274,6 @@ static struct Value *handle_let_command(args)
 /********
  * Misc *
  ********/
-
-static struct Value *handle_eval_command(args)
-    char *args;
-{
-    int c, subflag = SUB_MACRO;
-
-    startopt(args, "s:");
-    while ((c = nextopt(&args, NULL))) {
-        switch (c) {
-        case 's':
-            if ((subflag = enum2int(args, enum_sub, "/eval -s")) < 0)
-                return newint(0);
-            break;
-        default:
-            return newint(0);
-        }
-    }
-    return newint(process_macro(args, NULL, subflag));
-}
 
 static struct Value *handle_quit_command(args)
     char *args;
@@ -376,59 +355,54 @@ static struct Value *handle_lcd_command(args)
     return newint(1);
 }
 
-static struct Value *handle_echo_command(args)
-    char *args;
-{
-    char c;
-    attr_t attrs = 0;
-    World *world = NULL;
-    int retval = 1, raw = FALSE, partials = FALSE;
-    TFILE *tfile = tfout;
-    Aline *aline;
 
-    startopt(args, "a:ew:pr");
-    while ((c = nextopt(&args, NULL))) {
-        switch (c) {
-        case 'a': case 'f':
-            if ((attrs |= parse_attrs(&args)) < 0) return newint(0);
-            break;
-        case 'e':
-            tfile = tferr;
-            break;
+int handle_echo_func(string, attrstr, inline_flag, dest)
+    CONST char *string, *attrstr, *dest;
+    int inline_flag;
+{
+    attr_t attrs;
+    int raw = 0;
+    TFILE *file = tfout;
+    World *world = NULL;
+    Aline *aline = NULL;
+
+    if ((attrs = parse_attrs((char **)&attrstr)) < 0) return (0);
+    switch(*dest) {
+        case 'r':  raw = 1;       break;
+        case 'o':  file = tfout;  break;
+        case 'e':  file = tferr;  break;
         case 'w':
-            if (!(world = (*args) ? find_world(args) : xworld())) {
-                eprintf("No world %s", args);
-                return newint(0);
+            dest++;
+            if (!(world = (*dest) ? find_world(dest) : xworld())) {
+                eprintf("No world %s", dest);
+                return (0);
             }
             break;
-        case 'p':
-            partials = TRUE;
-            break;
-        case 'r':
-            raw = TRUE;
-            break;
         default:
-            return newint(0);
+            eprintf("illegal destination '%c'", *dest);
+            return (0);
+    }
+    if (raw) {
+        write(STDOUT_FILENO, string, strlen(string));
+        return (1);
+    }
+    (aline = new_aline(string, attrs))->links++;
+    if (inline_flag) {
+        if (handle_inline_attr(aline, attrs) < 0) {
+            free_aline(aline);
+            return (0);
         }
     }
 
-    if (raw) {
-        write(STDOUT_FILENO, args, strlen(args));
-    } else {
-        (aline = new_aline(args, attrs))->links++;
-        if (partials)
-            if (handle_inline_attr(aline, attrs) < 0)
-                retval = 0;
-        if (retval) {
-            if (world)
-                world_output(world, aline);
-            else
-                tfputa(aline, tfile);
-        }
-        free_aline(aline);
-    }
-    return newint(retval);
+    if (world)
+        world_output(world, aline);
+    else
+        tfputa(aline, file);
+    free_aline(aline);
+
+    return (1);
 }
+
 
 static struct Value *handle_restrict_command(args)
     char *args;
@@ -459,39 +433,41 @@ int do_file_load(args, tinytalk)
     int tinytalk;
 {
     Stringp line, cmd;
-    int done = 0, error = 0;
-    TFILE *old_file = loadfile;
-    int old_lineno = loadline;
+    int done = 0, error = 0, new_cmd = 1;
+    TFILE *file, *old_file = loadfile;
+    int old_loadline = loadline;
+    int old_loadstart = loadstart;
+    int last_cmd_line = 0;
     STATIC_BUFFER(libfile);
 
     if (!loadfile)
         exiting = 0;
 
-    loadfile = tfopen(expand_filename(args), "r");
-    if (!loadfile && !tinytalk && errno == ENOENT && !is_absolute_path(args)) {
+    file = tfopen(expand_filename(args), "r");
+    if (!file && !tinytalk && errno == ENOENT && !is_absolute_path(args)) {
         /* Relative file was not found, so look in %TFLIBDIR. */
         if (!TFLIBDIR || !*TFLIBDIR || !is_absolute_path(TFLIBDIR)) {
             eprintf("warning: invalid value for %%TFLIBDIR");
         } else {
             Sprintf(libfile, 0, "%s/%s", TFLIBDIR, args);
-            loadfile = tfopen(expand_filename(libfile->s), "r");
+            file = tfopen(expand_filename(libfile->s), "r");
         }
     }
 
-    if (!loadfile) {
+    if (!file) {
         if (!tinytalk || errno != ENOENT)
-            do_hook(H_LOADFAIL, "%% %s: %s", "%s %s", args, strerror(errno));
-        loadfile = old_file;
+            do_hook(H_LOADFAIL, "!%s: %s", "%s %s", args, strerror(errno));
         return 0;
     }
 
     do_hook(H_LOAD, quietload ? NULL : "%% Loading commands from %s.",
-        "%s", loadfile->name);
+        "%s", file->name);
     oflush();  /* Load could take awhile, so flush pending output first. */
 
     Stringninit(line, 80);
     Stringninit(cmd, 192);
-    loadline = 0;
+    loadstart = loadline = 0;
+    loadfile = file;  /* if this were done earlier, error msgs would be wrong */
     while (!done) {
         if (exiting) {
             --exiting;
@@ -504,30 +480,39 @@ int do_file_load(args, tinytalk)
         }
         done = !tfgetS(line, loadfile);
         loadline++;
+        if (new_cmd) loadstart = loadline;
         if (line->len) {
             char *p;
             if (line->s[0] == ';') continue;         /* skip comment lines */
-            for (p = line->s; isspace(*p); p++);     /* strip leading space */
+            if (new_cmd && is_space(line->s[0]) && last_cmd_line > 0)
+                tfprintf(tferr,
+                    "%% %s: line %d: warning: possibly missing trailing \\",
+                    loadfile->name, last_cmd_line);
+            last_cmd_line = loadline;
+            for (p = line->s; is_space(*p); p++);     /* strip leading space */
             Stringcat(cmd, p);
             if (line->s[line->len - 1] == '\\') {
                 if (line->len < 2 || line->s[line->len - 2] != '%') {
                     Stringterm(cmd, cmd->len - 1);
+                    new_cmd = 0;
                     continue;
                 }
             } else {
                 p = line->s + line->len - 1;
-                while (p > line->s && isspace(*p)) p--;
+                while (p > line->s && is_space(*p)) p--;
                 if (*p == '\\')
-                    eprintf("WARNING: whitespace following final '\\'");
+                    eprintf("warning: whitespace following final '\\'");
             }
         }
+        new_cmd = 1;
         if (!cmd->len) continue;
         if (*cmd->s == '/') {
             tinytalk = FALSE;
             /* Never use SUB_FULL here.  Libraries will break. */
             process_macro(cmd->s, NULL, SUB_KEYWORD);
         } else if (tinytalk) {
-            handle_addworld_command(cmd->s);
+            Macro *addworld = find_macro("addworld");
+            if (addworld) do_macro(addworld, cmd->s);
         } else {
             eprintf("Invalid command. Aborting.");
             error = 1;
@@ -541,7 +526,8 @@ int do_file_load(args, tinytalk)
     if (tfclose(loadfile) != 0)
         eputs("load: unknown error reading file");
     loadfile = old_file;
-    loadline = old_lineno;
+    loadline = old_loadline;
+    loadstart = old_loadstart;
 
     if (!loadfile)
         exiting = 0;
@@ -564,7 +550,7 @@ static struct Value *handle_beep_command(args)
     if (!*args) n = 3;
     else if (cstrcmp(args, "on") == 0) setivar("beep", 1, FALSE);
     else if (cstrcmp(args, "off") == 0) setivar("beep", 0, FALSE);
-    else if (isdigit(*args) && (n = atoi(args)) < 0) return newint(0);
+    else if (is_digit(*args) && (n = atoi(args)) < 0) return newint(0);
 
     bell(n);
     return newint(1);
@@ -699,7 +685,7 @@ static struct Value *handle_trigpc_command(args)
     if ((prob = numarg(&args)) < 0) return newint(0);
     split_args(args);
     return newint(add_macro(new_macro(pattern, "", 0, NULL, body, pri,
-        prob, F_NORM, 0, matching)));
+        prob, 0, 0, matching)));
 }
 
 static struct Value *handle_untrig_command(args)
@@ -713,7 +699,7 @@ static struct Value *handle_untrig_command(args)
         if (c != 'a') return newint(0);
         if ((attrs |= parse_attrs(&args)) < 0) return newint(0);
     }
-    return newint(remove_macro(args, attrs ? attrs : F_NORM, 0));
+    return newint(remove_macro(args, attrs ? attrs : 0, 0));
 }
 
 

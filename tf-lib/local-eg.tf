@@ -1,4 +1,4 @@
-;;; $Id: local-eg.tf,v 35000.2 1996/03/10 23:50:10 hawkeye Exp $
+;;; $Id: local-eg.tf,v 35000.3 1998/04/09 20:26:16 hawkeye Exp $
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; TF local library
@@ -10,6 +10,12 @@
 
 ;;; Mark this file as already loaded, for /require.
 /~loaded local.tf
+
+;;; If this tf is available to users without shells, you probably want
+;;; to restrict their access. (See "/help restrict" in tf).
+; /restrict SHELL
+; /restrict FILE
+; /restrict WORLD
 
 ;;; HELPFILE is defined during installation.  If you want to move the
 ;;; helpfile without re-installing, uncomment and edit the line below.

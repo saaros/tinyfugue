@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: port.h,v 35004.19 1997/09/26 08:52:55 hawkeye Exp $ */
+/* $Id: port.h,v 35004.21 1998/01/02 09:41:43 hawkeye Exp $ */
 
 #ifndef PORT_H
 #define PORT_H
@@ -199,21 +199,37 @@ extern char *sys_errlist[];
 
 
 #include <ctype.h>
-#ifdef CASE_OK /* are tolower and toupper safe on all characters, per ANSI? */
+#ifdef CASE_OK /* are tolower and toupper safe on non-letters, per ANSI? */
   /* more efficient */
-# define lcase(x)  tolower(x)
-# define ucase(x)  toupper(x)
+# define lcase(x)  tolower((unsigned char)(x))
+# define ucase(x)  toupper((unsigned char)(x))
 #else
   extern int lcase(x);
   extern int ucase(x);
   /* This expression evaluates its argument more than once:
-   *  (isupper(x) ? tolower(x) : (x))
+   *  (is_upper(x) ? tolower(x) : (x))
    * This expression has no sequence points:
-   *  (dummy=(x), (isupper(dummy) ? tolower(dummy) : (dummy)))
+   *  (dummy=(x), (is_upper(dummy) ? tolower(dummy) : (dummy)))
    */
   /* guaranteed to work in nonstandard C */
 #endif
 
+/* The standard ctype functions expect an int argument, containing either EOF
+ * or an unsigned char representation of a character.  The functions below do
+ * not allow EOF, but do work on plain char values.  (The signedness becomes
+ * important when using character sets other than 7-bit ASCII.)
+ */
+#define is_alnum(c)	isalnum((unsigned char)(c))
+#define is_alpha(c)	isalpha((unsigned char)(c))
+#define is_cntrl(c)	iscntrl((unsigned char)(c))
+#define is_digit(c)	isdigit((unsigned char)(c))
+#define is_graph(c)	isgraph((unsigned char)(c))
+#define is_lower(c)	islower((unsigned char)(c))
+#define is_print(c)	isprint((unsigned char)(c))
+#define is_punct(c)	ispunct((unsigned char)(c))
+#define is_space(c)	isspace((unsigned char)(c))
+#define is_upper(c)	isupper((unsigned char)(c))
+#define is_xdigit(c)	isxdigit((unsigned char)(c))
 
 /* Standard C allows struct assignment, but K&R1 didn't. */
 #define structcpy(dst, src) \

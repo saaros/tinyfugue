@@ -6,7 +6,7 @@
 ;;;; General Public License.  See the file "COPYING" for details.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;; $Id: stdlib.tf,v 35000.25 1997/11/26 08:59:46 hawkeye Exp $
+;;; $Id: stdlib.tf,v 35000.32 1998/04/14 18:40:30 hawkeye Exp $
 
 ;;; TF macro library
 
@@ -56,13 +56,6 @@
     /def -i COMPRESS_READ = unzip -p%;\
 /endif
 
-;;; Help for newbies
-/def -i -h'SEND help' -Fq send_help = \
-    /if (${world_name} =~ "") \
-        /echo -e %% You are not connected to a world.%; \
-        /echo -e %% Use "/help" to get help on TinyFugue.%; \
-    /endif
-
 ;;; High priority for library hooks/triggers.  This is a hack.
 /set maxpri=2147483647
 
@@ -70,6 +63,13 @@
 ;;; Commands
 ;; Some of these use helper macros starting with ~ to reduce conflicts with
 ;; the user's namespace.
+
+
+;;; /echo [-a<attr>] [-p] [-oer] [-w[<world>]] <text>
+/def -i echo = \
+    /if (!getopts("a:poerw:", "")) /return 0%; /endif%; \
+    /return echo({*}, opt_a, !!opt_p, \
+        (opt_w !~ "") ? strcat("w",opt_w) : opt_e ? "e" : opt_r ? "r" : "o")
 
 ;;; /sys <command>
 ; Executes an "inline" shell command.
@@ -87,7 +87,7 @@
     /elseif (opt_T !~ "") \
         /~send $(/listsockets -s -T%{opt_T})%; \
     /else \
-        /@test send(text, {opt_w-${world_name}}, !opt_n)%; \
+        /test send(text, {opt_w}, !opt_n)%; \
     /endif
 
 /def -i ~send = \
@@ -105,6 +105,21 @@
 ;;
 
 /def -i bg = /fg -n
+
+
+;;  /ADDWORLD [-p] [-T<type>] <name> [[<char> <pass>] <host> <port> [<file>]]
+;;  /ADDWORLD [-T<type>] DEFAULT <char> <pass> [<file>]
+
+/def -i addworld = \
+    /if (!getopts("pT:", "")) /return 0%; /endif%; \
+    /if ({1} =/ "default") \
+        /test addworld({1}, opt_T, "", "", {2}, {3}, {4})%;\
+    /elseif ({#} <= 4) \
+        /test addworld({1}, opt_T, {2}, {3}, "", "", {4}, !opt_p)%;\
+    /else \
+        /test addworld({1}, opt_T, {4}, {5}, {2}, {3}, {6}, !opt_p)%;\
+    /endif
+
 
 ;; /world [-nlq] [<name>]
 ;; /world [-nlq] <host> <port>
@@ -163,6 +178,7 @@
     /if ({#}) \
         /untrig -ag - %*%;\
     /else \
+        /echo %% Gags disabled.%;\
         /set gag=0%;\
     /endif
 
@@ -170,6 +186,7 @@
     /if ({#}) \
         /untrig -aurfdhbBC0 - %*%;\
     /else \
+        /echo %% Hilites disabled.%;\
         /set hilite=0%;\
     /endif
 
@@ -190,23 +207,23 @@
 
 ;; other useful stuff.
 
-/def -i first	= /echo - %1
-/def -i rest	= /echo - %-1
-/def -i last	= /echo - %L
-/def -i nth	= /shift %1%; /echo - %1
+/def -i first	= /result {1}
+/def -i rest	= /result {-1}
+/def -i last	= /result {L}
+/def -i nth	= /shift %1%; /result {1}
 
 /def -i cd	= /lcd %{*-%HOME}
 /def -i pwd	= /last $(/lcd)
 
 /def -i man	= /help %*
 
-/def -i signal	= /quote -S -decho !kill -%{1-l} $[getpid()]
+/def -i signal	= /quote -S -decho !kill -%{1-l} $[{1}!~"" ? getpid() : ""]
 
 /def -i split	= /@test regmatch("^([^=]*[^ =])? *=? *(.*)", {*})
 
 /def -i ver	= \
     /@test regmatch('version (.*). % Copyright', $$(/version))%; \
-    /echo - %P1
+    /result {P1}
 
 
 ;;; Extended world definition macros
@@ -227,7 +244,7 @@
 /def -i proxy_command = \
     telnet ${world_host} ${world_port}%; \
     /trigger -hCONNECT ${world_name}%; \
-    /if (${world_character} !~ "") \
+    /if (login & ${world_character} !~ "" & ${world_login}) \
         /trigger -hLOGIN ${world_name}%; \
     /endif
 
@@ -235,7 +252,7 @@
 ;; as such by the user's /addworld definition.
 
 /def -iFmregexp -h'PROMPT [Ll]ogin:( *)$' -T'^$' ~detect_worldtype_1 = \
-    /@test prompt(strcat({*}, P1))%;\
+    /@test prompt(strcat({*}, {P1}))%;\
     /addworld -Ttelnet ${world_name}%;\
     /set lp=1%;\
     /localecho on%;\
@@ -244,7 +261,7 @@
 
 /def -iFmregexp -h'PROMPT ^By what name .* be known\\? *$' -T^$ \
   ~detect_worldtype_2 = \
-    /@test prompt(P0)%; \
+    /@test prompt({P0})%; \
     /addworld -Tlp ${world_name}%; \
     /set lp=1%; \
     /echo %% This looks like an lp-prompt world, so I'm redefining it as one.%;\
@@ -254,15 +271,19 @@
 ;; Default worldtype hook: tiny login format (for backward compatibility),
 ;; but do not change any flags.
 /eval \
-	/def -mglob -T{} -hLOGIN -iFp%{maxpri} ~default_login_hook = \
-		/send connect $${world_character} $${world_password}
+    /def -mglob -T{} -hLOGIN -iFp%{maxpri} ~default_login_hook = \
+        /~login_hook_tiny
 
 ;; Tiny hooks: login format, lp=off.
 /eval \
-	/def -mglob -T{tiny|tiny.*} -hWORLD -iFp%{maxpri} ~world_hook_tiny = \
-		/set lp=0%; \
-	/def -mglob -T{tiny|tiny.*} -hLOGIN -iFp%{maxpri} ~login_hook_tiny = \
-		/send connect $${world_character} $${world_password}
+    /def -mglob -T{tiny|tiny.*} -hWORLD -iFp%{maxpri} ~world_hook_tiny = \
+        /set lp=0%; \
+    /def -mglob -T{tiny|tiny.*} -hLOGIN -iFp%{maxpri} ~login_hook_tiny = \
+        /let char=$${world_character}%%;\
+        /if (strchr(char, ' ') >= 0) /let char="%%char"%%; /endif%%; \
+        /let pass=$${world_password}%%;\
+        /if (strchr(pass, ' ') >= 0) /let pass="%%pass"%%; /endif%%; \
+        /send connect %%char %%pass
 
 ;; Generic prompt-world hooks: lp=on.
 /eval \
@@ -300,7 +321,7 @@
 	/send -- $${world_password}%; \
     /def -mregexp -T'^telnet(\\\\..*)?$$' -h'PROMPT [Pp]assword:( *)$$' \
     -iFp%{maxpri} ~telnet_passwd = \
-	/@test prompt(strcat({*}, P1))%%;\
+	/@test prompt(strcat({*}, {P1}))%%;\
 	/def -w -q -hSEND -iFn1p%{maxpri} ~echo_$${world_name} =\
 	    /localecho on%%;\
 	/localecho off
@@ -414,7 +435,7 @@
         /let dest=$[strcat(dest, substr(tail,0,i), "\\", substr(tail,i,1))]%;\
         /let tail=$[substr(tail, i+1)]%;\
     /done%;\
-    /echo -- %{dest}%{tail}
+    /result strcat(dest, tail)
 
 
 ;;; /loadhist [-lig] [-w<world>] file
@@ -544,7 +565,7 @@
 /def -i wrapspace	= /set wrapspace %*
 
 /def -i wrap = \
-    /if ({*} > 1) \
+    /if ({*} =/ '[0-9]*') \
         /set wrapsize=%*%; \
         /set wrap=1%; \
     /else \
@@ -582,6 +603,12 @@
 /set pi=3.141592654
 /set e=2.718281828
 
+;;; Help for newbies
+/def -i -h'SEND help' -Fq send_help = \
+    /if (${world_name} =~ "") \
+        /echo -e %% You are not connected to a world.%; \
+        /echo -e %% Use "/help" to get help on TinyFugue.%; \
+    /endif
 
 ;;; Load local public config file
 

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996, 1997 Ken Keys
+ *  Copyright (C) 1996 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: varlist.h,v 35000.18 1997/11/23 01:56:55 hawkeye Exp $ */
+/* $Id: varlist.h,v 35000.21 1998/04/11 20:16:58 hawkeye Exp $ */
 
 /* It may not be easy to read in 80 columns, but it keeps the constants and
  * the array in the same place, so they can't get out of sync.
@@ -24,13 +24,14 @@ varcode(VAR_LC_TIME    , "LC_TIME"      , NULL   , VARSTR , NULL      , 0     , 
 varcode(VAR_MAIL       , "MAIL"         , NULL   , VARSTR , NULL      , 0     , ch_mailfile),
 varcode(VAR_TERM       , "TERM"         , NULL   , VARSTR , NULL      , 0     , change_term),
 varcode(VAR_TFLIBDIR   , "TFLIBDIR"     , LIBDIR , VARSTR , NULL      , 0     , NULL),
-varcode(VAR_TZ         , "TZ"           , NULL   , VARSTR , NULL      , 0     , NULL),
+varcode(VAR_TZ         , "TZ"           , NULL   , VARSTR , NULL      , 0     , ch_timezone),
 varcode(VAR_auto_fg    , "auto_fg"      , NULL   , VARENUM, enum_flag , TRUE  , NULL),
 varcode(VAR_background , "background"   , NULL   , VARENUM, enum_flag , TRUE  , tog_bg),
 varcode(VAR_backslash  , "backslash"    , NULL   , VARENUM, enum_flag , TRUE  , NULL),
 varcode(VAR_bamf       , "bamf"         , NULL   , VARENUM, enum_bamf , FALSE , NULL),
 varcode(VAR_beep       , "beep"         , NULL   , VARENUM, enum_flag , TRUE  , NULL),
 varcode(VAR_bg_output  , "bg_output"    , NULL   , VARENUM, enum_flag , TRUE  , NULL),
+varcode(VAR_binary_eol , "binary_eol"   , NULL   , VARENUM, enum_eol ,  EOL_LF, NULL),
 varcode(VAR_borg       , "borg"         , NULL   , VARENUM, enum_flag , TRUE  , NULL),
 varcode(VAR_cleardone  , "cleardone"    , NULL   , VARENUM, enum_flag , FALSE , NULL),
 varcode(VAR_clearfull  , "clearfull"    , NULL   , VARENUM, enum_flag , FALSE , NULL),

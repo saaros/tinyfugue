@@ -138,9 +138,12 @@ MAKE='make'
 # Uncomment the SOCKS line below to enable SOCKS support.
 # If you have SOCKS 4.2beta (or later), you can also uncomment the
 # SOCKS_NONBLOCK line below to allow nonblocking connects.
+# Uncomment and redefine LIBSOCKS if your SOCKS library is in a different
+# place.
 
 # SOCKS='yes'
 # SOCKS_NONBLOCK='yes'
+# LIBSOCKS='-lsocks'
 
 
 ###

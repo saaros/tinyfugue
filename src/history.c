@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: history.c,v 35004.36 1997/12/14 21:24:42 hawkeye Exp $ */
+/* $Id: history.c,v 35004.42 1998/04/14 19:41:53 hawkeye Exp $ */
 
 
 /****************************************************************
@@ -63,13 +63,13 @@ static int      FDECL(do_watch,(char *args, CONST char *name, int *wlines,
 
 
 static Aline blankline[1] = { BLANK_ALINE };
-static int norecord = 0;         /* supress history (but not log) recording */
-static int nolog = 0;            /* supress log (but not history) recording */
 static struct History input[1];
 static int wnmatch = 4, wnlines = 5, wdmatch = 2, wdlines = 5;
 
 struct History globalhist[1], localhist[1];
 int log_count = 0;
+int norecord = 0;	/* supress history (but not log) recording */
+int nolog = 0;		/* supress log (but not history) recording */
 
 struct History *init_history(hist, maxsize)
     History *hist;
@@ -206,18 +206,21 @@ void record_input(str)
     CONST char *str;
 {
     char *prev_line;
+    int duplicate = 0;
 
     input->index = input->last;
 
     if (!*str) return;
     if (input->size > 1) {
         prev_line = input->alines[nmod(input->last-1, input->maxsize)]->str;
-        if (strcmp(str, prev_line) == 0) return;
+        duplicate = (strcmp(str, prev_line) == 0);
     }
 
-    hold_input(str);
-    save_to_hist(input, blankline);
-    input->index = input->last;
+    if (!duplicate) {
+        hold_input(str);
+        save_to_hist(input, blankline);
+        input->index = input->last;
+    }
 
     if (input->logfile && !nolog) save_to_log(input, str);
 }
@@ -317,7 +320,7 @@ int do_recall(args)
     }
     if (!hist) hist = world ? world->history : globalhist;
     if ((numbers = (args && *args == '#'))) args++;
-    while(isspace(*args)) args++;
+    while(is_space(*args)) args++;
 
     t0 = 0;
     t1 = now;
@@ -340,14 +343,14 @@ int do_recall(args)
     } else if (*args == '/') {                                 /*  /x */
         ++args;
         want = strtoint(&args);
-    } else if (isdigit(*args)) {
+    } else if (is_digit(*args)) {
         if ((n_or_t = parsetime(&args, &istime)) < 0) {
             eprintf("syntax error in recall range");
             return 0;
         } else if (*args != '-') {                             /* x   */
             if (istime) t0 = t1 - n_or_t;
             else n0 = hist->total - n_or_t;
-        } else if (isdigit(*++args)) {                         /* x-y */
+        } else if (is_digit(*++args)) {                        /* x-y */
             if (istime) t0 = abstime(n_or_t);
             else n0 = n_or_t - 1;
             if ((n_or_t = parsetime(&args, &istime)) < 0) {
@@ -361,11 +364,11 @@ int do_recall(args)
             else n0 = n_or_t - 1;
         }
     }
-    if (*args && !isspace(*args)) {
+    if (*args && !is_space(*args)) {
         eprintf("extra characters after recall range: %s", args);
         return 0;
     }
-    while (isspace(*args)) ++args;
+    while (is_space(*args)) ++args;
     if (*args && !init_pattern(&pat, args, mflag))
         return 0;
 
@@ -381,7 +384,7 @@ int do_recall(args)
     if (n0 <= n1 && t0 <= t1) {
         n0 = nmod(n0, hist->maxsize);
         n1 = nmod(n1, hist->maxsize);
-        attrs = ~attrs | F_NORM;
+        attrs = ~attrs;
 
         if (hist == input) hold_input(keybuf->s);
         for (i = n1; want > 0; i = nmod(i - 1, hist->maxsize)) {
@@ -485,8 +488,8 @@ int is_watchname(hist, aline)
     STATIC_BUFFER(buf);
 
     if (!watchname || !gag || aline->attrs & F_GAG) return 0;
-    if (isspace(*aline->str)) return 0;
-    for (end = aline->str; *end && !isspace(*end); ++end);
+    if (is_space(*aline->str)) return 0;
+    for (end = aline->str; *end && !is_space(*end); ++end);
     for (i = ((wnlines >= hist->size) ? hist->size - 1 : wnlines); i > 0; i--) {
         line = hist->alines[nmod(hist->last - i, hist->maxsize)]->str;
         if (strncmp(line, aline->str, end - aline->str) != 0) continue;

@@ -1,25 +1,25 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996, 1997 Ken Keys
+ *  Copyright (C) 1996 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: funclist.h,v 35000.17 1997/10/25 21:52:41 hawkeye Exp $ */
+/* $Id: funclist.h,v 35000.23 1998/03/28 20:39:16 hawkeye Exp $ */
 
 /*	  Symbol	Name		Min	Max	*/
 /*					Args	Args	*/
 
 funccode( FN_ABS,	"abs",		1,	1),
 funccode( FN_ACOS,	"acos",		1,	1),
+funccode( FN_ADDWORLD,	"addworld",	4,	8),
 funccode( FN_ASCII,	"ascii",	1,	1),
 funccode( FN_ASIN,	"asin",		1,	1),
 funccode( FN_ATAN,	"atan",		1,	1),
 funccode( FN_CHAR,	"char",		1,	1),
 funccode( FN_COLUMNS,	"columns",	0,	0),
 funccode( FN_COS,	"cos",		1,	1),
-funccode( FN_ECHO,	"echo",		1,	1),
-funccode( FN_ECHOP,	"echop",	1,	1),
+funccode( FN_ECHO,	"echo",		1,	4),
 funccode( FN_EXP,	"exp",		1,	1),
 funccode( FN_FG_WORLD,	"fg_world",	0,	0),
 funccode( FN_FILENAME,	"filename",	1,	1),
@@ -43,6 +43,7 @@ funccode( FN_LINES,	"lines",	0,	0),
 funccode( FN_LOG,	"log",		1,	1),
 funccode( FN_LOG10,	"log10",	1,	1),
 funccode( FN_MOD,	"mod",		2,	2),
+funccode( FN_MORESCROLL,"morescroll",	1,	1),
 funccode( FN_MORESIZE,	"moresize",	0,	0),
 funccode( FN_NACTIVE,	"nactive",	0,	1),
 funccode( FN_NLOG,	"nlog",		0,	0),
@@ -68,7 +69,8 @@ funccode( FN_SUBSTR,	"substr",	2,	3),
 funccode( FN_SYSTYPE,	"systype",	0,	0),
 funccode( FN_TAN,	"tan",		1,	1),
 funccode( FN_TFCLOSE,	"tfclose",	1,	1),
-funccode( FN_TFOPEN,	"tfopen",	2,	2),
+funccode( FN_TFFLUSH,	"tfflush",	1,	2),
+funccode( FN_TFOPEN,	"tfopen",	0,	2),
 funccode( FN_TFREAD,	"tfread",	1,	2),
 funccode( FN_TFWRITE,	"tfwrite",	1,	2),
 funccode( FN_TIME,	"time",		0,	0),

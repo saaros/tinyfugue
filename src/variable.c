@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: variable.c,v 35004.33 1997/11/29 22:53:31 hawkeye Exp $ */
+/* $Id: variable.c,v 35004.43 1998/04/10 20:30:06 hawkeye Exp $ */
 
 
 /**************************************
@@ -31,10 +31,10 @@ static Var   *FDECL(findlocalvar,(CONST char *name));
 static int    FDECL(set_special_var,(Var *var, CONST char *val, Toggler **fpp, CONST char **oldvaluep));
 static Var   *FDECL(newglobalvar,(CONST char *name, CONST char *value));
 static char  *FDECL(new_env,(Var *var));
+static void   FDECL(replace_env,(char *str));
 static void   FDECL(append_env,(char *str));
 static char **FDECL(find_env,(CONST char *str));
 static void   FDECL(remove_env,(CONST char *str));
-static void   FDECL(replace_env,(char *str));
 static int    FDECL(listvar,(CONST char *name, CONST char *value,
                     int mflag, int exportflag, int shortflag));
 
@@ -53,13 +53,12 @@ static int setting_nearest = 0;
 
 #define bicode(a, b)  b 
 #include "enumlist.h"
-#undef bicode
 
-static CONST char *enum_flag[]	= { "off", "on", NULL };
 static CONST char *enum_mecho[]	= { "off", "on", "all", NULL };
 static CONST char *enum_block[] = { "blocking", "nonblocking", NULL };
 
-CONST char *enum_sub[]		= { "off", "on", "full", NULL };
+CONST char *enum_flag[]	= { "off", "on", NULL };
+CONST char *enum_sub[]	= { "off", "on", "full", NULL };
 CONST char *enum_color[]= { "black", "red", "green", "yellow",
 			"blue", "magenta", "cyan", "white",
 			"8", "9", "10", "11", "12", "13", "14", "15",
@@ -80,7 +79,10 @@ extern char **environ;
 /* Special variables. */
 Var special_var[] = {
 #define varcode(id, name, val, type, enums, ival, func) \
-    { name, val, val ? sizeof(val)-1 : 0, type, enums, ival, func, NULL, NULL }
+    { name, val, 0, type, enums, ival, func, NULL, NULL }
+    /* Some lame compilers choke on  (val ? sizeof(val)-1 : 0)  so we
+     * have to initialize len at runtime.
+     */
 #include "varlist.h"
 #undef varcode
 };
@@ -101,8 +103,10 @@ void init_variables()
     for (var = special_var; var->name; var++) {
         var->flags |= VARSPECIAL;
         if (var->flags & VARSTR) {
-            if (var->value)
+            if (var->value) {
+                var->len = strlen(var->value);
                 var->value = STRNDUP(var->value, var->len);
+            }
             var->ival = !!var->value;
         } else if (var->flags & VARENUM) {
             var->value = var->enumvec[var->ival >= 0 ? var->ival : 0];
@@ -230,22 +234,17 @@ CONST char *getnearestvar(name, np)
     long *np;
 {
     Var *var;
-    STATIC_BUFFER(buf);
 
     if (np) *np = -1;
     if (((var = findlocalvar(name))) || ((var = findglobalvar(name)))) {
         if (np && !(var->flags & VARSTR)) *np = var->ival;
         return var->value;
     }
-    if (ucase(name[0]) == 'P') {
-        Stringterm(buf, 0);
-        if (isdigit(name[1]))
-            return regsubstr(buf, atoi(name + 1)) >= 0 ? buf->s : NULL;
-        else if (ucase(name[1]) == 'L')
-            return regsubstr(buf, -1) >= 0 ? buf->s : NULL;
-        else if (ucase(name[1]) == 'R')
-            return regsubstr(buf, -2) >= 0 ? buf->s : NULL;
+
+    if (smatch("{R|L|L[1-9]*|P[RL]|P[0-9]}", name) == 0) {
+        eprintf("Warning: \"%s\" may not be used as a variable reference.  Use the variable substitution \"{%s}\" instead.", name, name);
     }
+
     return NULL;
 }
 
@@ -284,7 +283,7 @@ Var *newlocalvar(name, value)
     var->status = NULL;
     inlist((GENERIC *)var, (List*)(localvar->head->datum), NULL);
     if (findglobalvar(name)) {
-        do_hook(H_SHADOW, "%% Warning:  Local variable \"%s\" overshadows global variable of same name.", "%s", name);
+        do_hook(H_SHADOW, "!Warning:  Local variable \"%s\" overshadows global variable of same name.", "%s", name);
     }
     return var;
 }
@@ -320,6 +319,17 @@ static char *new_env(var)
     str = (char *)XMALLOC(strlen(var->name) + 1 + var->len + 1);
     sprintf(str, "%s=%s", var->name, var->value);
     return str;
+}
+
+/* Replace the environment string for <name> with "<name>=<value>". */
+static void replace_env(str)
+    char *str;
+{
+    char **envp;
+
+    envp = find_env(str);
+    FREE(*envp);
+    *envp = str;
 }
 
 /* Add str to environment.  Assumes name is not already defined. */
@@ -361,17 +371,6 @@ static void remove_env(str)
     FREE(*envp);
     do *envp = *(envp + 1); while (*++envp);
     envsize--;
-}
-
-/* Replace the environment string for <name> with "<name>=<value>". */
-static void replace_env(str)
-    char *str;
-{
-    char **envp;
-
-    envp = find_env(str);
-    FREE(*envp);
-    *envp = str;
 }
 
 
@@ -455,8 +454,8 @@ int do_set(args, exportflag, localflag)
         if (*value == '=') {
             *value++ = '\0';
             break;
-        } else if (isspace(*value)) {
-            for (*value++ = '\0'; isspace(*value); value++);
+        } else if (is_space(*value)) {
+            for (*value++ = '\0'; is_space(*value); value++);
             if (*value == '\0') value = NULL;
             if (*value == '=')
                 eprintf("warning: '=' following space is part of value.");
@@ -469,8 +468,8 @@ int do_set(args, exportflag, localflag)
 
     /* Restrict variable names to alphanumerics and underscores, like POSIX.2 */
     for (i = 0; args[i]; i++) {
-        if (!(isalpha(args[i]) || args[i]=='_' || (i>0 && isdigit(args[i])))) {
-            oputs("% illegal variable name.");
+        if (!(is_alpha(args[i]) || args[i]=='_' || (i>0 && is_digit(args[i])))) {
+            eprintf("illegal variable name: %s", args);
             return 0;
         }
     }
@@ -532,10 +531,10 @@ struct Value *handle_listvar_command(args)
 
     if (*args) {
         name = args;
-        for (value = name; *value && !isspace(*value); value++);
+        for (value = name; *value && !is_space(*value); value++);
         if (*value) {
             *value++ = '\0';
-            while(isspace(*value)) value++;
+            while(is_space(*value)) value++;
         }
         if (!*value)
             value = NULL;
@@ -626,9 +625,9 @@ static int set_special_var(var, value, fpp, oldvaluep)
         if (fpp) *fpp = var->func;
 
     } else /* integer */ {
-        while (isspace(*value)) value++;
+        while (is_space(*value)) value++;
         var->ival=atol(value);
-        if (!isdigit(*value) || var->ival < !!(var->flags & VARPOS)) {
+        if (!is_digit(*value) || var->ival < !!(var->flags & VARPOS)) {
             eprintf("%s must be an integer greater than or equal to %d",
                 var->name, !!(var->flags & VARPOS));
             var->ival = oldival;

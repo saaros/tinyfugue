@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996, 1997 Ken Keys
+ *  Copyright (C) 1996 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: globals.h,v 35000.12 1997/11/23 01:56:54 hawkeye Exp $ */
+/* $Id: globals.h,v 35000.14 1998/01/04 21:08:56 hawkeye Exp $ */
 
 #ifndef GLOBALS_H
 #define GLOBALS_H
@@ -56,6 +56,7 @@ enum Vars {
 #define bamf		getintvar(VAR_bamf)
 #define beep		getintvar(VAR_beep)
 #define bg_output	getintvar(VAR_bg_output)
+#define binary_eol	getintvar(VAR_binary_eol)
 #define borg		getintvar(VAR_borg)
 #define cleardone	getintvar(VAR_cleardone)
 #define clearfull	getintvar(VAR_clearfull)

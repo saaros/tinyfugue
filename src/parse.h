@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: parse.h,v 35004.3 1997/12/13 22:40:46 hawkeye Exp $ */
+/* $Id: parse.h,v 35004.5 1998/03/20 22:02:22 hawkeye Exp $ */
 
 #ifndef PARSE_H
 #define PARSE_H
@@ -17,9 +17,11 @@
 #define ELSE	'\203'
 #define ELSEIF	'\204'
 #define ENDIF	'\205'
-#define IF	'\206'
-#define THEN	'\207'
-#define WHILE	'\210'
+#define EXIT	'\206'
+#define IF	'\207'
+#define RETURN	'\210'
+#define THEN	'\211'
+#define WHILE	'\212'
 
 #define TYPE_ID     1
 #define TYPE_STR    2

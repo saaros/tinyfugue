@@ -6,7 +6,7 @@
 /~loaded alias.tf
 
 /if ( alias =~ "old" ) \
-    /echo Note: you have alias=old, so argument substitutions will follow \
+    /echo -e Note: you have alias=old, so argument substitutions will follow \
         the old style, where %%1 is the alias name, %%2 is the first \
         argument, etc.%;\
 /endif

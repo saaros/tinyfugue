@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.h,v 35004.22 1997/11/23 01:56:55 hawkeye Exp $ */
+/* $Id: output.h,v 35004.24 1998/01/29 06:28:49 hawkeye Exp $ */
 
 #ifndef OUTPUT_H
 #define OUTPUT_H
@@ -40,6 +40,7 @@ extern void FDECL(setup_screen,(int clearlines));
 extern int  NDECL(redraw);
 extern void NDECL(oflush);
 extern int  NDECL(tog_more);
+extern int  FDECL(clear_more,(int new));
 extern int  NDECL(ch_visual);
 extern int  NDECL(ch_status_fields);
 extern void FDECL(update_status_field,(Var *var, int internal));

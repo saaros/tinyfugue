@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tf.h,v 35004.13 1997/12/14 21:24:43 hawkeye Exp $ */
+/* $Id: tf.h,v 35004.16 1998/03/28 20:38:30 hawkeye Exp $ */
 
 #ifndef TF_H
 #define TF_H
@@ -105,10 +105,11 @@ typedef struct Aline {         /* shared line, with attributes */
 
 
 /* Define enumerated constants */
+#define ENUMEXTERN extern
 #define bicode(a, b)  a 
 #include "enumlist.h"
-#undef bicode
 
+extern CONST char *enum_flag[];
 extern CONST char *enum_sub[];
 extern CONST char *enum_color[];
 

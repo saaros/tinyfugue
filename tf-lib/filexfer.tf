@@ -50,7 +50,7 @@
         /sys rm -f '%1'%%;\
         /log -w %1%%;\
         /def -i -w -p97 -ag -mglob -t"*" _getfile_quiet%%;\
-        /@test substitute(PR)%;\
+        /@test substitute({PR})%;\
     ed %{2-%{1}}%;\
     1,$$p%;\
     q

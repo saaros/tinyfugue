@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997 Ken Keys
+ *  Copyright (C) 1993 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: command.h,v 35004.5 1997/11/23 23:03:56 hawkeye Exp $ */
+/* $Id: command.h,v 35004.7 1998/03/28 20:39:16 hawkeye Exp $ */
 
 #ifndef COMMAND_H
 #define COMMAND_H
@@ -17,5 +17,7 @@ extern int exiting;
 extern int      FDECL(handle_command,(String *cmd_line));
 extern Handler *FDECL(find_command,(CONST char *cmd));
 extern int      FDECL(do_file_load,(CONST char *args, int tinytalk));
+extern int      FDECL(handle_echo_func,(CONST char *string, CONST char *attrstr,
+                     int inline_flag, CONST char *dest));
 
 #endif /* COMMAND_H */

@@ -1,18 +1,15 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996, 1997 Ken Keys
+ *  Copyright (C) 1996 - 1998 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: keylist.h,v 35000.3 1997/08/24 21:25:29 hawkeye Exp $ */
+/* $Id: keylist.h,v 35000.5 1998/01/29 06:28:48 hawkeye Exp $ */
 
 bicode( DOKEY_FLUSH	, "FLUSH"    ),
-bicode( DOKEY_HPAGE	, "HPAGE"    ),
-bicode( DOKEY_LINE	, "LINE"     ),
 bicode( DOKEY_LNEXT	, "LNEXT"    ),
 bicode( DOKEY_NEWLINE	, "NEWLINE"  ),
-bicode( DOKEY_PAGE	, "PAGE"     ),
 bicode( DOKEY_RECALLB	, "RECALLB"  ),
 bicode( DOKEY_RECALLBEG	, "RECALLBEG"),
 bicode( DOKEY_RECALLEND	, "RECALLEND"),
