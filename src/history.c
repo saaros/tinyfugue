@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: history.c,v 35004.102 2004/02/17 06:44:37 hawkeye Exp $";
+static const char RCSid[] = "$Id: history.c,v 35004.107 2004/07/16 21:13:51 hawkeye Exp $";
 
 
 /****************************************************************
@@ -27,7 +27,7 @@ static const char RCSid[] = "$Id: history.c,v 35004.102 2004/02/17 06:44:37 hawk
 #include "world.h"
 #include "output.h"		/* update_status_field(), etc */
 #include "macro.h"		/* add_new_macro() */
-#include "commands.h"
+#include "cmdlist.h"
 #include "keyboard.h"		/* keybuf */
 #include "variable.h"		/* set_var_by_*() */
 #include "signals.h"		/* interrupted() */
@@ -45,14 +45,14 @@ typedef struct History {	/* circular list of lines, and logfile */
     const char *logname;
 } History;
 
-static int      next_hist_opt(char **ptr, int *offsetp, History **histp,
+static int      next_hist_opt(const char **ptr, int *offsetp, History **histp,
 		    void *u);
-static void     save_to_hist(History *hist, String *line);
-static void     save_to_log(History *hist, const String *str);
-static void     hold_input(const String *str);
+static void     save_to_hist(History *hist, conString *line);
+static void     save_to_log(History *hist, const conString *str);
+static void     hold_input(const conString *str);
 static void     listlog(World *world);
 static void     stoplog(World *world);
-static int      do_watch(char *args, int id, int *wlines, int *wmatch);
+static int      do_watch(const char *args, int id, int *wlines, int *wmatch);
 
 
 static struct History input[1];
@@ -62,7 +62,7 @@ struct History globalhist_buf, localhist_buf;
 struct History * const globalhist = &globalhist_buf;
 struct History * const localhist = &localhist_buf;
 int log_count = 0;
-int norecord = 0;	/* supress history (but not log) recording */
+int nohistory = 0;	/* supress history (but not log) recording */
 int nolog = 0;		/* supress log (but not history) recording */
 
 #define histline(hist, i) \
@@ -114,7 +114,7 @@ void free_history(History *hist)
     }
 }
 
-static void save_to_hist(History *hist, String *line)
+static void save_to_hist(History *hist, conString *line)
 {
     if (line->time.tv_sec < 0) gettime(&line->time);
     if (!hist->cq.data)
@@ -123,41 +123,36 @@ static void save_to_hist(History *hist, String *line)
     line->links++;
 }
 
-static void save_to_log(History *hist, const String *str)
+static void save_to_log(History *hist, const conString *str)
 {
     if (wraplog) {
         /* ugly, but some people want it */
-        STATIC_BUFFER(buf);
-	char *p = str->data;
-        int i = 0, first = TRUE, len, remaining;
-        for (remaining = str->len; remaining; p += len, remaining -= len) {
+	const char *p = str->data;
+        int i = 0, first = TRUE, len, remaining = str->len;
+        do { /* must loop at least once, to handle empty string case */
             if (!first && wrapflag)
                 for (i = wrapspace; i; i--) tfputc(' ', hist->logfile);
             len = wraplen(p, remaining, !first);
-            if (p[len]) {
-                /* stupid copy, just to give right length string to tfputs().
-                 * (We can't just write a '\0' into str: it could be const).
-                 */
-                Stringncpy(buf, p, len);
-                tfputline(buf, hist->logfile);
-            } else {
-                tfputs(p, hist->logfile);
-            }
+	    tfnputs(p, len, hist->logfile);
             first = FALSE;
-        }
+	    p += len;
+	    remaining -= len;
+        } while (remaining);
     } else {
         tfputs(str->data, hist->logfile);
     }
     tfflush(hist->logfile);
 }
 
-void recordline(History *hist, String *line)
+void recordline(History *hist, conString *line)
 {
-    if (!(line->attrs & F_NOHISTORY) && !norecord) save_to_hist(hist, line);
-    if (hist->logfile && !nolog) save_to_log(hist, line);
+    if (!(line->attrs & F_NOHISTORY) && !nohistory)
+	save_to_hist(hist, line);
+    if (hist->logfile && !nolog && !(line->attrs & F_NOLOG))
+	save_to_log(hist, line);
 }
 
-static void hold_input(const String *instr)
+static void hold_input(const conString *instr)
 {
     String *str = Stringnew(instr->data, -1, sockecho() ? 0 : F_GAG);
     str->links++;
@@ -165,7 +160,7 @@ static void hold_input(const String *instr)
     cqueue_replace(&input->cq, str, input->cq.last);
 }
 
-void record_input(const String *str)
+void record_input(const conString *str)
 {
     int is_duplicate = 0;
 
@@ -199,7 +194,7 @@ String *recall_input(int n, int mode)
     String *str, *pat = NULL;
     CQueue *cq = &input->cq;
 
-    if (cq->index == cq->last) hold_input(keybuf);
+    if (cq->index == cq->last) hold_input(CS(keybuf));
 
     stop = (n < 0) ? cq->first : cq->last;
     if (cq->index == stop) return NULL;
@@ -241,7 +236,7 @@ int do_recall(String *args, int offset)
     int lastprinted, incontext;
     Value val[1];
     struct timeval tv0, tv1, *tvp0, *tvp1;
-    char *ptr;
+    const char *ptr;
     AUTO_BUFFER(recall_time_format);
     attr_t attrs = 0, tmpattrs;
     char opt;
@@ -260,7 +255,7 @@ int do_recall(String *args, int offset)
 #endif
 
     init_pattern_str(&pat, NULL);
-    startopt(args, "ligw:a:f:t:m:vqA#B#C#");
+    startopt(CS(args), "ligw:a:f:t:m:vqA#B#C#");
     while ((opt = next_hist_opt(&ptr, &offset, &hist, &ival))) {
         switch (opt) {
         case 'a': case 'f':
@@ -381,7 +376,7 @@ int do_recall(String *args, int offset)
         goto do_recall_exit;            /* (after parsing, before searching) */
 
     if (!quiet && tfout == tfscreen) {
-        norecord++;                     /* don't save this output in history */
+        nohistory++;                    /* don't save this output in history */
         oputline(startmsg);
         oflush();			/* in case this takes a while */
     }
@@ -394,7 +389,7 @@ int do_recall(String *args, int offset)
 
 	lastprinted = n1 + 1;
 	incontext = 0;
-        if (hist == input) hold_input(keybuf);
+        if (hist == input) hold_input(CS(keybuf));
         for (i = n1; i >= hist_start; i--) {
 	    if (i < n0 || want <= 0) {
 		if (incontext) out_of_range = 1;
@@ -438,7 +433,7 @@ int do_recall(String *args, int offset)
 
             if (gag && (line->attrs & F_GAG & attrs)) continue;
 
-            if (!out_of_range && !!patmatch(&pat, line, NULL) == truth) {
+            if (!out_of_range && !!patmatch(&pat, CS(line), NULL) == truth) {
 		want--;
 		j = i + after;
 		if (j >= lastprinted - 1) {
@@ -469,7 +464,7 @@ int do_recall(String *args, int offset)
 			tftime(buffer, time_format, &line->time);
 			Stringadd(buffer, ']');
 		    } else {
-			tftime(buffer, recall_time_format, &line->time);
+			tftime(buffer, CS(recall_time_format), &line->time);
 		    }
 		    Stringadd(buffer, ' ');
 		}
@@ -491,7 +486,7 @@ int do_recall(String *args, int offset)
 #endif
 		/* share line if possible: copy only if different */
 		if (buffer) {
-		    line = SStringcat(buffer, line);
+		    line = SStringcat(buffer, CS(line));
 		    line->attrs &= attrs & F_ATTR;
 		    buffer = NULL;
 		} else if (line->attrs & ~attrs & F_ATTR) {
@@ -506,11 +501,11 @@ int do_recall(String *args, int offset)
     }
 
     while (stack->head)
-        oputline((String *)unlist(stack->head, stack));
+        oputline(CS((String *)unlist(stack->head, stack)));
 
     if (!quiet && tfout == tfscreen) {
         oputline(endmsg);
-        norecord--;
+        nohistory--;
     }
 
 do_recall_exit:
@@ -520,7 +515,7 @@ do_recall_exit:
     return count;
 }
 
-static int do_watch(char *args, int id, int *wlines, int *wmatch)
+static int do_watch(const char *args, int id, int *wlines, int *wmatch)
 {
     int out_of, match;
 
@@ -616,9 +611,9 @@ String *history_sub(String *line)
     *(replacement++) = '^';
     if (!loc) return NULL;
     Stringtrunc(buffer, 0);
-    SStringncat(buffer, src, loc - src->data);
-    SStringocat(buffer, line, replacement - line->data);
-    SStringocat(buffer, src, loc - src->data + pattern->len);
+    SStringncat(buffer, CS(src), loc - src->data);
+    SStringocat(buffer, CS(line), replacement - line->data);
+    SStringocat(buffer, CS(src), loc - src->data + pattern->len);
     return buffer;
 }
 
@@ -641,10 +636,12 @@ static void listlog(World *world)
  * selected by the "ligw:" options.  *histp will be unchanged if no relavant
  * options are given; the caller should assign a default before calling.
  */
-static int next_hist_opt(char **ptr, int *offsetp, History **histp, void *u)
+static int next_hist_opt(const char **ptr, int *offsetp, History **histp,
+    void *u)
 {
     World *world;
-    char c, *p;
+    char c;
+    const char *p;
     int selected = 0;
 
     if (!ptr) ptr = &p;
@@ -684,24 +681,43 @@ struct Value *handle_recordline_command(String *args, int offset)
     History *history = globalhist;
     char opt;
     struct timeval tv, *tvp = NULL;
-    String *line;
+    conString *line;
+    int attrflag = 0;
+    attr_t attrs = 0, tmpattrs;
+    const char *ptr;
 
-    startopt(args, "lgiw:t@");
-    while ((opt = next_hist_opt(NULL, &offset, &history, &tv))) {
-        if (opt == 't') tvp = &tv;
-        else return shareval(val_zero);
+    startopt(CS(args), "lgiw:t@a:p");
+    while ((opt = next_hist_opt(&ptr, &offset, &history, &tv))) {
+	switch (opt) {
+        case 't': tvp = &tv; break;
+        case 'p': attrflag = 1; break;
+        case 'a':
+            if (!parse_attrs(ptr, &tmpattrs, 0))
+		return shareval(val_zero);
+            attrs |= tmpattrs;
+            break;
+	default:
+	    return shareval(val_zero);
+	}
     }
 
-    nolog++;
-    (line = Stringodup(args, offset))->links++;
+    if (attrflag) {
+	line = CS(decode_attr(CS(args), attrs, offset));
+	/* if encoding was invalid, just copy without decoding */
+	if (!line) line = CS(Stringodup(CS(args), offset));
+    } else {
+	line = CS(Stringodup(CS(args), offset));
+    }
+    line->links++;
     if (tvp)
 	line->time = tv;
+    nolog++;
     if (history == input)
 	record_input(line);
     else
 	recordline(history, line);
-    Stringfree(line);
     nolog--;
+    conStringfree(line);
     return shareval(val_one);
 }
 
@@ -718,7 +734,7 @@ struct Value *handle_log_command(String *args, int offset)
     }
 
     history = &dummy;
-    startopt(args, "lgiw:");
+    startopt(CS(args), "lgiw:");
     if (next_hist_opt(NULL, &offset, &history, NULL))
         return shareval(val_zero);
 
@@ -794,10 +810,10 @@ struct Value *handle_histsize_command(String *args, int offset)
 {
     History *hist;
     int maxsize = 0, size;
-    char *ptr;
+    const char *ptr;
 
     hist = globalhist;
-    startopt(args, "lgiw:");
+    startopt(CS(args), "lgiw:");
     if (next_hist_opt(NULL, &offset, &hist, NULL))
         return shareval(val_zero);
     if (args->len - offset) {

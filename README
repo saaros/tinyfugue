@@ -25,10 +25,10 @@
 
                        INSTALLING TINYFUGUE
 
-TinyFugue can be installed and run on UNIX-like systems, OS/2, and Win32.
-For instructions, see the README file in the appropriate directory.
-For information on unofficial versions of TF for other operating systems,
-see the TF web page at http://tf.tcp.com/.
+TinyFugue can be installed and run on UNIX-like systems, Mac OS X, OS/2,
+and Win32.  For instructions, see the README file in the appropriate
+directory.  For information on unofficial versions of TF for other
+operating systems, see the TF web page at http://tf.tcp.com/.
 
 Note that the .tar.gz and .tar.Z distributions contain LF line delimiters,
 intended for UNIX, and the .zip distribution contains CR LF delimiters,
@@ -122,7 +122,7 @@ email at hawkeye@tcp.com.  Please provide the following information:
 Porting
 -------
 
-I have no personal interest in Mac, DOS, Windows 95, Windows NT, or
+I have no personal interest in Mac OS 9, DOS, Windows 95, Windows NT, or
 Amiga, so I don't plan on porting to them.  However, I am willing to
 work with someone who wants to try and is willing to follow my
 guidelines (this is how the OS/2 version was created, and why it is an

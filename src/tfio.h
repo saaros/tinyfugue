@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.h,v 35004.57 2004/02/17 06:44:43 hawkeye Exp $ */
+/* $Id: tfio.h,v 35004.60 2004/07/16 21:13:52 hawkeye Exp $ */
 
 #ifndef TFIO_H
 #define TFIO_H
@@ -34,7 +34,7 @@ typedef enum { TF_NULL, TF_QUEUE, TF_FILE, TF_PIPE } TFILE_type_t;
 #define SP_APPEND   1
 
 typedef struct PhysLine {
-    String *str;
+    conString *str;
     int start;
     short len;
     short indent;
@@ -47,7 +47,6 @@ typedef struct Queue {
 } Queue;
 
 struct Screen {
-    int paused;			/* paused at a More prompt? */
     int outcount;		/* lines remaining until pause */
     struct List pline;		/* already displayed physical lines */
 /* pline invariant: if one pline corresponding to an lline is in the list,
@@ -72,6 +71,8 @@ struct Screen {
     char selflush;		/* selective flushing flag */
     char needs_refilter;	/* top and bot need to be recalculated */
     char partialview;		/* do not expand viewsize to fit terminal */
+    char paused;		/* paused at a More prompt? */
+    char active;		/* has new lines without the A attribute? */
 };
 
 /* TF's analogue of stdio's FILE */
@@ -120,6 +121,7 @@ extern PhysLine *plpool;   /* freelist of PhysLines */
 
 #define operror(str)    eprintf("%s: %s", str, strerror(errno))
 #define oputline(line)  tfputline(line, tfout)
+#define tfputs(str, f)  tfnputs(str, -1, f)
 #define oputs(str)      tfputs(str, tfout)
 #define eputs(str)      tfputs(str, tferr)
 #define tfputc(c, file) fputc((c), (file)->u.fp)
@@ -134,10 +136,10 @@ extern char  *tfname(const char *name, const char *macname);
 extern char  *expand_filename(const char *str);
 extern TFILE *tfopen(const char *name, const char *mode);
 extern int    tfclose(TFILE *file);
-extern void   tfputs(const char *str, TFILE *file);
+extern void   tfnputs(const char *str, int n, TFILE *file);
 extern attr_t tfputansi(const char *str, TFILE *file, attr_t attrs);
 extern int    tfputp(const char *str, TFILE *file);
-extern void   tfputline(struct String *line, TFILE *file);
+extern void   tfputline(struct conString *line, TFILE *file);
 extern void   vSprintf(struct String *buf, int flags,
                      const char *fmt, va_list ap);
 extern void   Sprintf(struct String *buf, const char *fmt, ...)

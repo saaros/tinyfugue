@@ -6,7 +6,7 @@
 ;;;; General Public License.  See the file "COPYING" for details.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-/set tf_stdlib_id=$Id: stdlib.tf,v 35000.85 2004/02/18 06:34:28 hawkeye Exp $
+/set tf_stdlib_id=$Id: stdlib.tf,v 35000.87 2004/07/18 09:07:31 hawkeye Exp $
 
 ;;; TF macro library
 
@@ -347,8 +347,11 @@
 
 
 /def -i runtime = \
-    /let real=$[time()]%; \
-    /let cpu=$[cputime()]%; \
+    /let real=%; \
+    /let cpu=%; \
+;   "/let cpu=$[cputime()]" would lose precision in int->str->int conversion,
+;   but assignment operator avoids conversion.
+    /test real:=time(), cpu:=cputime()%; \
     /eval -s0 %{*}%; \
     /let result=%?%; \
     /_echo real=$[time() - real] cpu=$[cputime() - cpu]%; \
@@ -598,9 +601,10 @@
 ;; Try to connect to <world>.  Repeat every <delay> seconds (default 60)
 ;; until successful.
 
+; The -w on the /repeat lets /connect choose fg or bg correctly
 /def -i retry = \
     /def -mglob -p'maxpri' -F -h'CONFAIL $(/escape ' %1) *' ~retry_fail_%1 =\
-        /repeat -%{2-60} 1 /connect %1%;\
+        /repeat -w -%{2-60} 1 /connect %1%;\
     /def -mglob -n1 -p'maxpri' -F -h'CONNECT $(/escape ' %1)' ~retry_succ_%1=\
         /undef ~retry_fail_%1%;\
     /connect %1
@@ -743,7 +747,7 @@
     /let _head=%; \
     /let _tail=%{MAILPATH}%; \
     /while (regmatch("^([^?%%:]+)([?%%][^:]+)?:?", {_tail})) \
-        /let _head=%{_head} %{P1}%; \
+	/test _head := strcat(_head, " ", escape(" ", {P1}))%; \
         /let _tail=%{PR}%; \
     /done%; \
     /set TFMAILPATH=%{_head}%; \

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: opcodes.h,v 35004.25 2004/02/17 06:44:39 hawkeye Exp $ */
+/* $Id: opcodes.h,v 35004.27 2004/07/06 23:17:41 hawkeye Exp $ */
 
 /*
  * Expression operators use the ASCII character as their opcode to be
@@ -17,7 +17,7 @@
 /*        label     code  type  arg   flag */
 /*        -----     ----  ----  ---   ---- */
 
-/* 01-1F: expression operators without 1-char tokens.  Flag: has side effect */
+/* 01-3F: expression operators.  Flag: has side effect */
 defopcode(EQUAL    ,0x01, EXPR, INT,  0)     /*  ==  */
 defopcode(NOTEQ    ,0x02, EXPR, INT,  0)     /*  !=  */
 defopcode(GTE      ,0x03, EXPR, INT,  0)     /*  >=  */
@@ -26,19 +26,23 @@ defopcode(STREQ    ,0x05, EXPR, INT,  0)     /*  =~  */
 defopcode(STRNEQ   ,0x06, EXPR, INT,  0)     /*  !~  */
 defopcode(MATCH    ,0x07, EXPR, INT,  0)     /*  =/  */
 defopcode(NMATCH   ,0x08, EXPR, INT,  0)     /*  !/  */
-defopcode(ASSIGN   ,0x09, EXPR, INT,  SIDE)  /*  :=  */
+defopcode(ASSIGN   ,':',  EXPR, INT,  SIDE)  /*  :=  */
 defopcode(PREINC   ,0x0A, EXPR, INT,  SIDE)  /*  ++  */
 defopcode(PREDEC   ,0x0B, EXPR, INT,  SIDE)  /*  --  */
-defopcode(FUNC     ,0x0C, EXPR, INT,  SIDE)  /*  name(...)  */
-
-/* expr ops w/ tokens represented by the corresponding ASCII char */
-defopcode(NOT      ,'!',  EXPR, INT,  0)
-defopcode(MUL      ,'*',  EXPR, INT,  0)
-defopcode(ADD      ,'+',  EXPR, INT,  0)
-defopcode(SUB      ,'-',  EXPR, INT,  0)
-defopcode(DIV      ,'/',  EXPR, INT,  0)
-defopcode(LT       ,'<',  EXPR, INT,  0)
-defopcode(GT       ,'>',  EXPR, INT,  0)
+defopcode(POSTINC  ,0x0C, EXPR, INT,  SIDE)  /*  ++  */
+defopcode(POSTDEC  ,0x0D, EXPR, INT,  SIDE)  /*  --  */
+defopcode(FUNC     ,0x0E, EXPR, INT,  SIDE)  /*  name(...)  */
+defopcode(NOT      ,'!',  EXPR, INT,  0)     /*  !   */
+defopcode(MUL      ,'*',  EXPR, INT,  0)     /*  *   */
+defopcode(MULA     ,'*',  EXPR, INT,  SIDE)  /*  *=  */
+defopcode(ADD      ,'+',  EXPR, INT,  0)     /*  +   */
+defopcode(ADDA     ,'+',  EXPR, INT,  SIDE)  /*  +=  */
+defopcode(SUB      ,'-',  EXPR, INT,  0)     /*  -   */
+defopcode(SUBA     ,'-',  EXPR, INT,  SIDE)  /*  -=  */
+defopcode(DIV      ,'/',  EXPR, INT,  0)     /*  /   */
+defopcode(DIVA     ,'/',  EXPR, INT,  SIDE)  /*  /=  */
+defopcode(LT       ,'<',  EXPR, INT,  0)     /*  <   */
+defopcode(GT       ,'>',  EXPR, INT,  0)     /*  >   */
 
 /* positional parameter substitution operators.  Flag: 0 push, 1 append */
 defopcode(PPARM    ,'A', SUB,  INT,  0)     /* {3} positional param */

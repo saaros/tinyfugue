@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: variable.c,v 35004.84 2004/02/17 06:44:44 hawkeye Exp $";
+static const char RCSid[] = "$Id: variable.c,v 35004.93 2004/07/18 02:09:08 hawkeye Exp $";
 
 
 /**************************************
@@ -20,7 +20,7 @@ static const char RCSid[] = "$Id: variable.c,v 35004.84 2004/02/17 06:44:44 hawk
 #include "tfio.h"
 #include "output.h"
 #include "socket.h"	/* tog_bg(), tog_lp() */
-#include "commands.h"
+#include "cmdlist.h"
 #include "process.h"	/* runall() */
 #include "expand.h"	/* SUB_KEYWORD */
 #include "parse.h"	/* types */
@@ -31,7 +31,6 @@ static Var   *findlevelvar(const char *name, List *level);
 static Var   *findlocalvar(const char *name);
 static int    set_special_var(Var *var, int type, void *value,
                        int funcflag, int exportflag);
-static void   set_var_direct(Var *var, int type, void *value);
 static void   set_env_var(Var *var, int exportflag);
 static Var   *newvar(const char *name, int type, void *value);
 static char  *new_env(Var *var);
@@ -41,11 +40,10 @@ static char **find_env(const char *str);
 static void   remove_env(const char *str);
 static int    listvar(const char *name, const char *value,
                        int mflag, int exportflag, int shortflag);
-static int    obsolete_prompt(void);
+static int    obsolete_prompt(Var *var);
 static void   init_special_variable(Var *var, const char *cval,
                        long ival, long uval);
 
-#define newglobalvar(name, type, value)	newvar(name, type, value)
 #define hfindglobalvar(name, hash) \
 	(Var*)hashed_find(name, hash, var_table)
 #define findglobalvar(name) \
@@ -62,29 +60,29 @@ static int setting_nearest = 0;
 #define bicode(a, b)  b 
 #include "enumlist.h"
 
-static String enum_mecho[]	= {
+static conString enum_mecho[]	= {
     STRING_LITERAL("off"),
     STRING_LITERAL("on"),
     STRING_LITERAL("all"),
     STRING_NULL };
-static String enum_block[] = {
+static conString enum_block[] = {
     STRING_LITERAL("blocking"),
     STRING_LITERAL("nonblocking"),
     STRING_NULL };
 
-String enum_off[]	= {
+conString enum_off[]	= {
     STRING_LITERAL("off"),
     STRING_NULL };
-String enum_flag[]	= {
+conString enum_flag[]	= {
     STRING_LITERAL("off"),
     STRING_LITERAL("on"),
     STRING_NULL };
-String enum_sub[]	= {
+conString enum_sub[]	= {
     STRING_LITERAL("off"),
     STRING_LITERAL("on"),
     STRING_LITERAL("full"),
     STRING_NULL };
-String enum_color[]= {
+conString enum_color[]= {
     STRING_LITERAL("black"),
     STRING_LITERAL("red"),
     STRING_LITERAL("green"),
@@ -129,6 +127,14 @@ Var special_var[] = {
 };
 
 
+static inline Var *newglobalvar(const char *name, int type, void *value)
+{
+    Var *var;
+    var = newvar(name, type, value);
+    var->node = hash_insert((void*)var, var_table);
+    return var;
+}
+
 static void init_special_variable(Var *var,
     const char *cval, long ival, long uval)
 {
@@ -137,7 +143,7 @@ static void init_special_variable(Var *var,
     switch (var->val.type & TYPES_BASIC) {
     case TYPE_STR:
         if (cval)
-	    (var->val.sval = Stringnew(cval, -1, 0))->links++;
+	    (var->val.sval = CS(Stringnew(cval, -1, 0)))->links++;
 	else
 	    var->flags &= ~VARSET;
         break;
@@ -163,7 +169,7 @@ static void init_special_variable(Var *var,
 void init_variables(void)
 {
     char **oldenv, **p, *str, *cvalue;
-    String *svalue;
+    conString *svalue;
     const char *oldcommand;
     Var *var;
 
@@ -192,12 +198,11 @@ void init_variables(void)
         if (cvalue) *cvalue++ = '\0';
         var = findglobalvar(str);
 	/* note: Stringnew(cvalue,-1,0) would create a non-resizeable string */
-        svalue = cvalue ? Stringcpy(Stringnew(NULL,-1,0), cvalue) : blankline;
+        svalue = cvalue ? CS(Stringcpy(Stringnew(NULL,-1,0), cvalue)) : blankline;
         svalue->links++;
         if (!var) {
-            /* new variable */
+            /* new global variable */
             var = newglobalvar(str, TYPE_STR, svalue);
-            var->node = hash_insert((void*)var, var_table);
         } else if (var->flags & VARSPECIAL) {
             /* overwrite a pre-defined special variable */
             set_special_var(var, TYPE_STR, svalue, 0, 0);
@@ -212,7 +217,7 @@ void init_variables(void)
         }
         if (cvalue) *--cvalue = '=';  /* restore '=' */
         var->flags |= VAREXPORT;
-        Stringfree(svalue);
+        conStringfree(svalue);
     }
     current_command = oldcommand;
 }
@@ -282,25 +287,22 @@ Var *ffindglobalvar(const char *name)
     return findglobalvar(name);
 }
 
-Var *hfindnearestvar(const char *name, unsigned int hash)
+Var *hfindnearestvar(const Value *idval)
 {
+    const char *name = idval->name;
     Var *var;
 
-    if (!(var = findlocalvar(name)) && !(var = hfindglobalvar(name, hash))) {
+    if (!(var = findlocalvar(name)) &&
+	!(var = hfindglobalvar(name, idval->u.hash)))
+    {
         if (smatch("{R|L|L[1-9]*|P[RL]|P[0-9]}", name) == 0) {
-            eprintf("Warning: \"%s\" may not be used as a variable reference.  Use the variable substitution \"{%s}\" instead.", name, name);
+            eprintf("Warning: \"%s\" may not be used as a variable reference.  "
+	        "Use the variable substitution \"{%s}\" instead.", name, name);
         }
         return NULL;
     }
     return var;
 }
-
-#if 0 /* not used */
-const char *getnearestvarchar(const char *name)
-{
-    return varchar(findnearestvar(name));
-}
-#endif
 
 /* returned Value is only valid for lifetime of variable! */
 Value *getvarval(Var *var)
@@ -308,27 +310,19 @@ Value *getvarval(Var *var)
     return (var && (var->flags & VARSET)) ? &var->val : NULL;
 }
 
-#if 0
 /* returned Value is only valid for lifetime of variable! */
-Value *getglobalvarval(const char *name)
+Value *hgetnearestvarval(const Value *idval)
 {
     Var *var;
-    var = findglobalvar(name);
-    return (var && (var->flags & VARSET)) ? &var->val : NULL;
-}
-#endif
-
-/* returned Value is only valid for lifetime of variable! */
-Value *hgetnearestvarval(const char *name, unsigned int hash)
-{
-    Var *var;
-    var = hfindnearestvar(name, hash);
+    var = hfindnearestvar(idval);
     return (var && (var->flags & VARSET)) ? &var->val : NULL;
 }
 
-Var *hsetnearestvar(const char *name, unsigned int hash, int type, void *value)
+Var *hsetnearestvar(const Value *idval, int type, void *value)
 {
     Var *var;
+    const char *name = idval->name;
+    unsigned int hash = idval->u.hash;
 
     if ((var = findlocalvar(name))) {
         set_var_direct(var, type, value);
@@ -388,7 +382,7 @@ Var *setlocalvar(const char *name, int type, void *value)
 static char *new_env(Var *var)
 {
     char *str;
-    String *value;
+    conString *value;
 
     value = valstr(&var->val);
     str = (char *)XMALLOC(strlen(var->val.name) + 1 + value->len + 1);
@@ -446,7 +440,7 @@ static void remove_env(const char *str)
 
 
 /* set type and value directly into variable */
-static void set_var_direct(Var *var, int type, void *value)
+void set_var_direct(Var *var, int type, void *value)
 {
 
     if (value == &var->val.u) {
@@ -463,7 +457,7 @@ static void set_var_direct(Var *var, int type, void *value)
     switch (type) {
     case TYPE_STR:
 	if (value)
-	    (var->val.sval = (String*)value)->links++;
+	    (var->val.sval = (conString*)value)->links++;
 	else
 	    var->flags &= ~VARSET;
 	var->val.u.p = NULL;
@@ -505,20 +499,37 @@ static void set_env_var(Var *var, int exportflag)
 Var *setvar(Var *var, const char *name, unsigned int hash, int type,
     void *value, int exportflag)
 {
-    if (!var && !(var = hfindglobalvar(name, hash))) {
-        var = newglobalvar(name, type, value);
-        if (setting_nearest && pedantic) {
-            eprintf("warning: variable '%s' was not previously defined in any scope, so it has been created in the global scope.", name);
-        }
-        if (!var->node) var->node = hash_insert((void *)var, var_table);
-        set_env_var(var, exportflag);
-    } else if (var->flags & VARSPECIAL) {
+    return (var || (var = hfindglobalvar(name, hash))) ?
+	setexistingvar(var, type, value, exportflag) :
+	setnewvar(name, hash, type, value, exportflag);
+}
+
+Var *setnewvar(const char *name, unsigned int hash, int type,
+    void *value, int exportflag)
+{
+    Var *var;
+    var = newglobalvar(name, type, value);
+    if (setting_nearest && pedantic) {
+	eprintf("warning: variable '%s' was not previously defined in any "
+	    "scope, so it has been created in the global scope.", name);
+    }
+    set_env_var(var, exportflag);
+
+    if (var->statuses || var->statusfmts || var->statusattrs)
+        update_status_field(var, -1);
+
+    return var;
+}
+
+/* var already exists, and may be global or local */
+Var *setexistingvar(Var *var, int type, void *value, int exportflag)
+{
+    if (var->flags & VARSPECIAL) {
         if (!set_special_var(var, type, value, 1, exportflag))
             return NULL;
-    } else /* exists, but not special */ {
-        set_var_direct(var, type, value);
-        if (!var->node) var->node = hash_insert((void *)var, var_table);
-        set_env_var(var, exportflag);
+    } else {
+	set_var_direct(var, type, value);
+	set_env_var(var, exportflag);
     }
 
     if (var->statuses || var->statusfmts || var->statusattrs)
@@ -547,7 +558,7 @@ char *spansetspace(const char *p)
     return (char *)p;
 }
 
-int do_set(const char *name, unsigned int hash, String *value, int offset,
+int do_set(const char *name, unsigned int hash, conString *value, int offset,
     int exportflag, int localflag)
 {
     String *svalue;
@@ -602,7 +613,7 @@ int command_set(String *args, int offset, int exportflag, int localflag)
 	return 0;
     }
 
-    return do_set(name, hash_string(name), args, p - args->data,
+    return do_set(name, hash_string(name), CS(args), p - args->data,
 	exportflag, localflag);
 }
 
@@ -610,11 +621,12 @@ struct Value *handle_listvar_command(String *args, int offset)
 {
     int mflag, opt;
     int exportflag = -1, error = 0, shortflag = 0;
-    char *name = NULL, *cvalue = NULL, *ptr;
+    char *name = NULL, *cvalue = NULL;
+    const char *ptr;
 
     mflag = matching;
 
-    startopt(args, "m:gxsv");
+    startopt(CS(args), "m:gxsv");
     while ((opt = nextopt(&ptr, NULL, NULL, &offset))) {
         switch (opt) {
             case 'm':
@@ -703,7 +715,7 @@ int unsetvar(Var *var)
     if (var->statuses || var->statusfmts || var->statusattrs)
         update_status_field(var, -1);
     if (func)
-	(*func)();
+	(*func)(var);
     freevar(var);
 
     return 1;
@@ -750,7 +762,7 @@ static int set_special_var(Var *var, int type, void *value, int funcflag,
 	var->val.type = TYPE_ENUM;
         switch (type & TYPES_BASIC) {
         case TYPE_STR:
-            var->val.u.ival = enum2int(((String*)value)->data, 0,
+            var->val.u.ival = enum2int(((conString*)value)->data, 0,
 		var->enumvec, var->val.name);
             break;
         case TYPE_INT:
@@ -821,13 +833,13 @@ static int set_special_var(Var *var, int type, void *value, int funcflag,
     set_env_var(var, exportflag);
 
     if (funcflag && var->func) {
-        if (!(*var->func)()) {
+        if (!(*var->func)(var)) {
             /* restore old value and call func again */
 	    /* (BUG: doesn't un-export or un-set) */
 	    assert(var->val.count == 1);
 	    clearval(&var->val);
 	    var->val = oldval;
-            (*var->func)();
+            (*var->func)(var);
             return 0;
         }
     }
@@ -898,10 +910,10 @@ listvar_end:
     return count;
 }
 
-static int obsolete_prompt(void)
+static int obsolete_prompt(Var *var)
 {
-    eprintf("%s", "Warning: prompt_sec and prompt_usec are obsolete.  "
-        "Use prompt_wait instead.");
+    eprintf("Warning: %s is obsolete.  Use prompt_wait instead.",
+	var->val.name);
     return 1;
 }
 

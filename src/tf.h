@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tf.h,v 35004.48 2004/02/17 06:44:43 hawkeye Exp $ */
+/* $Id: tf.h,v 35004.52 2004/07/16 21:13:52 hawkeye Exp $ */
 
 #ifndef TF_H
 #define TF_H
@@ -74,20 +74,20 @@ enum enum_attr {
     /* inside the 16 low bits */
     F_UNDERLINE   = 0x0001,
     F_REVERSE     = 0x0002,
-    F_FLASH       = 0x0004,
+    F_FLASH       = 0x0000,   /* zero - not implemented */
     F_DIM         = 0x0000,   /* zero - not implemented */
-    F_BOLD        = 0x0008,
-    F_HILITE      = 0x0010,
-    F_NONE        = 0x0020,
-    F_EXCLUSIVE   = 0x0040,
+    F_BOLD        = 0x0004,
+    F_HILITE      = 0x0008,
+    F_NONE        = 0x0010,
+    F_EXCLUSIVE   = 0x0020,
 
 #if COLORS == 256 /* XXX ??? */
 # define FGCOLORSHIFT 7
-    F_FGCOLORMASK = 0x00007f80,   /* 8 bits, interpreted as an integer */
-    F_FGCOLOR     = 0x00008000,   /* flag */
+    F_FGCOLORMASK = 0x00003fc0,   /* 8 bits, interpreted as an integer */
+    F_FGCOLOR     = 0x00004000,   /* flag */
 # define BGCOLORSHIFT 16
-    F_BGCOLORMASK = 0x00ff0000,   /* 8 bits, interpreted as an integer */
-    F_BGCOLOR     = 0x01000000,   /* flag */
+    F_BGCOLORMASK = 0x007f8000,   /* 8 bits, interpreted as an integer */
+    F_BGCOLOR     = 0x00800000,   /* flag */
 #else
     /* inside the 16 low bits */
 # define FGCOLORSHIFT 7
@@ -99,20 +99,23 @@ enum enum_attr {
 #endif
 
     /* outside the 16 low bits */
-    F_TEMP	  = 0x02000000,
+    F_NOACTIVITY  = 0x01000000,		/* does not count as activity */
+    F_NOLOG       = 0x02000000,
     F_BELL        = 0x04000000,
     F_GAG         = 0x08000000,
     F_NOHISTORY   = 0x10000000,
-    F_SUPERGAG    = (F_GAG | F_NOHISTORY),
 
     F_PROMPT      = 0x20000000,		/* is a prompt */
     F_PROMPTHOOK  = 0x40000000,		/* is a prompt and needs hook */
 
-    F_COLORS      = (F_FGCOLOR | F_BGCOLOR | F_FGCOLORMASK | F_BGCOLORMASK),
+    F_FGCOLORS    = (F_FGCOLOR | F_FGCOLORMASK),
+    F_BGCOLORS    = (F_BGCOLOR | F_BGCOLORMASK),
+    F_COLORS      = (F_FGCOLORS | F_BGCOLORS),
     F_SIMPLE      = (F_UNDERLINE | F_REVERSE | F_FLASH | F_DIM | F_BOLD),
     F_HWRITE      = (F_SIMPLE | F_HILITE | F_COLORS),
     F_ENCODE      = (F_SIMPLE | F_HILITE | F_FGCOLOR | F_BGCOLOR),
-    F_ATTR        = (F_HWRITE | F_SUPERGAG | F_NONE | F_EXCLUSIVE)
+    F_ATTR        = (F_HWRITE | F_GAG | F_NOHISTORY | F_NOACTIVITY | F_NONE |
+		    F_EXCLUSIVE)
 };
 
 #define attr2fgcolor(attr) \
@@ -161,10 +164,10 @@ extern attr_t adj_attr(attr_t base, attr_t adj);  /* output.c */
 #define bicode(a, b)  a 
 #include "enumlist.h"
 
-extern String enum_off[];
-extern String enum_flag[];
-extern String enum_sub[];
-extern String enum_color[];
+extern conString enum_off[];
+extern conString enum_flag[];
+extern conString enum_sub[];
+extern conString enum_color[];
 
 /* hook definitions */
 

@@ -1,4 +1,4 @@
-# $Id: Makefile,v 35000.36 2004/02/17 06:44:47 hawkeye Exp $
+# $Id: Makefile,v 35000.37 2004/07/16 20:55:14 hawkeye Exp $
 ########################################################################
 #
 #  TinyFugue - programmable mud client
@@ -67,15 +67,21 @@ disttest: __always__
 	    { echo '"make dist" should be run from a CVS exported directory.'; \
 	    false; }
 
-dist: disttest srcdist distclean help bogus-makefile configure
+disthelp: distclean
+	ln -s help tf-$(TFVER)-help
+	tar -zcf tf-$(TFVER)-help.tar.gz tf-$(TFVER)-help/. \
+	    --exclude 'html2tf.c' \
+	    --exclude 'html2tf' \
+	    --exclude 'tf-help' \
+	    --exclude 'Makefile'
+	rm tf-$(TFVER)-help
+	mv tf-$(TFVER)-help.tar.gz ..
+
+dist: disttest srcdist distclean disthelp help bogus-makefile configure
 	chmod -R ugo+r .
 	cd ..; tar -zcf tf-$(TFVER).tar.gz -X tf-$(TFVER)/EXCLUDE tf-$(TFVER)
 	cd ..; zip -qlr tf-$(TFVER).zip tf-$(TFVER) \
 	    -x `sed -e 's;^;tf-$(TFVER)/;' tf-$(TFVER)/EXCLUDE`
-	ln -s help tf-$(TFVER)-help
-	tar -zcf tf-$(TFVER)-help.tar.gz tf-$(TFVER)-help/. --exclude 'html2tf*'
-	rm tf-$(TFVER)-help
-	mv tf-$(TFVER)-help.tar.gz ..
 
 gzdist: ./tf-lib/tf-help ../tf-$(TFVER).tar
 	cd ..; gzip tf-$(TFVER).tar

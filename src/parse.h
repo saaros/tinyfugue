@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: parse.h,v 35004.44 2004/02/17 06:44:41 hawkeye Exp $ */
+/* $Id: parse.h,v 35004.48 2004/07/16 21:13:52 hawkeye Exp $ */
 
 #ifndef PARSE_H
 #define PARSE_H
@@ -52,7 +52,6 @@ typedef enum {
 #define op_has_sideeffect(op)		(((op) & OPF_MASK) == OPF_SIDE)
 #define opnum(op)			((op) & OPNUM_MASK)
 #define opnum_eq(op1, op2)		(opnum(op1) == opnum(op2))
-#define oplabel(op)			(oplabel_table[(op) & OPLABEL_MASK])
 
 typedef enum {
 #define defopcode(name, num, optype, argtype, flag) \
@@ -65,7 +64,7 @@ typedef enum {
 typedef union InstructionArg {
     int i;
     char c;
-    String *str;
+    conString *str;
     Value *val;
     struct BuiltinCmd *cmd;
 } InstructionArg;
@@ -78,7 +77,7 @@ typedef struct Instruction {
 } Instruction;
 
 struct Program {
-    String *src;	/* source code */
+    conString *src;	/* source code */
     int srcstart;	/* offset of start in src */
     const char *sip;	/* pointer into src->data, for compiling */
     Instruction *code;	/* compiled code */
@@ -99,13 +98,13 @@ extern void        parse_error_suggest(Program *prog, const char *type,
 extern int         varsub(Program *prog, int sub_warn, int in_expr);
 extern int         exprsub(Program *prog, int in_expr);
 extern int         dollarsub(Program *prog, String **destp);
-extern String     *valstr(Value *val);
+extern conString  *valstr(Value *val);
 extern const char *valstd(Value *val);
-extern long        valint(Value *val);
-extern void        valtime(struct timeval *tv, Value *val);
-extern int         valbool(Value *val);
+extern long        valint(const Value *val);
+extern void        valtime(struct timeval *tv, const Value *val);
+extern int         valbool(const Value *val);
 #if !NO_FLOAT
-extern double      valfloat(Value *val);
+extern double      valfloat(const Value *val);
 #endif /* NO_FLOAT */
 extern void       *valptr(Value *val);
 extern int         pushval(Value *val);
@@ -114,6 +113,7 @@ extern Value      *expr_value(const char *expression);
 extern Value      *expr_value_safe(Program *prog);
 extern void        code_add(Program *prog, opcode_t op, ...);
 extern int         reduce(opcode_t op, int n);
+extern const char *oplabel(opcode_t op);
 
 extern struct Value *newptr_fl(void *ptr, const char *file, int line);
 
@@ -146,10 +146,9 @@ extern int stacktop;			/* first free position on stack */
 extern Arg *tf_argv;			/* shifted command argument vector */
 extern int tf_argc;			/* shifted command/function arg count */
 extern int argtop;			/* top of function argument stack */
-extern String *argstring;		/* command argument text */
+extern const conString *argstring;	/* command argument text */
 extern keyword_id_t block;		/* type of current expansion block */
 extern int condition;			/* checked by /if and /while */
 extern int evalflag;			/* flag: should we evaluate? */
-extern const char *oplabel_table[];	/* opcode labels */
 
 #endif /* PARSE_H */

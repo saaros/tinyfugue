@@ -88,11 +88,12 @@
 
 ;; NB: %* is not current world
 /def -i update_activity_world = \
-    /let n=$[moresize("", {*})]%; \
-    /test activity_color_$[textencode({*})]%; \
+    /let _n=$[moresize("", {*})]%; \
+    /let _name=$[textencode({*})]%; \
+    /test activity_color_%{_name}%; \
     /echo -p - \
 	@{%?}$[is_open({*})?"":"!"]$[status_label({*})]:\
-	$[n < 1000 ? n : strcat(n/1000, "k")]@{n}
+	$[_n < 1000 ? _n : strcat(_n/1000, "k")]@{n}
 
 /def -i update_activity = \
     /if (update_activity_pid) \

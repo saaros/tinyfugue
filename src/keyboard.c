@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: keyboard.c,v 35004.78 2004/02/17 06:44:38 hawkeye Exp $";
+static const char RCSid[] = "$Id: keyboard.c,v 35004.82 2004/07/18 03:54:27 hawkeye Exp $";
 
 /**************************************************
  * Fugue keyboard handling.
@@ -23,11 +23,12 @@ static const char RCSid[] = "$Id: keyboard.c,v 35004.78 2004/02/17 06:44:38 hawk
 #include "output.h"	/* iput(), idel(), redraw()... */
 #include "history.h"	/* history_sub() */
 #include "expand.h"	/* macro_run() */
-#include "commands.h"
+#include "cmdlist.h"
 #include "variable.h"	/* unsetvar() */
 
 static int literal_next = FALSE;
 static TrieNode *keynode = NULL;	/* current node matched by input */
+static int kbnum_internal = 0;
 
 int pending_line = FALSE;
 int pending_input = FALSE;
@@ -202,12 +203,14 @@ int handle_keyboard_input(int read_flag)
 		key_start == input_start)
 	    {
 		int n;
-		Stringadd(kbnum, s[key_start]);
+		SStringcpy(scratch, kbnum);
+		Stringadd(scratch, s[key_start]);
 		place = input_start = ++key_start;
 		n = kbnumval < 0 ? -kbnumval : kbnumval;
 		if (max_kbnum > 0 && n > max_kbnum)
-		    Sprintf(kbnum, "%c%d", kbnumval<0 ? '-' : '+', max_kbnum);
-		update_status_field(&special_var[VAR_kbnum], -1);
+		    Sprintf(scratch, "%c%d", kbnumval<0 ? '-' : '+', max_kbnum);
+		setexistingvar(&special_var[VAR_kbnum], TYPE_STR, &scratch,
+		    FALSE);
             } else {
                 /* No builtin; try a suffix. */
                 place = ++key_start;
@@ -215,19 +218,17 @@ int handle_keyboard_input(int read_flag)
             keynode = NULL;
         } else if (!keynode->children) {
             /* Total match; process everything up to here and call the macro. */
-	    AUTO_BUFFER(kbnumlocalbuf);
-	    String *kbnumlocal = NULL;
+	    int kbnumlocal = 0;
             Macro *macro = (Macro *)keynode->u.datum;
             handle_input_string(s + input_start, key_start - input_start);
             key_start = input_start = place;
             keynode = NULL;  /* before do_macro(), for reentrance */
 	    if (kbnum) {
-		kbnumlocal = kbnumlocalbuf;
-		SStringcpy(kbnumlocal, kbnum);
+		kbnum_internal = kbnumlocal = atoi(kbnum->data);
 		reset_kbnum();
 	    }
             do_macro(macro, NULL, 0, USED_KEY, kbnumlocal);
-	    if (kbnumlocal) Stringfree(kbnumlocal);
+	    kbnum_internal = 0;
         } /* else, partial match; just hold on to it for now. */
     }
 
@@ -280,7 +281,7 @@ static void handle_input_string(const char *input, unsigned int len)
 	    keyboard_pos += extra;
 	}
         Stringncat(keybuf, input, len);
-        SStringcat(keybuf, scratch);
+        SStringcat(keybuf, CS(scratch));
     } else if (keyboard_pos + len + extra < keybuf->len) {    /* overwrite */
 	while (extra) {
 	    keybuf->data[keyboard_pos++] = *input;
@@ -318,17 +319,23 @@ struct Value *handle_dokey_command(String *args, int offset)
     Macro *macro;
     int n;
 
-    n = kbnumval;
-    if (kbnum) reset_kbnum();
+    /* XXX We use kbnum_internal here, but a macro would use the local %kbnum.
+     * It is possible (though unadvisable) for a macro to change the local
+     * %kbnum before this point, making this code behave differently than
+     * a /dokey_foo macro would.  Fetching the actual local %kbnum here would
+     * make the behavior the same, but is a step in the wrong direction;
+     * a better solution would be to make the local %kbnum non-modifiable
+     * by macro code (but variable.c doesn't yet support const). */
+    n = kbnum_internal ? kbnum_internal : 1;
 
     ptr = (const char **)bsearch((void*)(args->data + offset),
         (void*)efunc_table,
         sizeof(efunc_table)/sizeof(char*), sizeof(char*), cstrstructcmp);
 
     if (!ptr) {
-        SStringocat(Stringcpy(buffer, "dokey_"), args, offset);
+        SStringocat(Stringcpy(buffer, "dokey_"), CS(args), offset);
         if ((macro = find_macro(buffer->data)))
-            return newint(do_macro(macro, NULL, 0, USED_NAME, NULL));
+            return newint(do_macro(macro, NULL, 0, USED_NAME, 0));
         else eprintf("No editing function %s", args->data + offset); 
         return shareval(val_zero);
     }
@@ -384,11 +391,11 @@ int do_kbdel(int place)
 {
     if (place >= 0 && place < keyboard_pos) {
         Stringcpy(scratch, keybuf->data + keyboard_pos);
-        SStringcat(Stringtrunc(keybuf, place), scratch);
+        SStringcat(Stringtrunc(keybuf, place), CS(scratch));
         idel(place);
     } else if (place > keyboard_pos && place <= keybuf->len) {
         Stringcpy(scratch, keybuf->data + place);
-        SStringcat(Stringtrunc(keybuf, keyboard_pos), scratch);
+        SStringcat(Stringtrunc(keybuf, keyboard_pos), CS(scratch));
         idel(place);
     } else {
         dobell(1);
@@ -437,7 +444,7 @@ int handle_input_line(void)
     String *line;
     int result;
 
-    SStringcpy(scratch, keybuf);
+    SStringcpy(scratch, CS(keybuf));
     Stringtrunc(keybuf, keyboard_pos = 0);
     pending_line = FALSE;
 
@@ -446,18 +453,19 @@ int handle_input_line(void)
             oputs("% No match.");
             return 0;
         }
-        SStringcpy(keybuf, line);
+        SStringcpy(keybuf, CS(line));
         iput(keyboard_pos = keybuf->len);
         inewline();
         Stringtrunc(keybuf, keyboard_pos = 0);
     } else
         line = scratch;
 
-    if (kecho) tfprintf(tferr, "%s%S", kprefix ? kprefix : "", line);
+    if (kecho)
+	tfprintf(tferr, "%S%S%A", kprefix, line, getattrvar(VAR_kecho_attr));
     gettime(&line->time);
-    record_input(line);
+    record_input(CS(line));
     readsafe = 1;
-    result = macro_run(line, 0, NULL, 0, sub, "\bUSER");
+    result = macro_run(CS(line), 0, NULL, 0, sub, "\bUSER");
     readsafe = 0;
     return result;
 }

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: search.h,v 35004.24 2004/02/17 06:44:42 hawkeye Exp $ */
+/* $Id: search.h,v 35004.25 2004/07/16 21:13:52 hawkeye Exp $ */
 
 #ifndef SEARCH_H
 #define SEARCH_H
@@ -83,7 +83,7 @@ typedef struct CQueue {		/* circular queue of data */
 } CQueue;
 
 #define init_queue(Q)		(init_list(&(Q)->list))
-#define dequeue(Q)		((String*)((Q)->list.tail ? \
+#define dequeue(Q)		((conString*)((Q)->list.tail ? \
 				(unlist((Q)->list.tail, &(Q)->list)) : NULL))
 #define enqueue(Q, line)	(inlist((void *)(line), &(Q)->list, NULL))
 

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: command.h,v 35004.20 2004/02/17 06:44:36 hawkeye Exp $ */
+/* $Id: command.h,v 35004.21 2004/07/16 21:13:50 hawkeye Exp $ */
 
 #ifndef COMMAND_H
 #define COMMAND_H
@@ -21,12 +21,12 @@ typedef struct BuiltinCmd {
 
 extern int exiting;
 
-extern int      handle_command(String *cmd_line);
+extern int      handle_command(const conString *cmd_line);
 extern BuiltinCmd *find_builtin_cmd(const char *cmd);
 extern int      do_file_load(const char *args, int tinytalk);
-extern int      handle_echo_func(String *string, const char *attrstr,
+extern int      handle_echo_func(conString *string, const char *attrstr,
                      int inline_flag, const char *dest);
-extern int      handle_substitute_func(String *string,
+extern int      handle_substitute_func(conString *string,
                      const char *attrstr, int inline_flag);
 
 #endif /* COMMAND_H */

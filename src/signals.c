@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: signals.c,v 35004.55 2004/02/17 06:44:42 hawkeye Exp $";
+static const char RCSid[] = "$Id: signals.c,v 35004.56 2004/05/02 01:09:47 hawkeye Exp $";
 
 /* Signal handling, core dumps, job control, and interactive shells */
 
@@ -26,6 +26,7 @@ static const char RCSid[] = "$Id: signals.c,v 35004.55 2004/02/17 06:44:42 hawke
 #include "output.h"
 #include "signals.h"
 #include "variable.h"
+#include "expand.h" /* current_command */
 
 #ifdef TF_AIX_DECLS
 struct rusage *dummy_struct_rusage;
@@ -351,7 +352,9 @@ static void coremsg(void)
 #if SOCKS
     fprintf(stderr,"> SOCKS %d\r\n", SOCKS);
 #endif
-    fprintf(stderr,"> TERM=%.32s\r\n", TERM ? TERM : "(NULL)");
+    fprintf(stderr,"> TERM=\"%.32s\"\r\n", TERM ? TERM : "(NULL)");
+    fprintf(stderr,"> cmd=\"%.32s\"\r\n",
+	current_command ? current_command : "(NULL)");
 }
 
 static void terminate(int sig)

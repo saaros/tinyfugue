@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: dstring.h,v 35004.27 2004/02/17 06:44:36 hawkeye Exp $ */
+/* $Id: dstring.h,v 35004.30 2004/07/16 21:13:51 hawkeye Exp $ */
 
 #ifndef DSTRING_H
 #define DSTRING_H
@@ -32,6 +32,30 @@ typedef struct String {
     int line;
 } String, Stringp[1];
 
+/* A conString is a String with const *data and *charattrs. */
+typedef struct conString {
+    const char *data;		/* pointer to space holding text */
+    int len;			/* length of actual data (not counting NUL) */
+    int size;			/* length allocated */
+    short links;		/* number of pointers to this structure */
+    unsigned int static_struct: 1;	/* is struct static (not automatic)? */
+    unsigned int dynamic_struct: 1;	/* was struct malloc'd? */
+    unsigned int dynamic_data: 1;	/* was data malloc'd? */
+    /* unsigned dynamic_charattrs:1; */	/* charattrs is always dynamic */
+    unsigned int resizable: 1;		/* can data be resized? */
+    attr_t attrs;		/* whole-line attributes */
+    const cattr_t *charattrs;	/* per-character attributes */
+    struct timeval time;	/* timestamp */
+#if USE_MMALLOC		/* don't waste the space if not using mmalloc */
+    void *md;			/* mmalloc descriptor */
+#endif
+    const char *file;
+    int line;
+} conString;
+
+/* safely cast String* to conString* */
+static inline conString *CS(String *s) { return (conString*)s; }
+
 #if USE_MMALLOC
 # define MD_INIT	NULL,
 #else
@@ -39,7 +63,7 @@ typedef struct String {
 #endif
 
 #define STRING_LITERAL(data) \
-    { (char*)(data), sizeof(data)-1, sizeof(data), 1, 1,0,0,0, \
+    { (data), sizeof(data)-1, sizeof(data), 1, 1,0,0,0, \
 	0, NULL, { -1, -1 }, MD_INIT __FILE__, __LINE__ }
 #define STRING_NULL \
     { NULL, 0, 0, 1, 1,0,0,0, \
@@ -67,8 +91,8 @@ typedef struct String {
  * be modified or resized.
  */
 #define STATIC_STRING(name, sl, attrs) \
-    static Stringp (name) = \
-        {{ (char*)(sl), sizeof(sl)-1, sizeof(sl), 1, 1,0,0,0, \
+    static conString (name)[1] = \
+        {{ (sl), sizeof(sl)-1, sizeof(sl), 1, 1,0,0,0, \
 	    (attrs), NULL, {-1,-1}, MD_INIT __FILE__, __LINE__ }}
 
 
@@ -90,10 +114,17 @@ typedef struct String {
 #define Stringzero(str)		Stringninit((str), 0)
 
 #define Stringfree(str)		Stringfree_fl(str, __FILE__, __LINE__)
-#define Stringfree_fl(str, file, line)	\
+#define Stringfree_fl(str, file, line) \
     do { \
 	String *temp = (str);  /* must evaluate str exactly once */ \
 	if (--temp->links <= 0) dSfree(temp, (file), (line)); \
+    } while (0)
+
+#define conStringfree(str)	conStringfree_fl(str, __FILE__, __LINE__)
+#define conStringfree_fl(str, file, line) \
+    do { \
+	conString *temp = (str);  /* must evaluate str exactly once */ \
+	if (--temp->links <= 0) dSfree((String*)temp, (file), (line)); \
     } while (0)
 
 #define Stringadd(str, c)	dSadd((str), (c), __FILE__, __LINE__)
@@ -125,13 +156,15 @@ extern String *dSadd   (String *str, int c, FL);
 extern String *dSnadd  (String *str, int c, int n, FL);
 extern String *dStrunc (String *str, int n, FL);
 extern String *dScpy   (String *dest, const char *src, FL);
-extern String *dSScpy  (String *dest, const String *src, FL);
+extern String *dSScpy  (String *dest, const conString *src, FL);
 extern String *dSncpy  (String *dest, const char *src, int n, FL);
 extern String *dScat   (String *dest, const char *src, FL);
-extern String *dSSoncat(String *dest, const String *src, int start, int len, FL);
+extern String *dSSoncat(String *dest, const conString *src, int start, int len, FL);
 extern String *dSncat  (String *dest, const char *src, int n, FL);
 extern String *dSfncat (String *dest, const char *src, int n, FL);
 extern String *Stringstriptrail(String *str);
+extern String *attr2str(String *dest, attr_t attrs);
+extern String *encode_attr(const conString *str, int offset);
 
 extern void check_charattrs(String *str, int n, cattr_t attrs,
     const char *file, int line);
@@ -142,7 +175,7 @@ extern void free_dstring(void);
 #endif
 
 
-extern Stringp blankline;
+extern conString blankline[1];
 
 #undef FL
 

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expand.h,v 35004.40 2004/02/17 06:44:36 hawkeye Exp $ */
+/* $Id: expand.h,v 35004.43 2004/07/16 21:13:51 hawkeye Exp $ */
 
 #ifndef EXPAND_H
 #define EXPAND_H
@@ -27,13 +27,13 @@ typedef struct {
 
 extern void init_expand(void);
 extern void prog_free(Program *prog);
-extern int prog_run(Program *prog, String *args, int offset,
-    const char *name, String *kbnumlocal);
-extern struct Program *compile_tf(String *body, int bodystart, int subs,
+extern int prog_run(const Program *prog, const String *args, int offset,
+    const char *name, int kbnumlocal);
+extern struct Program *compile_tf(conString *body, int bodystart, int subs,
     int is_expr, int optimize);
-extern int macro_run(String *body, int boffset, String *args, int offset,
+extern int macro_run(conString *body, int boffset, String *args, int offset,
     int subs, const char *name);
-extern Value *prog_interpret(Program *prog, int in_expr);
+extern Value *prog_interpret(const Program *prog, int in_expr);
 extern String *do_mprefix(void);
 extern const char **keyword(const char *id);
 extern void eat_newline(Program *prog);

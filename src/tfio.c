@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: tfio.c,v 35004.97 2004/02/17 06:44:43 hawkeye Exp $";
+static const char RCSid[] = "$Id: tfio.c,v 35004.104 2004/07/18 03:54:28 hawkeye Exp $";
 
 
 /***********************************
@@ -43,7 +43,7 @@ static const char RCSid[] = "$Id: tfio.c,v 35004.97 2004/02/17 06:44:43 hawkeye 
 #include "variable.h"	/* getvar() */
 #include "keyboard.h"	/* keyboard_pos */
 #include "expand.h"	/* current_command */
-#include "commands.h"
+#include "cmdlist.h"
 
 TFILE *loadfile = NULL; /* currently /load'ing file */
 int loadline = 0;       /* line number in /load'ing file */
@@ -65,7 +65,8 @@ static List userfilelist[1];
 static int max_fileid = 0;
 
 static void fileputs(const char *str, FILE *fp);
-static void queueputline(String *line, TFILE *file);
+static void filenputs(const char *str, int n, FILE *fp);
+static void queueputline(conString *line, TFILE *file);
 
 
 void init_tfio(void)
@@ -159,7 +160,7 @@ void free_screen_lines(Screen *screen)
 
     while (screen->pline.head) {
 	pl = unlist(screen->pline.head, &screen->pline);
-        if (pl->str) Stringfree(pl->str);
+        if (pl->str) conStringfree(pl->str);
 	pfree(pl, plpool, str);
     }
 }
@@ -380,18 +381,21 @@ int tfselect(int nfds, fd_set *readers, fd_set *writers, fd_set *excepts,
  * Output *
  **********/
 
-/* tfputs
+/* tfnputs
  * Print to a TFILE.
- * Unlike fputs(), tfputs() always appends a newline when writing to a file.
+ * Unlike fputs(), tfnputs() always appends a newline when writing to a file.
  */
-void tfputs(const char *str, TFILE *file)
+void tfnputs(const char *str, int n, TFILE *file)
 {
     if (!file || file->type == TF_NULL) {
         /* do nothing */
     } else if (file->type == TF_QUEUE) {
-        queueputline(Stringnew(str, -1, 0), file);
+        queueputline(CS(Stringnew(str, n, 0)), file);
     } else {
-        fileputs(str, file->u.fp);
+        if (n < 0)
+	    fileputs(str, file->u.fp);
+	else
+	    filenputs(str, n, file->u.fp);
         if (file->autoflush) tfflush(file);
     }
 }
@@ -401,13 +405,13 @@ void tfputs(const char *str, TFILE *file)
  */
 attr_t tfputansi(const char *str, TFILE *file, attr_t attrs)
 {
-    String *line;
+    conString *line;
 
     if (file && file->type != TF_NULL) {
-        line = decode_ansi(str, attrs, EMUL_ANSI_ATTR, &attrs);
+        line = CS(decode_ansi(str, attrs, EMUL_ANSI_ATTR, &attrs));
 	line->links++;
 	tfputline(line, file);
-        Stringfree(line);
+        conStringfree(line);
     }
     return attrs;
 }
@@ -415,7 +419,7 @@ attr_t tfputansi(const char *str, TFILE *file, attr_t attrs)
 /* tfputline
  * Print a String to a TFILE, with embedded newline handling.
  */
-void tfputline(String *line, TFILE *file)
+void tfputline(conString *line, TFILE *file)
 {
     /* Many callers pass line with links==0, so the ++ and free are vital. */
     line->links++;
@@ -426,13 +430,13 @@ void tfputline(String *line, TFILE *file)
     } else if (file->type == TF_QUEUE) {
         queueputline(line, file);
     } else {
-        fileputs(line->data, file->u.fp);
+        filenputs(line->data, line->len, file->u.fp);
         if (file->autoflush) tfflush(file);
     }
-    Stringfree(line);
+    conStringfree(line);
 }
 
-static void queueputline(String *line, TFILE *file)
+static void queueputline(conString *line, TFILE *file)
 {
     /* Many callers pass line with links==0, so the ++ and free are vital. */
     line->links++;
@@ -446,21 +450,27 @@ static void queueputline(String *line, TFILE *file)
         line->links++;
         enqueue(file->u.queue, line);
     }
-    Stringfree(line);
+    conStringfree(line);
 }
 
-/* print a string to a file, converting embedded newlines to spaces */
+/* print string\n to a file, converting embedded newlines to spaces */
 static void fileputs(const char *str, FILE *fp)
 {
-    const char *p;
-
-    while ((p = strchr(str, '\n'))) {
-        write(fileno(fp), str, p - str);   /* up to newline */
-        fputc(' ', fp);
-        str = p + 1;
+    for ( ; *str; str++) {
+	register char c = *str == '\n' ? ' ' : *str;
+	putc(c, fp);
     }
-    fputs(str, fp);
-    fputc('\n', fp);
+    putc('\n', fp);
+}
+
+/* print string\n to a file, converting embedded newlines to spaces */
+static void filenputs(const char *str, int n, FILE *fp)
+{
+    for ( ; *str && n > 0; str++, n--) {
+	register char c = *str == '\n' ? ' ' : *str;
+	putc(c, fp);
+    }
+    putc('\n', fp);
 }
 
 
@@ -469,8 +479,11 @@ static void fileputs(const char *str, FILE *fp)
  * second arg is a flag, third arg is format.
  * %S is like %s, but takes a String* argument.
  * %q takes a char c and a string s; prints s, with \ before each c.
- * %s, %S, and %q arguments may be NULL.
- * %q does not support '*" width or precision.
+ * %b is like %q, but nonprinting characters are printed as "\octal".
+ * %s, %S, %q, %b arguments may be NULL.
+ * %q and %b do not support any width or "*" precision.
+ * %A takes an attr_t, and sets the attributes for the whole line
+ * (not implemented: %a sets the attrs for the remainder of the line)
  * newlines are not allowed in the format string (this is not enforced).
  */
 
@@ -479,8 +492,9 @@ void vSprintf(String *buf, int flags, const char *fmt, va_list ap)
     static smallstr spec, tempbuf;
     const char *q, *sval;
     char *specptr, quote;
-    String *Sval;
+    const conString *Sval;
     int len, min, max, leftjust, stars;
+    attr_t attrs = 0;
 
     if (!(flags & SP_APPEND)) Stringtrunc(buf, 0);
     while (*fmt) {
@@ -554,7 +568,7 @@ void vSprintf(String *buf, int flags, const char *fmt, va_list ap)
                 sval = va_arg(ap, char *);
                 len = sval ? strlen(sval) : 0;
             } else {
-                Sval = va_arg(ap, String *);
+                Sval = va_arg(ap, const conString *);
                 len = Sval ? Sval->len : 0;
             }
 
@@ -567,23 +581,39 @@ void vSprintf(String *buf, int flags, const char *fmt, va_list ap)
             if (leftjust && len < min) Stringnadd(buf, ' ', min - len);
             break;
         case 'q':
+        case 'b':
+	    max = (spec[1] == '.') ? atoi(&spec[2]) : 0x7FFF;
             if (!(quote = (char)va_arg(ap, int))) break;
             if (!(sval = va_arg(ap, char *))) break;
             for ( ; *sval; sval = q) {
-                if (*sval == quote || *sval == '\\') {
+		if (*fmt == 'b' && !is_print(*q)) {
+		    if (max < 4) break;
+		    max -= 4;
+		    sprintf(tempbuf, "\\%03o", *sval++);
+		    Stringcat(buf, tempbuf);
+                } else if (*sval == quote || *sval == '\\') {
+		    if (max < 2) break;
+		    max -= 2;
                     Stringadd(buf, '\\');
                     Stringadd(buf, *sval++);
                 }
-                for (q = sval; *q && *q != quote && *q != '\\'; q++);
+                for (q = sval; max > 0 && *q; q++, max--) {
+		    if (*q == quote || *q == '\\') break;
+		    if (*fmt == 'b' && !is_print(*q)) break;
+		}
                 Stringfncat(buf, sval, q - sval);
             }
             break;
+	case 'A':
+	    attrs = (attr_t)va_arg(ap, attr_t);
+	    break;
         default:
             Stringcat(buf, spec);
             break;
         }
         fmt++;
     }
+    buf->attrs = attrs;
 }
 
 #ifndef oprintf
@@ -600,7 +630,7 @@ void oprintf(const char *fmt, ...)
     va_start(ap, fmt);
     vSprintf(buffer, 0, fmt, ap);
     va_end(ap);
-    oputline(buffer);
+    oputline(CS(buffer));
 }
 #endif /* oprintf */
 
@@ -617,7 +647,7 @@ void tfprintf(TFILE *file, const char *fmt, ...)
     va_start(ap, fmt);
     vSprintf(buffer, 0, fmt, ap);
     va_end(ap);
-    tfputline(buffer, file);
+    tfputline(CS(buffer), file);
 }
 
 
@@ -664,7 +694,7 @@ static void veprintf(const char *fmt, va_list ap)
     buffer = Stringnew(NULL, 0, 0);
     eprefix(buffer);
     vSprintf(buffer, SP_APPEND, fmt, ap);
-    tfputline(buffer, tferr);
+    tfputline(CS(buffer), tferr);
 }
 
 void eprintf(const char *fmt, ...)
@@ -683,6 +713,7 @@ void internal_error(const char *file, int line, const char *fmt, ...)
     va_list ap;
 
     eprintf("Internal error at %s:%d, %s.  %s", file, line, version, interrmsg);
+    if (current_command) eprintf("cmd: \"%.32b\"", '\"', current_command);
 
     va_start(ap, fmt);
     veprintf(fmt, ap);
@@ -696,6 +727,7 @@ void internal_error2(const char *file, int line, const char *file2, int line2,
 
     eprintf("Internal error at %s:%d (%s:%d), %s.  %s",
 	file, line, file2, line2, version, interrmsg);
+    if (current_command) eprintf("cmd: \"%.32b\"", '\"', current_command);
 
     va_start(ap, fmt);
     veprintf(fmt, ap);
@@ -755,19 +787,19 @@ String *tfgetS(String *str, TFILE *file)
         if (interrupted())
             return NULL;
 
-        SStringcpy(str, keybuf);
+        SStringcpy(str, CS(keybuf));
         Stringtrunc(keybuf, keyboard_pos = 0);
         return str;
 
     } else if (file->type == TF_QUEUE) {
-        String *line;
+        conString *line;
         do {
             if (!(line = dequeue(file->u.queue))) return NULL;
             if (!((line->attrs & F_GAG) && gag)) break;
-            Stringfree(line);
+            conStringfree(line);
         } while (1);
-        SStringcpy(str, line);
-        Stringfree(line);
+        SStringcpy(str, line); /* TODO: get rid of this copy */
+        conStringfree(line);
         return str;
 
     } else {

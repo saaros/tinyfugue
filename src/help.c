@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: help.c,v 35004.30 2004/02/17 06:44:37 hawkeye Exp $";
+static const char RCSid[] = "$Id: help.c,v 35004.31 2004/07/08 06:19:16 hawkeye Exp $";
 
 /*
  * Fugue help handling
@@ -23,7 +23,7 @@ static const char RCSid[] = "$Id: help.c,v 35004.30 2004/02/17 06:44:37 hawkeye 
 #include "search.h"	/* for tfio.h */
 #include "util.h"	/* for tfio.h */
 #include "tfio.h"
-#include "commands.h"
+#include "cmdlist.h"
 #include "variable.h"
 
 STATIC_BUFFER(indexfname);

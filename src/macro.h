@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: macro.h,v 35004.50 2004/02/17 06:44:39 hawkeye Exp $ */
+/* $Id: macro.h,v 35004.52 2004/07/16 21:13:51 hawkeye Exp $ */
 
 #ifndef MACRO_H
 #define MACRO_H
@@ -23,7 +23,7 @@ typedef struct Macro {
     struct ListEntry *hashnode;		/* node in macro_table hash bucket */
     struct ListEntry *trignode;		/* node in one of the triglists */
     struct Macro *tnext;		/* temp list ptr for collision/death */
-    String *body, *expr;
+    conString *body, *expr;
     Program *prog, *exprprog;		/* compiled body, expr */
     const char *bind, *keyname;
     Pattern trig, hargs, wtype;		/* trigger/hook/worldtype patterns */
@@ -59,7 +59,7 @@ extern void   rebind_key_macros(void);
 extern void   remove_world_macros(struct World *w);
 extern int    save_macros(String *args, int offset);
 extern int    do_macro(Macro *macro, String *args, int offset,
-		int used_type, String *kbnumlocal);
+		int used_type, int kbnumlocal);
 extern const char *macro_body(const char *name);
 extern int    find_and_run_matches(String *text, int hooknum, String **linep,
 		struct World *world, int globalflag, int exec_list_long);

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: world.c,v 35004.65 2004/02/17 06:44:44 hawkeye Exp $";
+static const char RCSid[] = "$Id: world.c,v 35004.67 2004/07/16 21:13:53 hawkeye Exp $";
 
 
 /********************************************************
@@ -22,7 +22,7 @@ static const char RCSid[] = "$Id: world.c,v 35004.65 2004/02/17 06:44:44 hawkeye
 #include "world.h"
 #include "process.h"
 #include "macro.h"	/* remove_world_macros() */
-#include "commands.h"
+#include "cmdlist.h"
 #include "socket.h"
 #include "output.h"	/* columns */
 
@@ -218,12 +218,13 @@ struct Value *handle_unworld_command(String *args, int offset)
 struct Value *handle_listworlds_command(String *args, int offset)
 {
     int flags = LW_TABLE, mflag = matching, error = 0, result;
-    char c, *ptr;
+    char c;
+    const char *ptr;
     Pattern type, name, *namep = NULL;
 
     init_pattern_str(&type, NULL);
     init_pattern_str(&name, NULL);
-    startopt(args, "T:uscm:");
+    startopt(CS(args), "T:uscm:");
     while ((c = nextopt(&ptr, NULL, NULL, &offset))) {
         switch (c) {
             case 'T':  free_pattern(&type);
@@ -342,7 +343,7 @@ struct Value *handle_saveworld_command(String *args, int offset)
         return shareval(val_zero);
     }
 
-    startopt(args, "a");
+    startopt(CS(args), "a");
     while ((opt = nextopt(NULL, NULL, NULL, &offset))) {
         if (opt != 'a') return shareval(val_zero);
         mode = "a";

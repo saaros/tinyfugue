@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: process.c,v 35004.59 2004/02/17 06:44:41 hawkeye Exp $";
+static const char RCSid[] = "$Id: process.c,v 35004.65 2004/07/18 03:54:27 hawkeye Exp $";
 
 /************************
  * Fugue processes.     *
@@ -23,7 +23,7 @@ static const char RCSid[] = "$Id: process.c,v 35004.59 2004/02/17 06:44:41 hawke
 #include "process.h"
 #include "socket.h"
 #include "expand.h"
-#include "commands.h"
+#include "cmdlist.h"
 #include "output.h"	/* oflush() */
 #include "signals.h"	/* interrupted() */
 
@@ -39,7 +39,7 @@ const int feature_process = !(NO_PROCESS - 0);
 #define PROC_DEAD     0
 #define PROC_RUNNING  1
 
-String enum_disp[] = {
+conString enum_disp[] = {
     STRING_LITERAL("echo"), STRING_LITERAL("send"), STRING_LITERAL("exec"),
     STRING_NULL };
 enum { DISP_ECHO, DISP_SEND, DISP_EXEC };
@@ -61,7 +61,7 @@ typedef struct Proc {
     char *suf;			/* suffix string */
     TFILE *input;		/* source of quote input */
     struct World *world;	/* where to send output */
-    String *cmd;		/* command or file name */
+    conString *cmd;		/* command or file name */
     Stringp buffer;		/* buffer for prefix+cmd+suffix */
     struct Program *prog;	/* compiled repeat command */
     struct Proc *next, *prev;
@@ -98,12 +98,13 @@ static void format_approx_interval(char *buf, struct timeval *tvp)
 struct Value *handle_ps_command(String *args, int offset)
 {
     Proc *p;
-    char obuf[18], nbuf[10], *ptr;
+    char obuf[18], nbuf[10];
+    const char *ptr;
     struct timeval now, next;
     int opt, pid = 0, shortflag = FALSE, repeatflag = FALSE, quoteflag = FALSE;
     struct World *world = NULL;
 
-    startopt(args, "srqw:");
+    startopt(CS(args), "srqw:");
     while ((opt = nextopt(&ptr, NULL, NULL, &offset))) {
         switch(opt) {
         case 's': shortflag = TRUE; break;
@@ -199,7 +200,7 @@ static struct Value *newproc(int type, int (*func)(Proc *proc), int count,
     }
 
     if (type == P_REPEAT) {
-	if (!(proc->prog = compile_tf(cmd, 0, SUB_MACRO, 0, 0))) {
+	if (!(proc->prog = compile_tf(CS(cmd), 0, SUB_MACRO, 0, 0))) {
 	    Stringfree(cmd);
 	    return shareval(val_zero);
 	}
@@ -223,7 +224,7 @@ static struct Value *newproc(int type, int (*func)(Proc *proc), int count,
 
     proc->pre = STRDUP(pre);
     proc->suf = suf ? STRDUP(suf) : NULL;
-    proc->cmd = cmd;  /* already did links++ */
+    proc->cmd = CS(cmd);  /* already did links++ */
     proc->pid = ++hipid;
     proc->input = input;
     proc->world = world;
@@ -281,7 +282,7 @@ static void nukeproc(Proc *proc)
     if (proc->prog)
 	prog_free(proc->prog);
     FREE(proc->pre);
-    Stringfree(proc->cmd);
+    conStringfree(proc->cmd);
     if (proc->suf) FREE(proc->suf);
     Stringfree(proc->buffer);
     FREE(proc);
@@ -326,7 +327,7 @@ struct Value *handle_kill_command(String *args, int offset)
 {
     Proc *proc;
     int pid, error = 0;
-    char *ptr = args->data + offset;
+    const char *ptr = args->data + offset;
 
     while (*ptr) {
         if ((pid = numarg(&ptr)) < 0) return shareval(val_zero);
@@ -341,7 +342,7 @@ struct Value *handle_kill_command(String *args, int offset)
     return newint(!error);
 }
 
-int ch_lpquote(void)
+int ch_lpquote(Var *var)
 {
     runall(lpquote, NULL);
     return 1;
@@ -432,7 +433,7 @@ static int runproc(Proc *p)
  */
 static int do_repeat(Proc *proc)
 {
-    prog_run(proc->prog, NULL, 0, "\bREPEAT", NULL);
+    prog_run(proc->prog, NULL, 0, "\bREPEAT", 0);
     if (proc->count > 0) --proc->count;
     return proc->count;
 }
@@ -443,22 +444,38 @@ static int do_repeat(Proc *proc)
 static int do_quote(Proc *proc)
 {
     STATIC_BUFFER(line);
+    String *buffer;
 
-    if (!tfgetS(line, proc->input)) return 0;
+    (buffer = Stringnew(NULL, -1, 0))->links++;
+    if (proc->pre && *proc->pre) {
+	if (!tfgetS(line, proc->input)) {
+	    Stringfree(buffer);
+	    return 0;
+	}
+	Stringcpy(buffer, proc->pre);
+	SStringcat(buffer, CS(line));
+    } else {
+	if (!tfgetS(buffer, proc->input)) {
+	    Stringfree(buffer);
+	    return 0;
+	}
+    }
+    if (proc->suf) Stringcat(buffer, proc->suf);
     if (proc->type == P_QSHELL) readers_clear(fileno(proc->input->u.fp));
-    Sprintf(proc->buffer, "%s%S%s", proc->pre, line, proc->suf);
-    if (qecho) tfprintf(tferr, "%s%S", qprefix ? qprefix : "", proc->buffer);
+    if (qecho)
+	tfprintf(tferr, "%S%S%A", qprefix, buffer, getattrvar(VAR_qecho_attr));
     switch (proc->disp) {
     case DISP_ECHO:
-        oputs(proc->buffer->data);
+        oputline(CS(buffer));
         break;
     case DISP_SEND:
-        macro_run(proc->buffer, 0, NULL, 0, SUB_LITERAL, "\bQUOTE");
+        macro_run(CS(buffer), 0, NULL, 0, SUB_LITERAL, "\bQUOTE");
         break;
     case DISP_EXEC:
-        macro_run(proc->buffer, 0, NULL, 0, SUB_KEYWORD, "\bQUOTE");
+        macro_run(CS(buffer), 0, NULL, 0, SUB_KEYWORD, "\bQUOTE");
         break;
     }
+    Stringfree(buffer);
     return TRUE;
 }
 
@@ -477,13 +494,14 @@ static int procopt(const char *opts, String *args, int *offsetp,
     struct timeval *ptime, struct World **world, int *disp, int *subflag,
     int *delay)
 {
-    char opt, *ptr;
+    char opt;
+    const char *ptr;
     struct timeval tv;
 
     if (!(args->len - *offsetp)) return 0;
     *world = NULL;
     ptime->tv_sec = PTIME_VAR;
-    startopt(args, opts);
+    startopt(CS(args), opts);
     while ((opt = nextopt(&ptr, &tv, NULL, offsetp))) {
         switch(opt) {
         case 'w':
@@ -601,7 +619,7 @@ struct Value *handle_quote_command(String *args, int offset)
         olderr = tferr;
         tfout = input = tfopen(NULL, "q");
         /* tferr = input; */
-        macro_run(args, cmd - args->data, NULL, 0, subflag, "\bQUOTE");
+        macro_run(CS(args), cmd - args->data, NULL, 0, subflag, "\bQUOTE");
         tferr = olderr;
         tfout = oldout;
         break;
@@ -619,7 +637,7 @@ struct Value *handle_repeat_command(String *args, int offset)
     int count, delay = TRUE;
     struct timeval ptime;
     struct World *world;
-    char *ptr;
+    const char *ptr;
 
     if (!procopt("-@PSw:n", args, &offset, &ptime, &world, NULL, NULL, &delay))
         return shareval(val_zero);

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: process.h,v 35004.17 2004/02/17 06:44:41 hawkeye Exp $ */
+/* $Id: process.h,v 35004.18 2004/07/18 01:12:38 hawkeye Exp $ */
 
 #ifndef PROCESS_H
 #define PROCESS_H
@@ -16,7 +16,7 @@ extern void kill_procs_by_world(struct World *world);
 extern void kill_procs(void);
 extern void nuke_dead_procs(void);
 extern void runall(int prompted, struct World *world);
-extern int  ch_lpquote(void);
+extern int  ch_lpquote(Var *var);
 
 extern struct timeval proctime;		/* when next process should run */
 

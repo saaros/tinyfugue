@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: main.c,v 35004.99 2004/02/17 06:44:39 hawkeye Exp $";
+static const char RCSid[] = "$Id: main.c,v 35004.103 2004/07/16 21:13:51 hawkeye Exp $";
 
 
 /***********************************************
@@ -47,7 +47,7 @@ const char version[] =
 #if DEVELOPMENT
     "DEVELOPMENT VERSION: "
 #endif
-    "TinyFugue version 5.0 beta 4";
+    "TinyFugue version 5.0 beta 5";
 
 const char mods[] = "";
 
@@ -165,17 +165,17 @@ int main(int argc, char *argv[])
     init_util2();			/* util.c     */
 
     if (libdir) {
-        set_var_by_name("TFLIBDIR", Stringnew(libdir, -1, 0), 0);
+        set_var_by_name("TFLIBDIR", Stringnew(libdir, -1, 0));
     }
     if (!ffindglobalvar("TFLIBRARY")) {
         scratch = Stringnew(NULL, 0, 0);
         Sprintf(scratch, "%s/stdlib.tf", TFLIBDIR);
-        set_var_by_name("TFLIBRARY", scratch, 0);
+        set_var_by_name("TFLIBRARY", scratch);
     }
     if (!ffindglobalvar("TFHELP")) {
         scratch = Stringnew(NULL, 0, 0);
         Sprintf(scratch, "%s/tf-help", TFLIBDIR);
-        set_var_by_name("TFHELP", scratch, 0);
+        set_var_by_name("TFHELP", scratch);
     }
 
     read_configuration(configfile);
@@ -183,7 +183,7 @@ int main(int argc, char *argv[])
     if (command) {
 	String *scmd;
 	(scmd = Stringnew(command, -1, 0))->links++;
-        macro_run(scmd, 0, NULL, 0, sub, "\bSTART");
+        macro_run(CS(scmd), 0, NULL, 0, sub, "\bSTART");
 	Stringfree(scmd);
     }
 
@@ -193,7 +193,7 @@ int main(int argc, char *argv[])
 
     /* If %interactive was not explicitly set, set it now. */
     if (getintvar(VAR_interactive) < 0)
-        set_var_by_id(VAR_visual, !no_tty);
+        set_var_by_id(VAR_interactive, !no_tty);
 
     if (argc > 0 || worldflag) {
 	int flags = 0;

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: enumlist.h,v 35000.19 2004/02/17 06:44:36 hawkeye Exp $ */
+/* $Id: enumlist.h,v 35000.20 2004/07/16 21:13:51 hawkeye Exp $ */
 
 /* It may not be easy to read, but it keeps the constants and the array in the
  * same place, so they can't get out of sync.
@@ -15,7 +15,7 @@
 # define ENUMEXTERN
 #endif
 
-bicode(enum,		static String enum_bamf[] = )
+bicode(enum,		static conString enum_bamf[] = )
 {
 bicode(BAMF_OFF,	STRING_LITERAL("off")),
 bicode(BAMF_UNTER,	STRING_LITERAL("on")),
@@ -23,7 +23,7 @@ bicode(BAMF_OLD,	STRING_LITERAL("old")),
 bicode(BAMF_COUNT,	STRING_NULL)
 };
 
-bicode(enum,		static String enum_meta[] = )
+bicode(enum,		static conString enum_meta[] = )
 {
 bicode(META_OFF,	STRING_LITERAL("off")),
 bicode(META_ON,		STRING_LITERAL("on")),
@@ -31,7 +31,7 @@ bicode(META_NONPRINT,	STRING_LITERAL("nonprint")),
 bicode(META_COUNT,	STRING_NULL)
 };
 
-bicode(enum,		static String enum_textdiv[] = )
+bicode(enum,		static conString enum_textdiv[] = )
 {
 bicode(TEXTDIV_OFF,	STRING_LITERAL("off")),
 bicode(TEXTDIV_ON,	STRING_LITERAL("on")),
@@ -40,7 +40,7 @@ bicode(TEXTDIV_CLEAR,	STRING_LITERAL("clear")),
 bicode(TEXTDIV_COUNT,	STRING_NULL)
 };
 
-bicode(enum,		static String enum_emul[] = )
+bicode(enum,		static conString enum_emul[] = )
 {
 bicode(EMUL_RAW,	STRING_LITERAL("raw")),
 bicode(EMUL_PRINT,	STRING_LITERAL("print")),
@@ -50,7 +50,7 @@ bicode(EMUL_DEBUG,	STRING_LITERAL("debug")),
 bicode(EMUL_COUNT,	STRING_NULL)
 };
 
-ENUMEXTERN String enum_match[]
+ENUMEXTERN conString enum_match[]
 bicode(; enum,       = )
 {
 /* do not reorder these, it would break macros that use the number */
@@ -61,7 +61,7 @@ bicode(MATCH_SUBSTR,	STRING_LITERAL("substr")),
 bicode(MATCH_COUNT,	STRING_NULL)
 };
 
-ENUMEXTERN String enum_status[]
+ENUMEXTERN conString enum_status[]
 bicode(; typedef enum,       = )
 {
 bicode(STAT_MORE,	STRING_LITERAL("more")),
@@ -76,7 +76,7 @@ bicode(STAT_NONE = -1,	STRING_NULL)
 }
 bicode( stat_id_t;, ; )
 
-ENUMEXTERN String enum_eol[]
+ENUMEXTERN conString enum_eol[]
 bicode(; enum,    = )
 {
 bicode(EOL_LF,		STRING_LITERAL("LF")),

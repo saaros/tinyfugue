@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.h,v 35004.46 2004/02/17 06:44:44 hawkeye Exp $ */
+/* $Id: util.h,v 35004.52 2004/07/18 01:12:39 hawkeye Exp $ */
 
 #ifndef UTIL_H
 #define UTIL_H
@@ -15,7 +15,7 @@
 typedef struct RegInfo {
     pcre *re;
     pcre_extra *extra;
-    String *Str;
+    conString *Str;
     int links;
     int *ovector;
     int ovecsize;
@@ -49,21 +49,36 @@ struct feature {
 #define STRDUP(src)  STRNDUP((src), strlen(src))
 
 
-#define IS_QUOTE	0001
-#define IS_STATMETA	0002
-#define IS_STATEND	0004
-#define IS_KEYSTART	0010
-#define IS_UNARY	0020
-#define IS_MULT		0040
-#define IS_ADDITIVE	0100
+#define IS_QUOTE	0x01
+#define IS_STATMETA	0x02
+#define IS_STATEND	0x04
+#define IS_KEYSTART	0x08
+#define IS_UNARY	0x10
+#define IS_MULT		0x20
+#define IS_ADDITIVE	0x40
+#define IS_ASSIGNPFX	0x80
 
-extern struct timeval tvzero;
+extern const struct timeval tvzero;
 extern struct timeval mail_update;
 extern int mail_count;
 extern struct mail_info_s *maillist;
 extern char tf_ctype[];
 extern Stringp featurestr;
 extern struct feature features[];
+
+extern const int feature_core;
+extern const int feature_float;
+extern const int feature_ftime;
+extern const int feature_history;
+extern const int feature_IPv6;
+extern const int feature_locale;
+extern const int feature_MCCPv1;
+extern const int feature_MCCPv2;
+extern const int feature_process;
+extern const int feature_SOCKS;
+extern const int feature_ssl;
+extern const int feature_subsecond;
+extern const int feature_TZ;
 
 #define is_quote(c)	(tf_ctype[(unsigned char)c] & IS_QUOTE)
 #define is_statmeta(c)	(tf_ctype[(unsigned char)c] & IS_STATMETA)
@@ -72,6 +87,7 @@ extern struct feature features[];
 #define is_unary(c)	(tf_ctype[(unsigned char)c] & IS_UNARY)
 #define is_mult(c)	(tf_ctype[(unsigned char)c] & IS_MULT)
 #define is_additive(c)	(tf_ctype[(unsigned char)c] & IS_ADDITIVE)
+#define is_assignpfx(c)	(tf_ctype[(unsigned char)c] & IS_ASSIGNPFX)
 
 #define tvcmp(a, b) \
    (((a)->tv_sec != (b)->tv_sec) ? \
@@ -87,19 +103,20 @@ extern struct feature features[];
 #define strtochr(s, ep)   ((char)(strtol((s), (char**)ep, 0) % 0x100))
 #define strtoint(s, ep)   ((int)strtol((s), (char**)ep, 10))
 #define strtolong(s, ep)  (strtol((s), (char**)ep, 10))
-extern int    enum2int(const char *str, long val, String *vec, const char *msg);
+extern int    enum2int(const char *str, long val, conString *vec, const char *msg);
 extern void   init_util1(void);
 extern void   init_util2(void);
 extern String*print_to_ascii(const char *str);
 extern String*ascii_to_print(const char *str);
 extern char  *cstrchr(const char *s, int c);
 extern char  *estrchr(const char *s, int c, int e);
-extern int    numarg(char **str);
+extern int    numarg(const char **str);
 extern char  *stringarg(char **str, const char **end);
-extern int    stringliteral(struct String *dest, char **str);
+extern int    stringliteral(struct String *dest, const char **str);
 extern void   restore_reg_scope(RegInfo *old);
 extern int    regmatch_in_scope(Value *val, const char *pattern, String *Str);
-extern int    tf_reg_exec(RegInfo *ri, String *Sstr, const char *str, int offset);
+extern int    tf_reg_exec(RegInfo *ri, conString *Sstr, const char *str,
+		int offset);
 extern RegInfo*new_reg_scope(RegInfo *ri, String *Str);
 extern void   tf_reg_free(RegInfo *ri);
 extern int    regsubstr(struct String *dest, int n);
@@ -107,32 +124,34 @@ extern int    init_pattern(Pattern *pat, const char *str, int mflag);
 extern int    init_pattern_str(Pattern *pat, const char *str);
 extern int    init_pattern_mflag(Pattern *pat, int mflag, int opt);
 #define copy_pattern(dst, src)  (init_pattern(dst, (src)->str, (src)->mflag))
-extern int    patmatch(const Pattern *pat, String *Sstr, const char *str);
+extern int    patmatch(const Pattern *pat, conString *Sstr, const char *str);
 extern void   free_pattern(Pattern *pat);
 extern int    smatch(const char *pat, const char *str);
 extern int    smatch_check(const char *s);
 extern char  *stripstr(char *s);
-extern void   startopt(String *args, const char *opts);
-extern char   nextopt(char **arg, void *u, int *type, int *offp);
+extern void   startopt(const conString *args, const char *opts);
+extern char   nextopt(const char **arg, void *u, int *type, int *offp);
 #if HAVE_TZSET
-extern int    ch_timezone(void);
+extern int    ch_timezone(Var *var);
 #else
 # define ch_timezone NULL
 #endif
-extern int    ch_locale(void);
-extern int    ch_mailfile(void);
-extern int    ch_maildelay(void);
+extern int    ch_locale(Var *var);
+extern int    ch_mailfile(Var *var);
+extern int    ch_maildelay(Var *var);
 extern void   check_mail(void);
 
 extern type_t string_arithmetic_type(const char *str, int typeset);
-extern Value *parsenumber(const char *str, char **caller_endp, int typeset,
-		Value *val);
+extern Value *parsenumber(const char *str, const char **caller_endp,
+		int typeset, Value *val);
 extern long   parsetime(const char *str, char **endp, int *istime);
 extern void   abstime(struct timeval *tv);
-extern void   tftime(String *buf, String *fmt, struct timeval *tv);
-extern void   normalize_time(struct timeval *tv);
-extern void   tvsub(struct timeval *a, struct timeval *b, struct timeval *c);
-extern void   tvadd(struct timeval *a, struct timeval *b, struct timeval *c);
+extern void   tftime(String *buf, const conString *fmt,
+		const struct timeval *tv);
+extern void   tvsub(struct timeval *a, const struct timeval *b,
+		const struct timeval *c);
+extern void   tvadd(struct timeval *a, const struct timeval *b,
+		const struct timeval *c);
 extern void   die(const char *why, int err) NORET;
 #if USE_DMALLOC
 extern void   free_util(void);

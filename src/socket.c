@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: socket.c,v 35004.242 2004/02/17 06:44:42 hawkeye Exp $";
+static const char RCSid[] = "$Id: socket.c,v 35004.262 2004/07/26 07:24:02 hawkeye Exp $";
 
 
 /***************************************************************
@@ -29,7 +29,7 @@ static const char RCSid[] = "$Id: socket.c,v 35004.242 2004/02/17 06:44:42 hawke
 #include <sys/socket.h>
 #include <signal.h>	/* for killing resolver child process */
 
-#if HAVE_LIBSSL
+#if HAVE_SSL
 # include <openssl/ssl.h>
 # include <openssl/err.h>
     SSL_CTX *ssl_ctx;
@@ -72,7 +72,7 @@ struct sockaddr_in {
 #include "process.h"
 #include "macro.h"
 #include "keyboard.h"
-#include "commands.h"
+#include "cmdlist.h"
 #include "command.h"
 #include "signals.h"
 #include "variable.h"	/* set_var_by_*() */
@@ -276,7 +276,7 @@ typedef enum {
 #define SOCKPROXY	0x04	/* indirect connection through proxy server */
 #define SOCKTELNET	0x08	/* server supports telnet protocol */
 #define SOCKMAYTELNET	0x10	/* server might support telnet protocol */
-#define SOCKCOMPRESS2	0x20	/* server has enabled MCCP v2 */
+#define SOCKCOMPRESS	0x20	/* server has enabled MCCP v1 or v2 */
 #define SOCKALLOCADDRS	0x40	/* addrs allocated by tf, not getaddrinfo */
 #define SOCKECHO	0x80	/* receive all sent text (loopback) */
 
@@ -301,7 +301,7 @@ typedef struct Sock {		/* an open connection to a server */
     Stringp buffer;		/* buffer for incoming characters */
     Stringp subbuffer;		/* buffer for incoming characters */
     Queue queue;		/* queue of incoming lines */
-    String *prompt;		/* prompt from server */
+    conString *prompt;		/* prompt from server */
     struct timeval prompt_timeout; /* when does unterm'd line become a prompt */
     int ttype;			/* index into enum_ttype[] */
     attr_t attrs;		/* current text attributes */
@@ -314,7 +314,7 @@ typedef struct Sock {		/* an open connection to a server */
 #if HAVE_MCCP
     z_stream *zstream;		/* state of compressed stream */
 #endif
-#if HAVE_LIBSSL
+#if HAVE_SSL
     SSL *ssl;			/* SSL state */
 #endif
 } Sock;
@@ -452,13 +452,18 @@ STATIC_STRING(no_tn_reply, " [no reply (option was already agreed on)]", 0);
 
 #define ANSI_CSI	'\233'	/* ANSI terminal Command Sequence Intro */
 
+#if HAVE_MCCP /* hack for broken MCCPv1 subnegotiation */
+char mccp1_subneg[] = { TN_IAC, TN_SB, TN_COMPRESS, TN_WILL, TN_SE };
+#endif
+
 Sock *xsock = NULL;		/* current (transmission) socket */
 int quit_flag = FALSE;		/* Are we all done? */
 int active_count = 0;		/* # of (non-current) active sockets */
 String *incoming_text = NULL;
 const int feature_IPv6 = ENABLE_INET6 - 0;
+const int feature_MCCPv1 = HAVE_MCCP - 0;
 const int feature_MCCPv2 = HAVE_MCCP - 0;
-const int feature_ssl = HAVE_LIBSSL - 0;
+const int feature_ssl = HAVE_SSL - 0;
 const int feature_SOCKS = SOCKS - 0;
 
 #define CONNETFAIL(sock, what, why) \
@@ -489,7 +494,7 @@ do { \
     do_hook(H_DISCONNECT, "%% Connection to %s closed: %s: %s", "%s %s: %s", \
 	where, what, why)
 
-#if HAVE_LIBSSL
+#if HAVE_SSL
 static void ssl_err(const char *str)
 {
     unsigned long e;
@@ -611,7 +616,7 @@ void init_sock(void)
     telnet_label[(UCHAR)TN_DONT]	= "DONT";
     telnet_label[(UCHAR)TN_IAC]		= "IAC";
 
-#if HAVE_LIBSSL
+#if HAVE_SSL
     init_ssl();
 #endif
 }
@@ -830,7 +835,7 @@ void main_loop(void)
 
 		    /* If there's a partial line that's past prompt_timeout,
 		     * make it a prompt. */
-		    if (!xsock->prompt && xsock->prompt_timeout.tv_sec) {
+		    if (xsock->prompt_timeout.tv_sec) {
 			gettime(&now);
 			if (tvcmp(&xsock->prompt_timeout, &now) < 0) {
 			    handle_implicit_prompt();
@@ -865,10 +870,14 @@ void main_loop(void)
             break;
         }
 
-        if (fsock && fsock->constate == SS_DEAD) {
-            if (auto_fg) fg_live_sock();
-            else fg_sock(NULL, FALSE);
+#if 0
+        if (fsock && fsock->constate >= SS_ZOMBIE && auto_fg &&
+	    !(fsock->world->screen->nnew || fsock->queue.list.head))
+	{
+            fg_live_sock();
         }
+#endif
+
         /* garbage collection */
         if (depth == 1) {
             if (sock && sock->constate == SS_DEAD) sock = NULL;
@@ -883,7 +892,7 @@ void main_loop(void)
 	fsock = NULL;
 	xsock = NULL;
         while (hsock) nukesock(hsock);
-#if HAVE_LIBSSL
+#if HAVE_SSL
 	SSL_CTX_free(ssl_ctx);
 #endif
     }
@@ -920,7 +929,7 @@ void readers_set(int fd)
     if (fd >= nfds) nfds = fd + 1;
 }
 
-int tog_bg(void)
+int tog_bg(Var *var)
 {
     Sock *sock;
     if (background)
@@ -930,7 +939,7 @@ int tog_bg(void)
     return 1;
 }
 
-int tog_keepalive(void)
+int tog_keepalive(Var *var)
 {
     Sock *sock;
     int flags;
@@ -962,6 +971,17 @@ World *xworld(void)
 int xsock_is_fg(void)
 {
     return xsock == fsock;
+}
+
+int have_active_socks(void)
+{
+    Sock *sock;
+
+    for (sock = hsock; sock; sock = sock->next) {
+	if (sock->world->screen->nnew || sock->queue.list.head)
+	    return 1;
+    }
+    return 0;
 }
 
 /* set alert_id on xsock, so fg_sock can decide whether to clear alert */
@@ -1027,6 +1047,7 @@ static int fg_sock(Sock *sock, int quiet)
     if (fsock) {                          /* the socket being backgrounded... */
 	/* ...has new text */
         if (fsock->world->screen->nnew || fsock->queue.list.head) {
+	    fsock->world->screen->active = 1;
             ++active_count;
             update_status_field(NULL, STAT_ACTIVE);
 	/* ...is dead, with all text seen */
@@ -1048,7 +1069,8 @@ static int fg_sock(Sock *sock, int quiet)
 	}
 	if (sock->constate == SS_CONNECTED)
 	    FD_SET(sock->fd, &readers);
-        if (sock->world->screen->nnew) {
+        if (sock->world->screen->active) {
+	    sock->world->screen->active = 0;
             --active_count;
             update_status_field(NULL, STAT_ACTIVE);
         }
@@ -1058,7 +1080,7 @@ static int fg_sock(Sock *sock, int quiet)
             "---- World %s (dead) ----" : "---- World %s ----",
            sock->world->name);
 	switch_screen(quiet || !bg_output);
-        tog_lp();
+        tog_lp(NULL);
         update_prompt(sock->prompt, 1);
         if (sockmload) wload(sock->world);
     } else {
@@ -1078,7 +1100,7 @@ struct Value *handle_fg_command(String *args, int offset)
     long num = 0;
     Sock *sock;
 
-    startopt(args, "nlqs<>c#");
+    startopt(CS(args), "nlqs<>c#");
     while ((opt = nextopt(NULL, &num, NULL, &offset))) {
         switch (opt) {
         case 'n':  nosock = TRUE;  break;
@@ -1185,7 +1207,7 @@ static int opensock(World *world, int flags)
 	xsock->myaddr = NULL;
 	xsock->addrs = NULL;
 	xsock->addr = NULL;
-#if HAVE_LIBSSL
+#if HAVE_SSL
 	xsock->ssl = NULL;
 #endif
     }
@@ -1228,7 +1250,7 @@ static int opensock(World *world, int flags)
     if (flags & CONN_AUTOLOGIN) xsock->flags |= SOCKLOGIN;
     if (world->flags & WORLD_ECHO) xsock->flags |= SOCKECHO;
     if ((flags & CONN_SSL) || (world->flags & WORLD_SSL)) {
-#if HAVE_LIBSSL
+#if HAVE_SSL
 	xsock->ssl = SSL_new(ssl_ctx);
 #else
         CONFAIL(xsock, "ssl", "not supported");
@@ -1458,7 +1480,7 @@ static int openconn(Sock *sock)
         return 0;
     }
 
-#if HAVE_LIBSSL
+#if HAVE_SSL
     if (xsock->ssl && SSL_set_fd(xsock->ssl, xsock->fd) <= 0) {
         CONFAIL(xsock, "SSL", ERR_error_string(ERR_get_error(), NULL));
         killsock(xsock);
@@ -1909,7 +1931,7 @@ static int establish(Sock *sock)
 	ntohs(((struct sockaddr_in*)xsock->addr->ai_addr)->sin_port) == 23)
 	    xsock->flags |= SOCKTELNET;
 
-#if HAVE_LIBSSL
+#if HAVE_SSL
     if (xsock->ssl) {
 	int sslret;
 	sslret = SSL_connect(xsock->ssl);
@@ -1956,12 +1978,16 @@ static int establish(Sock *sock)
 static void killsock(Sock *sock)
 {
     if (sock->constate >= SS_ZOMBIE) return;
+#if 0 /* There may be a disconnect hook AFTER this function... */
     if (sock == fsock || sock->queue.list.head || sock->world->screen->nnew) {
 	sock->constate = SS_ZOMBIE;
     } else {
 	sock->constate = SS_DEAD;
 	dead_socks++;
     }
+#else /* ... so we must unconditionally enter ZOMBIE state. */
+    sock->constate = SS_ZOMBIE;
+#endif
     sock->fsastate = '\0';
     sock->attrs = 0;
     VEC_ZERO(&sock->tn_them);
@@ -1985,7 +2011,7 @@ static void killsock(Sock *sock)
 	    freeaddrinfo(sock->addrs);
     }
     if (sock->myaddr) freeaddrinfo(sock->myaddr);
-#if HAVE_LIBSSL
+#if HAVE_SSL
     if (sock->ssl) {
 	SSL_shutdown(sock->ssl);
 	SSL_free(sock->ssl);
@@ -2036,7 +2062,8 @@ static void nukesock(Sock *sock)
     killsock(sock);
     *((sock == hsock) ? &hsock : &sock->prev->next) = sock->next;
     *((sock == tsock) ? &tsock : &sock->next->prev) = sock->prev;
-    if (sock->world->screen->nnew) {
+    if (sock->world->screen->active) {
+	sock->world->screen->active = 0;
         --active_count;
         update_status_field(NULL, STAT_ACTIVE);
     }
@@ -2047,6 +2074,7 @@ static void nukesock(Sock *sock)
     FREE(sock);
 }
 
+#if 0
 static void fg_live_sock(void)
 {
     /* If the fg sock is dead, find another sock to put in fg.  Since this
@@ -2054,7 +2082,7 @@ static void fg_live_sock(void)
      * keep it that way.  Note that a user hook in fg_sock() could kill the
      * new fg sock, so we must loop until the new fg sock stays alive.
      */
-    while (fsock && (fsock->constate == SS_DEAD)) {
+    while (fsock && (fsock->constate >= SS_ZOMBIE)) {
         for (xsock = hsock; xsock; xsock = xsock->next) {
             if (xsock->constate < SS_ZOMBIE)
 		break;
@@ -2062,6 +2090,7 @@ static void fg_live_sock(void)
         fg_sock(xsock, FALSE);
     }
 }
+#endif
 
 /* delete all dead sockets */
 static void nuke_dead_socks(void)
@@ -2081,7 +2110,8 @@ static void nuke_dead_socks(void)
     if (quitdone && !hsock) quit_flag = 1;
 }
 
-static void queue_socket_line(Sock *sock, String *line, int offset, attr_t attr)
+static void queue_socket_line(Sock *sock, const conString *line, int offset,
+    attr_t attr)
 {
     String *new;
     new = StringnewM(line->data + offset, line->len - offset, attr,
@@ -2102,8 +2132,8 @@ static void dc(Sock *s)
     xsock = s;
     flushxsock();
     Sprintf(buffer, "%% Connection to %s closed.", s->world->name);
-    world_output(s->world, buffer);
-    if (xsock != fsock) oputline(buffer);
+    world_output(s->world, CS(buffer));
+    if (xsock != fsock) oputline(CS(buffer));
     zombiesock(xsock);
     xsock = oldxsock;
 }
@@ -2138,7 +2168,8 @@ struct Value *handle_dc_command(String *args, int offset)
 struct Value *handle_listsockets_command(String *args, int offset)
 {
     Sock *sock;
-    char idlebuf[16], linebuf[16], *ptr, state;
+    char idlebuf[16], linebuf[16], state;
+    const char *ptr;
     time_t now;
     int t, opt;
     int count = 0, error = 0, shortflag = FALSE, mflag = matching;
@@ -2147,7 +2178,7 @@ struct Value *handle_listsockets_command(String *args, int offset)
     init_pattern_str(&pat_name, NULL);
     init_pattern_str(&pat_type, NULL);
 
-    startopt(args, "m:sT:");
+    startopt(CS(args), "m:sT:");
     while ((opt = nextopt(&ptr, NULL, NULL, &offset))) {
         switch(opt) {
         case 'm':
@@ -2229,12 +2260,13 @@ struct Value *handle_listsockets_command(String *args, int offset)
 	    sock->constate < SS_CONNECTED ? '?' :
             sock->constate >= SS_ZOMBIE ? '!' :
 	    sock->constate == SS_OPEN ? 'O' :
-#if HAVE_LIBSSL
+	    sock->constate == SS_CONNECTED && sock->fsastate == TN_SB ? 'S' :
+#if HAVE_SSL
 	    sock->constate == SS_CONNECTED && sock->ssl ? 'X' :
 #endif
 	    sock->constate == SS_CONNECTED ? 'C' :
 	    '#' /* shouldn't happen */;
-	if (sock->flags & SOCKCOMPRESS2)
+	if (sock->flags & SOCKCOMPRESS)
 	    state = lcase(state);
         oprintf("%c%c%c"
 	    " %s %s %-11.11s %-15.15s %-26.26s %.6s",
@@ -2252,7 +2284,8 @@ listsocket_error:
     return newint(count);
 }
 
-int handle_send_function(String *string, const char *world, const char *flags)
+int handle_send_function(conString *string, const char *world,
+    const char *flags)
 {
     const char *p;
     int result = 0, eol_flag = 1, hook_flag = 0;
@@ -2282,7 +2315,7 @@ int handle_send_function(String *string, const char *world, const char *flags)
     return result;
 }
 
-int handle_fake_recv_function(String *string, const char *world,
+int handle_fake_recv_function(conString *string, const char *world,
     const char *flags)
 {
     Sock *sock;
@@ -2300,7 +2333,7 @@ int handle_fake_recv_function(String *string, const char *world,
 
     sock = (!world || !*world) ? xsock : find_sock(world);
     if (!sock ||
-	xsock->constate <= SS_CONNECTING || xsock->constate >= SS_ZOMBIE)
+	sock->constate <= SS_CONNECTING || sock->constate >= SS_ZOMBIE)
     {
         eprintf("no open world %s", world ? world : "");
 	return 0;
@@ -2321,16 +2354,16 @@ static int transmit(const char *str, unsigned int numtowrite)
     if (!xsock || xsock->constate != SS_CONNECTED)
         return 0;
     while (numtowrite) {
-#if HAVE_LIBSSL
+#if HAVE_SSL
 	if (xsock->ssl) {
 	    numwritten = SSL_write(xsock->ssl, str, numtowrite);
 	    if (numwritten <= 0) {
+		zombiesock(xsock); /* before hook, so sock state is correct */
 		ssl_io_err(xsock, numwritten, H_DISCONNECT);
-		zombiesock(xsock);
 		return 0;
 	    }
 	} else
-#endif /* HAVE_LIBSSL */
+#endif /* HAVE_SSL */
 	{
 	    numwritten = send(xsock->fd, str, numtowrite, 0);
 	    if (numwritten < 0) {
@@ -2344,7 +2377,7 @@ static int transmit(const char *str, unsigned int numtowrite)
 		    return 0;
 		} else {
 		    flushxsock();
-		    zombiesock(xsock);
+		    zombiesock(xsock); /* before hook, so state is correct */
 		    DISCON(xsock->world->name, "send", strerror(err));
 		    return 0;
 		}
@@ -2382,10 +2415,16 @@ int send_line(const char *src, unsigned int len, int eol_flag)
     if (xsock && xsock->prompt) {
         /* Not the same as unprompt(): we keep attrs, and delete buffer. */
         Stringtrunc(xsock->buffer, 0);
-        Stringfree(xsock->prompt);
+        conStringfree(xsock->prompt);
         xsock->prompt = NULL;
         xsock->prepromptattrs = 0;
         if (xsock == fsock) update_prompt(xsock->prompt, 1);
+    }
+
+    if (secho) {
+	String *str = Stringnew(NULL, 0, 0);
+	Sprintf(str, "%S%.*s%A", sprefix, len, src, getattrvar(VAR_secho_attr));
+	world_output(xsock->world, CS(str));
     }
 
     max = 2 * len + 3;
@@ -2419,7 +2458,7 @@ int send_line(const char *src, unsigned int len, int eol_flag)
 static void handle_socket_lines(void)
 {
     static int depth = 0;
-    String *line;
+    conString *line;
 
     if (depth) return;	/* don't recurse */
     if (!(line = dequeue(&xsock->queue)))
@@ -2433,7 +2472,7 @@ static void handle_socket_lines(void)
 	    &xsock->attrs);
 	incoming_text->time = line->time;
 	incoming_text->attrs |= line->attrs & (F_PROMPT | F_PROMPTHOOK);
-	Stringfree(line);
+	conStringfree(line);
 	incoming_text->links++;
 
 	if (incoming_text->attrs & F_PROMPTHOOK) {
@@ -2464,7 +2503,7 @@ static void handle_socket_lines(void)
 		incoming_text->attrs |= F_GAG;
 	    }
 
-	    world_output(xsock->world, incoming_text);
+	    world_output(xsock->world, CS(incoming_text));
 	    Stringfree(incoming_text);
 	}
     } while ((line = dequeue(&xsock->queue)));
@@ -2475,7 +2514,7 @@ static void handle_socket_lines(void)
 }
 
 /* log, record, and display line as if it came from sock */
-void world_output(World *world, String *line)
+void world_output(World *world, conString *line)
 {
     Sock *saved_xsock = xsock;
     xsock = world ? world->sock : NULL;
@@ -2490,15 +2529,15 @@ void world_output(World *world, String *line)
         } else {
 	    static int preactivity_depth = 0; /* avoid recursion */
 	    /* line was already tested for gag, so it WILL print */
-            int was_inactive = !world->screen->nnew;
-	    if (!preactivity_depth && was_inactive) {
+	    if (!preactivity_depth && !world->screen->active) {
 		preactivity_depth++;
                 do_hook(H_PREACTIVITY, NULL, "%s", world->name);
 		preactivity_depth--;
 	    }
             enscreen(world->screen, line); /* ignores preactivity_depth */
             if (!preactivity_depth) {
-		if (was_inactive) {
+		if (!world->screen->active && !(line->attrs & F_NOACTIVITY)) {
+		    world->screen->active = 1;
 		    ++active_count;
 		    update_status_field(NULL, STAT_ACTIVE);
 		    do_hook(H_ACTIVITY, "%% Activity in world %s", "%s",
@@ -2508,24 +2547,24 @@ void world_output(World *world, String *line)
             }
         }
     }
-    Stringfree(line);
+    conStringfree(line);
     xsock = saved_xsock;
 }
 
 /* get the prompt for the fg sock */
-String *fgprompt(void)
+conString *fgprompt(void)
 {
     return (fsock) ? fsock->prompt : NULL;
 }
 
-int tog_lp(void)
+int tog_lp(Var *var)
 {
     if (!fsock) {
         /* do nothing */
     } else if (lpflag) {
         if (!fsock->queue.list.head && fsock->buffer->len) {
-            fsock->prompt = decode_ansi(fsock->buffer->data, fsock->attrs,
-                emulation, &fsock->attrs);
+            fsock->prompt = CS(decode_ansi(fsock->buffer->data, fsock->attrs,
+                emulation, &fsock->attrs));
             fsock->prompt->links++;
             set_refresh_pending(REF_PHYSICAL);
         }
@@ -2541,7 +2580,7 @@ int tog_lp(void)
 struct Value *handle_prompt_command(String *args, int offset)
 {
     if (xsock) {
-	queue_socket_line(xsock, args, offset, F_PROMPT);
+	queue_socket_line(xsock, CS(args), offset, F_PROMPT);
     }
     return newint(!!xsock);
 }
@@ -2553,7 +2592,7 @@ static void handle_prompt(String *str, int offset, int confirmed)
         unprompt(xsock, 0);
     }
     assert(str->links == 1);
-    xsock->prompt = str;
+    xsock->prompt = CS(str);
     /* Old versions did trigger checking here.  Removing it breaks
      * compatibility, but I doubt many users will care.  Leaving
      * it in would not be right for /prompt.
@@ -2583,7 +2622,7 @@ static void unprompt(Sock *sock, int update)
 {
     if (!sock || !sock->prompt) return;
     sock->attrs = sock->prepromptattrs;  /* restore original attrs */
-    Stringfree(sock->prompt);
+    conStringfree(sock->prompt);
     sock->prompt = NULL;
     sock->prepromptattrs = 0;
     if (update) update_prompt(sock->prompt, 1);
@@ -2600,9 +2639,7 @@ static void schedule_prompt(Sock *sock)
 
 static void test_prompt(void)
 {
-    if (lpflag && !xsock->queue.list.head &&
-	xsock->buffer->len && !xsock->prompt)
-    {
+    if (lpflag && !xsock->queue.list.head && xsock->buffer->len) {
 	if (do_hook(H_PROMPT, NULL, "%S", xsock->buffer)) {
 	    /* The hook took care of the unterminated line. */
 	    Stringtrunc(xsock->buffer, 0);
@@ -2620,14 +2657,13 @@ static void telnet_subnegotiation(void)
 {
     char *p;
     int ttype;
-    static String enum_ttype[] = {
+    static conString enum_ttype[] = {
         STRING_LITERAL("TINYFUGUE"),
         STRING_LITERAL("ANSI-ATTR"),
         STRING_LITERAL("ANSI"), /* a lie, but probably has the desired effect */
         STRING_LITERAL("UNKNOWN"),
         STRING_NULL };
 
-    Sappendf(xsock->subbuffer, "%c%c", TN_IAC, TN_SE);
     telnet_debug("recv", xsock->subbuffer->data, xsock->subbuffer->len);
     Stringtrunc(xsock->subbuffer, xsock->subbuffer->len - 2);
     p = xsock->subbuffer->data + 2;
@@ -2642,8 +2678,9 @@ static void telnet_subnegotiation(void)
         Sappendf(telbuf, "%c%c", TN_IAC, TN_SE);
         telnet_send(telbuf);
         break;
+    case TN_COMPRESS:
     case TN_COMPRESS2:
-	xsock->flags |= SOCKCOMPRESS2;
+	xsock->flags |= SOCKCOMPRESS;
 	break;
     default:
         break;
@@ -2691,6 +2728,7 @@ static int handle_socket_input(const char *simbuffer, int simlen)
 #endif
     fd_set readfds;
     int count, n, received = 0;
+    struct timeval timeout;
 
     if (xsock->constate <= SS_CONNECTING || xsock->constate >= SS_ZOMBIE)
 	return 0;
@@ -2701,6 +2739,10 @@ static int handle_socket_input(const char *simbuffer, int simlen)
          * we're wrong, the previous prompt appears as output.  But if we did
          * the opposite, a real begining of a line would never appear in the
          * output window; that would be a worse mistake.)
+	 * XXX The SOCKPROMPT test has been here since at least version 3.1,
+	 * but I'm not sure it's right.  It means that terminated (EOR or
+	 * GOAHEAD) prompts will NOT be cleared when new text arrives (it
+	 * will only be cleared when there is a new prompt).
          */
         unprompt(xsock, xsock==fsock);
     }
@@ -2716,12 +2758,12 @@ static int handle_socket_input(const char *simbuffer, int simlen)
 		count = 0;  /* no reading */
 	    } else
 #endif
-#if HAVE_LIBSSL
+#if HAVE_SSL
 	    if (xsock->ssl) {
 		count = SSL_read(xsock->ssl, inbuffer, sizeof(inbuffer));
 		if (count <= 0) {
+		    zombiesock(xsock); /* before hook, so state is correct */
 		    ssl_io_err(xsock, count, H_DISCONNECT);
-		    zombiesock(xsock);
 		    return received;
 		}
 	    } else
@@ -2733,20 +2775,21 @@ static int handle_socket_input(const char *simbuffer, int simlen)
 		count = recv(xsock->fd, inbuffer, sizeof(inbuffer), 0);
 		if (count <= 0) {
 		    int err = errno;
+		    constate_t state = xsock->constate;
 		    if (errno == EINTR)
 			return 0;
 		    /* Socket is blocking; EAGAIN and EWOULDBLOCK impossible. */
 		    if (xsock->buffer->len) {
-			queue_socket_line(xsock, xsock->buffer, 0, 0);
+			queue_socket_line(xsock, CS(xsock->buffer), 0, 0);
 			Stringtrunc(xsock->buffer, 0);
 		    }
 		    flushxsock();
-		    zombiesock(xsock);
 		    /* On some systems, a socket that failed nonblocking connect
 		     * selects readable instead of writable.  If SS_CONNECTING,
 		     * that's what happened, so we do CONNETFAIL not DISCONNECT.
 		     */
-		    if (xsock->constate == SS_CONNECTING)
+		    zombiesock(xsock); /* before hook, so constate is correct */
+		    if (state == SS_CONNECTING)
 			CONFAIL(xsock, "recv", strerror(err));
 		    else do_hook(H_DISCONNECT, (count < 0) ?
 			"%% Connection to %s closed: %s: %s" :
@@ -2771,18 +2814,23 @@ static int handle_socket_input(const char *simbuffer, int simlen)
 		    count = (char*)xsock->zstream->next_out - outbuffer;
 		    break;
 		case Z_STREAM_END:
-		    place = (buffer = (char*)xsock->zstream->next_in) - 1;
+		    /* handle stuff inflated before stream end */
+		    count = (char*)xsock->zstream->next_out - outbuffer;
+		    received += handle_socket_input(outbuffer, count);
+		    /* prepare to handle noncompressed stuff after stream end */
+		    buffer = (char*)xsock->zstream->next_in;
 		    count = xsock->zstream->avail_in;
+		    /* clean up zstream */
 		    inflateEnd(xsock->zstream);
 		    FREE(xsock->zstream);
 		    xsock->zstream = NULL;
-		    xsock->flags &= ~SOCKCOMPRESS2;
+		    xsock->flags &= ~SOCKCOMPRESS;
 		    break;
 		default:
+		    flushxsock();
+		    zombiesock(xsock); /* before hook, so constate is correct */
 		    DISCON(xsock->world->name, "inflate",
 			xsock->zstream->msg ? xsock->zstream->msg : "unknown");
-		    flushxsock();
-		    zombiesock(xsock);
 		    return received;
 		}
 	    } else
@@ -2812,7 +2860,7 @@ static int handle_socket_input(const char *simbuffer, int simlen)
                 case TN_GA: case TN_EOR:
                     /* This is definitely a prompt. */
                     telnet_recv(rawchar, 0);
-		    queue_socket_line(xsock, xsock->buffer, 0, F_PROMPTHOOK);
+		    queue_socket_line(xsock, CS(xsock->buffer), 0, F_PROMPTHOOK);
 		    Stringtrunc(xsock->buffer, 0);
                     break;
                 case TN_SB:
@@ -2866,10 +2914,11 @@ static int handle_socket_input(const char *simbuffer, int simlen)
             } else if (xsock->fsastate == TN_SB) {
 		if (xsock->subbuffer->len > 255) {
 		    /* It shouldn't take this long; server is broken.  Abort. */
-		    SStringcat(xsock->buffer, xsock->subbuffer);
+		    SStringcat(xsock->buffer, CS(xsock->subbuffer));
 		    Stringtrunc(xsock->subbuffer, 0);
 		} else if (xsock->substate == TN_IAC) {
                     if (rawchar == TN_SE) {
+			Sappendf(xsock->subbuffer, "%c%c", TN_IAC, TN_SE);
                         xsock->fsastate = '\0';
                         telnet_subnegotiation();
                     } else {
@@ -2881,9 +2930,17 @@ static int handle_socket_input(const char *simbuffer, int simlen)
                 } else {
                     Stringadd(xsock->subbuffer, rawchar);
                     xsock->substate = '\0';
+#if HAVE_MCCP /* hack for broken MCCPv1 subnegotiation */
+		    if (xsock->subbuffer->len == 5 &&
+			memcmp(xsock->subbuffer->data, mccp1_subneg, 5) == 0)
+		    {
+			xsock->fsastate = '\0';
+			telnet_subnegotiation();
+		    }
+#endif
                 }
 #if HAVE_MCCP
-		if (xsock->flags & SOCKCOMPRESS2 && !xsock->zstream) {
+		if (xsock->flags & SOCKCOMPRESS && !xsock->zstream) {
 		    /* compression was just enabled. */
 		    xsock->zstream = new_zstream();
 		    if (!xsock->zstream) {
@@ -2908,6 +2965,7 @@ static int handle_socket_input(const char *simbuffer, int simlen)
                     rawchar == TN_SGA ||
 #endif
 #if HAVE_MCCP
+		    (rawchar == TN_COMPRESS && mccp) ||
 		    (rawchar == TN_COMPRESS2 && mccp) ||
 #endif
                     rawchar == TN_ECHO ||
@@ -2991,7 +3049,7 @@ static int handle_socket_input(const char *simbuffer, int simlen)
 non_telnet:
             if (rawchar == '\n') {
                 /* Complete line received.  Queue it. */
-                queue_socket_line(xsock, xsock->buffer, 0, 0);
+                queue_socket_line(xsock, CS(xsock->buffer), 0, 0);
 		Stringtrunc(xsock->buffer, 0);
                 xsock->fsastate = rawchar;
 
@@ -3010,15 +3068,15 @@ non_telnet:
                 /* Ignore CR and NUL. */
                 xsock->fsastate = rawchar;
 
-            } else if (rawchar == '\b' && emulation >= EMUL_PRINT) {
-                if (xsock->fsastate == '*') {
-                    /* "*\b" is an LP editor prompt. */
-		    queue_socket_line(xsock, xsock->buffer, 0, F_PROMPTHOOK);
-		    Stringtrunc(xsock->buffer, 0);
-                } else if (xsock->buffer->len && emulation >= EMUL_PRINT) {
-                    Stringtrunc(xsock->buffer, xsock->buffer->len - 1);
-                }
+            } else if (rawchar == '\b' && emulation >= EMUL_PRINT &&
+                xsock->fsastate == '*')
+	    {
+		/* "*\b" is an LP editor prompt. */
+		queue_socket_line(xsock, CS(xsock->buffer), 0, F_PROMPTHOOK);
+		Stringtrunc(xsock->buffer, 0);
                 xsock->fsastate = '\0';
+		/* other occurances of '\b' are handled by decode_ansi(), so
+		 * ansi codes aren't clobbered before they're interpreted */
 
             } else {
                 /* Normal character. */
@@ -3038,8 +3096,6 @@ non_telnet:
 
 	received += count;
 
-	if (simbuffer || received > SPAM) break;
-
 #if HAVE_MCCP
 	/* If there's still un-inflated stuff, we must process it before we
 	 * exit this loop.
@@ -3050,9 +3106,12 @@ non_telnet:
 	}
 #endif
 
+	if (simbuffer || received > SPAM) break; /* after uninflated check */
+
         FD_ZERO(&readfds);
         FD_SET(xsock->fd, &readfds);
-        if ((n = select(xsock->fd + 1, &readfds, NULL, NULL, &tvzero)) < 0) {
+	timeout = tvzero; /* don't use tvzero directly, select may modify it */
+        if ((n = select(xsock->fd + 1, &readfds, NULL, NULL, &timeout)) < 0) {
             if (errno != EINTR) die("handle_socket_input: select", errno);
         }
 
@@ -3172,13 +3231,13 @@ static void telnet_debug(const char *dir, const char *str, int len)
             } else if (state == 0x100) {
                 Stringadd(buffer, *str);
             } else {
-                Sappendf(buffer, " %d", (unsigned int)*str);
+                Sappendf(buffer, " %u", (unsigned char)*str);
                 state = 0;
             }
         }
         nolog++;
         /* norecord++; */
-        world_output(xsock->world, buffer);
+        world_output(xsock->world, CS(buffer));
         /* norecord--; */
         nolog--;
     }
@@ -3270,7 +3329,7 @@ const char *world_info(const char *worldname, const char *fieldname)
         result = worldname ? world->myhost : world->sock->myhost;
     } else if (strcmp("cipher", fieldname) == 0) {
 	result =
-#if HAVE_LIBSSL
+#if HAVE_SSL
 	    (world->sock && world->sock->ssl) ?
 	    SSL_get_cipher_name(world->sock->ssl) :
 #endif
@@ -3314,6 +3373,6 @@ int nactive(const char *worldname)
         return active_count;
     if (!(w = find_world(worldname)) || !w->sock)
         return 0;
-    return w->screen->nnew;
+    return w->screen->active ? w->screen->nnew : 0;
 }
 

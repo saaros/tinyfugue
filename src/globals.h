@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: globals.h,v 35000.63 2004/02/17 06:44:37 hawkeye Exp $ */
+/* $Id: globals.h,v 35000.68 2004/07/21 00:19:41 hawkeye Exp $ */
 
 #ifndef GLOBALS_H
 #define GLOBALS_H
@@ -27,9 +27,10 @@ typedef enum {
     TYPE_FUNC     = 0x0100,	/* resolved ExprFunc (internal only) */
     TYPE_CMD      = 0x0200,	/* resolved BuiltinCmd (internal only) */
     TYPE_REGEX    = 0x0400,	/* STR: regular expression (internal only) */
-    TYPE_EXPR     = 0x0800,	/* STR: expression (internal only) */
-    TYPE_REGMATCH = 0x1000,	/* INT: result of regmatch() (internal only) */
-    TYPE_HMS      = 0x2000	/* TIME: was in H:M:S form (internal only) */
+    TYPE_EXPR     = 0x0800,	/* STR: tf expression (internal only) */
+    TYPE_ATTR     = 0x1000,	/* STR: attributes (internal only) */
+    TYPE_REGMATCH = 0x2000,	/* INT: result of regmatch() (internal only) */
+    TYPE_HMS      = 0x4000	/* TIME: was in H:M:S form (internal only) */
 } type_t;
 
 #define TYPES_BASIC \
@@ -51,7 +52,7 @@ typedef struct Value {
     const char *name;		/* identifier name (must be first member!) */
     type_t type;
     int count;			/* reference count */
-    String *sval;		/* string value (any type, not just STR) */
+    conString *sval;		/* string value (any type, not just STR) */
     union {
         long ival;		/* integer value (ENUM, POS, INT) */
         double fval;		/* float value (FLOAT) */
@@ -60,6 +61,7 @@ typedef struct Value {
 	struct Program *prog;	/* compiled expression (STR|EXPR) */
 	void *p;		/* other pointer type (FILE, FUNC, CMD) */
 	unsigned int hash;	/* hash value (ID) */
+	attr_t attr;		/* attributes (STR|ATTR) */
         struct Value *next;	/* valpool pointer */
     } u;
 } Value;
@@ -85,7 +87,7 @@ extern struct Value *newfloat_fl(double f, const char *file, int line);
 extern struct Value *newint_fl(long i, const char *file, int line);
 extern struct Value *newtime_fl(long s, long u,
               const char *file, int line);
-extern struct Value *newSstr_fl(String *S, const char *file, int line);
+extern struct Value *newSstr_fl(conString *S, const char *file, int line);
 extern struct Value *newstr_fl(const char *s, int len,
               const char *file, int line);
 extern struct Value *newid_fl(const char *id, int len,
@@ -93,18 +95,19 @@ extern struct Value *newid_fl(const char *id, int len,
 extern struct Value *valval_fl(Value *val, const char *file, int line);
 
 
-typedef int (Toggler)(void);
+typedef struct Var Var;
+typedef int (Toggler)(Var *var);
 
-typedef struct Var {
+struct Var {
     Value val;			/* value (must be first member!) */
     int flags;
-    String *enumvec;		/* list of valid enum values */
+    conString *enumvec;		/* list of valid enum values */
     Toggler *func;		/* called when value changes */
     struct ListEntry *node;	/* backpointer to node in list */
     short statuses;		/* # of status fields watching this var */
     short statusfmts;		/* # of status fields using this var as fmt */
     short statusattrs;		/* # of status fields using this var as attr */
-} Var;
+};
 
 
 enum Vars {
@@ -132,10 +135,12 @@ enum Vars {
 #define strvar(id)	(get_special_var(id)->val.sval)
 #define intvar(id)	(get_special_var(id)->val.u.ival)
 #define timevar(id)	(get_special_var(id)->val.u.tval)
+#define attrvar(id)	(get_special_var(id)->val.u.attr)
 
+#define getattrvar(id)	((attr_t)	attrvar(id))
 #define gettimevar(id)	(timevar(id))
 #define getintvar(id)	((long)          intvar(id))
-#define getstrvar(id)	((String*)       strvar(id))
+#define getstrvar(id)	((conString*)    strvar(id))
 #define getstdvar(id)	((char*)         (strvar(id) ? strvar(id)->data : NULL))
 
 #define MAIL		getstdvar(VAR_MAIL)
@@ -143,6 +148,7 @@ enum Vars {
 #define TFLIBDIR	getstdvar(VAR_TFLIBDIR)
 #define TFPATH		getstdvar(VAR_TFPATH)
 #define TFMAILPATH	getstdvar(VAR_TFMAILPATH)
+#define alert_attr	getattrvar(VAR_alert_attr)
 #define alert_time	gettimevar(VAR_alert_time)
 #define auto_fg		getintvar(VAR_auto_fg)
 #define background	getintvar(VAR_background)
@@ -159,11 +165,13 @@ enum Vars {
 #define defcompile	getintvar(VAR_defcompile)
 #define emulation 	getintvar(VAR_emulation)
 #define expand_tabs 	getintvar(VAR_expand_tabs)
+#define expnonvis 	getintvar(VAR_expnonvis)
 #define gag		getintvar(VAR_gag)
 #define async_name	getintvar(VAR_async_name)
 #define async_conn	getintvar(VAR_async_conn)
 #define gpri		getintvar(VAR_gpri)
 #define hilite		getintvar(VAR_hilite)
+#define hiliteattr	getattrvar(VAR_hiliteattr)
 #define histsize	getintvar(VAR_histsize)
 #define hookflag	getintvar(VAR_hook)
 #define hpri		getintvar(VAR_hpri)
@@ -176,7 +184,7 @@ enum Vars {
 #define kecho		getintvar(VAR_kecho)
 #define keepalive	getintvar(VAR_keepalive)
 #define keypad		getintvar(VAR_keypad)
-#define kprefix		getstdvar(VAR_kprefix)
+#define kprefix		getstrvar(VAR_kprefix)
 #define login		getintvar(VAR_login)
 #define lpflag		getintvar(VAR_lp)
 #define lpquote		getintvar(VAR_lpquote)
@@ -188,9 +196,10 @@ enum Vars {
 #define max_trig	getintvar(VAR_max_trig)
 #define mccp		getintvar(VAR_mccp)
 #define mecho		getintvar(VAR_mecho)
+#define mecho_attr	getattrvar(VAR_mecho_attr)
 #define meta_esc	getintvar(VAR_meta_esc)
 #define more		getintvar(VAR_more)
-#define mprefix		getstdvar(VAR_mprefix)
+#define mprefix		getstrvar(VAR_mprefix)
 #define oldslash	getintvar(VAR_oldslash)
 #define optimize_user	getintvar(VAR_optimize)
 #define pedantic	getintvar(VAR_pedantic)
@@ -199,16 +208,19 @@ enum Vars {
 #define proxy_port	getstdvar(VAR_proxy_port)
 #define process_time	gettimevar(VAR_ptime)
 #define qecho		getintvar(VAR_qecho)
-#define qprefix		getstdvar(VAR_qprefix)
+#define qprefix		getstrvar(VAR_qprefix)
 #define quietflag	getintvar(VAR_quiet)
 #define quitdone	getintvar(VAR_quitdone)
 #define redef		getintvar(VAR_redef)
 #define refreshtime	getintvar(VAR_refreshtime)
 #define scroll		getintvar(VAR_scroll)
+#define secho		getintvar(VAR_secho)
 #define shpause		getintvar(VAR_shpause)
 #define sigfigs		getintvar(VAR_sigfigs)
 #define snarf		getintvar(VAR_snarf)
 #define sockmload	getintvar(VAR_sockmload)
+#define sprefix		getstrvar(VAR_sprefix)
+#define status_attr	getattrvar(VAR_stat_attr)
 #define status_fields	getstdvar(VAR_stat_fields)
 #define status_pad	getstdvar(VAR_stat_pad)
 #define sub		getintvar(VAR_sub)

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: funclist.h,v 35000.56 2004/02/17 06:44:37 hawkeye Exp $ */
+/* $Id: funclist.h,v 35000.57 2004/06/20 19:35:23 hawkeye Exp $ */
 
 /* sorted by name */
 /*	 Name		Pure	Arguments */
@@ -24,7 +24,7 @@ funccode(cputime,	0,	0,  0),
 funccode(decode_ansi,	1,	1,  1),
 funccode(decode_attr,	1,	1,  2),
 funccode(echo,		0,	1,  4),
-/*funccode(encode_attr,	1,	1,  1), */
+funccode(encode_attr,	1,	1,  1),
 funccode(eval,		0,	1,  2),
 funccode(exp,		1,	1,  1),
 funccode(fake_recv,	0,	1,  3),

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: command.c,v 35004.126 2004/02/17 06:44:35 hawkeye Exp $";
+static const char RCSid[] = "$Id: command.c,v 35004.132 2004/07/18 08:57:08 hawkeye Exp $";
 
 
 /*****************************************************************
@@ -18,7 +18,7 @@ static const char RCSid[] = "$Id: command.c,v 35004.126 2004/02/17 06:44:35 hawk
 #include "util.h"
 #include "search.h"
 #include "tfio.h"
-#include "commands.h"
+#include "cmdlist.h"
 #include "command.h"
 #include "world.h"	/* World, find_world() */
 #include "socket.h"	/* openworld() */
@@ -36,98 +36,11 @@ static int quietload = 0;
 
 static void split_args(char *args);
 
-static HANDLER (handle_beep_command);
-static HANDLER (handle_bind_command);
-static HANDLER (handle_connect_command);
-static HANDLER (handle_core_command);
-static HANDLER (handle_features_command);
-static HANDLER (handle_gag_command);
-static HANDLER (handle_hilite_command);
-static HANDLER (handle_hook_command);
-static HANDLER (handle_lcd_command);
-static HANDLER (handle_let_command);
-static HANDLER (handle_limit_command);
-static HANDLER (handle_load_command);
-static HANDLER (handle_localecho_command);
-static HANDLER (handle_quit_command);
-static HANDLER (handle_relimit_command);
-static HANDLER (handle_restrict_command);
-static HANDLER (handle_save_command);
-static HANDLER (handle_set_command);
-static HANDLER (handle_setenv_command);
-static HANDLER (handle_sh_command);
-static HANDLER (handle_suspend_command);
-static HANDLER (handle_trigger_command);
-static HANDLER (handle_trigpc_command);
-static HANDLER (handle_unbind_command);
-static HANDLER (handle_undef_command);
-static HANDLER (handle_unlimit_command);
-static HANDLER (handle_version_command);
-
-  /* It is IMPORTANT that the commands be in alphabetical order! */
-
 static BuiltinCmd cmd_table[] =
 {
-/*   name	    function		    reserved? */
-  { "BEEP"        , handle_beep_command        , 0 },
-  { "BIND"        , handle_bind_command        , 0 },
-  { "CONNECT"     , handle_connect_command     , 0 },
-  { "CORE"        , handle_core_command        , 0 },
-  { "DC"          , handle_dc_command          , 0 },
-  { "DEF"         , handle_def_command         , 0 },
-  { "DOKEY"       , handle_dokey_command       , 0 },
-  { "EDIT"        , handle_edit_command        , 0 },
-  { "EVAL"        , handle_eval_command        , 1 },
-  { "EXIT"        , handle_exit_command        , 0 },
-  { "EXPORT"      , handle_export_command      , 0 },
-  { "FEATURES"    , handle_features_command    , 0 },
-  { "FG"          , handle_fg_command          , 0 },
-  { "GAG"         , handle_gag_command         , 0 },
-  { "HELP"        , handle_help_command        , 0 },
-  { "HILITE"      , handle_hilite_command      , 0 },
-  { "HISTSIZE"    , handle_histsize_command    , 0 },
-  { "HOOK"        , handle_hook_command        , 0 },
-  { "INPUT"       , handle_input_command       , 0 },
-  { "KILL"        , handle_kill_command        , 0 },
-  { "LCD"         , handle_lcd_command         , 0 },
-  { "LET"         , handle_let_command         , 0 },
-  { "LIMIT"       , handle_limit_command       , 0 },
-  { "LIST"        , handle_list_command        , 0 },
-  { "LISTSOCKETS" , handle_listsockets_command , 0 },
-  { "LISTSTREAMS" , handle_liststreams_command , 0 },
-  { "LISTVAR"     , handle_listvar_command     , 0 },
-  { "LISTWORLDS"  , handle_listworlds_command  , 0 },
-  { "LOAD"        , handle_load_command        , 0 },
-  { "LOCALECHO"   , handle_localecho_command   , 0 },
-  { "LOG"         , handle_log_command         , 0 },
-  { "PROMPT"      , handle_prompt_command      , 0 },
-  { "PS"          , handle_ps_command          , 0 },
-  { "PURGE"       , handle_purge_command       , 0 },
-  { "QUIT"        , handle_quit_command        , 0 },
-  { "QUOTE"       , handle_quote_command       , 0 },
-  { "RECALL"      , handle_recall_command      , 0 },
-  { "RECORDLINE"  , handle_recordline_command  , 0 },
-  { "RELIMIT"     , handle_relimit_command     , 0 },
-  { "REPEAT"      , handle_repeat_command      , 0 },
-  { "RESTRICT"    , handle_restrict_command    , 0 },
-  { "SAVE"        , handle_save_command        , 0 },
-  { "SAVEWORLD"   , handle_saveworld_command   , 0 },
-  { "SET"         , handle_set_command         , 0 },
-  { "SETENV"      , handle_setenv_command      , 0 },
-  { "SH"          , handle_sh_command          , 0 },
-  { "SHIFT"       , handle_shift_command       , 0 },
-  { "SUSPEND"     , handle_suspend_command     , 0 },
-  { "TRIGGER"     , handle_trigger_command     , 0 },  
-  { "TRIGPC"      , handle_trigpc_command      , 0 },
-  { "UNBIND"      , handle_unbind_command      , 0 },
-  { "UNDEF"       , handle_undef_command       , 0 },
-  { "UNDEFN"      , handle_undefn_command      , 0 },
-  { "UNLIMIT"     , handle_unlimit_command     , 0 },
-  { "UNSET"       , handle_unset_command       , 0 },
-  { "UNWORLD"     , handle_unworld_command     , 0 },
-  { "VERSION"     , handle_version_command     , 0 },
-  { "WATCHDOG"    , handle_watchdog_command    , 0 },
-  { "WATCHNAME"   , handle_watchname_command   , 0 },
+#define defcmd(name, func, reserved) \
+  { name, func, reserved },
+#include "cmdlist.h"
 };
 
 #define NUM_CMDS (sizeof(cmd_table) / sizeof(BuiltinCmd))
@@ -145,18 +58,18 @@ BuiltinCmd *find_builtin_cmd(const char *name)
         NUM_CMDS, sizeof(BuiltinCmd), cstrstructcmp);
 }
 
-static struct Value *handle_trigger_command(String *args, int offset)
+struct Value *handle_trigger_command(String *args, int offset)
 {
     World *world = NULL;
     int usedefault = TRUE, is_global = FALSE, result = 0, exec_list_long = 0;
     int opt;
     int hooknum = -1;
     String *old_incoming_text;
-    char *ptr;
+    const char *ptr;
 
     if (!borg) return shareval(val_zero);
 
-    startopt(args, "gw:h:nl");
+    startopt(CS(args), "gw:h:nl");
     while ((opt = nextopt(&ptr, NULL, NULL, &offset))) {
         switch (opt) {
             case 'g':
@@ -190,7 +103,7 @@ static struct Value *handle_trigger_command(String *args, int offset)
     }
 
     old_incoming_text = incoming_text;
-    (incoming_text = Stringodup(args, offset))->links++;
+    (incoming_text = Stringodup(CS(args), offset))->links++;
 
     result = find_and_run_matches(NULL, hooknum, &incoming_text, world,
 	is_global, exec_list_long);
@@ -201,7 +114,7 @@ static struct Value *handle_trigger_command(String *args, int offset)
 }
 
 int handle_substitute_func(
-    String *src,
+    conString *src,
     const char *attrstr,
     int inline_flag)
 {
@@ -216,7 +129,7 @@ int handle_substitute_func(
     if (!parse_attrs(attrstr, &attrs, 0))
 	return 0;
 
-    newstr = inline_flag ? decode_attr(src, 0) : Stringdup(src);
+    newstr = inline_flag ? decode_attr(src, 0, 0) : Stringdup(src);
     if (!newstr)
 	return 0;
     /* Start w/ incoming_text->attrs, adjust with src->attrs and attrstr. */
@@ -233,7 +146,7 @@ int handle_substitute_func(
  * Worlds *
  **********/
 
-static struct Value *handle_connect_command(String *args, int offset)
+struct Value *handle_connect_command(String *args, int offset)
 {
     char *host, *port = NULL;
     int opt, flags = 0;
@@ -241,7 +154,7 @@ static struct Value *handle_connect_command(String *args, int offset)
     if (login) flags |= CONN_AUTOLOGIN;
     if (quietflag) flags |= CONN_QUIETLOGIN;
 
-    startopt(args, "lqxfb");
+    startopt(CS(args), "lqxfb");
     while ((opt = nextopt(NULL, NULL, NULL, &offset))) {
         switch (opt) {
             case 'l':  flags &= ~CONN_AUTOLOGIN; break;
@@ -261,7 +174,7 @@ static struct Value *handle_connect_command(String *args, int offset)
     return newint(openworld(host, *port ? port : NULL, flags));
 }
 
-static struct Value *handle_localecho_command(String *args, int offset)
+struct Value *handle_localecho_command(String *args, int offset)
 {
     if (!(args->len - offset)) return newint(local_echo(-1));
     else if (cstrcmp(args->data + offset, "on") == 0) local_echo(1);
@@ -273,17 +186,17 @@ static struct Value *handle_localecho_command(String *args, int offset)
  * Variables *
  *************/
 
-static struct Value *handle_set_command(String *args, int offset)
+struct Value *handle_set_command(String *args, int offset)
 {
     return newint(command_set(args, offset, FALSE, FALSE));
 }
 
-static struct Value *handle_setenv_command(String *args, int offset)
+struct Value *handle_setenv_command(String *args, int offset)
 {
     return newint(command_set(args, offset, TRUE, FALSE));
 }
 
-static struct Value *handle_let_command(String *args, int offset)
+struct Value *handle_let_command(String *args, int offset)
 {
     return newint(command_set(args, offset, FALSE, TRUE));
 }
@@ -291,19 +204,19 @@ static struct Value *handle_let_command(String *args, int offset)
 /********
  * Misc *
  ********/
-static struct Value *handle_quit_command(String *args, int offset)
+struct Value *handle_quit_command(String *args, int offset)
 {
     int yes = 0;
     int c;
-    startopt(args, "y");
+    startopt(CS(args), "y");
     while ((c = nextopt(NULL, NULL, NULL, &offset))) {
         if (c == 'y') yes++;
         else return shareval(val_zero);
     }
 
-    if (interactive && !yes) {
+    if (interactive && have_active_socks() && !yes) {
 	fix_screen();
-	puts("Really quit tf? (y/N)\r");
+	puts("There are sockets with unseen text.  Really quit tf? (y/N)\r");
 	fflush(stdout);
 	c = igetchar();
 	redraw();
@@ -315,7 +228,7 @@ static struct Value *handle_quit_command(String *args, int offset)
     return shareval(val_one);
 }
 
-static struct Value *handle_sh_command(String *args, int offset)
+struct Value *handle_sh_command(String *args, int offset)
 {
     const char *cmd;
     char c;
@@ -326,7 +239,7 @@ static struct Value *handle_sh_command(String *args, int offset)
         return shareval(val_zero);
     }
 
-    startopt(args, "q");
+    startopt(CS(args), "q");
     while ((c = nextopt(NULL, NULL, NULL, &offset))) {
         if (c == 'q') quiet++;
         else return shareval(val_zero);
@@ -350,12 +263,12 @@ static struct Value *handle_sh_command(String *args, int offset)
     return newint(shell(cmd));
 }
 
-static struct Value *handle_suspend_command(String *args, int offset)
+struct Value *handle_suspend_command(String *args, int offset)
 {
     return newint(suspend());
 }
 
-static struct Value *handle_version_command(String *args, int offset)
+struct Value *handle_version_command(String *args, int offset)
 {
     oprintf("%% %s.", version);
     oprintf("%% %s.", copyright);
@@ -366,7 +279,7 @@ static struct Value *handle_version_command(String *args, int offset)
 }
 
 /* for debugging */
-static struct Value *handle_core_command(String *args, int offset)
+struct Value *handle_core_command(String *args, int offset)
 {
     internal_error(__FILE__, __LINE__, "command: /core %s",
 	args->data + offset);
@@ -374,7 +287,7 @@ static struct Value *handle_core_command(String *args, int offset)
     return NULL; /* never reached */
 }
 
-static struct Value *handle_features_command(String *args, int offset)
+struct Value *handle_features_command(String *args, int offset)
 {
     struct feature *f;
 
@@ -385,12 +298,12 @@ static struct Value *handle_features_command(String *args, int offset)
 	}
 	return shareval(val_zero);
     } else {
-	oputline(featurestr);
+	oputline(CS(featurestr));
 	return shareval(val_one);
     }
 }
 
-static struct Value *handle_lcd_command(String *args, int offset)
+struct Value *handle_lcd_command(String *args, int offset)
 {
     char buffer[PATH_MAX + 1], *name;
 
@@ -417,7 +330,7 @@ static struct Value *handle_lcd_command(String *args, int offset)
 
 
 int handle_echo_func(
-    String *src,
+    conString *src,
     const char *attrstr,
     int inline_flag,
     const char *dest)
@@ -426,7 +339,7 @@ int handle_echo_func(
     int raw = 0;
     TFILE *file = tfout;
     World *world = NULL;
-    String *newstr;
+    conString *newstr;
 
     if (!parse_attrs(attrstr, &attrs, 0))
         return 0;
@@ -449,7 +362,7 @@ int handle_echo_func(
         return 1;
     }
 
-    newstr = inline_flag ? decode_attr(src, 0) : Stringdup(src);
+    newstr = inline_flag ? CS(decode_attr(src, 0, 0)) : CS(Stringdup(src));
     if (!newstr)
 	return 0;
     newstr->links++;
@@ -460,15 +373,15 @@ int handle_echo_func(
     else
         tfputline(newstr, file);
 
-    Stringfree(newstr);
+    conStringfree(newstr);
     return 1;
 }
 
 
-static struct Value *handle_restrict_command(String *args, int offset)
+struct Value *handle_restrict_command(String *args, int offset)
 {
     int level;
-    static String enum_restrict[] = {
+    static conString enum_restrict[] = {
         STRING_LITERAL("none"), STRING_LITERAL("shell"),
         STRING_LITERAL("file"), STRING_LITERAL("world"),
         STRING_NULL };
@@ -487,17 +400,18 @@ static struct Value *handle_restrict_command(String *args, int offset)
     return newint(restriction = level);
 }
 
-static struct Value *handle_limit_command(String *args, int offset)
+struct Value *handle_limit_command(String *args, int offset)
 {
     int mflag = matching;
     int got_opts = 0;
     int result, had_filter, has_new_pat;
-    char c, *ptr;
+    char c;
+    const char *ptr;
     Screen *screen = display_screen;
     int attr_flag = 0, sense = 1;
     Pattern pat;
 
-    startopt(args, "avm:");
+    startopt(CS(args), "avm:");
     while ((c = nextopt(&ptr, NULL, NULL, &offset))) {
 	got_opts++;
         switch (c) {
@@ -540,7 +454,7 @@ end:
     return result ? shareval(val_one) : shareval(val_zero);
 }
 
-static struct Value *handle_relimit_command(String *args, int offset)
+struct Value *handle_relimit_command(String *args, int offset)
 {
     Screen *screen = display_screen;
     Value *result = val_one;
@@ -557,7 +471,7 @@ static struct Value *handle_relimit_command(String *args, int offset)
     return shareval(result);
 }
 
-static struct Value *handle_unlimit_command(String *args, int offset)
+struct Value *handle_unlimit_command(String *args, int offset)
 {
     Screen *screen = display_screen;
 
@@ -588,7 +502,7 @@ int do_file_load(const char *args, int tinytalk)
     int old_loadline = loadline;
     int old_loadstart = loadstart;
     int last_cmd_line = 0;
-    const char *path, *end;
+    const char *path;
     STATIC_BUFFER(libfile);
 
     if (!loadfile)
@@ -597,19 +511,32 @@ int do_file_load(const char *args, int tinytalk)
     file = tfopen(expand_filename(args), "r");
     if (!file && !tinytalk && errno == ENOENT && !is_absolute_path(args)) {
         /* Relative file was not found, so look in TFPATH or TFLIBDIR. */
-        path = TFPATH && *TFPATH ? TFPATH : TFLIBDIR;
-        do {
-            while (is_space(*path)) ++path;
-            if (!*path) break;
-            for (end = path; *end && !is_space(*end); ++end);
-            if (!is_absolute_path(path)) {
-                eprintf("warning: %.*s: invalid path value", end - path, path);
-            } else {
-                Sprintf(libfile, "%.*s/%s", end - path, path, args);
-                file = tfopen(expand_filename(libfile->data), "r");
-            }
-            path = end;
-        } while (!file && (path = end) && *path);
+	if (TFPATH && *TFPATH) {
+	    path = TFPATH;
+	    do {
+		while (is_space(*path)) ++path;
+		if (!*path) break;
+		Stringtrunc(libfile, 0);
+		while (*path && !is_space(*path)) {
+		    if (*path == '\\' && path[1]) path++;
+		    Stringadd(libfile, *path++);
+		}
+		if (!is_absolute_path(libfile->data)) {
+		    eprintf("warning: invalid directory in TFPATH: %S",
+			libfile);
+		} else {
+		    Sappendf(libfile, "/%s", args);
+		    file = tfopen(expand_filename(libfile->data), "r");
+		}
+	    } while (!file && *path);
+	} else {
+	    if (!is_absolute_path(TFLIBDIR)) {
+		eprintf("warning: invalid TFLIBDIR: %s", TFLIBDIR);
+	    } else {
+		Sprintf(libfile, "%s/%s", TFLIBDIR, args);
+		file = tfopen(expand_filename(libfile->data), "r");
+	    }
+	}
     }
 
     if (!file) {
@@ -650,7 +577,7 @@ int do_file_load(const char *args, int tinytalk)
                     "%% %s: line %d: warning: possibly missing trailing \\",
                     loadfile->name, last_cmd_line);
             last_cmd_line = loadline;
-            SStringocat(cmd, line, i);
+            SStringocat(cmd, CS(line), i);
             if (line->data[line->len - 1] == '\\') {
                 if (line->len < 2 || line->data[line->len - 2] != '%') {
                     Stringtrunc(cmd, cmd->len - 1);
@@ -671,11 +598,11 @@ int do_file_load(const char *args, int tinytalk)
         if (*cmd->data == '/') {
             tinytalk = FALSE;
             /* Never use SUB_FULL here.  Libraries will break. */
-            macro_run(cmd, 0, NULL, 0, SUB_KEYWORD, "\bLOAD");
+            macro_run(CS(cmd), 0, NULL, 0, SUB_KEYWORD, "\bLOAD");
         } else if (tinytalk) {
 	    static int warned = 0;
             Macro *addworld = find_macro("addworld");
-            if (addworld && do_macro(addworld, cmd, 0, USED_NAME, NULL) &&
+            if (addworld && do_macro(addworld, cmd, 0, USED_NAME, 0) &&
 		!user_result->u.ival && !warned)
 	    {
 		eprintf("(This line was implicitly treated as an /addworld "
@@ -689,6 +616,12 @@ int do_file_load(const char *args, int tinytalk)
             break;
         }
         Stringtrunc(cmd, 0);
+    }
+
+    if (cmd->len) {
+	tfprintf(tferr,
+	    "%% %s: line %d: last command is incomplete because of trailing \\",
+	    loadfile->name, last_cmd_line);
     }
 
     Stringfree(line);
@@ -710,7 +643,7 @@ int do_file_load(const char *args, int tinytalk)
  * Toggles with arguments *
  **************************/
 
-static struct Value *handle_beep_command(String *args, int offset)
+struct Value *handle_beep_command(String *args, int offset)
 {
     int n = 0;
 
@@ -731,7 +664,7 @@ static struct Value *handle_beep_command(String *args, int offset)
  * Macros *
  **********/
 
-static struct Value *handle_undef_command(String *args, int offset)
+struct Value *handle_undef_command(String *args, int offset)
 {
     char *name, *next;
     int result = 0;
@@ -742,7 +675,7 @@ static struct Value *handle_undef_command(String *args, int offset)
     return newint(result);
 }
 
-static struct Value *handle_save_command(String *args, int offset)
+struct Value *handle_save_command(String *args, int offset)
 {
     if (restriction >= RESTRICT_FILE) {
         eprintf("restricted");
@@ -760,7 +693,7 @@ struct Value *handle_exit_command(String *args, int offset)
     return shareval(val_one);
 }
 
-static struct Value *handle_load_command(String *args, int offset)
+struct Value *handle_load_command(String *args, int offset)
 {                   
     int quiet = 0, result = 0;
     char c;
@@ -770,7 +703,7 @@ static struct Value *handle_load_command(String *args, int offset)
         return shareval(val_zero);
     }
 
-    startopt(args, "q");
+    startopt(CS(args), "q");
     while ((c = nextopt(NULL, NULL, NULL, &offset))) {
         if (c == 'q') quiet = 1;
         else return shareval(val_zero);
@@ -802,7 +735,7 @@ static void split_args(char *args)
  * Hilites *
  ***********/
 
-static struct Value *handle_hilite_command(String *args, int offset)
+struct Value *handle_hilite_command(String *args, int offset)
 {
     if (!(args->len - offset)) {
         set_var_by_id(VAR_hilite, 1);
@@ -820,7 +753,7 @@ static struct Value *handle_hilite_command(String *args, int offset)
  * Gags *
  ********/
 
-static struct Value *handle_gag_command(String *args, int offset)
+struct Value *handle_gag_command(String *args, int offset)
 {
     if (!(args->len - offset)) {
         set_var_by_id(VAR_gag, 1);
@@ -838,14 +771,14 @@ static struct Value *handle_gag_command(String *args, int offset)
  * Triggers *
  ************/
 
-static struct Value *handle_trigpc_command(String *args, int offset)
+struct Value *handle_trigpc_command(String *args, int offset)
 {
     int pri, prob;
-    char *ptr = args->data + offset;
+    const char *ptr = args->data + offset;
 
     if ((pri = numarg(&ptr)) < 0) return shareval(val_zero);
     if ((prob = numarg(&ptr)) < 0) return shareval(val_zero);
-    split_args(ptr);
+    split_args(args->data + (ptr - args->data));
     return newint(add_new_macro(pattern, "", NULL, NULL, body, pri,
         prob, 0, 0, matching));
 }
@@ -855,7 +788,7 @@ static struct Value *handle_trigpc_command(String *args, int offset)
  * Hooks *
  *********/
 
-static struct Value *handle_hook_command(String *args, int offset)
+struct Value *handle_hook_command(String *args, int offset)
 {
     if (!(args->len - offset))
         oprintf("%% Hooks %sabled", hookflag ? "en" : "dis");
@@ -875,7 +808,7 @@ static struct Value *handle_hook_command(String *args, int offset)
  * Keys *
  ********/
 
-static struct Value *handle_unbind_command(String *args, int offset)
+struct Value *handle_unbind_command(String *args, int offset)
 {
     Macro *macro;
 
@@ -886,7 +819,7 @@ static struct Value *handle_unbind_command(String *args, int offset)
     return newint(!!macro);
 }
 
-static struct Value *handle_bind_command(String *args, int offset)
+struct Value *handle_bind_command(String *args, int offset)
 {
     if (!(args->len - offset)) return shareval(val_zero);
     split_args(args->data + offset);

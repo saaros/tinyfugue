@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: history.h,v 35004.27 2004/02/17 06:44:37 hawkeye Exp $ */
+/* $Id: history.h,v 35004.28 2004/07/16 21:13:51 hawkeye Exp $ */
 
 #ifndef HISTORY_H
 #define HISTORY_H
@@ -15,8 +15,8 @@
 extern void   init_histories(void);
 extern struct History *init_history(struct History *hist, int maxsize);
 extern void   free_history(struct History *hist);
-extern void   recordline(struct History *hist, String *line);
-extern void   record_input(const String *line);
+extern void   recordline(struct History *hist, conString *line);
+extern void   record_input(const conString *line);
 extern String*recall_input(int n, int mode);
 extern int    is_watchdog(struct History *hist, String *line);
 extern int    is_watchname(struct History *hist, String *line);

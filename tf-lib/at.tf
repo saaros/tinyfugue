@@ -33,7 +33,7 @@
     /let t=$[mktime(year, mon, day, {P1}, {P2}, {P3}, usec)]%; \
     /if (t <= time()) \
 	/if (!explicitday) \
-	    /test t := t + 24:00:00%; \
+	    /test t += 24:00:00%; \
 	/elseif (!explicityear) \
 	    /let t=$[mktime(year+1, mon, day, {P1}, {P2}, {P3}, usec)]%; \
 	/else \

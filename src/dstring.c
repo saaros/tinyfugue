@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: dstring.c,v 35004.35 2004/02/17 06:44:36 hawkeye Exp $";
+static const char RCSid[] = "$Id: dstring.c,v 35004.41 2004/07/18 02:05:36 hawkeye Exp $";
 
 
 /*********************************************************************
@@ -24,7 +24,7 @@ static const char RCSid[] = "$Id: dstring.c,v 35004.35 2004/02/17 06:44:36 hawke
 #include "signals.h"	/* core() */
 
 static String *Stringpool = NULL;	/* freelist */
-Stringp blankline = { STRING_LITERAL("") };
+conString blankline[1] = { STRING_LITERAL("") };
 
 #if USE_MMALLOC
 # define MD(str)	(str->md)
@@ -182,8 +182,11 @@ String *dSinit(
 void dSfree(String *str, const char *file, int line)
 {
     if (str->links < 0) {
-        internal_error2(file, line, str->file, str->line, "");
-        core("dSfree: links==%ld", file, line, (long)str->links);
+	/* While it would be useful to print str->file, it may have been
+	 * clobbered the first time str was freed, so is unsafe. */
+        internal_error(file, line,
+	    "dSfree: links==%d, data=\"%.32b\"", str->links, '\"', str->data);
+        core("dSfree: links==%d", file, line, str->links);
     }
 
     if (str->charattrs) Sfree(str, str->charattrs);
@@ -272,7 +275,7 @@ String *dSncpy(String *dest, const char *src, int n, const char *file, int line)
     return dest;
 }
 
-String *dSScpy(String *dest, const String *src, const char *file, int line)
+String *dSScpy(String *dest, const conString *src, const char *file, int line)
 {
     if (dest->charattrs && !src->charattrs) {
         Sfree(dest, dest->charattrs);
@@ -300,7 +303,7 @@ String *dScat(String *dest, const char *src, const char *file, int line)
     return dest;
 }
 
-String *dSSoncat(String *dest, const String *src, int start, int len,
+String *dSSoncat(String *dest, const conString *src, int start, int len,
     const char *file, int line)
 {
     int oldlen = dest->len;
@@ -379,8 +382,32 @@ String *Stringstriptrail(String *str)
     return str;
 }
 
-#if 0
-String *encode_attr(String *str)
+/* appends string representation of attrs to buffer */
+String *attr2str(String *buffer, attr_t attrs)
+{
+    if (attrs & F_NONE)       Stringadd(buffer, 'n');
+    if (attrs & F_EXCLUSIVE)  Stringadd(buffer, 'x');
+    if (attrs & F_GAG)        Stringadd(buffer, 'g');
+    if (attrs & F_NOHISTORY)  Stringadd(buffer, 'G');
+    if (attrs & F_NOLOG)      Stringadd(buffer, 'L');
+    if (attrs & F_NOACTIVITY) Stringadd(buffer, 'A');
+    if (attrs & F_UNDERLINE)  Stringadd(buffer, 'u');
+    if (attrs & F_REVERSE)    Stringadd(buffer, 'r');
+    if (attrs & F_FLASH)      Stringadd(buffer, 'f');
+    if (attrs & F_DIM)        Stringadd(buffer, 'd');
+    if (attrs & F_BOLD)       Stringadd(buffer, 'B');
+    if (attrs & F_BELL)       Stringadd(buffer, 'b');
+    if (attrs & F_HILITE)     Stringadd(buffer, 'h');
+    if (attrs & F_FGCOLOR)
+        SStringcat(Stringadd(buffer, 'C'), &enum_color[attr2fgcolor(attrs)]);
+    if (attrs & F_BGCOLOR) {
+        if (attrs & F_FGCOLOR) Stringadd(buffer, ',');
+        SStringcat(Stringadd(buffer, 'C'), &enum_color[attr2bgcolor(attrs)]);
+    }
+    return buffer;
+}
+
+String *encode_attr(const conString *str, int offset)
 {
     attr_t oldattrs = 0, attrs;
     int i;
@@ -388,42 +415,47 @@ String *encode_attr(String *str)
     
     new = Stringnew(NULL, str->len, 0);
     if (!str->charattrs) {
-	if (str->attrs) {
-	    Stringcat(new, "@{");
-	    SStringcat(new, attr2str(str->attrs));
-	    Stringadd(new, '}');
+	if (str->attrs)
+	    Stringadd(attr2str(Stringcat(new, "@{"), str->attrs), '}');
+	for (i = offset; i < str->len; i++) {
+	    Stringadd(new, str->data[i]);
+	    if (str->data[i] == '@')
+		Stringadd(new, '@');
 	}
-	Stringcat(new, str->data);
+	if (str->attrs)
+	    Stringcat(new, "@{n}");
     } else {
-	for (i = 0; i < str->len; i++) {
+	for (i = offset; i < str->len; i++) {
 	    attrs = adj_attr(str->attrs, str->charattrs[i]);
-	    if (attrs != oldattrs) {
-		if (!attrs) {
+	    if ((attrs ^ oldattrs) & F_HWRITE) {
+		if (!(attrs & F_HWRITE)) {
 		    /* no attrs */
 		    Stringcat(new, "@{n}");
-		} else if (((oldattrs | attrs) & F_ENCODE) ==
-		    (attrs & F_ENCODE))
-		{
+		} else if (((oldattrs & ~attrs) & F_ENCODE) == 0) {
 		    /* new attrs can be added to old attrs */
-		    Stringcat(new, "@{");
-		    SStringcat(new, attr2str(attrs & ~(oldattrs & F_SIMPLE)));
-		    Stringadd(new, '}');
+		    attr_t added = attrs & ~(oldattrs & F_SIMPLE);
+		    if (((attrs ^ oldattrs) & F_FGCOLORS) == 0) /* fg same? */
+			added &= ~F_FGCOLORS; /* skip fg */
+		    if (((attrs ^ oldattrs) & F_BGCOLORS) == 0) /* bg same? */
+			added &= ~F_BGCOLORS; /* skip bg */
+		    Stringadd(attr2str(Stringcat(new, "@{"), added & F_HWRITE),
+			'}');
 		} else {
 		    /* attrs are different */
-		    Stringcat(new, "@{n");
-		    SStringcat(new, attr2str(attrs));
-		    Stringadd(new, '}');
+		    Stringadd(attr2str(Stringcat(new, "@{n"), attrs & F_HWRITE),
+			'}');
 		}
 	    }
 	    Stringadd(new, str->data[i]);
+	    if (str->data[i] == '@')
+		Stringadd(new, '@');
 	    oldattrs = attrs;
 	}
-	if (attrs)
+	if (attrs & F_HWRITE)
 	    Stringcat(new, "@{n}");
     }
     return new;
 }
-#endif
 
 #if USE_DMALLOC
 void free_dstring(void)

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: expand.c,v 35004.208 2004/02/17 06:44:36 hawkeye Exp $";
+static const char RCSid[] = "$Id: expand.c,v 35004.217 2004/07/18 03:54:26 hawkeye Exp $";
 
 
 /********************************************************************
@@ -30,7 +30,7 @@ static const char RCSid[] = "$Id: expand.c,v 35004.208 2004/02/17 06:44:36 hawke
 #include "parse.h"
 #include "expand.h"
 #include "expr.h"
-#include "commands.h"
+#include "cmdlist.h"
 #include "command.h"
 #include "variable.h"
 
@@ -39,7 +39,7 @@ typedef struct { void *ptr; opcode_t op; } opcmd_t;
 Value *user_result = NULL;		/* result of last user command */
 int recur_count = 0;			/* expansion nesting count */
 const char *current_command = NULL;
-String *argstring = NULL;		/* command argument string */
+const conString *argstring = NULL;	/* command argument string */
 Arg *tf_argv = NULL;			/* shifted command argument vector */
 int tf_argc = 0;			/* shifted command/function arg count */
 int argtop = 0;				/* top of function argument stack */
@@ -47,8 +47,8 @@ keyword_id_t block = 0;			/* type of current block */
 Value *val_zero = NULL;
 Value *val_one = NULL;
 Value *val_blank = NULL;
-const char *oplabel_table[256];
 
+static const char *oplabel_table[256];
 static int cmdsub_count = 0;		/* cmdsub nesting count */
 
 
@@ -100,7 +100,7 @@ static void prog_free_tail(Program *prog, int start)
 	switch (op_arg_type(prog->code[i].op)) {
 	case OPA_STRP:
 	    if (prog->code[i].arg.str)
-		Stringfree(prog->code[i].arg.str);
+		conStringfree(prog->code[i].arg.str);
 	    break;
 	case OPA_VALP:
 	    if (prog->code[i].arg.val)
@@ -115,71 +115,78 @@ void prog_free(Program *prog)
 {
     prog_free_tail(prog, 0);
     if (prog->code) FREE(prog->code);
-    Stringfree(prog->src);
+    conStringfree(prog->src);
     FREE(prog);
 }
 
-static void inst_dump(Program *prog, int i, char prefix)
+const char *oplabel(opcode_t op)
+{
+    static char buf[2] = "?";
+    if (op >= 0x20 && op < 0x7F) {
+	buf[0] = op;
+	return buf;
+    }
+    return oplabel_table[op & OPLABEL_MASK];
+}
+
+static void inst_dump(const Program *prog, int i, char prefix)
 {
     String *buf;
     opcode_t op;
     Value *val;
-    String *str;
+    conString *constr;
     BuiltinCmd *cmd;
 
     (buf = Stringnew(NULL, 0, 0))->links++;
     Sprintf(buf, "%c%5d: ", prefix, i);
     op = prog->code[i].op;
     Sappendf(buf, "%04X ", op);
-    if (op >= 0x20 && op < 0x7F) {
-	Sappendf(buf, "%c        %d", op, prog->code[i].arg.i);
+    if (!oplabel(op)) {
+	Sappendf(buf, "%8s ", "");
     } else {
-	if (!oplabel(op)) {
-	    Sappendf(buf, "%8s ", "");
-	} else {
-	    Sappendf(buf, "%-8s ", oplabel(op));
-	}
-	switch(op_arg_type(op)) {
-	case OPA_INT:
-	    Sappendf(buf, "%d", prog->code[i].arg.i);
-	    break;
-	case OPA_CHAR:
-	    Sappendf(buf, "%c", prog->code[i].arg.c);
-	    break;
-	case OPA_STRP:
-	    str = prog->code[i].arg.str;
-	    Sappendf(buf, str ? "\"%S\"" : "NULL", str);
-	    break;
-	case OPA_CMDP:
-	    cmd = prog->code[i].arg.cmd;
-	    Sappendf(buf, "%s", cmd->name);
-	    break;
-	case OPA_VALP:
-	    if (!(val = prog->code[i].arg.val)) {
-		Stringcat(buf, "NULL");
-		break;
-	    }
-	    switch (val->type & TYPES_BASIC) {
-	    case TYPE_ID:    Sappendf(buf, "ID %s", val->name); break;
-	    case TYPE_FUNC:  Sappendf(buf, "FUNC %s", val->name); break;
-	    case TYPE_CMD:   Sappendf(buf, "CMD %s", val->name); break;
-	    case TYPE_STR:   Sappendf(buf, "STR \"%S\"", valstr(val));
-			     if (val->type & TYPE_REGEX)
-				 Stringcat(buf, " (RE)");
-			     if (val->type & TYPE_EXPR)
-				 Stringcat(buf, " (EXPR)");
-			     break;
-	    case TYPE_ENUM:  Sappendf(buf, "ENUM \"%S\"", valstr(val)); break;
-	    case TYPE_POS:   Sappendf(buf, "POS %S", valstr(val)); break;
-	    case TYPE_INT:   Sappendf(buf, "INT %S", valstr(val)); break;
-	    case TYPE_TIME:  Sappendf(buf, "TIME %S", valstr(val)); break;
-	    case TYPE_FLOAT: Sappendf(buf, "FLOAT %S", valstr(val)); break;
-	    default:         Sappendf(buf, "? %S", valstr(val)); break;
-	    }
-	    break;
-	}
+	Sappendf(buf, "%-8s ", oplabel(op));
     }
-    tfputline(buf, tferr);
+    switch(op_arg_type(op)) {
+    case OPA_INT:
+	Sappendf(buf, "%d", prog->code[i].arg.i);
+	break;
+    case OPA_CHAR:
+	Sappendf(buf, "%c", prog->code[i].arg.c);
+	break;
+    case OPA_STRP:
+	constr = prog->code[i].arg.str;
+	Sappendf(buf, constr ? "\"%S\"" : "NULL", constr);
+	break;
+    case OPA_CMDP:
+	cmd = prog->code[i].arg.cmd;
+	Sappendf(buf, "%s", cmd->name);
+	break;
+    case OPA_VALP:
+	if (!(val = prog->code[i].arg.val)) {
+	    Stringcat(buf, "NULL");
+	    break;
+	}
+	switch (val->type & TYPES_BASIC) {
+	case TYPE_ID:    Sappendf(buf, "ID %s", val->name); break;
+	case TYPE_FUNC:  Sappendf(buf, "FUNC %s", val->name); break;
+	case TYPE_CMD:   Sappendf(buf, "CMD %s", val->name); break;
+	case TYPE_STR:   Sappendf(buf, "STR \"%S\"", valstr(val));
+			 if (val->type & TYPE_REGEX)
+			     Stringcat(buf, " (RE)");
+			 if (val->type & TYPE_EXPR)
+			     Stringcat(buf, " (EXPR)");
+			 break;
+	case TYPE_ENUM:  Sappendf(buf, "ENUM \"%S\"", valstr(val)); break;
+	case TYPE_POS:   Sappendf(buf, "POS %S", valstr(val)); break;
+	case TYPE_INT:   Sappendf(buf, "INT %S", valstr(val)); break;
+	case TYPE_TIME:  Sappendf(buf, "TIME %S", valstr(val)); break;
+	case TYPE_FLOAT: Sappendf(buf, "FLOAT %S", valstr(val)); break;
+	default:         Sappendf(buf, "? %S", valstr(val)); break;
+	}
+	break;
+    }
+    buf->attrs = getattrvar(prefix == 'c' ? VAR_cecho_attr : VAR_iecho_attr);
+    tfputline(CS(buf), tferr);
     Stringfree(buf);
 }
 
@@ -195,9 +202,9 @@ static void prog_dump(Program *prog)
 struct Value *handle_eval_command(String *args, int offset)
 {
     int c, subflag = SUB_MACRO;
-    char *ptr;
+    const char *ptr;
 
-    startopt(args, "s:");
+    startopt(CS(args), "s:");
     while ((c = nextopt(&ptr, NULL, NULL, &offset))) {
         switch (c) {
         case 's':
@@ -208,7 +215,7 @@ struct Value *handle_eval_command(String *args, int offset)
             return shareval(val_zero);
         }
     }
-    if (!macro_run(args, offset, NULL, 0, subflag, "\bEVAL"))
+    if (!macro_run(CS(args), offset, NULL, 0, subflag, "\bEVAL"))
         return shareval(val_zero);
     return_user_result();
 }
@@ -221,7 +228,7 @@ static int execute_command(BuiltinCmd *cmd, String *args, int offset,
 {
     if (!builtin_only && cmd->macro) {
 	current_command = cmd->name;
-	return do_macro(cmd->macro, args, offset, USED_NAME, NULL);
+	return do_macro(cmd->macro, args, offset, USED_NAME, 0);
     } else if (cmd->func) {
 	current_command = cmd->name;
 	set_user_result((*cmd->func)(args, offset));
@@ -242,16 +249,16 @@ static int execute_macro(const char *name, unsigned int hash, String *args,
         return 0;
     }
     current_command = name;
-    return do_macro(macro, args, offset, USED_NAME, NULL);
+    return do_macro(macro, args, offset, USED_NAME, 0);
 }
 
-static const char *execute_start(String **argsp)
+static String *execute_start(const conString *args, const char **old_cmdp)
 {
-    const char *old_command;
+    String *str;
 
-    (*argsp = Stringdup(*argsp))->links++;
-    old_command = current_command;
-    return old_command;
+    (str = Stringdup(args))->links++;
+    *old_cmdp = current_command;
+    return str;
 }
 
 static int execute_end(const char *old_command, int truth, String *args)
@@ -273,19 +280,20 @@ static int execute_end(const char *old_command, int truth, String *args)
 
 /* handle_command
  * Execute a single command line that has already been expanded.
- * cmd_line will not be written into.
+ * orig_cmd_line will not be written into.
  */
-int handle_command(String *cmd_line)
+int handle_command(const conString *orig_cmd_line)
 {
+    String *cmd_line;
     const char *old_command, *name;
     BuiltinCmd *cmd = NULL;
     int error = 0, truth = 1;
     int offset, end;
 
     offset = 0;
-    if (!cmd_line->data[offset] || is_space(cmd_line->data[offset]))
+    if (!orig_cmd_line->data[offset] || is_space(orig_cmd_line->data[offset]))
         return 0;
-    old_command = execute_start(&cmd_line);
+    cmd_line = execute_start(orig_cmd_line, &old_command);
     name = cmd_line->data + offset;
     while (cmd_line->data[offset] && !is_space(cmd_line->data[offset]))
         offset++;
@@ -324,7 +332,7 @@ int handle_command(String *cmd_line)
  * words there will be, or -1.  Returns number of words found, or -1 for error.
  * Freeing *<vector> is the caller's responsibility.
  */
-static int stringvec(String *str, int offset, Arg **vector, int vecsize)
+static int stringvec(const String *str, int offset, Arg **vector, int vecsize)
 {
     int count = 0;
     char *start, *next;
@@ -354,7 +362,7 @@ static int stringvec(String *str, int offset, Arg **vector, int vecsize)
     return count;
 }
 
-Program *compile_tf(String *src, int srcstart, int subs, int is_expr,
+Program *compile_tf(conString *src, int srcstart, int subs, int is_expr,
     int optimize)
 {
     Program *prog;
@@ -392,14 +400,14 @@ Program *compile_tf(String *src, int srcstart, int subs, int is_expr,
     return NULL;
 }
 
-int macro_run(String *body, int bodystart, String *args, int offset,
+int macro_run(conString *body, int bodystart, String *args, int offset,
     int subs, const char *name)
 {
     Program *prog;
     int result;
 
     if (!(prog = compile_tf(body, bodystart, subs, 0, 0))) return 0;
-    result = prog_run(prog, args, offset, name, NULL);
+    result = prog_run(prog, args, offset, name, 0);
     prog_free(prog);
     return result;
 }
@@ -437,7 +445,8 @@ static int do_parmsub(String *dest, int first, int last, int *emptyp)
     }
 
     if (to_stack) {
-	if (!val) val = dest && dest->len ? newSstr(dest) : shareval(val_blank);
+	if (!val)
+	    val = dest && dest->len ? newSstr(CS(dest)) : shareval(val_blank);
 	result = pushval(val);
 	if (dest) Stringfree(dest);
     }
@@ -445,20 +454,21 @@ static int do_parmsub(String *dest, int first, int last, int *emptyp)
     return result;
 }
 
-static void do_mecho(Program *prog, int i)
+static void do_mecho(const Program *prog, int i)
 {
     /* XXX is invis_flag set correctly at runtime? */
     if (prog->code[i].start && prog->code[i].end) {
-	tfprintf(tferr, "%S%.*s", do_mprefix(),
-	    prog->code[i].end - prog->code[i].start,
-	    prog->code[i].start);
+	tfprintf(tferr, "%S%.*s%A", do_mprefix(),
+	    prog->code[i].end - prog->code[i].start, prog->code[i].start,
+	    mecho_attr);
     }
 }
 
-Value *prog_interpret(Program *prog, int in_expr)
+Value *prog_interpret(const Program *prog, int in_expr)
 {
     Value *val, *result = NULL;
     String *str, *tbuf;
+    conString *constr;
     int user_result_is_set = 0;
     int cip, stackbot, no_arg;
     int empty;	/* for varsub default */
@@ -532,34 +542,34 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    break;
 
 	case OP_EXECUTE:
-	    str = prog->code[cip].arg.str;
-	    if ((no_arg = !str)) str = buf;
-	    handle_command(str);
+	    constr = prog->code[cip].arg.str;
+	    if ((no_arg = !constr)) constr = CS(buf);
+	    handle_command(constr);
 	    if (no_arg) Stringtrunc(buf, 0);
 	    user_result_is_set = 1;
 	    setup_next_io();
 	    break;
 
 	case OP_ARG:
-	    str = prog->code[cip].arg.str;
-	    if ((no_arg = !str)) str = buf;
-	    /* no_arg and str will be used by BUILTIN, MACRO, SET, ... */
+	    constr = prog->code[cip].arg.str;
+	    if ((no_arg = !constr)) constr = CS(buf);
+	    /* no_arg and constr will be used by BUILTIN, MACRO, SET, ... */
 	    break;
 
 	case OP_LET:
 	case OP_SET:
 	case OP_SETENV:
-	    /* no_arg and str were set by OP_ARG */
+	    /* no_arg and constr were set by OP_ARG */
 	    do_set(prog->code[cip].arg.val->name,
 		prog->code[cip].arg.val->u.hash,
-		str, 0, op == OP_SETENV, op == OP_LET);
+		constr, 0, op == OP_SETENV, op == OP_LET);
 	    if (no_arg) Stringtrunc(buf, 0);
 	    break;
 
 	case OP_BUILTIN: case OP_NBUILTIN:
 	case OP_COMMAND: case OP_NCOMMAND:
-	    /* no_arg and str were set by OP_ARG */
-	    old_cmd = execute_start(&str);    /*XXX optimize: needn't dup buf */
+	    /* no_arg and constr were set by OP_ARG */
+	    str = execute_start(constr, &old_cmd); /*XXX optimize: don't dup buf */
 	    execute_command(prog->code[cip].arg.cmd, str, 0,
 		opnum_eq(op, OP_BUILTIN));
 	    execute_end(old_cmd, !(op & OPF_NEG), str);
@@ -569,8 +579,8 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    break;
 
 	case OP_MACRO: case OP_NMACRO:
-	    /* no_arg and str were set by OP_ARG */
-	    old_cmd = execute_start(&str);    /*XXX optimize: needn't dup buf */
+	    /* no_arg and constr were set by OP_ARG */
+	    str = execute_start(constr, &old_cmd); /*XXX optimize: don't dup buf */
 	    execute_macro(prog->code[cip].arg.val->name,
 		prog->code[cip].arg.val->u.hash, str, 0);
 	    execute_end(old_cmd, !(op & OPF_NEG), str);
@@ -580,15 +590,16 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    break;
 
 	case OP_SEND:
-	    str = prog->code[cip].arg.str;
-	    if ((no_arg = !str)) str = buf;
-	    if (str->len || !snarf) {
+	    constr = prog->code[cip].arg.str;
+	    if ((no_arg = !constr)) constr = CS(buf);
+	    if (constr->len || !snarf) {
 #if 0
 		if (/*(subs == SUB_MACRO) &&*//*XXX*/ (mecho > invis_flag))
-		    tfprintf(tferr, "%S%s%S", do_mprefix(), "SEND: ", str);
+		    tfprintf(tferr, "%S%s%S%A", do_mprefix(), "SEND: ", constr,
+			mecho_attr);
 #endif
-		if (!do_hook(H_SEND, NULL, "%S", str)) {
-		    set_user_result(newint(send_line(str->data, str->len,
+		if (!do_hook(H_SEND, NULL, "%S", constr)) {
+		    set_user_result(newint(send_line(constr->data, constr->len,
 			TRUE)));
 		    user_result_is_set = 1; /* XXX ? */
 		}
@@ -598,12 +609,12 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    break;
 
 	case OP_APPEND:
-	    str = prog->code[cip].arg.str;
-	    if (!str) {
+	    constr = prog->code[cip].arg.str;
+	    if (!constr) {
 		SStringcat(buf, valstr(popval()));
 		freeval(opd(0));
 	    } else {
-		SStringcat(buf, str);
+		SStringcat(buf, constr);
 	    }
 	    break;
 
@@ -653,8 +664,8 @@ Value *prog_interpret(Program *prog, int in_expr)
 		val = popval();
 	    set_user_result(valval(val));
 	    if (op == OP_RESULT && !argtop) {
-		str = valstr(val);
-		oputline(str ? str : blankline);
+		constr = valstr(val);
+		oputline(constr ? constr : blankline);
 	    }
 	    cip = prog->len - 1;
 	    setup_next_io();
@@ -668,13 +679,13 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    setup_next_io();
 	    break;
 	case OP_PUSHBUF:
-	    if (!pushval(newSstr(buf))) /* XXX optimize */
+	    if (!pushval(newptr(buf))) /* XXX optimize */
 		goto prog_interpret_exit;
 	    (buf = Stringnew(NULL, 0, 0))->links++;
 	    break;
 	case OP_POPBUF:
 	    Stringfree(buf);
-	    buf = valstr(popval()); /* XXX optimize */
+	    buf = valptr(popval()); /* XXX optimize */
 	    freeval(opd(0));
 	    break;
 	case OP_CMDSUB:
@@ -702,16 +713,16 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    else
 		tbuf = buf;
 	    first = 1;
-	    while ((str = dequeue((tfout)->u.queue))) {
-		if (!((str->attrs & F_GAG) && gag)) {
+	    while ((constr = dequeue((tfout)->u.queue))) {
+		if (!((constr->attrs & F_GAG) && gag)) {
 		    if (!first) {
 			Stringadd(tbuf, ' ');
 			if (tbuf->charattrs) tbuf->charattrs[tbuf->len] = 0;
 		    }
 		    first = 0;
-		    SStringcat(tbuf, str);
+		    SStringcat(tbuf, constr);
 		}
-		Stringfree(str);
+		conStringfree(constr);
 	    }
 	    tfclose(tfout);
 	    FREE(frame);
@@ -720,30 +731,30 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    tfin = frame->inpipe ? frame->inpipe : frame->local_tfin;
 	    freeval(opd(0));
 	    if (op_is_push(op)) {
-		if (!pushval(newSstr(tbuf)))
+		if (!pushval(newSstr(CS(tbuf))))
 		    goto prog_interpret_exit;
 		Stringfree(tbuf);
 	    }
 	    break;
 	case OP_PBUF:
-	    str = buf;
-	    buf = valstr(popval()); /* XXX optimize */
+	    constr = CS(buf);
+	    buf = valptr(popval()); /* XXX optimize */
 	    freeval(opd(0));
-	    if (!pushval(newSstr(str)))
+	    if (!pushval(newSstr(constr)))
 		goto prog_interpret_exit;
-	    Stringfree(str);
+	    conStringfree(constr);
 	    break;
 	case OP_AMAC:
 	case OP_PMAC:
-	    if ((str = prog->code[cip].arg.str)) {
-		str->links++;
+	    if ((constr = prog->code[cip].arg.str)) {
+		constr->links++;
 	    } else {
-		str = buf;
-		buf = valstr(popval()); /* XXX optimize */
+		constr = CS(buf);
+		buf = valptr(popval()); /* XXX optimize */
 		freeval(opd(0));
 	    }
-	    if (!(cstr = macro_body(str->data))) {
-		tfprintf(tferr, "%% macro not defined: %S", str);
+	    if (!(cstr = macro_body(constr->data))) {
+		tfprintf(tferr, "%% macro not defined: %S", constr);
 	    }
 	    if (op_is_push(op)) {
 		if (!pushval(newstr(cstr ? cstr : "", -1)))
@@ -752,14 +763,15 @@ Value *prog_interpret(Program *prog, int in_expr)
 		Stringcat(buf, cstr);
 	    }
 	    if (mecho > invis_flag)
-		tfprintf(tferr, "%S$%S --> %s", do_mprefix(), str, cstr);
-	    Stringfree(str);
+		tfprintf(tferr, "%S$%S --> %s%A", do_mprefix(), constr, cstr,
+		    mecho_attr);
+	    conStringfree(constr);
 	    break;
 	case OP_AVAR:
 	    (val = (prog->code[cip].arg.val))->count++;
-	    str = valstr(val);
-	    empty = !str->len;
-	    SStringcat(buf, str);
+	    constr = valstr(val);
+	    empty = !constr->len;
+	    SStringcat(buf, constr);
 	    freeval(val);
 	    break;
 	case OP_PVAR:
@@ -777,7 +789,7 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    str = Stringnew(NULL, 0, 0);
 	    empty = (regsubstr(str, prog->code[cip].arg.i) <= 0);
 	    if (empty) Stringcat(str, "");
-	    if (!pushval(newSstr(str)))
+	    if (!pushval(newSstr(CS(str))))
 		goto prog_interpret_exit;
 	    break;
 	case OP_APARM:
@@ -912,13 +924,13 @@ prog_interpret_exit:
     return result;
 }
 
-int prog_run(Program *prog, String *args, int offset, const char *name,
-    String *kbnumlocal)
+int prog_run(const Program *prog, const String *args, int offset,
+    const char *name, int kbnumlocal)
 {
     Arg *true_argv = NULL;		/* unshifted argument vector */
     int saved_cmdsub, saved_argc, saved_argtop;
     Arg *saved_argv;
-    String *saved_argstring;
+    const conString *saved_argstring;
     const char *saved_command;
     TFILE *saved_tfin, *saved_tfout, *saved_tferr;
     List scope[1];
@@ -942,11 +954,13 @@ int prog_run(Program *prog, String *args, int offset, const char *name,
     cmdsub_count = 0;
 
     pushvarscope(scope);
-    if (kbnumlocal)
-	setlocalvar("kbnum", TYPE_STR, kbnumlocal);
+    if (kbnumlocal) {
+	/* TODO: make this local %kbnum const */
+	setlocalvar("kbnum", TYPE_INT, &kbnumlocal);
+    }
 
     if (args) {
-        argstring = args;
+        argstring = (const conString*)args;
 	tf_argc = stringvec(args, offset, &tf_argv, 20);
         true_argv = tf_argv;
         argtop = 0;
@@ -981,7 +995,7 @@ String *do_mprefix(void)
 
     Stringtrunc(buffer, 0);
     for (i = 0; i < recur_count + cmdsub_count; i++)
-        Stringcat(buffer, mprefix ? mprefix : "");
+        SStringcat(buffer, mprefix);
     Stringadd(buffer, ' ');
     if (current_command) {
         if (*current_command == '\b') {
@@ -995,8 +1009,8 @@ String *do_mprefix(void)
 
 #define keyword_mprefix() \
 { \
-    if (mecho > invis_flag) \
-       tfprintf(tferr, "%S/%s", do_mprefix(), keyword_table[block-BREAK]); \
+  if (mecho > invis_flag) \
+    tfprintf(tferr, "%S/%s%A", do_mprefix(), keyword_label(block), mecho_attr);\
 }
 
 static void code_mark(Program *prog, const char *mark)
@@ -1032,7 +1046,7 @@ static void vcode_add(Program *prog, opcode_t op, int use_mark, va_list ap)
     switch (op_arg_type(op)) {
 	case OPA_INT:  inst->arg.i    = va_arg(ap, int);		break;
 	case OPA_CHAR: inst->arg.c    = (char)va_arg(ap, int);		break;
-	case OPA_STRP: inst->arg.str  = va_arg(ap, String *);		break;
+	case OPA_STRP: inst->arg.str  = va_arg(ap, conString *);	break;
 	case OPA_VALP: inst->arg.val  = va_arg(ap, Value *);		break;
 	case OPA_CMDP: inst->arg.cmd  = va_arg(ap, BuiltinCmd *);	break;
 	default:       inst->arg.i    = 0;
@@ -1046,6 +1060,7 @@ static void vcode_add(Program *prog, opcode_t op, int use_mark, va_list ap)
     if (!prog->optimize)
 	return;
 
+#if 1 /* optimizer */
 #define inst_is_const(inst) \
     ((inst)->op == OP_PUSH && (inst)->arg.val->type != TYPE_ID)
 
@@ -1103,10 +1118,14 @@ static void vcode_add(Program *prog, opcode_t op, int use_mark, va_list ap)
 		    continue;
 		} else if (inst[-1].op == OP_APPEND && inst[-1].arg.str) {
 		    /* e.g. {APPEND "x"; APPEND "y";} to {APPEND "xy";} */
+		    String *str;
 		    prog->len--;
 		    inst--;
-		    SStringcat(inst->arg.str, inst[1].arg.str);
-		    Stringfree(inst[1].arg.str);
+		    /* XXX optimize - don't need to dup inst->arg.str */
+		    str = SStringcat(Stringdup(inst->arg.str), inst[1].arg.str);
+		    conStringfree(inst[0].arg.str);
+		    conStringfree(inst[1].arg.str);
+		    (inst[0].arg.str = CS(str))->links++;
 		    /* inst->op = OP_APPEND; */ /* already true */
 		    continue;
 		}
@@ -1217,6 +1236,7 @@ static void vcode_add(Program *prog, opcode_t op, int use_mark, va_list ap)
 	    return;
 	}
     }
+#endif /* optimizer */
 }
 
 void code_add(Program *prog, opcode_t op, ...)
@@ -1249,20 +1269,37 @@ void eat_space(Program *prog)
     eat_newline(prog);
 }
 
+static inline const char *keyword_label(keyword_id_t id)
+{
+    return keyword_table[id - BREAK];
+}
+
+static void unexpected(keyword_id_t innerblock, keyword_id_t outerblock)
+{
+    /* THEN and DO blocks don't start with a /then or /do if they belong to a
+     * /if () or /while (), so "THEN block" and "DO block" would be confusing
+     * to user. */
+    switch (outerblock) {
+    case THEN:
+	eprintf("unexpected /%s in IF body", keyword_label(innerblock));
+	break;
+    case DO:
+	eprintf("unexpected /%s in WHILE body", keyword_label(innerblock));
+	break;
+    default:
+	eprintf("unexpected /%s in %s block", keyword_label(innerblock),
+	    outerblock ? keyword_label(outerblock) : "outer");
+    }
+}
+
 static int list(Program *prog, int subs)
 {
     keyword_id_t oldblock;
     int is_a_command, is_a_condition, is_special;
     int failed = 0, result = 0;
-    /*const char *exprstart;*/
     const char *stmtstart;
-    static const char unexpect_msg[] = "unexpected /%s in %s block";
     int is_pipe = 0;
     int block_start, jump_point, oldlen;
-
-#define unexpected(innerblock, outerblock) \
-    eprintf(unexpect_msg, keyword_table[innerblock - BREAK], \
-        outerblock ? keyword_table[outerblock - BREAK] : "outer");
 
     /* Do NOT strip leading space here.  This allows user to type and send
      * lines with leading spaces (but completely empty lines are handled
@@ -1303,7 +1340,6 @@ static int list(Program *prog, int subs)
             if (*ip == '(') {
                 is_a_condition = TRUE;
                 oldblock = block;
-                /*exprstart = ip;*/
                 ip++; /* skip '(' */
                 if (!expr(prog)) goto list_exit;
                 if (*ip != ')') {
@@ -1316,14 +1352,14 @@ static int list(Program *prog, int subs)
 		    eprintf("warning: \"%2.2s\" following \"/%s (...)\" "
 			"sends blank line to server, "
 			"which is probably not what was intended.",
-			ip, keyword_table[block - BREAK]);
+			ip, keyword_label(block));
 		}
                 block = (block == WHILE) ? DO : THEN;
             } else if (*ip) {
                 eprintf("warning: statement starting with %s in /%s "
                     "condition sends text to server, "
                     "which is probably not what was intended.",
-                    error_text(prog), keyword_table[block - BREAK]);
+                    error_text(prog), keyword_label(block));
             }
         }
 
@@ -1447,7 +1483,7 @@ static int list(Program *prog, int subs)
 		    eprintf("warning: \"%2.2s\" following \"/%s\" "
 			"sends blank line to server, "
 			"which is probably not what was intended.",
-			ip, keyword_table[block - BREAK]);
+			ip, keyword_label(block));
 		}
                 continue;
 
@@ -1506,7 +1542,7 @@ static int list(Program *prog, int subs)
 		if (cmdsub_count) {
 		    eprintf("/%s may be called only directly from a macro, "
 			"not in $() command substitution.",
-			keyword_table[block-BREAK]);
+			keyword_label(block));
                     goto list_exit;
 		}
 		/* FALL THROUGH */
@@ -1660,12 +1696,15 @@ static int percentsub(Program *prog, int subs, String **destp)
 
     if (*ip == '%') {
 	while (*ip == '%') Stringadd(*destp, *ip++);
+    } else if (!*ip || is_space(*ip)) {
+	/* "% " and "%" at end of line are left alone */
+	Stringadd(*destp, '%');
     } else if (subs >= SUB_FULL) {
 	if ((*destp)->len) {
 	    code_add(prog, OP_APPEND, *destp);
 	    (*destp = Stringnew(NULL, 0, 0))->links++;
 	}
-	result = varsub(prog, 0, !destp);
+	result = varsub(prog, 0, 0);
     } else {
 	Stringadd(*destp, '%');
     }
@@ -1792,7 +1831,7 @@ static int statement(Program *prog, int subs)
 
     opcmd.ptr = NULL;
 
-    if (ip[0] != '/') {
+    if (ip[0] != '/' || subs <= SUB_LITERAL) {
 	opcmd.op = OP_SEND;
     } else if (ip[1] == '/') {
 	ip++;
@@ -1990,21 +2029,6 @@ int varsub(Program *prog, int sub_warn, int in_expr)
     static int sub_warned = 0;
 
     (selector = Stringnew(NULL, 0, 0))->links++;
-
-#if 0
-    if (!in_expr) {
-	if (*ip == '%') {
-	    while (*ip == '%') Stringadd(dest, *ip++);
-	    result = 1;
-	    goto varsub_exit;
-	}
-	if (!*ip || is_space(*ip)) {
-	    Stringadd(dest, '%');
-	    result = 1;
-	    goto varsub_exit;
-	}
-    }
-#endif
 
     contents = ip;
     if ((bracket = (*ip == '{'))) ip++;

@@ -40,16 +40,16 @@ Installing TinyFugue
   --disable-history       disable /recall and other history features
   --disable-process       disable /quote and /repeat
   --disable-float         disable floating point arithmetic and functions
-  --with-incdirs=DIRS       search for include files in DIRS
-  --with-libdirs=DIRS       search for libraries in DIRS
-  --with-inclibdirs=DIRS    same as --with-incdirs=DIRS --with-libdirs=DIRS
-  --with-inclibprefix=DIRS  same, but appends '/include' and '/lib'
+  --with-incdirs=DIRS     search for include files in DIRS
+  --with-libdirs=DIRS     search for libraries in DIRS
+  --with-inclibdirs=DIRS  same as --with-incdirs=DIRS --with-libdirs=DIRS
+  --with-inclibpfx=DIRS   same, but appends '/include' and '/lib'
 
 
 The following environment variables are meaningful to configure.  Their
 default values are listed in brackets after the description.  They can
 be set on the command line like this:
-  sh -c "CPPFLAGS=-I/my/include ./configure"
+  env CPPFLAGS=-I/my/include ./configure
 
   CC		C compiler ["gcc" or "cc"]
   CFLAGS	Options for C compiler ["-g -O2" or "-O2" for gcc,
@@ -59,8 +59,8 @@ be set on the command line like this:
 		determined automatically by configure).
 
 Example:
-SSL libraries are typically installed in /usr/local/ssl/{lib,include}.
-To let TF find these, use the "--with-inclibprefix=/usr/local/ssl"
+If your system has SSL libraries and headers installed in
+/usr/local/SSL/{lib,include}, use the "--with-inclibpfx=/usr/local/SSL"
 option with configure.
 
 

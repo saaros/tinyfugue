@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: tty.c,v 35004.31 2004/02/17 06:44:43 hawkeye Exp $";
+static const char RCSid[] = "$Id: tty.c,v 35004.32 2004/07/18 01:12:38 hawkeye Exp $";
 
 /*
  * TTY driver routines.
@@ -179,7 +179,7 @@ int get_window_size(void)
 
     if (columns == ocol && lines == oline) return 1;
     set_var_by_id(VAR_wrapsize, columns - (ocol - wrapsize));
-    ch_visual();
+    ch_visual(NULL);
     do_hook(H_RESIZE, NULL, "%d %d", columns, lines);
     return 1;
 #else

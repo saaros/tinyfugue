@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.h,v 35004.60 2004/02/17 06:44:41 hawkeye Exp $ */
+/* $Id: output.h,v 35004.64 2004/07/21 00:19:41 hawkeye Exp $ */
 
 #ifndef OUTPUT_H
 #define OUTPUT_H
@@ -32,25 +32,26 @@ extern unsigned long alert_id;
 
 extern void dobell(int n);
 extern void init_output(void);
-extern int  change_term(void);
+extern int  change_term(Var *var);
 extern void setup_screen(void);
 extern int  winlines(void);
 extern int  redraw(void);
 extern int  redraw_window(Screen *screen, int already_clear);
 extern int  clear_display_screen(void);
 extern void oflush(void);
-extern int  tog_more(void);
-extern int  tog_keypad(void);
+extern int  tog_more(Var *var);
+extern int  tog_keypad(Var *var);
 extern int  clear_more(int new);
 extern int  pause_screen(void);
-extern int  ch_visual(void);
-extern int  ch_wrap(void);
-extern int  ch_status_int(void);
-extern int  ch_status_fields(void);
+extern int  ch_visual(Var *var);
+extern int  ch_expnonvis(Var *var);
+extern int  ch_wrap(Var *var);
+extern int  ch_status_int(Var *var);
+extern int  ch_status_fields(Var *var);
 extern void update_status_field(Var *var, stat_id_t internal);
 extern void format_status_line(void);
 extern int  display_status_line(void);
-extern int  update_status_line(void);
+extern int  update_status_line(Var *var);
 extern int handle_status_width_func(const char *name);
 extern void fix_screen(void);
 extern void minimal_fix_screen(void);
@@ -67,14 +68,13 @@ extern void do_refresh(void);
 extern void logical_refresh(void);
 extern void physical_refresh(void);
 extern void reset_outcount(Screen *screen);
-extern void enscreen(Screen *screen, String *line);
-extern void screenout(String *line);
-extern void update_prompt(String *newprompt, int display);
+extern void enscreen(Screen *screen, conString *line);
+extern void screenout(conString *line);
+extern void update_prompt(conString *newprompt, int display);
 extern int  wraplen(const char *str, int len, int indent);
-extern int  ch_hiliteattr(void);
-extern int  ch_status_attr(void);
-extern int  ch_alert_attr(void);
-extern String *decode_attr(const String *src, attr_t attrs);
+extern int  ch_attr(Var *var);
+extern int  ch_status_attr(Var *var);
+extern String *decode_attr(const conString *src, attr_t attrs, int offset);
 extern String *decode_ansi(const char *src, attr_t attrs, int emul,
     attr_t *final_attr);
 extern const char *get_keycode(const char *name);
@@ -85,7 +85,7 @@ extern void clear_screen_filter(struct Screen *screen);
 extern int enable_screen_filter(struct Screen *screen);
 extern void set_screen_filter(struct Screen *screen, Pattern *pat,
     attr_t attr_flag, int sense);
-extern void alert(String *msg);
+extern void alert(conString *msg);
 extern void clear_alert(void);
 
 

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: config.h.in,v 35004.27 2004/02/17 06:44:36 hawkeye Exp $ */
+/* $Id: config.h.in,v 35004.29 2004/05/02 01:31:15 hawkeye Exp $ */
 
 #define PLATFORM_UNIX
 
@@ -31,7 +31,7 @@
 #define HAVE_ZLIB_H 0
 #define HAVE_LIBZ 0
 #define SOCKS 0
-#define HAVE_LIBSSL 0
+#define HAVE_SSL 0
 
 #define HAVE_BCOPY 0
 #define HAVE_BZERO 0
@@ -96,15 +96,3 @@
 #undef NDEBUG
 #include <assert.h>
 
-extern const int feature_core;
-extern const int feature_float;
-extern const int feature_ftime;
-extern const int feature_history;
-extern const int feature_IPv6;
-extern const int feature_locale;
-extern const int feature_MCCPv2;
-extern const int feature_process;
-extern const int feature_SOCKS;
-extern const int feature_ssl;
-extern const int feature_subsecond;
-extern const int feature_TZ;

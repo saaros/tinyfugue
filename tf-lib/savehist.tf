@@ -1,4 +1,4 @@
-/set savehist_version=$Id: savehist.tf,v 35000.3 2003/12/08 03:47:03 hawkeye Exp $
+/set savehist_version=$Id: savehist.tf,v 35000.4 2004/07/03 02:55:28 hawkeye Exp $
 ;;;; Save/restore world histories
 ;;;; Requires tf version 40a9 or later.
 
@@ -7,7 +7,7 @@
 ; ...
 ; /set savehist_dir=~/tf-hist
 ; /load_histories
-; /repeat -0:10 999999999 /save_histories
+; /repeat -0:10 i /save_histories
 
 
 /loaded __TFLIB__/savehist.tf
@@ -91,6 +91,13 @@
     /endif%; \
     /return 1
 
+/def -i _hist_write = \
+    /let _line=%; \
+    /while (tfread('i', _line) >= 0) \
+	/test tfwrite({1}, encode_attr(_line))%; \
+    /done
+
+
 ; /save_history {-l|-i|-g|-w<world>}
 /def -i save_history = \
     /if /!savehist_args %0 %*%; /then /return 0%; /endif%; \
@@ -148,7 +155,13 @@
 	    /quote -S -decho %% !chmod go-rwx $$_file%; \
 	/endif%; \
 	/test tfflush(out, 0)%; \
-	/quote -S -decho #-t'%%@ -' -%hist /%count %| /test copyio('i', out)%; \
+;	"i" can't have attributes, so we don't bother encoding them.
+	/let opts=-%hist /%count%; \
+	/if (savehist_hist =~ "i") \
+	    /quote -S -decho #-t'%%@ -' %opts %| /test copyio('i', out)%; \
+	/else \
+	    /quote -S -decho #-t'%%@ -p -' %opts %| /test _hist_write(out)%; \
+	/endif%; \
 	/test tfclose(out)%; \
 	/set max_iter=%old_max_iter%; \
 	/test %{filesize} := %{filesize} + count%; \

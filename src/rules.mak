@@ -1,4 +1,4 @@
-# $Id: rules.mak,v 1.16 2002/03/13 00:41:12 hawkeye Exp $
+# $Id: rules.mak,v 1.17 2004/07/08 06:19:17 hawkeye Exp $
 ########################################################################
 #  TinyFugue - programmable mud client
 #  Copyright (C) 1998, 1999, 2002 Ken Keys
@@ -22,7 +22,7 @@
 
 command.o: command.c config.h port.h tf.h malloc.h dstring.h \
  globals.h varlist.h enumlist.h hooklist.h util.h \
- search.h tfio.h commands.h command.h world.h socket.h output.h \
+ search.h tfio.h cmdlist.h command.h world.h socket.h output.h \
  macro.h keyboard.h expand.h signals.h variable.h $(BUILDERS)
 dmalloc.o: dmalloc.c $(BUILDERS)
 dstring.o: dstring.c config.h port.h malloc.h tf.h dstring.h \
@@ -30,27 +30,27 @@ dstring.o: dstring.c config.h port.h malloc.h tf.h dstring.h \
 expand.o: expand.c config.h port.h tf.h malloc.h dstring.h \
  globals.h varlist.h enumlist.h hooklist.h util.h \
  search.h tfio.h macro.h signals.h socket.h keyboard.h parse.h \
- opcodes.h expand.h expr.h commands.h command.h variable.h $(BUILDERS)
+ opcodes.h expand.h expr.h cmdlist.h command.h variable.h $(BUILDERS)
 expr.o: expr.c config.h port.h tf.h malloc.h dstring.h \
  globals.h varlist.h enumlist.h hooklist.h util.h \
  search.h tfio.h macro.h signals.h socket.h output.h keyboard.h \
- parse.h opcodes.h expand.h expr.h commands.h command.h variable.h \
+ parse.h opcodes.h expand.h expr.h cmdlist.h command.h variable.h \
  tty.h history.h world.h funclist.h $(BUILDERS)
 help.o: help.c config.h port.h tf.h malloc.h dstring.h \
- globals.h varlist.h enumlist.h hooklist.h search.h tfio.h commands.h \
+ globals.h varlist.h enumlist.h hooklist.h search.h tfio.h cmdlist.h \
  variable.h $(BUILDERS)
 history.o: history.c config.h port.h tf.h malloc.h dstring.h \
  globals.h varlist.h enumlist.h hooklist.h util.h \
  search.h tfio.h history.h socket.h world.h output.h macro.h \
- commands.h keyboard.h variable.h signals.h $(BUILDERS)
+ cmdlist.h keyboard.h variable.h signals.h $(BUILDERS)
 keyboard.o: keyboard.c config.h port.h tf.h malloc.h \
  dstring.h globals.h varlist.h enumlist.h hooklist.h util.h \
  search.h tfio.h macro.h keyboard.h output.h \
- history.h expand.h commands.h tty.h keylist.h $(BUILDERS)
+ history.h expand.h cmdlist.h tty.h keylist.h $(BUILDERS)
 macro.o: macro.c config.h port.h tf.h malloc.h dstring.h \
  globals.h varlist.h enumlist.h hooklist.h util.h \
  search.h tfio.h world.h macro.h keyboard.h expand.h socket.h output.h \
- commands.h command.h parse.h opcodes.h $(BUILDERS)
+ cmdlist.h command.h parse.h opcodes.h $(BUILDERS)
 main.o: main.c config.h port.h tf.h malloc.h dstring.h \
  globals.h varlist.h enumlist.h hooklist.h util.h \
  search.h tfio.h history.h world.h socket.h macro.h output.h signals.h \
@@ -64,7 +64,7 @@ output.o: output.c config.h port.h tf.h malloc.h dstring.h \
 process.o: process.c config.h port.h tf.h malloc.h dstring.h \
  globals.h varlist.h enumlist.h hooklist.h util.h \
  search.h tfio.h history.h world.h process.h socket.h expand.h \
- commands.h output.h signals.h $(BUILDERS)
+ cmdlist.h output.h signals.h $(BUILDERS)
 search.o: search.c config.h port.h malloc.h search.h $(BUILDERS)
 signals.o: signals.c config.h port.h tf.h malloc.h dstring.h \
  globals.h varlist.h enumlist.h hooklist.h util.h \
@@ -72,12 +72,12 @@ signals.o: signals.c config.h port.h tf.h malloc.h dstring.h \
 socket.o: socket.c config.h port.h tf.h malloc.h dstring.h \
  globals.h varlist.h enumlist.h hooklist.h util.h \
  search.h tfio.h tfselect.h history.h world.h socket.h output.h \
- process.h macro.h keyboard.h commands.h command.h signals.h \
+ process.h macro.h keyboard.h cmdlist.h command.h signals.h \
  variable.h $(BUILDERS)
 tfio.o: tfio.c config.h port.h tf.h malloc.h dstring.h \
  globals.h varlist.h enumlist.h hooklist.h util.h \
  search.h tfio.h tfselect.h output.h macro.h history.h signals.h \
- variable.h keyboard.h expand.h commands.h $(BUILDERS)
+ variable.h keyboard.h expand.h cmdlist.h $(BUILDERS)
 time.o: time.c $(BUILDERS)
 tty.o: tty.c config.h port.h tf.h malloc.h dstring.h \
  globals.h varlist.h enumlist.h hooklist.h util.h \
@@ -87,9 +87,9 @@ util.o: util.c config.h port.h tf.h malloc.h dstring.h \
  search.h tfio.h output.h tty.h signals.h variable.h $(BUILDERS)
 variable.o: variable.c config.h port.h tf.h malloc.h \
  dstring.h globals.h varlist.h enumlist.h hooklist.h util.h \
- search.h tfio.h output.h socket.h commands.h \
+ search.h tfio.h output.h socket.h cmdlist.h \
  process.h expand.h parse.h opcodes.h variable.h $(BUILDERS)
 world.o: world.c config.h port.h tf.h malloc.h dstring.h \
  globals.h varlist.h enumlist.h hooklist.h util.h \
- search.h tfio.h history.h world.h process.h macro.h commands.h \
+ search.h tfio.h history.h world.h process.h macro.h cmdlist.h \
  socket.h output.h $(BUILDERS)

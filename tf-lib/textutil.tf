@@ -98,8 +98,8 @@
     /let _body=0%; \
     /if (!opt_l & !opt_w & !opt_c) /test opt_l:= opt_w:= opt_c:= 1%; /endif%; \
     /if (opt_l) /let _body=%_body, ++_lines%; /endif%; \
-    /if (opt_w) /let _body=%_body, _words:=_words+$$(/length %%_line)%; /endif%; \
-    /if (opt_c) /let _body=%_body, _chars:=_chars+strlen(_line)%; /endif%; \
+    /if (opt_w) /let _body=%_body, _words+=$$(/length %%_line)%; /endif%; \
+    /if (opt_c) /let _body=%_body, _chars+=strlen(_line)%; /endif%; \
     /eval \
         /while (tfread(_handle, _line) >= 0) \
             /test %_body%%; \

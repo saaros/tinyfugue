@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: util.c,v 35004.123 2004/02/17 06:44:43 hawkeye Exp $";
+static const char RCSid[] = "$Id: util.c,v 35004.131 2004/07/18 09:06:52 hawkeye Exp $";
 
 
 /*
@@ -48,7 +48,7 @@ typedef struct mail_info_s {	/* mail file information */
 
 mail_info_t *maillist = NULL;
 
-struct timeval tvzero = { 0, 0 };	/* zero (useful in tvcmp()) */
+const struct timeval tvzero = { 0, 0 };	/* zero (useful in tvcmp()) */
 struct timeval mail_update = { 0, 0 };	/* next mail update (0==immediately) */
 int mail_count = 0;
 char tf_ctype[0x100];
@@ -66,6 +66,7 @@ struct feature features[] = {
     { "history",	&feature_history },
     { "IPv6",		&feature_IPv6 },
     { "locale",		&feature_locale },
+    { "MCCPv1",		&feature_MCCPv1 },
     { "MCCPv2",		&feature_MCCPv2 },
     { "process",	&feature_process },
     { "SOCKS",		&feature_SOCKS },
@@ -75,7 +76,7 @@ struct feature features[] = {
     { NULL,		NULL }
 };
 
-static char *cmatch(const char *pat, int ch);
+static const char *cmatch(const char *pat, int ch);
 static void  free_maillist(void);
 static RegInfo *tf_reg_compile_fl(const char *pattern, int optimize,
     const char *file, int line);
@@ -91,17 +92,18 @@ int ucase(x) char x; { return is_lower(x) ? toupper(x) : x; }
 void init_util1(void)
 {
     int i;
-    struct feature *f;
+    const struct feature *f;
 
     for (i = 0; i < 0x100; i++) {
         tf_ctype[i] = 0;
     }
 
-    tf_ctype['+']  |= IS_UNARY | IS_ADDITIVE;
-    tf_ctype['-']  |= IS_UNARY | IS_ADDITIVE;
+    tf_ctype['+']  |= IS_UNARY | IS_ADDITIVE | IS_ASSIGNPFX;
+    tf_ctype['-']  |= IS_UNARY | IS_ADDITIVE | IS_ASSIGNPFX;
     tf_ctype['!']  |= IS_UNARY;
-    tf_ctype['*']  |= IS_MULT;
-    tf_ctype['/']  |= IS_MULT;
+    tf_ctype['*']  |= IS_MULT | IS_ASSIGNPFX;
+    tf_ctype['/']  |= IS_MULT | IS_ASSIGNPFX;
+    tf_ctype[':']  |= IS_ASSIGNPFX;
 
     /* tf_ctype['.']  |= IS_ADDITIVE; */ /* doesn't work right */
     tf_ctype['"']  |= IS_QUOTE;
@@ -191,7 +193,7 @@ String *print_to_ascii(const char *src)
  * These are heavily used functions, so speed is favored over simplicity.
  */
 
-int enum2int(const char *str, long val, String *vec, const char *msg)
+int enum2int(const char *str, long val, conString *vec, const char *msg)
 {
     int i;
     STATIC_BUFFER(buf);
@@ -273,7 +275,7 @@ int cstrncmp(register const char *s, register const char *t, int n)
  * Converts argument to a nonnegative integer.  Returns -1 for failure.
  * The *str pointer will be advanced to beginning of next word.
  */
-int numarg(char **str)
+int numarg(const char **str)
 {
     int result;
     if (is_digit(**str)) {
@@ -304,7 +306,7 @@ char *stringarg(char **str, const char **end)
     return start;
 }
 
-int stringliteral(String *dest, char **str)
+int stringliteral(String *dest, const char **str)
 {
     char quote;
 
@@ -359,7 +361,7 @@ int regmatch_in_scope(Value *val, const char *pattern, String *str)
 	}
     }
 
-    return tf_reg_exec(reginfo, str, NULL, 0);
+    return tf_reg_exec(reginfo, CS(str), NULL, 0);
 }
 
 RegInfo *new_reg_scope(RegInfo *ri, String *Str)
@@ -467,7 +469,7 @@ tf_reg_compile_error:
 }
 
 int tf_reg_exec(RegInfo *ri,
-    String *Sstr,	/* String to match.  Will be saved for regsubstr(). */
+    conString *Sstr,	/* String to match.  Will be saved for regsubstr(). */
     const char *str,	/* Used if Sstr is NULL; not saved. */
     int startoffset)
 {
@@ -481,7 +483,7 @@ int tf_reg_exec(RegInfo *ri,
 
     /* Free old saved Str. */
     if (ri->Str) {
-	Stringfree(ri->Str);
+	conStringfree(ri->Str);
 	ri->Str = NULL;
     }
 
@@ -508,7 +510,7 @@ void tf_reg_free(RegInfo *ri)
     if (ri->ovector) FREE(ri->ovector);
     if (ri->re) pcre_free(ri->re);
     if (ri->extra) pcre_free(ri->extra);
-    if (ri->Str) Stringfree(ri->Str);
+    if (ri->Str) conStringfree(ri->Str);
     FREE(ri);
 }
 
@@ -570,7 +572,7 @@ void free_pattern(Pattern *pat)
 
 int patmatch(
     const Pattern *pat,
-    String *Sstr,	/* String to match.  Will be saved for regsubstr(). */
+    conString *Sstr,	/* String to match.  Will be saved for regsubstr(). */
     const char *str)	/* Used if Sstr is NULL; not saved. */
 {
     if (Sstr) str = Sstr->data;
@@ -593,7 +595,7 @@ int patmatch(
  * If ch matches, cmatch() returns a pointer to the char after ']' in class;
  * otherwise, cmatch() returns NULL.
  */
-static char *cmatch(const char *class, int ch)
+static const char *cmatch(const char *class, int ch)
 {
     int not;
 
@@ -810,20 +812,21 @@ char *stripstr(char *s)
       A '--' or '-' with no option may be used to mark the end of the options.
 */
 
-static String *optstr;
+static const conString *optstr;
 static const char *options;
 static int inword;
 
-void startopt(String *args, const char *opts)
+void startopt(const conString *args, const char *opts)
 {
     optstr = args;
     options = opts;
     inword = 0;
 }
 
-char nextopt(char **arg, void *uval, int *type, int *offp)
+char nextopt(const char **arg, void *uval, int *type, int *offp)
 {
-    char *q, *end, opt;
+    char *q, opt;
+    const char *end;
     STATIC_BUFFER(buffer);
 
     current_opt = '\0';
@@ -937,14 +940,14 @@ nextopt_error:
 }
 
 #if HAVE_TZSET
-int ch_timezone(void)
+int ch_timezone(Var *var)
 {
     tzset();
     return 1;
 }
 #endif
 
-int ch_locale(void)
+int ch_locale(Var *var)
 {
 #if HAVE_SETLOCALE
     const char *lang;
@@ -975,45 +978,63 @@ int ch_locale(void)
 #endif /* HAVE_SETLOCALE */
 }
 
-int ch_maildelay(void)
+int ch_maildelay(Var *var)
 {
     mail_update = tvzero;
     return 1;
 }
 
-int ch_mailfile(void)
+static mail_info_t *add_mail_file(mail_info_t *newlist, char *name)
 {
-    mail_info_t *info, **oldp, *newlist = NULL;
-    char *path, *name;
-    const char *end;
-
-    path = (TFMAILPATH && *TFMAILPATH) ? TFMAILPATH : MAIL;
-    if (path) {
-	while (*(name = stringarg(&path, &end))) {
-	    for (oldp = &maillist; *oldp; oldp = &(*oldp)->next) {
-		if (strncmp(name, (*oldp)->name, end-name) == 0 &&
-		    !(*oldp)->name[end-name])
-			break;
-	    }
-	    if (*oldp) {
-		info = *oldp;
-		*oldp = (*oldp)->next;
-	    } else {
-		info = XMALLOC(sizeof(mail_info_t));
-		info->name = strncpy(XMALLOC(end-name+1), name, end-name);
-		info->name[end-name] = '\0';
-		info->mtime = -2;
-		info->size = -2;
-		info->flag = 0;
-		info->error = 0;
-	    }
-	    info->next = newlist;
-	    newlist = info;
+    mail_info_t *info, **oldp;
+    for (oldp = &maillist; *oldp; oldp = &(*oldp)->next) {
+	if (strcmp(name, (*oldp)->name) == 0) { /* already in maillist */
+	    FREE(name);
+	    break;
 	}
+    }
+    if (*oldp) {
+	info = *oldp;
+	*oldp = (*oldp)->next;
+    } else {
+	info = XMALLOC(sizeof(mail_info_t));
+	info->name = name;
+	info->mtime = -2;
+	info->size = -2;
+	info->flag = 0;
+	info->error = 0;
+    }
+    info->next = newlist;
+    return info;
+}
+
+int ch_mailfile(Var *var)
+{
+    const char *path, *end;
+    char *name, *p;
+    mail_info_t *newlist = NULL;
+
+    if (TFMAILPATH && *TFMAILPATH) {
+	path = TFMAILPATH;
+	while (*path) {
+	    while (is_space(*path)) path++;
+	    if (!*path) break;
+	    end = estrchr(path, ' ', '\\');
+	    if (!end) end = path + strlen(path);
+	    p = name = XMALLOC(end-path+1);
+	    while (path < end) {
+		if (*path == '\\') path++;
+		*p++ = *path++;
+	    }
+	    *p = '\0';
+	    newlist = add_mail_file(newlist, name);
+	}
+    } else {
+	newlist = add_mail_file(newlist, STRDUP(MAIL));
     }
     free_maillist();
     maillist = newlist;
-    ch_maildelay();
+    ch_maildelay(NULL);
     return 1;
 }
 
@@ -1033,15 +1054,15 @@ void init_util2(void)
     String *path;
     const char *name;
 
-    ch_locale();
+    ch_locale(NULL);
 
     if (MAIL || TFMAILPATH) {  /* was imported from environment */
-        ch_mailfile();
+        ch_mailfile(NULL);
 #ifdef MAILDIR
     } else if ((name = getvar("LOGNAME")) || (name = getvar("USER"))) {
         (path = Stringnew(NULL, 0, 0))->links++;
         Sprintf(path, "%s/%s", MAILDIR, name);
-        set_var_by_name("MAIL", path, 0);
+        set_var_by_name("MAIL", path);
         Stringfree(path);
 #endif
     } else {
@@ -1175,7 +1196,8 @@ void check_mail(void)
  * i[.f]	TIME or FLOAT (depending on what's allowed and length of <f>).
  * i		INT
  */
-Value *parsenumber(const char *str, char **caller_endp, int typeset, Value *val)
+Value *parsenumber(const char *str, const char **caller_endp, int typeset,
+    Value *val)
 {
     int neg = 0, allocated, digits;
     char *endp;
@@ -1350,7 +1372,7 @@ void abstime(struct timeval *tvp)
     /* don't touch tvp->tv_usec */
 }
 
-void normalize_time(struct timeval *tvp)
+static inline void normalize_time(struct timeval *tvp)
 {
     while (tvp->tv_usec < (tvp->tv_sec > 0 ? 0 : -999999)) {
         tvp->tv_sec--;
@@ -1363,7 +1385,7 @@ void normalize_time(struct timeval *tvp)
 }
 
 /* a = b - c */
-void tvsub(struct timeval *a, struct timeval *b, struct timeval *c)
+void tvsub(struct timeval *a, const struct timeval *b, const struct timeval *c)
 {
     a->tv_sec = b->tv_sec - c->tv_sec;
     a->tv_usec = b->tv_usec - c->tv_usec;
@@ -1371,7 +1393,7 @@ void tvsub(struct timeval *a, struct timeval *b, struct timeval *c)
 }
 
 /* a = b + c */
-void tvadd(struct timeval *a, struct timeval *b, struct timeval *c)
+void tvadd(struct timeval *a, const struct timeval *b, const struct timeval *c)
 {
     a->tv_sec = b->tv_sec + c->tv_sec;
     a->tv_usec = b->tv_usec + c->tv_usec;
@@ -1381,7 +1403,7 @@ void tvadd(struct timeval *a, struct timeval *b, struct timeval *c)
 /* appends a formatted time string to buf.
  * If fmt is NULL, trailing zeros are omitted.
  */
-void tftime(String *buf, String *fmt, struct timeval *intv)
+void tftime(String *buf, const conString *fmt, const struct timeval *intv)
 {
     STATIC_STRING(defaultfmt, "%c", 0);
     STATIC_STRING(Ffmt, "%Y-%m-%d", 0);
