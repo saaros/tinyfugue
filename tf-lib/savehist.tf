@@ -1,6 +1,5 @@
-/set savehist_version=$Id: savehist.tf,v 35000.4 2004/07/03 02:55:28 hawkeye Exp $
+/set savehist_version=$Id: savehist.tf,v 35000.5 2004/08/04 18:31:51 hawkeye Exp $
 ;;;; Save/restore world histories
-;;;; Requires tf version 40a9 or later.
 
 ;;;; Typical usage in .tfrc:
 ; /addworld ...

@@ -1,4 +1,4 @@
-# $Id: vars.mak,v 1.49 2004/05/01 22:38:29 hawkeye Exp $
+# $Id: vars.mak,v 1.50 2004/08/04 18:36:09 hawkeye Exp $
 ########################################################################
 #  TinyFugue - programmable mud client
 #  Copyright (C) 1998, 1999, 2002, 2003, 2004 Ken Keys
@@ -16,7 +16,7 @@
 # Predefined variables:
 #   O - object file suffix (e.g., "o" or "obj")
 
-TFVER=50b5
+TFVER=50b6
 
 SOURCE = command.c dstring.c expand.c help.c history.c keyboard.c \
   macro.c main.c malloc.c output.c process.c search.c signals.c \

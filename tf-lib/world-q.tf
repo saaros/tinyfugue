@@ -23,7 +23,7 @@
 ; Use %1 instead of $world_name so this can be called by name
 /def -iFp1 -h"BGTEXT" activity_queue_hook = \
 ;   world may already be in active_worlds because of scrollback, etc
-    /if /test active_worlds !/ "*{%1}*"%; /then \
+    /if /test moresize("", {1}) > 0 & active_worlds !/ "*{%1}*"%; /then \
 	/enqueue %1 active_worlds%; \
     /endif
 

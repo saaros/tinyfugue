@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: expr.c,v 35004.151 2004/07/20 23:02:39 hawkeye Exp $";
+static const char RCSid[] = "$Id: expr.c,v 35004.152 2004/07/27 16:15:05 hawkeye Exp $";
 
 
 /********************************************************************
@@ -1014,13 +1014,14 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
 
         case FN_moresize:
 	  {
-	    int lim = 0, new = 0, include_A = 0;
+	    int lim_only = 0, new_only = 0, include_A = 0;
+	    int nnew, nback;
 	    World *world;
 	    Screen *screen;
 	    if (n > 0 && (str = opdstd(n-0))) {
 		for ( ; *str; str++) {
-		    if (lcase(*str) == 'l') lim++;
-		    else if (lcase(*str) == 'n') new++;
+		    if (lcase(*str) == 'l') lim_only++;
+		    else if (lcase(*str) == 'n') new_only++;
 		    else if (lcase(*str) == 'a') include_A++;
 		    else {
 			eprintf("illegal flag '%c'", *str);
@@ -1030,10 +1031,11 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
 	    }
             world = (n>=2 && *opdstd(n-1)) ? find_world(opdstd(n-1)) : xworld();
 	    screen = world ? world->screen : display_screen;
-	    if (!new || screen == display_screen || screen->active || include_A)
-		return newint(new ?
-		    (lim ? screen->nnew_filtered : screen->nnew) :
-		    (lim ? screen->nback_filtered : screen->nback));
+	    nnew = lim_only ? screen->nnew_filtered : screen->nnew;
+	    nback = lim_only ? screen->nback_filtered : screen->nback;
+	    if (screen == display_screen || screen->active || include_A ||
+		(!new_only && nback > nnew))
+		    return newint(new_only ? nnew : nback);
 	    else
 		return newint(0);
 	  }

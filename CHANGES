@@ -11,6 +11,14 @@ If you have custom code to do any of the following in older versions,
   switch, or resuming from sh or suspend); scrollback; status line
   customizations; ...
 
+5.0 beta 6 (2004-08-04)
+----------
+Fixed: lines with "A" attribute were not ignored as they should have been by
+    activity_status.tf and world-q.tf. (50b5)
+Fixed crashes and other problems caused by prompts in expnonvis mode. (50b5)
+Fixed crash on SSL error. (50b5)
+Fixed spurious error message when an SSL server closes its connection.
+
 5.0 beta 5 (2004-07-26)
 ----------
 Added an experimental side-scrolling variant of non-visual mode; see

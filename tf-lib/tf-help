@@ -4619,10 +4619,11 @@ experimental non-visual mode
   Any movement that would exceed half the screen width does not use the 
   terminal's scrolling, but instead redraws the line.  
 
-  The current implementation may have bugs in choosing the right distance to 
-  scroll, but as far as I know the display will never appear incorrect.  But 
-  if it ever does, use ^L to redraw it.  Terminals without the delete 
-  character capability are not yet supported, but will be in the future.  
+  The current implementation probably has a few bugs; if the screen display 
+  ever appears incorrect, use ^R or ^L to redraw it.  I don't think there are 
+  any fatal bugs, but it is possible that some remain, so don't try expnonvis 
+  unless you don't mind crashing tf.  Terminals without the delete character 
+  capability are not yet supported, but will be in the future.  
 
 &logic
 &math
@@ -4707,10 +4708,8 @@ Operators
   ![4mn[24m          Boolean NOT (1 if [4mn[24m==0, otherwise 0).  
   +[4mn[24m          Unary positive (useful for converting a string to a number).  
   -[4mn[24m          Unary negative.  
-  ++[4mv[24m         Adds 1 to the integer value of variable [4mv[24m and returns its new 
-              value.  
-  --[4mv[24m         Subtracts 1 from the integer value of variable [4mv[24m and returns its 
-              new value.  
+  ++[4mv[24m         Equivalent to ([4mv[24m := [4mv[24m + 1).  
+  --[4mv[24m         Equivalent to ([4mv[24m := [4mv[24m - 1).  
 
   [4mn1[24m * [4mn2[24m     Numeric multiplication.  
   [4mn1[24m / [4mn2[24m     Numeric division.  Remember, if both operands are type integer, 
@@ -8366,6 +8365,18 @@ virtual windows
 
   The [1m/limit[22;0m command will filter the text displayed in a window.  The counters 
   in the [1mmore[22;0m prompt will count only the lines that match the [1mlimit[22;0m.  
+
+  If your terminal emulator has its own scrollback, it probably will not work 
+  very well with tf.  To avoid confusion and avoid polluting your terminal's 
+  scrollback with garbage, tf tries to switch to the terminal's "alternate 
+  buffer", which does not keep scrollback.  But not all terminals and 
+  configurations allow this (for example, xterm does, but only if the termcap 
+  or terminfo entry contains the correct codes, and it has not been disabled 
+  with xterm's titeInhibit resource).  If the terminal can not switch to an 
+  alternate buffer, the terminal's scrollback may appear to work for a while, 
+  but will become jumbled as soon as you switch worlds in tf or use tf's 
+  scrollback.  You are advised to not attempt to use your terminal's 
+  scrollback at all while running tf.  
 
   See also: [1minterface[22;0m, [1mvisual[22;0m, [1m/limit[22;0m, [1mkeybindings[22;0m.  
 &interrupt

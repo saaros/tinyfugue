@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: output.c,v 35004.205 2004/07/27 01:02:34 hawkeye Exp $";
+static const char RCSid[] = "$Id: output.c,v 35004.207 2004/07/30 19:21:02 hawkeye Exp $";
 
 
 /*****************************************************************
@@ -393,6 +393,7 @@ void init_output(void)
     bottom_margin = lines;
 
     prompt = fgprompt();
+    old_ix = -1;
 
     init_term();
     Stringninit(status_line, columns);
@@ -681,6 +682,7 @@ void setup_screen(void)
 
     if (!visual) {
         prompt = display_screen->paused ? moreprompt : fgprompt();
+	old_ix = -1;
 
 #ifdef SCREEN
     } else {
@@ -1171,6 +1173,7 @@ int redraw_window(Screen *screen, int already_clear)
     }
 
     bufflush();
+    old_ix = -1;
     set_refresh_pending(REF_PHYSICAL);
     ox = cx;
     oy = cy;
@@ -1782,8 +1785,10 @@ int ch_expnonvis(Var *var)
         eprintf("expnonvis mode is not supported on this terminal.");
 	return 0;
     }
-    if (!visual)
+    if (!visual) {
+	old_ix = -1;
 	redraw();
+    }
     return 1;
 }
 
@@ -2027,7 +2032,12 @@ void iput(int len)
         if (!visual) {
 	    if (expnonvis) {
 		int i;
+		int prompt_len = 0;
 		bufputc('\r');
+		if (prompt) {
+		    prompt_len = prompt->len % Wrap;
+		    hwrite(prompt, prompt->len - prompt_len, prompt_len, 0);
+		}
 		for (i = 0; i < sidescroll; i++)
 		    tp(delete_char);
 		iendx -= i;
@@ -2105,11 +2115,12 @@ void idel(int place)
     if (len < 0) ix += len;
     
     if (!visual) {
-        if (ix < 1 || need_refresh) {
+	int prompt_len = prompt ? prompt->len % Wrap : 0;
+        if (ix < prompt_len + 1 || need_refresh) {
             physical_refresh();
             return;
         }
-        if (expnonvis && ix == 1 && keyboard_pos == keybuf->len) {
+        if (expnonvis && ix == prompt_len + 1 && keyboard_pos == keybuf->len) {
 	    /* there would be nothing left; slide the window so there is */
             physical_refresh();
             return;
@@ -2196,7 +2207,7 @@ void idel(int place)
 
 int igoto(int place)
 {
-    int diff, new;
+    int diff;
 
     if (place < 0)
         place = 0;
@@ -2213,19 +2224,25 @@ int igoto(int place)
         /* no physical change */
 
     } else if (!visual) {
+	int prompt_len = prompt ? prompt->len % Wrap : 0;
         ix += diff;
-        if (ix < 1) { /* off left edge of screen */
-	    if (expnonvis && insert_char && 1 - ix <= Wrap/2) {
+        if (ix-1 < prompt_len) { /* off left edge of screen/prompt */
+	    if (expnonvis && insert_char && prompt_len - (ix-1) <= Wrap/2) {
 		/* can scroll, and amount of scroll needed is <= half screen */
-		int i;
+		int i, n;
 		bufputc('\r');
-		for (i = 0; i < sidescroll || i < 1 - ix; i++)
+		if (prompt)
+		    hwrite(prompt, prompt->len - prompt_len, prompt_len, 0);
+		n = prompt_len - (ix-1); /* get ix onto screen */
+		if (sidescroll > n) n = sidescroll; /* bring up to minimum */
+		if (n > keyboard_pos-diff) n = keyboard_pos-diff; /* too far? */
+		for (i = 0; i < n; i++)
 		    tp(insert_char);
 		ix += i;
-		ictrl_put(keybuf->data + keyboard_pos - (ix - 1), i);
-		cx = i + 1;
+		ictrl_put(keybuf->data + keyboard_pos + prompt_len - (ix-1), i);
+                bufputnc('\010', (prompt_len + i) - (ix - 1));
+		cx = ix;
 		cy = lines;
-		xy(ix, lines);
 	    } else {
 		physical_refresh();
 	    }
@@ -2238,11 +2255,13 @@ int igoto(int place)
 		    int offset = place - ix + iendx;
 		    int i;
 		    bufputc('\r');
+		    if (prompt)
+			hwrite(prompt, prompt->len - prompt_len, prompt_len, 0);
 		    for (i = 0; i < sidescroll || i < ix - Wrap; i++)
 			tp(delete_char);
 		    iendx -= i;
 		    ix -= i;
-		    cx = 1;
+		    cx = prompt_len + 1;
 		    cy = lines;
 		    xy(iendx, lines);
 		    ioutputs(keybuf->data + offset, keybuf->len - offset);
@@ -2264,7 +2283,7 @@ int igoto(int place)
 
     /* visual */
     } else {
-        new = (ix - 1) + diff;
+        int new = (ix - 1) + diff;
         iy += ndiv(new, Wrap);
         ix = nmod(new, Wrap) + 1;
 
@@ -2298,15 +2317,24 @@ void physical_refresh(void)
         ipos();
     } else {
 	int start;
+	int prompt_len = 0;
         clear_input_line();
-	ix = (!expnonvis || old_ix < 1 || old_ix > Wrap) ?
-	    ((prompt?prompt->len:0) + (sockecho()?keyboard_pos:0)) % Wrap + 1 :
-	    old_ix;
-        start = (sockecho()?keyboard_pos:0) - (ix - 1);
+	if (prompt) {
+	    prompt_len = (prompt->len + 1) % Wrap - 1;
+	    hwrite(prompt, prompt->len - prompt_len, prompt_len, 0);
+	    iendx = prompt_len + 1;
+	}
+	ix = (sockecho()?keyboard_pos:0) % (Wrap - prompt_len) + 1 + prompt_len;
+        start = (sockecho()?keyboard_pos:0) - (ix - 1) + prompt_len;
 	if (start == keybuf->len && keybuf->len > 0) { /* would print nothing */
 	    /* slide window so something is visible */
-	    ix += Wrap/2;
-	    start -= Wrap/2;
+	    if (start > Wrap - prompt_len) {
+		ix += Wrap - prompt_len;
+		start -= Wrap - prompt_len;
+	    } else {
+		ix += start;
+		start = 0;
+	    }
 	}
 	ioutall(start);
         bufputnc('\010', iendx - ix);  cx -= (iendx - ix);
@@ -2342,23 +2370,40 @@ void logical_refresh(void)
         ipos();
     } else {
         clear_input_line();
-	if (expnonvis)
-	    kpos = ((sockecho() ? keyboard_pos : 0) - kpos) / Wrap * Wrap;
-	if (kpos == keybuf->len && keybuf->len > 0) { /* would print nothing */
-	    /* slide window so something is visible */
-	    kpos -= sidescroll;
-	    nix += sidescroll;
-	}
-	ioutall(kpos);
-	kpos += Wrap;
-	while ((sockecho() && kpos <= keyboard_pos) || kpos < 0) {
-	    crnl(1);  cx = 1;
-	    iendx = 1;
+	if (expnonvis) {
+	    int plen = 0;
+	    if (prompt) {
+		plen = (prompt->len + 1) % Wrap - 1;
+		hwrite(prompt, prompt->len - plen, plen, 0);
+		iendx = plen + 1;
+	    }
+	    ix = (old_ix >= iendx && old_ix <= Wrap) ? old_ix :
+		(sockecho()?keyboard_pos:0) % (Wrap - plen) + 1 + plen;
+	    old_ix = -1; /* invalid */
+	    kpos = (sockecho()?keyboard_pos:0) - (ix - 1) + plen;
+	    if (kpos == keybuf->len && keybuf->len > 0) {
+		/* would print nothing; slide window so something is visible */
+		if (kpos > Wrap/2) {
+		    ix += Wrap/2;
+		    kpos -= Wrap/2;
+		} else {
+		    ix += kpos;
+		    kpos -= kpos;
+		}
+	    }
+	    ioutall(kpos);
+	} else {
 	    ioutall(kpos);
 	    kpos += Wrap;
+	    while ((sockecho() && kpos <= keyboard_pos) || kpos < 0) {
+		crnl(1);  cx = 1;
+		iendx = 1;
+		ioutall(kpos);
+		kpos += Wrap;
+	    }
+	    ix = nix;
 	}
-	ix = nix;
-	bufputnc('\010', iendx - nix);  cx -= (iendx - nix);
+	bufputnc('\010', iendx - ix);  cx -= (iendx - ix);
     }
     bufflush();
     if (need_refresh <= REF_LOGICAL) need_refresh = 0;
@@ -2370,6 +2415,7 @@ void update_prompt(conString *newprompt, int display)
 
     if (oldprompt == moreprompt) return;
     prompt = newprompt;
+    old_ix = -1;
     if ((oldprompt || prompt) && display)
         set_refresh_pending(REF_LOGICAL);
 }
@@ -2604,6 +2650,7 @@ int clear_more(int new)
 		if (!scroll) display_screen->outcount = ystatus - 1;
 	    } else {
 		prompt = fgprompt();
+		old_ix = -1;
 		clear_input_line();
 	    }
 	}
@@ -2818,6 +2865,7 @@ void oflush(void)
         if (!visual) {
             if (!waspaused) {
                 prompt = moreprompt;
+		old_ix = -1;
                 set_refresh_pending(REF_LOGICAL);
             }
         } else if (!waspaused ||

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: socket.c,v 35004.262 2004/07/26 07:24:02 hawkeye Exp $";
+static const char RCSid[] = "$Id: socket.c,v 35004.265 2004/07/30 22:35:10 hawkeye Exp $";
 
 
 /***************************************************************
@@ -534,7 +534,15 @@ static void ssl_io_err(Sock *sock, int ret, int hook)
 	ssl_io_err_hook("SSL", "SSL_ERROR_WANT_CONNECT");
 	break;
     case SSL_ERROR_SYSCALL:
-	ssl_io_err_hook("SSL/system", strerror(errno));
+	if (ret == 0) {
+	    ssl_io_err_hook("SSL/system", "invalid EOF");
+	} else if (ret == -1) {
+	    ssl_io_err_hook("SSL/system", strerror(errno));
+	} else {
+	    while ((err = ERR_get_error())) {
+		ssl_io_err_hook("SSL/system", ERR_error_string(err, NULL));
+	    }
+	}
 	break;
     case SSL_ERROR_SSL:
 	while ((err = ERR_get_error())) {
@@ -1189,6 +1197,12 @@ static int opensock(World *world, int flags)
 	if (world->sock->constate == SS_DEAD)
 	    dead_socks--;
         xsock = world->sock;
+#if HAVE_SSL
+	if (xsock->ssl) {
+	    SSL_free(xsock->ssl); /* killsock() closed it, but didn't free it */
+	    xsock->ssl = NULL;
+	}
+#endif
 
     } else {
         /* create and initialize new Sock */
@@ -1635,7 +1649,7 @@ static int tfgetaddrinfo(const char *nodename, const char *port,
     }
 
     if (hints->ai_flags & AI_NUMERICHOST) {
-	free(blob);
+	FREE(blob);
 	*res = NULL;
 	return TF_EAI_NODATA;
     }
@@ -1667,22 +1681,16 @@ found:
     return 0;
 
 error:
-    free(blob);
+    FREE(blob);
     return err;
 }
 #endif /* !HAVE_GETADDRINFO */
 
 static void tffreeaddrinfo(struct addrinfo *ai)
 {
-#if 0
-    struct addrinfo *next;
-    for (next = ai->ai_next; ai; ai = next) {
-	free(ai->ai_addr);
-	free(ai);
-    }
-#else
-    free(ai);
-#endif
+    /* ai and all contents were allocated in single chunk by tfgetaddrinfo()
+     * or completed nonblocking resolution in openconn() */
+    FREE(ai);
 }
 
 /* Convert name or ip number string to a list of struct addrinfo.
@@ -2014,8 +2022,7 @@ static void killsock(Sock *sock)
 #if HAVE_SSL
     if (sock->ssl) {
 	SSL_shutdown(sock->ssl);
-	SSL_free(sock->ssl);
-	sock->ssl = NULL;
+	/* Don't SSL_free() yet: we still need to be able to use SSL_error() */
     }
 #endif
     if (sock->fd >= 0) {
@@ -2071,6 +2078,12 @@ static void nukesock(Sock *sock)
         nuke_world(sock->world);
         sock->world = NULL;
     }
+#if HAVE_SSL
+    if (sock->ssl) {
+	SSL_free(sock->ssl);
+	sock->ssl = NULL;
+    }
+#endif
     FREE(sock);
 }
 
@@ -2761,7 +2774,14 @@ static int handle_socket_input(const char *simbuffer, int simlen)
 #if HAVE_SSL
 	    if (xsock->ssl) {
 		count = SSL_read(xsock->ssl, inbuffer, sizeof(inbuffer));
-		if (count <= 0) {
+		if (count == 0 &&
+		    SSL_get_error(xsock->ssl, 0) == SSL_ERROR_SYSCALL &&
+		    ERR_peek_error() == 0)
+		{
+		    /* Treat a count of 0 with no errors as a normal EOF */
+		    goto eof;
+		} else if (count <= 0) {
+		    /* Treat an error or a bad EOF as an error */
 		    zombiesock(xsock); /* before hook, so state is correct */
 		    ssl_io_err(xsock, count, H_DISCONNECT);
 		    return received;
@@ -2773,10 +2793,11 @@ static int handle_socket_input(const char *simbuffer, int simlen)
 		 * got here because of a mistake in the active fdset and there
 		 * is really nothing to read, the loop would be unbreakable. */
 		count = recv(xsock->fd, inbuffer, sizeof(inbuffer), 0);
+		eof:
 		if (count <= 0) {
 		    int err = errno;
 		    constate_t state = xsock->constate;
-		    if (errno == EINTR)
+		    if (count < 0 && errno == EINTR)
 			return 0;
 		    /* Socket is blocking; EAGAIN and EWOULDBLOCK impossible. */
 		    if (xsock->buffer->len) {

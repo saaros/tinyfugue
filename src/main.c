@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: main.c,v 35004.103 2004/07/16 21:13:51 hawkeye Exp $";
+static const char RCSid[] = "$Id: main.c,v 35004.104 2004/07/29 17:37:19 hawkeye Exp $";
 
 
 /***********************************************
@@ -47,7 +47,7 @@ const char version[] =
 #if DEVELOPMENT
     "DEVELOPMENT VERSION: "
 #endif
-    "TinyFugue version 5.0 beta 5";
+    "TinyFugue version 5.0 beta 6";
 
 const char mods[] = "";
 
