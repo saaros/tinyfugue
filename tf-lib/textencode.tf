@@ -1,8 +1,8 @@
-;;;; $Id: textencode.tf,v 35000.1 2002/04/17 17:39:34 hawkeye Exp $
+;;;; $Id: textencode.tf,v 35000.2 2003/12/08 03:47:03 hawkeye Exp $
 ;;;; Encode/decode text to/from a form containing only letters, digits, and
 ;;;; underscores.
 
-/loaded textencode.tf
+/loaded __TFLIB__/textencode.tf
 
 /def -i textencode = \
     /let src=%; \

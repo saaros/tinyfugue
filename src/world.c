@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: world.c,v 35004.61 2003/05/27 01:09:26 hawkeye Exp $";
+static const char RCSid[] = "$Id: world.c,v 35004.64 2003/12/03 20:07:13 hawkeye Exp $";
 
 
 /********************************************************
@@ -238,7 +238,7 @@ struct Value *handle_listworlds_command(String *args, int offset)
         }
     }
     if (error) return shareval(val_zero);
-    init_pattern_mflag(&type, mflag);
+    init_pattern_mflag(&type, mflag, 'T');
     if (args->len - offset) {
         namep = &name;
         error += !init_pattern(namep, args->data + offset, mflag);
@@ -294,34 +294,35 @@ static int list_worlds(const Pattern *name, const Pattern *type, TFILE *file,
             else need = 2;
 
             Stringcpy(buf, "/test addworld(");
-            Sprintf(buf, SP_APPEND, "\"%q\"", '"', p->name);
-            Sprintf(buf, SP_APPEND, ", \"%q\"", '"', p->type);
+            Sappendf(buf, "\"%q\"", '"', p->name);
+            Sappendf(buf, ", \"%q\"", '"', p->type);
 
             if (need < 3) goto listworld_tail;
-            Sprintf(buf, SP_APPEND, ", \"%q\"", '"', p->host);
+            Sappendf(buf, ", \"%q\"", '"', p->host);
 
             if (need < 4) goto listworld_tail;
-            Sprintf(buf, SP_APPEND, ", \"%q\"", '"', p->port);
+            Sappendf(buf, ", \"%q\"", '"', p->port);
 
             if (need < 5) goto listworld_tail;
-            Sprintf(buf, SP_APPEND, ", \"%q\"", '"', p->character);
+            Sappendf(buf, ", \"%q\"", '"', p->character);
 
             if (need < 6) goto listworld_tail;
-            Sprintf(buf, SP_APPEND, ", \"%q\"", '"', p->pass);
+            Sappendf(buf, ", \"%q\"", '"', p->pass);
 
             if (need < 7) goto listworld_tail;
-            Sprintf(buf, SP_APPEND, ", \"%q\"", '"', p->mfile);
+            Sappendf(buf, ", \"%q\"", '"', p->mfile);
 
             if (need < 8) goto listworld_tail;
-            Sprintf(buf, SP_APPEND, ", \"%s%s\"",
+            Sappendf(buf, ", \"%s%s%s\"",
                 (p->flags & WORLD_NOPROXY) ? "p" : "",
-                (p->flags & WORLD_SSL) ? "x" : "");
+                (p->flags & WORLD_SSL) ? "x" : "",
+                (p->flags & WORLD_ECHO) ? "e" : "");
 
             if (need < 9) goto listworld_tail;
-            Sprintf(buf, SP_APPEND, ", \"%q\"", '"', p->myhost);
+            Sappendf(buf, ", \"%q\"", '"', p->myhost);
 
 listworld_tail:
-            Sprintf(buf, SP_APPEND, ")");
+	    Stringadd(buf, ')');
             tfputs(buf->data, file);
         }
     }

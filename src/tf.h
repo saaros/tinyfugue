@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tf.h,v 35004.46 2003/11/01 17:35:10 hawkeye Exp $ */
+/* $Id: tf.h,v 35004.47 2003/12/03 19:23:15 hawkeye Exp $ */
 
 #ifndef TF_H
 #define TF_H
@@ -178,7 +178,7 @@ enum Hooks {
     NUM_HOOKS
 };
 
-#define ALL_HOOKS  (~(~0L << NUM_HOOKS))
+VEC_TYPEDEF(hookvec_t, NUM_HOOKS);
 
 
 /* externs */

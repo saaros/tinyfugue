@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: world.h,v 35004.26 2003/05/27 01:09:26 hawkeye Exp $ */
+/* $Id: world.h,v 35004.27 2003/12/03 00:42:07 hawkeye Exp $ */
 
 #ifndef WORLD_H
 #define WORLD_H
@@ -13,6 +13,7 @@
 #define WORLD_TEMP	001
 #define WORLD_NOPROXY	002
 #define WORLD_SSL	004
+#define WORLD_ECHO	010
 
 typedef struct World {		/* World structure */
     int flags;

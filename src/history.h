@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: history.h,v 35004.25 2003/05/27 01:09:22 hawkeye Exp $ */
+/* $Id: history.h,v 35004.26 2003/11/09 01:25:33 hawkeye Exp $ */
 
 #ifndef HISTORY_H
 #define HISTORY_H
@@ -32,7 +32,7 @@ extern void   free_histories(void);
 #define record_global(line)  recordline(globalhist, (line))
 #define record_local(line)   recordline(localhist, (line))
 
-extern struct History globalhist[], localhist[];
+extern struct History * const globalhist, * const localhist;
 extern int log_count, norecord, nolog;
 
 # else /* NO_HISTORY */

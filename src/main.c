@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: main.c,v 35004.92 2003/11/01 17:31:24 hawkeye Exp $";
+static const char RCSid[] = "$Id: main.c,v 35004.94 2003/12/03 20:07:12 hawkeye Exp $";
 
 
 /***********************************************
@@ -47,7 +47,7 @@ const char version[] =
 #if DEVELOPMENT
     "DEVELOPMENT VERSION: "
 #endif
-    "TinyFugue version 5.0 alpha 14";
+    "TinyFugue version 5.0 beta 1";
 
 const char mods[] = "";
 
@@ -169,12 +169,12 @@ int main(int argc, char *argv[])
     }
     if (!ffindglobalvar("TFLIBRARY")) {
         scratch = Stringnew(NULL, 0, 0);
-        Sprintf(scratch, 0, "%s/stdlib.tf", TFLIBDIR);
+        Sprintf(scratch, "%s/stdlib.tf", TFLIBDIR);
         set_var_by_name("TFLIBRARY", scratch, 0);
     }
     if (!ffindglobalvar("TFHELP")) {
         scratch = Stringnew(NULL, 0, 0);
-        Sprintf(scratch, 0, "%s/tf-help", TFLIBDIR);
+        Sprintf(scratch, "%s/tf-help", TFLIBDIR);
         set_var_by_name("TFHELP", scratch, 0);
     }
 

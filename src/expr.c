@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: expr.c,v 35004.125 2003/10/31 01:39:47 hawkeye Exp $";
+static const char RCSid[] = "$Id: expr.c,v 35004.131 2003/12/10 02:20:36 hawkeye Exp $";
 
 
 /********************************************************************
@@ -95,6 +95,7 @@ Value *expr_value(const char *expression)
     Value *result;
     String *str;
 
+    if (!expression) return shareval(val_blank);
     str = Stringnew(expression, -1, 0); /* XXX String should be a parameter */
     if (!(prog = compile_tf(str, 0, -1, 1, 0))) return NULL;
     result = prog_interpret(prog, 1);
@@ -406,7 +407,7 @@ String *valstr(Value *val)
         case TYPE_INT:
         case TYPE_POS:
             val->sval = Stringnew(NULL, 0, 0);
-            Sprintf(val->sval, 0, "%ld", val->u.ival);
+            Sprintf(val->sval, "%ld", val->u.ival);
             break;
         case TYPE_TIME:
             val->sval = Stringnew(NULL, 0, 0);
@@ -416,7 +417,7 @@ String *valstr(Value *val)
         case TYPE_FLOAT:
 	    if (val->sval) Stringfree(val->sval);
 	    val->sval = Stringnew(NULL, 0, 0);
-            Sprintf(val->sval, 0, "%.*g", sigfigs, val->u.fval);
+            Sprintf(val->sval, "%.*g", sigfigs, val->u.fval);
             /* note: appending ".0" could imply more precision than is proper */
             for (p = val->sval->data; is_digit(*p); p++) ;
             if (!*p)
@@ -576,6 +577,14 @@ int reduce(opcode_t op, int n)
     case OP_NMATCH: val = newint(smatch_check(opdstd(1)) &&
                         smatch(opdstd(1),opdstd(2))!=0);
                     break;
+#if 0 /* doesn't work right */
+    case '.':	    if (opd(n-0)->count == 1 && (opd(n-0)->type & TYPE_STR))
+			(val = opd(n-0))->count++;
+		    else
+			val = newSstr(opdstr(n-0));
+		    SStringcat(val->sval, opdstr(n-1));
+                    break;
+#endif
     case OP_FUNC:   val = do_function(n);                            break;
     case '!':       val = newint(!opdbool(1));                       break;
     default:        internal_error(__FILE__, __LINE__,
@@ -759,6 +768,7 @@ static Value *function_switch(int symbol, int n, const char *parent)
 		    switch (*str) {
 		    case 'x': flags |= WORLD_SSL; break;
 		    case 'p': flags |= WORLD_NOPROXY; break;
+		    case 'e': flags |= WORLD_ECHO; break;
 		    /* compatibility with old use_proxy */
 		    case 'f':
 		    case '0': flags |= WORLD_NOPROXY; break;
@@ -793,12 +803,11 @@ static Value *function_switch(int symbol, int n, const char *parent)
         case FN_winlines:
             return newint(winlines());
 
-#if 0
         case FN_decode_ansi:
-	    Sstr = opdstrdup(n);
-	    decode_ansi(Sstr, 0, EMUL_ANSI_ATTR);
-	    return newSstr(Sstr);
+	    Sstr = decode_ansi(opdstd(n), 0, EMUL_ANSI_ATTR, NULL);
+	    return Sstr ? newSstr(Sstr) : shareval(val_blank);
 
+#if 0
         case FN_encode_attr:
 	    return newSstr(encode_attr(opdstr(n-0)));
 #endif
@@ -807,14 +816,11 @@ static Value *function_switch(int symbol, int n, const char *parent)
             {
 		attr_t attr = 0;
 		if (n > 1) {
-		    str = opdstd(n-1);
-		    if (!parse_attrs((char**)&str, &attr))
-			return newSstr(blankline);
+		    if (!parse_attrs(opdstd(n-1), &attr, 0))
+			return shareval(val_blank);
 		}
-		Sstr = opdstrdup(n);
-		if (!decode_attr(Sstr, attr))
-		    Stringtrunc(Sstr, 0);
-		return newSstr(Sstr);
+		Sstr = decode_attr(opdstr(n), attr);
+		return Sstr ? newSstr(Sstr) : shareval(val_blank);
             }
 
         case FN_strip_attr:
@@ -828,7 +834,7 @@ static Value *function_switch(int symbol, int n, const char *parent)
             i = (n>2) ?
 		enum2int(opdstd(n-2), 0, enum_flag, "arg 3 (inline)") : 0;
             if (i < 0) return shareval(val_zero);
-            return newint(handle_echo_func(opdstrdup(n),
+            return newint(handle_echo_func(opdstr(n),
                 (n >= 2) ? opdstd(n-1) : "",
                 i, (n >= 4) ? opdstd(n-3) : "o"));
 
@@ -836,7 +842,7 @@ static Value *function_switch(int symbol, int n, const char *parent)
             i = (n>2) ?
 		enum2int(opdstd(n-2), 0, enum_flag, "arg 3 (inline)") : 0;
             if (i < 0) return shareval(val_zero);
-            return newint(handle_substitute_func(opdstrdup(n),
+            return newint(handle_substitute_func(opdstr(n),
                 (n >= 2) ? opdstd(n-1) : "",  i));
 
         case FN_eval:
@@ -938,7 +944,7 @@ static Value *function_switch(int symbol, int n, const char *parent)
             ptr = get_keycode(Sstr->data);
             if (ptr) return newstr(ptr, -1);
             eprintf("unknown key name \"%S\"", Sstr);
-            return newSstr(blankline);
+            return shareval(val_blank);
 
         case FN_mod:
             if ((i = opdint(1)) == 0) {
@@ -1106,7 +1112,7 @@ static Value *function_switch(int symbol, int n, const char *parent)
             return newstr(str, -1);
 
         case FN_fg_world:
-            return ((str=fgname())) ? newstr(str, -1) : newSstr(blankline);
+            return ((str=fgname())) ? newstr(str, -1) : shareval(val_blank);
 
         case FN_world_info:
             ptr = n>=1 ? opdstd(1) : NULL;
@@ -1377,7 +1383,7 @@ static Value *function_switch(int symbol, int n, const char *parent)
 		case TYPE_POS:	  Stringcat(Sstr, "pos");	break;
 		case TYPE_TIME:	  Stringcat(Sstr, "time");	break;
 		case TYPE_FLOAT:  Stringcat(Sstr, "float");	break;
-		default:	  Sprintf(Sstr, SP_APPEND, "%d", opd(1)->type);
+		default:	  Sappendf(Sstr, "%d", opd(1)->type);
 		}
 	    }
             return newSstr(Sstr);

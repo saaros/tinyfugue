@@ -1,6 +1,6 @@
 ;;;; Socket line counts on status line
 
-/loaded activity_status.tf
+/loaded __TFLIB__/activity_status.tf
 
 /require -q world-q.tf
 /require -q textencode.tf
@@ -23,16 +23,15 @@
 
 /def -i activity_color = \
     /if (${world_name} !~ fg_world()) \
-	/let var=activity_color_$[textencode(${world_name})]%; \
+	/let _var=activity_color_$[textencode(${world_name})]%; \
 	/eval \
-	    /if (!regmatch("(^|,)%1(,|$$)", %var)) \
-		/set %var=%%{%var},%1%%; \
+	    /if (!regmatch("(^|,)%1(,|$$)", %_var)) \
+		/set %_var=%%{%_var},%1%%; \
 	    /endif%; \
     /endif
 
-/def -E'${world_name} !~ fg_world()' -qi -Fp2147483647 -mglob -t'*' \
-    update_activity_trig = \
-	/update_activity_delayed
+/def -qi -Fp2147483647 -hBGTEXT update_activity_hook = \
+    /update_activity_delayed
 
 /def -E'${world_name} !~ fg_world() & moresize("")' \
   -qi -Fp2147483647 -mglob -h'DISCONNECT' \
@@ -40,30 +39,20 @@
 	/activity_queue_hook ${world_name}%; \
 	/update_activity
 
-;; Abbreviate a string, for the status bar.  User can define custom
-;; abbreviations with "/set_status_abbr <string> <abbr>", or writing
-;; his own /status_abbr_hook.  If both of those fail, pick out the initials
-;; from the string.
+;; /status_abbr n string
+;; Abbreviate string so it fits in n characters.
+;; Try to keep capitals, beginnings of words, and digits; discard everything
+;; else as needed.
 /def -i status_abbr = \
-    /if /ismacro status_abbr_hook%; /then \
-	/let abbr=$[status_abbr_hook({*})]%; \
-	/if (abbr !~ "") /result abbr%; /endif%; \
+    /let n=%1%; \
+    /let name=%-1%; \
+; if name contains ':', abbreviate left side before right side
+    /if (strlen(name) > n & regmatch(":", name)) \
+	/let right=%{PR}%; \
+	/test name:=strcat(status_abbr(n-strlen(right)-1, {PL}), ":", right)%; \
     /endif%; \
-    /let n=$[status_width('activity_status') / $(/length %active_worlds) - 4]%;\
-    /if (strlen({*}) <= n) \
-	/result {*}%; \
-    /endif%; \
-    /let abbr=%; \
-    /test abbr:=status_abbr_$[textencode({*})]%; \
-    /if (abbr !~ "") \
-	/result abbr%; \
-    /endif%; \
-;   Abbreviate the name only as much as necessary to fit in n characters.
-;   Try to keep capitals, beginnings of words, and digits; discard everything
-;   else as needed.
-    /let name=%*%; \
     /while (strlen(name) > n & \
-        regmatch("((?:[A-Z]|(?<![a-z])[a-z])[a-z]*)[a-z]((?:[^a-z]*(?:(?<![a-z])[a-z])?)+)$", name)) \
+        regmatch("((?:[A-Z]|(?<![A-Za-z])[a-z])[a-z]*)[a-z]((?:[^a-z]*(?:(?<![A-Za-z])[a-z])?)+)$", name)) \
         /let name=%PL%P1%P2%; \
     /done%; \
     /while (strlen(name) > n & \
@@ -72,21 +61,42 @@
     /done%; \
     /result name
 
+;; Abbreviate a string, for the status bar.  User can define custom
+;; abbreviations with "/set_status_abbr <string> <abbr>", or writing
+;; his own /status_abbr_hook.  If both of those fail, use the default
+;; intelligent abbreviator /status_abbr.
+/def -i status_label = \
+    /if (status_always_abbr) \
+	/let n=0%; \
+    /else \
+	/let n=$[status_width('activity_status') / $(/length %active_worlds) - 5]%;\
+	/if (strlen({*}) <= n) /result {*}%; /endif%; \
+    /endif%; \
+    /if /ismacro status_abbr_hook%; /then \
+	/let abbr=$[status_abbr_hook({*})]%; \
+	/if (abbr !~ "") /result abbr%; /endif%; \
+    /endif%; \
+    /let abbr=%; \
+    /test abbr:=status_abbr_$[textencode({*})]%; \
+    /if (abbr !~ "") /result abbr%; /endif%; \
+;   Abbreviate the name only as much as necessary to fit in n characters.
+    /result status_abbr(n, {*})
+
 ;; /set_status_abbr <world> <abbr>
 ;; <abbr> may contain @{} attributes
-/def set_status_abbr = /set status_abbr_$[textencode({1})]=%-1
-/def unset_status_abbr = /unset status_abbr_$[textencode({1})]
+/def -i set_status_abbr = /set status_abbr_$[textencode({1})]=%-1
+/def -i unset_status_abbr = /unset status_abbr_$[textencode({1})]
 
 ;; Activity message is confusing with 5.0's per-world virtual screens, and
 ;; activity_status tells you what worlds have activity.
-/def -i -ag -hactivity gag_activity
+/def -i -ag -hACTIVITY gag_activity
 
 ;; NB: %* is not current world
 /def -i update_activity_world = \
     /let n=$[moresize("", {*})]%; \
     /test activity_color_$[textencode({*})]%; \
     /echo -p - \
-	@{%?}$[is_open({*})?"":"!"]$[status_abbr({*})]:\
+	@{%?}$[is_open({*})?"":"!"]$[status_label({*})]:\
 	$[n < 1000 ? n : strcat(n/1000, "k")]@{n}
 
 /def -i update_activity = \
@@ -96,7 +106,7 @@
     /endif%; \
     /set activity_status=$(/mapcar /update_activity_world %active_worlds)
 
-/def update_activity_delayed = \
+/def -i update_activity_delayed = \
     /if (update_activity_pid) \
 	/kill %update_activity_pid%; \
     /endif%; \
@@ -108,3 +118,4 @@
 	/set update_activity_pid=%?%; \
     /endif
 
+/update_activity

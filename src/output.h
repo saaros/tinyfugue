@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.h,v 35004.57 2003/10/31 01:39:48 hawkeye Exp $ */
+/* $Id: output.h,v 35004.58 2003/12/10 02:20:37 hawkeye Exp $ */
 
 #ifndef OUTPUT_H
 #define OUTPUT_H
@@ -74,8 +74,9 @@ extern int  wraplen(const char *str, int len, int indent);
 extern int  ch_hiliteattr(void);
 extern int  ch_status_attr(void);
 extern int  ch_alert_attr(void);
-extern int  decode_attr(String *line, attr_t attrs);
-extern attr_t  decode_ansi(String *line, attr_t attrs, int emul);
+extern String *decode_attr(const String *src, attr_t attrs);
+extern String *decode_ansi(const char *src, attr_t attrs, int emul,
+    attr_t *final_attr);
 extern const char *get_keycode(const char *name);
 
 extern int moresize(Screen *screen);

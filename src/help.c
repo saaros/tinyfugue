@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: help.c,v 35004.27 2003/05/27 01:09:22 hawkeye Exp $";
+static const char RCSid[] = "$Id: help.c,v 35004.28 2003/12/03 20:07:11 hawkeye Exp $";
 
 /*
  * Fugue help handling
@@ -51,7 +51,7 @@ struct Value *handle_help_command(String *args, int offset)
 #ifndef __CYGWIN32__
     if (helpfile->type == TF_FILE) {
         /* regular file: use index */
-        Sprintf(indexfname, 0, "%s.idx", name);
+        Sprintf(indexfname, "%s.idx", name);
         if ((indexfile = tfopen(indexfname->data, "r")) == NULL) {
             operror(indexfname->data);
             tfclose(helpfile);

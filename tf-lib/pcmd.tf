@@ -27,7 +27,7 @@
 ;;   /pcmd foobar %1
 
 
-/loaded pcmd.tf
+/loaded __TFLIB__/pcmd.tf
 
 /def -i pfxgen = \
     /set _pfx_counter=$[_pfx_counter + 1]%; \

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: dstring.h,v 35004.25 2003/05/27 01:09:21 hawkeye Exp $ */
+/* $Id: dstring.h,v 35004.26 2003/11/15 18:48:43 hawkeye Exp $ */
 
 #ifndef DSTRING_H
 #define DSTRING_H
@@ -131,6 +131,7 @@ extern String *dScat   (String *dest, const char *src, FL);
 extern String *dSSoncat(String *dest, const String *src, int start, int len, FL);
 extern String *dSncat  (String *dest, const char *src, int n, FL);
 extern String *dSfncat (String *dest, const char *src, int n, FL);
+extern String *Stringstriptrail(String *str);
 
 extern void check_charattrs(String *str, int n, cattr_t attrs,
     const char *file, int line);

@@ -8,72 +8,189 @@
 
 ; ^J, ^M, ^H, and ^? are handled internally.
 
-
-;; ~keybind avoids warnings for undefined keys
-/def -i ~keybind = /if (keycode({1}) !~ "") /def -iB'%{1}' = %-1%; /endif
-
-/def -i ~defaultbind = \
+/def -i ~bind_if_not_bound = \
     /if /!ismacro -msimple -ib'%1'%; /then \
         /def -ib'%1' = %-1%;\
     /endif
 
-/def -i kb_updown = \
-    /kbwarn updown Up/down now scroll through input history; if you prefer \
-	the old behavior of moving within a line, "/load updown.tf".%; \
-    /dokey %*
+/def -i ~keyseq = \
+    /let name=%1%; \
+    /while /shift%; /test {#} & {1} !/ "#*"%; /do \
+	/def -ib'%1' = /key_%name%; \
+	/def -ib'^[%1' = /key_esc_%name%; \
+    /done
 
-;;; Keys defined by name.
+;;; Bind character sequences to the keys that generate them in various common
+;;; terminal emulations
 
-;/~keybind Up	/dokey_up
-/~keybind Up	/kb_updown recallb
-;/~keybind Down	/dokey_down
-/~keybind Down	/kb_updown recallf
-/~keybind Right	/dokey_right
-/~keybind Left	/dokey_left
-/~keybind Delete	/dokey_dch
-/~keybind F1	/help
-/~keybind Home	/dokey_home
-/~keybind Insert	/@test insert := !insert
-/~keybind PgDn	/dokey_pgdn
-/~keybind PgUp	/dokey_pgup
+; arrows
+/~keyseq up		^[[A	^[OA
+/~keyseq down		^[[B	^[OB
+/~keyseq right		^[[C	^[OC
+/~keyseq left		^[[D	^[OD
+/~keyseq center		^[[E	^[OE
+
+; arrows with Ctrl, for recent versions of xterm with modifyCursorKeys
+/~keyseq ctrl_up	^[[1;5A
+/~keyseq ctrl_down	^[[1;5B
+/~keyseq ctrl_right	^[[1;5C
+/~keyseq ctrl_left	^[[1;5D
+
+; Some broken terminal emulators (TeraTerm, NiftyTelnet) send incorrect
+; char sequences for the editor keypad (the 6 keys above the arrow keys).
+; We can't cater to them without breaking keys for users with correct
+; terminal emulators.
+;
+; TeraTerm users should fix their emulators by copying
+; %TFLIBDIR/teraterm.keyboard.cnf to keyboard.cnf in their TeraTerm
+; directory.  Users of either emulator can work around the problem with
+; "/load kb_badterm.tf".
+
+; Editor Keypad
+/~keyseq insert		^[[2~		^[[L
+/~keyseq delete		^[[3~
+/~keyseq home		^[[1~	^[OH	^[[H
+/~keyseq end		^[[4~	^[OF	^[[F
+/~keyseq pgup		^[[5~
+/~keyseq pgdn		^[[6~
+
+; Editor Keypad with Ctrl, for recent versions of xterm with modifyCursorKeys
+/~keyseq ctrl_insert	^[[2;5~
+/~keyseq ctrl_delete	^[[3;5~
+/~keyseq ctrl_home	^[[1;5~	^[[1;5H
+/~keyseq ctrl_end	^[[4;5~	^[[1;5F
+/~keyseq ctrl_pgup	^[[5;5~
+/~keyseq ctrl_pgdn	^[[6;5~
+
+;; Numeric Keypad for xterm
+;
+;              numlock on           numlock off
+;
+;  %keypad     7    8    9          ^[[H ^[[A ^[[5~
+;     off      4    5    6          ^[[D ^[[E ^[[C
+;              1    2    3          ^[[F ^[[B ^[[6~
+;
+;  %keypad     ^[Ow ^[Ox ^[Oy       ^[OH ^[OA ^[[5~
+;     on       ^[Ot ^[Ou ^[Ov       ^[OD ^[OE ^[OC
+;              ^[Oq ^[Or ^[Os       ^[OF ^[OB ^[[6~
+
+; Numeric Keypad (xterm with %keypad=on and numlock on)
+/~keyseq nkp1		^[Oq	# termcap K4
+/~keyseq nkp2		^[Or
+/~keyseq nkp3		^[Os	# termcap K5
+/~keyseq nkp4		^[Ot
+/~keyseq nkp5		^[Ou	# termcap K2
+/~keyseq nkp6		^[Ov
+/~keyseq nkp7		^[Ow	# termcap K1
+/~keyseq nkp8		^[Ox
+/~keyseq nkp9		^[Oy	# termcap K3
+
+; Function Keys
+/~keyseq f1		^[[11~	^[OP
+/~keyseq f2		^[[12~	^[OQ
+/~keyseq f3		^[[13~	^[OR
+/~keyseq f4		^[[14~	^[OS
+/~keyseq f5		^[[15~
+/~keyseq f6		^[[17~
+/~keyseq f7		^[[18~
+/~keyseq f8		^[[19~
+/~keyseq f9		^[[20~
+/~keyseq f10		^[[21~
+/~keyseq f11		^[[23~
+/~keyseq f12		^[[24~
+
+; other
+/~keyseq tab		^I
+
+;;; Named keys with character sequences defined in termcap/terminfo.
+; Many of these will redefine hardcoded sequences above
+/def -ag -hREDEF ~gag_redef
+/set warn_def_B=0
+/def -i ~keyname = /if (keycode({1}) !~ "") /def -iB'%{1}' = /key_%2%; /endif
+
+; termcap name		tf name
+/~keyname Up		up
+/~keyname Down		down
+/~keyname Right		right
+/~keyname Left		left
+
+;/~keyname Backspace	backspace
+/~keyname Insert	insert
+/~keyname Delete	delete
+/~keyname Home		home
+/~keyname PgDn		pgdn
+/~keyname PgUp		pgup
+
+/~keyname F1		f1
+/~keyname F2		f2
+/~keyname F3		f3
+/~keyname F4		f4
+/~keyname F5		f5
+/~keyname F6		f6
+/~keyname F7		f7
+/~keyname F8		f8
+/~keyname F9		f9
+/~keyname F10		f10
+/~keyname F11		f11
+/~keyname F12		f12
+/~keyname F13		f13
+/~keyname F14		f14
+/~keyname F15		f15
+/~keyname F16		f16
+/~keyname F17		f17
+/~keyname F18		f18
+/~keyname F19		f19
+
+/~keyname KP1		nkp7
+/~keyname KP2		nkp5
+/~keyname KP3		nkp9
+/~keyname KP4		nkp1
+/~keyname KP5		nkp3
+
+/set warn_def_B=1
+/undef ~gag_redef
 
 
-;;; Defaults for keys normally defined by name.
 
-/~defaultbind ^[[A /kb_updown recallb
-/~defaultbind ^[[B /kb_updown recallf
-/~defaultbind ^[[C /dokey_right
-/~defaultbind ^[[D /dokey_left
+;;; Define each named key with the function it performs.
 
-/~defaultbind ^[OA /kb_updown recallb
-/~defaultbind ^[OB /kb_updown recallf
-/~defaultbind ^[OC /dokey_right
-/~defaultbind ^[OD /dokey_left
+/def -i key_up		= /kb_up_or_recallb
+/def -i key_down	= /kb_down_or_recallf
+/def -i key_right	= /dokey_right
+/def -i key_left	= /dokey_left
+
+/def -i key_ctrl_up	= /dokey_recallb
+/def -i key_ctrl_down	= /dokey_recallf
+/def -i key_ctrl_right	= /dokey_wright
+/def -i key_ctrl_left	= /dokey_wleft
+
+/def -i key_f1		= /help
+
+/def -i key_insert	= /@test insert := !insert
+/def -i key_delete	= /dokey_dch
+/def -i key_home	= /dokey_home
+/def -i key_end		= /dokey_end
+/def -i key_pgup	= /dokey_pgup
+/def -i key_pgdn	= /dokey_pgdn
+
+/def -i key_ctrl_home	= /dokey_recallbeg
+/def -i key_ctrl_end	= /dokey_recallend
+/def -i key_ctrl_pgup	= /reserved_for_future_use (scroll to first screenful)
+/def -i key_ctrl_pgdn	= /dokey_flush
+
+/def -i key_bspc	= /dokey_bspc
+/def -i key_tab		= /dokey page
+
+/def -i key_esc_left	= /dokey_socketb
+/def -i key_esc_right	= /dokey_socketf
+/def -i key_esc_delete	= /kb_backward_kill_word
 
 
-;;; Bindings to cycle through connected sockets
-
-;; 'Safe' bindings don't depend on potentially broken arrow keys
+;; bindings to cycle through sockets that don't depend on working arrow keys
 /def -ib'^[{'	= /dokey_socketb
 /def -ib'^[}'	= /dokey_socketf
 
-;; Termcap arrow keys
-/eval \
-    /if (keycode("left") !~ "") \
-        /def -ib'^[$[keycode("left")]' = /dokey_socketb%; \
-    /endif
-
-/eval \
-    /if (keycode("right") !~ "") \
-        /def -ib'^[$[keycode("right")]' = /dokey_socketf%; \
-    /endif
-
-;; In case termcap arrow key entries are missing or wrong
-/~defaultbind ^[^[OD	/dokey_socketb
-/~defaultbind ^[^[OC	/dokey_socketf
-/~defaultbind ^[^[[D	/dokey_socketb
-/~defaultbind ^[^[[C	/dokey_socketf
-
+;; kbnum
 /def -ib'^[-'	= /set kbnum=-
 /def -ib'^[0'	= /set kbnum=+
 /def -ib'^[1'	= /set kbnum=+1
@@ -87,10 +204,8 @@
 /def -ib'^[9'	= /set kbnum=+9
 
 ;;; Other useful bindings
-;;; Any dokey operation "X" can be performed with "/dokey X" or "/dokey_X".
-;;; The only difference between the two invocations is efficiency.
-;;; /~defaultbind is used for keys that may already be defined internally by
-;;; copying the terminal driver.
+;;; /~bind_if_not_bound is used for keys that may have been bound internally
+;;; by copying from the terminal driver.
 
 /def -i kbwarn = \
     /if /test warn_5keys & !kbwarned_%1%; /then \
@@ -112,8 +227,7 @@
 ; note ^G does NOT honor kbnum, so it can be used to cancel kbnum entry.
 /def -ib'^G'	= /beep
 ;def -ib"^H"	= /dokey_bspc			; internal
-;def -ib"^I"	= /complete			; complete.tf
-/def -ib'^I'	= /dokey page
+;def -ib'^I'	= /dokey page			; /key_tab
 ;def -ib"^J"	= /dokey newline		; internal
 /def -ib'^K'	= /dokey_deol
 /def -ib'^L'	= /dokey redraw
@@ -122,14 +236,14 @@
 ;def -ib"^O"	= /operate-and-get-next		; not implemented
 /def -ib'^P'	= /dokey recallb
 /def -ib"^Q"	= /dokey lnext
-/~defaultbind ^R /dokey refresh
+/~bind_if_not_bound ^R	/dokey refresh
 ;def -ib"^R"	= /dokey searchb		; conflict
 ;def -ib"^S"	= /dokey searchf		; conflict
 /def -ib"^S"	= /dokey pause
 /def -ib'^T'	= /kb_transpose_chars
 /def -ib'^U'	= /kb_backward_kill_line
-/~defaultbind ^V /dokey lnext
-/~defaultbind ^W	/dokey_bword
+/~bind_if_not_bound ^V	/dokey lnext
+/~bind_if_not_bound ^W	/dokey_bword
 /def -ib"^X^R"	= /load ~/.tfrc
 /def -ib"^X^V"	= /version
 /def -ib"^X^?"	= /kb_backward_kill_line
@@ -178,50 +292,4 @@
 /def -ib'^[^?'	= /kb_backward_kill_word
 
 /def -ib'^]'	= /bg
-
-
-;;; Other common keyboard-specific mappings which may or may not work
-;F1
-/~defaultbind ^[[11~	/help
-/~defaultbind ^[OP	/help
-
-; Some broken terminal emulators (TeraTerm, NiftyTelnet) send incorrect
-; char sequences for the editor keypad (the 6 keys above the arrow keys).
-; We can't cater to them without breaking keys for users with correct
-; terminal emulators.
-;
-;                      niftytelnet
-;            vt220     & teraterm
-;           standard    (broken)
-; insert     ^[[2~       ^[[1~
-; home       ^[[1~       ^[[2~
-; pgup       ^[[5~       ^[[3~
-; delete     ^[[3~       ^[[4~
-; end        ^[[4~       ^[[5~
-; pgdn       ^[[6~       ^[[6~
-;
-; TeraTerm users should fix their emulators by copying
-; %TFLIBDIR/teraterm.keyboard.cnf to keyboard.cnf in their TeraTerm
-; directory.
-;
-; I do not have a fix for NiftyTelnet.
-
-;Insert
-/~defaultbind ^[[2~	/@test insert := !insert
-;Delete
-/~defaultbind ^[[3~	/dokey_dch
-;PgDn
-/~defaultbind ^[[6~	/dokey_pgdn
-/~defaultbind ^[Os	/dokey_pgdn
-;PgUp
-/~defaultbind ^[[5~	/dokey_pgup
-/~defaultbind ^[Oy	/dokey_pgup
-;Home
-/~defaultbind ^[[1~	/dokey_home
-/~defaultbind ^[OH	/dokey_home
-/~defaultbind ^[[H	/dokey_home
-;End
-/~defaultbind ^[[4~	/dokey_end
-/~defaultbind ^[OF	/dokey_end
-/~defaultbind ^[[F	/dokey_end
 

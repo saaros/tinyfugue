@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: keyboard.c,v 35004.73 2003/11/01 17:35:09 hawkeye Exp $";
+static const char RCSid[] = "$Id: keyboard.c,v 35004.74 2003/12/03 20:07:11 hawkeye Exp $";
 
 /**************************************************
  * Fugue keyboard handling.
@@ -211,8 +211,7 @@ int handle_keyboard_input(int read_flag)
 		place = input_start = ++key_start;
 		n = kbnumval < 0 ? -kbnumval : kbnumval;
 		if (max_kbnum > 0 && n > max_kbnum)
-		    Sprintf(kbnum, 0, "%c%d", kbnumval < 0 ? '-' : '+',
-			max_kbnum);
+		    Sprintf(kbnum, "%c%d", kbnumval<0 ? '-' : '+', max_kbnum);
 		update_status_field(&special_var[VAR_kbnum], -1);
             } else {
                 /* No builtin; try a suffix. */

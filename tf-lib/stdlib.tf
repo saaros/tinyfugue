@@ -6,7 +6,7 @@
 ;;;; General Public License.  See the file "COPYING" for details.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-/set tf_stdlib_id=$Id: stdlib.tf,v 35000.76 2003/11/07 07:06:23 hawkeye Exp $
+/set tf_stdlib_id=$Id: stdlib.tf,v 35000.80 2003/12/08 22:42:28 hawkeye Exp $
 
 ;;; TF macro library
 
@@ -123,12 +123,12 @@
 /def -i bg = /fg -n
 
 
-;;  /ADDWORLD [-p] [-T<type>] [-s<srchost>] <name> [[<char> <pass>] <host> <port> [<file>]]
+;;  /ADDWORLD [-pxe] [-T<type>] [-s<srchost>] <name> [[<char> <pass>] <host> <port> [<file>]]
 ;;  /ADDWORLD [-T<type>] DEFAULT <char> <pass> [<file>]
 
 /def -i addworld = \
-    /if (!getopts("pxT:s:", "")) /return 0%; /endif%; \
-    /let flags=$[strcat(opt_p ? "p" : ""), strcat(opt_x ? "x" : "")]%; \
+    /if (!getopts("pxeT:s:", "")) /return 0%; /endif%; \
+    /let flags=$[opt_p ?"p":""]$[opt_x?"x":""]$[opt_e?"e":""]%; \
     /if ({1} =/ "default") \
         /test addworld({1}, opt_T, "", "", {2}, {3}, {4}, flags, opt_s)%;\
     /elseif ({#} <= 4) \
@@ -559,6 +559,18 @@
 /def -i purgebind	= /purge -mglob -h0 -b'$(/escape ' %*)'
 /def -i purgehook	= /purge -mglob -h'$(/escape ' %*)'
 
+/def -i untrig = \
+    /if (!getopts("a:", "")) /return 0%; /endif%; \
+    /if /!purge -i -msimple -a%opt_a -t"$(/escape " %*)"%; /then \
+	/echo -e %% No trigger on %*.%; \
+	/return 0%; \
+    /endif
+
+/def -i unhook = \
+    /if /!purge -i -msimple -h"$(/escape " %*)"%; /then \
+	/echo -e %% No hook on %*.%; \
+	/return 0%; \
+    /endif
 
 ;; meta-character quoter
 ;; /escape <metachars> <string>
@@ -584,25 +596,6 @@
 /def -i loadhist = \
     /let _file=%L%; \
     /quote -S /recordline %-L '%%{_file-${LOGFILE}}
-
-;;; /keys simulation
-;; For backward compatibilty only.
-;; Supports '/keys <mnem> = <key>' and '/keys' syntax.
-
-/def -i keys =\
-    /if ( {*} =/ "" ) \
-        /@list -Ib%;\
-    /elseif ( {*} =/ "*,*" ) \
-        /echo -e %% The /keys comma syntax is no longer supported.%;\
-        /echo -e %% See /help bind, /help dokey.%;\
-    /elseif ( {*} =/ "{*} = ?*" ) \
-        /def -ib'%{-2}' = /dokey %1%;\
-    /elseif ( {*} =/ "*=*" ) \
-        /echo -e %% '=' must be surrounded by spaces.%;\
-        /echo -e %% See /help bind, /help dokey.%;\
-    /else \
-        /echo -e %% Bad /keys syntax.%;\
-    /endif
 
 
 ;;; Retry connections
@@ -735,6 +728,7 @@
 /eval /if (systype() =~ "os/2") /load -q %TFLIBDIR/kb-os2.tf%; /endif
 /eval /load -q %TFLIBDIR/color.tf
 /eval /load -q %TFLIBDIR/changes.tf
+/eval /load -q %TFLIBDIR/at.tf
 
 
 ;;; constants

@@ -10,6 +10,8 @@
 ;;; /kb_last_argument		insert last word of previous line
 ;;; /kb_expand_line		/eval and replace current line
 ;;; /kb_goto_match		move cursor to matching parenthesis or bracket
+;;; /kb_up_or_recallb		recallb if at beginning of line, otherwise up
+;;; /kb_down_or_recallf		recallf if at end of line, otherwise down
 
 /loaded __TFLIB__/kbfunc.tf
 
@@ -99,7 +101,7 @@
 ;   Can't use /dokey_left because it would use %kbnum.
     /@test kbgoto(kbpoint() - (kbpoint()==kblen()) - 1)%; \
     /@test input(strcat(substr(kbtail(),1,kbnum>0?kbnum:1), \
-	substr(kbtail(),0,1))) %;\
+	substr(kbtail(),0,1)))%; \
     /set insert=%{_old_insert}
 
 /def -i kb_last_argument = \
@@ -113,12 +115,24 @@
     /@test (_match < 0) ? beep() : kbgoto(_match)
 
 /def -i kb_collapse_space = \
-    /while (substr(kbtail(), 0, 2) =~ "  ") \
-        /@test kbdel(kbpoint() + 1)%; \
-    /done%; \
-    /while (substr(strcat(kbhead(), kbtail()), kbpoint()-1, 2) =~ "  ") \
-        /@test kbdel(kbpoint() - 1)%; \
-    /done
+    /if (regmatch("^  +", kbtail())) \
+        /@test kbdel(kbpoint() + strlen({P0}) - 1)%; \
+    /endif%; \
+    /if (kbtail() =/ " *" & regmatch(" +$", kbhead())) \
+        /@test kbdel(kbpoint() - strlen({P0}))%; \
+    /endif
 
 /def -i kb_toggle_limit = \
     /if /limit%; /then /unlimit%; /else /relimit%; /endif
+
+/def -i kb_up_or_recallb = \
+    /if (kbpoint() == 0) \
+	/dokey_recallb%; \
+	/test (kbpoint() > 0) & kbgoto(0)%; \
+    /else \
+	/dokey_up%; \
+    /endif
+
+/def -i kb_down_or_recallf = \
+    /if (kbpoint() == kblen()) /dokey_recallf%; /else /dokey_down%; /endif
+

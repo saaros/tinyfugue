@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.h,v 35004.51 2003/06/11 19:51:23 hawkeye Exp $ */
+/* $Id: tfio.h,v 35004.52 2003/12/03 20:07:12 hawkeye Exp $ */
 
 #ifndef TFIO_H
 #define TFIO_H
@@ -138,14 +138,15 @@ extern int    tfputp(const char *str, TFILE *file);
 extern void   tfputline(struct String *line, TFILE *file);
 extern void   vSprintf(struct String *buf, int flags,
                      const char *fmt, va_list ap);
-extern void   Sprintf(struct String *buf, int flags, const char *fmt, ...)
+extern void   Sprintf(struct String *buf, const char *fmt, ...)
 		     format_printf(3, 4);
+extern void   Sappendf(struct String *buf, const char *fmt, ...)
+		     format_printf(2, 3);
 extern void   oprintf(const char *fmt, ...) format_printf(1, 2);
 extern void   tfprintf(TFILE *file, const char *fmt, ...)
                      format_printf(2, 3);
 extern void   eprefix(String *buffer);
 extern void   eprintf(const char *fmt, ...) format_printf(1, 2);
-extern void   aprintf(const char *fmt, ...) format_printf(1, 2);
 extern char   igetchar(void);
 extern int    handle_tfopen_func(const char *name, const char *mode);
 extern TFILE *find_tfile(const char *handle);

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: util.c,v 35004.112 2003/08/31 03:18:33 hawkeye Exp $";
+static const char RCSid[] = "$Id: util.c,v 35004.119 2003/12/10 02:56:50 hawkeye Exp $";
 
 
 /*
@@ -56,6 +56,24 @@ const int feature_locale = HAVE_SETLOCALE - 0;
 const int feature_subsecond = HAVE_GETTIMEOFDAY - 0;
 const int feature_ftime = HAVE_STRFTIME - 0;
 const int feature_TZ = HAVE_TZSET - 0;
+char current_opt = '\0';
+AUTO_BUFFER(featurestr);
+
+struct feature features[] = {
+    { "core",		&feature_core, },
+    { "float",		&feature_float },
+    { "ftime",		&feature_ftime },
+    { "history",	&feature_history },
+    { "IPv6",		&feature_IPv6 },
+    { "locale",		&feature_locale },
+    { "MCCPv2",		&feature_MCCPv2 },
+    { "process",	&feature_process },
+    { "SOCKS",		&feature_SOCKS },
+    { "ssl",		&feature_ssl },
+    { "subsecond",	&feature_subsecond },
+    { "TZ",		&feature_TZ, },
+    { NULL,		NULL }
+};
 
 static char *cmatch(const char *pat, int ch);
 static void  free_maillist(void);
@@ -73,6 +91,7 @@ int ucase(x) char x; { return is_lower(x) ? toupper(x) : x; }
 void init_util1(void)
 {
     int i;
+    struct feature *f;
 
     for (i = 0; i < 0x100; i++) {
         tf_ctype[i] = 0;
@@ -84,6 +103,7 @@ void init_util1(void)
     tf_ctype['*']  |= IS_MULT;
     tf_ctype['/']  |= IS_MULT;
 
+    /* tf_ctype['.']  |= IS_ADDITIVE; */ /* doesn't work right */
     tf_ctype['"']  |= IS_QUOTE;
     tf_ctype['`']  |= IS_QUOTE;
     tf_ctype['\''] |= IS_QUOTE;
@@ -111,6 +131,13 @@ void init_util1(void)
     tf_ctype['R']  |= IS_KEYSTART;  /* RETURN, RESULT */
     tf_ctype['T']  |= IS_KEYSTART;  /* THEN, TEST */
     tf_ctype['W']  |= IS_KEYSTART;  /* WHILE */
+
+    Stringtrunc(featurestr, 0);
+    for (f = features; f->name; f++) {
+	Stringadd(featurestr, *f->flag ? '+' : '-');
+	Stringcat(featurestr, f->name);
+	if (f[1].name) Stringadd(featurestr, ' ');
+    }
 }
 
 /* Convert ascii string to printable string with "^X" forms. */
@@ -129,7 +156,7 @@ String *ascii_to_print(const char *str)
         } else if (is_cntrl(c)) {
             Stringadd(Stringadd(buffer, '^'), CTRL(c));
         } else {
-            Sprintf(buffer, 0, "\\0x%2x", c);
+            Sprintf(buffer, "\\0x%2x", c);
         }
     }
     return buffer;
@@ -173,7 +200,7 @@ int enum2int(const char *str, long val, String *vec, const char *msg)
     }
     if (val >= 0 && val < i) return val;
     SStringcpy(buf, &vec[0]);
-    for (i = 1; vec[i].data; ++i) Sprintf(buf, SP_APPEND, ", %S", &vec[i]);
+    for (i = 1; vec[i].data; ++i) Sappendf(buf, ", %S", &vec[i]);
     eprintf("valid values for %s are: %S", msg, buf);
     return -1;
 }
@@ -301,7 +328,7 @@ int stringliteral(String *dest, char **str)
 #endif
     }
     if (!**str) {
-        Sprintf(dest, 0, "unmatched %c", quote);
+        Sprintf(dest, "unmatched %c", quote);
         return 0;
     }
     ++*str;
@@ -395,7 +422,9 @@ static RegInfo *tf_reg_compile_fl(const char *pattern, int optimize,
     ri->Str = NULL;
     ri->links = 1;
 
-    if (warn_curly_re && estrchr(pattern, '{', '\\')) {
+    if (warn_curly_re && (s = estrchr(pattern, '{', '\\')) &&
+	(is_digit(s[1]) || s[1] == ','))
+    {
 	eprintf("%s", "Warning:  "
 	    "regexp contains '{', which has a new meaning in version 5.0.  "
 	    "(This warning can be disabled with '/set warn_curly_re=off'.)");
@@ -411,7 +440,7 @@ static RegInfo *tf_reg_compile_fl(const char *pattern, int optimize,
 
     ri->re = pcre_compile((char*)pattern, options, &emsg, &eoffset, re_tables);
     if (!ri->re) {
-	eprintf("character %d: %s", eoffset, emsg);
+	eprintf("regexp error: character %d: %s", eoffset, emsg);
 	goto tf_reg_compile_error;
     }
     n = pcre_info(ri->re, NULL, NULL);
@@ -485,7 +514,7 @@ void tf_reg_free(RegInfo *ri)
  */
 int init_pattern(Pattern *pat, const char *str, int mflag)
 {
-    return init_pattern_str(pat, str) && init_pattern_mflag(pat, mflag);
+    return init_pattern_str(pat, str) && init_pattern_mflag(pat, mflag, 0);
 }
 
 int init_pattern_str(Pattern *pat, const char *str)
@@ -496,13 +525,15 @@ int init_pattern_str(Pattern *pat, const char *str)
     return 1;
 }
 
-int init_pattern_mflag(Pattern *pat, int mflag)
+int init_pattern_mflag(Pattern *pat, int mflag, int opt)
 {
-    if (!pat->str || pat->mflag >= 0) return 1;
+    char saved_opt = current_opt;
+    current_opt = opt;
+    if (!pat->str || pat->mflag >= 0) goto ok;
     pat->mflag = mflag;
     switch (mflag) {
     case MATCH_GLOB:
-        if (smatch_check(pat->str)) return 1;
+        if (smatch_check(pat->str)) goto ok;
 	break;
     case MATCH_REGEXP:
 #if 0
@@ -511,14 +542,18 @@ int init_pattern_mflag(Pattern *pat, int mflag)
         if (strncmp(s, ".*", 2) == 0)
             eprintf("Warning: leading \".*\" in a regexp is inefficient.");
 #endif
-	if ((pat->ri = tf_reg_compile(pat->str, 1))) return 1;
+	if ((pat->ri = tf_reg_compile(pat->str, 1))) goto ok;
 	break;
     default:
-        return 1;
+        goto ok;
     }
     FREE(pat->str);
     pat->str = NULL;
+    current_opt = saved_opt;
     return 0;
+ok:
+    current_opt = saved_opt;
+    return 1;
 }
 
 void free_pattern(Pattern *pat)
@@ -772,24 +807,27 @@ char nextopt(char **arg, void *uval, int *type, int *offp)
 {
     char *q, *end, opt;
     STATIC_BUFFER(buffer);
-    extern char current_opt;
 
+    current_opt = '\0';
     if (!inword) {
         while (is_space(optstr->data[*offp])) (*offp)++;
         if (optstr->data[*offp] != '-') {
-	    current_opt = '\0';
             return '\0';
         } else {
-            if (optstr->data[++(*offp)] == '-') (*offp)++;
-            if (is_space(optstr->data[*offp]) || !optstr->data[*offp]) {
+            if (optstr->data[++(*offp)] == '-') {
+		(*offp)++;
+		if (optstr->data[*offp] && !is_space(optstr->data[*offp])) {
+		    eprintf("invalid option syntax: --%c", optstr->data[*offp]);
+		    goto nextopt_error;
+		}
+	    }
+	    if (!optstr->data[*offp] || is_space(optstr->data[*offp])) {
                 while (is_space(optstr->data[*offp])) ++(*offp);
-		current_opt = '\0';
                 return '\0';
             }
         }
     } else if (optstr->data[*offp] == '=') {
         /* '=' ends, but isn't consumed, for stuff like: /def -t"foo"=bar */
-	current_opt = '\0';
         return '\0';
     }
 
@@ -809,7 +847,8 @@ char nextopt(char **arg, void *uval, int *type, int *offp)
         const char *p;
         STATIC_BUFFER(helpbuf);
         Stringtrunc(helpbuf, 0);
-        if (opt != '?') eprintf("invalid option: %c", opt);
+        if (opt != '?')
+	    eprintf("invalid option"); /* eprintf() shows current_opt */
         for (p = options; *p; p++) {
 	    if (dash || is_punct(p[1])) Stringcat(helpbuf, " -");
 	    if (*p != '-') Stringadd(helpbuf, *p);
@@ -818,9 +857,9 @@ char nextopt(char **arg, void *uval, int *type, int *offp)
 	    if (p[1] == '#') { Stringcat(helpbuf,"<integer>"); p++; dash=1; }
 	    if (p[1] == '@') { Stringcat(helpbuf,"<time>");    p++; dash=1; }
         }
+	current_opt = '\0'; /* so it doesn't appear in "options:" message */
         eprintf("options:%S", helpbuf);
-        opt = '?';
-	goto end;
+	goto nextopt_error;
     }
 
     q++;
@@ -831,9 +870,8 @@ char nextopt(char **arg, void *uval, int *type, int *offp)
         if (is_quote(optstr->data[*offp])) {
             end = optstr->data + *offp;
             if (!stringliteral(buffer, &end)) {
-                eprintf("%S in %c option", buffer, opt);
-                opt = '?';
-		goto end;
+                eprintf("%S", buffer);
+		goto nextopt_error;
             }
             *offp = end - optstr->data;
         } else {
@@ -848,8 +886,7 @@ char nextopt(char **arg, void *uval, int *type, int *offp)
 	if (*q == '#') {
 	    Value *val = expr_value(buffer->data);
 	    if (!val) {
-		opt = '?';
-		goto end;
+		goto nextopt_error;
 	    }
 	    *(int*)uval = valint(val);
 	    freeval(val);
@@ -860,9 +897,8 @@ char nextopt(char **arg, void *uval, int *type, int *offp)
     } else if (*q == '@') {
 	Value val[1];
 	if (!parsenumber(optstr->data + *offp, &end, TYPE_TIME, val)) {
-            eprintf("%c option: %s", q[-1], strerror(errno));
-            opt = '?';
-	    goto end;
+            eprintf("%s", strerror(errno));
+	    goto nextopt_error;
         }
 	*(struct timeval*)uval = val->u.tval;
         *offp = end - optstr->data;
@@ -875,8 +911,11 @@ char nextopt(char **arg, void *uval, int *type, int *offp)
     }
 
     inword = (optstr->data[*offp] && !is_space(optstr->data[*offp]));
-end:
     return opt;
+
+nextopt_error:
+    current_opt = '\0';
+    return '?';
 }
 
 #if HAVE_TZSET
@@ -983,7 +1022,7 @@ void init_util2(void)
 #ifdef MAILDIR
     } else if ((name = getvar("LOGNAME")) || (name = getvar("USER"))) {
         (path = Stringnew(NULL, 0, 0))->links++;
-        Sprintf(path, 0, "%s/%s", MAILDIR, name);
+        Sprintf(path, "%s/%s", MAILDIR, name);
         set_var_by_name("MAIL", path, 0);
         Stringfree(path);
 #endif
@@ -995,6 +1034,7 @@ void init_util2(void)
 #if USE_DMALLOC
 void free_util(void)
 {
+    Stringfree(featurestr);
     free_maillist();
     if (reginfo) {
 	tf_reg_free(reginfo);
@@ -1119,7 +1159,7 @@ void check_mail(void)
  */
 Value *parsenumber(const char *str, char **caller_endp, int typeset, Value *val)
 {
-    int neg = 0, allocated;
+    int neg = 0, allocated, digits;
     char *endp;
 
     if ((allocated = !val))
@@ -1183,8 +1223,16 @@ parse_time:
 		    }
 		}
 	    }
+	    if (*endp == '.') {
+		endp++;
+		for (digits=0; digits < 6 && is_digit(*endp); digits++, endp++)
+		    val->u.tval.tv_usec = 10*val->u.tval.tv_usec + (*endp-'0');
+		while (digits++ < 6)
+		    val->u.tval.tv_usec *= 10;
+		while (is_digit(*endp))
+		    endp++;
+	    }
 	} else if (*endp == '.') {
-	    int digits;
 	    if (val->u.tval.tv_sec == LONG_MAX && errno) {
 		if (typeset & TYPE_FLOAT) goto parse_float;
 		goto time_overflow;
@@ -1329,9 +1377,9 @@ void tftime(String *buf, String *fmt, struct timeval *intv)
 	    /* if (sec < 0), Sprintf will take care of the '-'.
 	     * We shouldn't, because negating sec could cause overflow. */
 	}
-        Sprintf(buf, SP_APPEND, "%ld", tv.tv_sec);
+        Sappendf(buf, "%ld", tv.tv_sec);
 #if HAVE_GETTIMEOFDAY
-        Sprintf(buf, SP_APPEND, ".%06ld", tv.tv_usec);
+        Sappendf(buf, ".%06ld", tv.tv_usec);
         if (!fmt) {
             int i;
             for (i = 1; i < 6; i++)
@@ -1359,9 +1407,9 @@ void tftime(String *buf, String *fmt, struct timeval *intv)
 		if (fmt->data[i] == '@') {
 		    tftime(buf, NULL, &tv);
 		} else if (fmt->data[i] == '.') {
-		    Sprintf(buf, SP_APPEND, "%06ld", adj_usec);
+		    Sappendf(buf, "%06ld", adj_usec);
 		} else if (fmt->data[i] == 's') {
-		    Sprintf(buf, SP_APPEND, "%ld", adj_sec);
+		    Sappendf(buf, "%ld", adj_sec);
 		} else if (fmt->data[i] == 'F') {
 		    tftime(buf, Ffmt, &tv);
 		} else if (fmt->data[i] == 'T') {

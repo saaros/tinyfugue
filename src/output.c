@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: output.c,v 35004.171 2003/10/31 01:39:47 hawkeye Exp $";
+static const char RCSid[] = "$Id: output.c,v 35004.177 2003/12/11 00:06:33 hawkeye Exp $";
 
 
 /*****************************************************************
@@ -153,8 +153,7 @@ static void  attributes_on(attr_t attrs);
 static void  color_on(long color);
 static void  hwrite(String *line, int start, int len, int indent);
 static int   set_attr_var(Var *var, attr_t *attrp);
-static void  set_attr(String *line, char *dest, attr_t *starting,
-             attr_t current);
+static void  set_attr(String *line, int n, attr_t *starting, attr_t current);
 static int   check_more(Screen *screen);
 static int   next_physline(Screen *screen);
 static void  output_novisual(PhysLine *pl);
@@ -168,7 +167,7 @@ static void  (*tp)(const char *str);
 #if TERMCAP
 #define tpgoto(seq,x,y)  tp(tgoto(seq, (x)-1+origin, (y)-1+origin))
 #else
-#define tpgoto(seq,x,y)  Sprintf(outbuf,SP_APPEND,seq(y)-1+origin,(x)-1+origin)
+#define tpgoto(seq,x,y)  Sappendf(outbuf,seq,(y)-1+origin,(x)-1+origin)
 #endif
 
 #define ipos()		xy(ix, iy)
@@ -180,7 +179,6 @@ static void  (*tp)(const char *str);
 #define bufputns(s, n)		Stringncat(outbuf, s, n)
 #define bufputc(c)		Stringadd(outbuf, c)
 #define bufputnc(c, n)		Stringnadd(outbuf, c, n)
-#define bufprintf1(f, p)	Sprintf(outbuf, SP_APPEND, f, p)
 
 #ifdef EMXANSI /* OS2 */
    static void crnl(int n);  
@@ -1215,13 +1213,8 @@ int ch_status_fields(void)
         }
 
         if (*s == ':') {
-	    int ok;
             for (t = s + 1; *s && !is_space(*s); s++);
-            save = *s;
-            *s = '\0';
-            ok = parse_attrs(&t, &field->attrs);
-            *s = save;
-            if (!ok)
+            if (!parse_attrs(t, &field->attrs, ' '))
                 goto ch_status_fields_error;
         }
 
@@ -2091,18 +2084,18 @@ int igoto(int place)
 {
     int diff, new;
 
-    if (place < 0) {
+    if (place < 0)
         place = 0;
-        dobell(1);
-    }
-    if (place > keybuf->len) {
+    if (place > keybuf->len)
         place = keybuf->len;
-        dobell(1);
-    }
     diff = place - keyboard_pos;
     keyboard_pos = place;
 
-    if (!sockecho() || !diff) {
+    if (!diff) {
+        /* no physical change */
+	dobell(1);
+
+    } else if (!sockecho()) {
         /* no physical change */
 
     } else if (!visual) {
@@ -2768,7 +2761,7 @@ static int set_attr_var(Var *var, attr_t *attrp)
     if (!(val = getvarval(var)) || !(str = valstd(val))) {
         *attrp = 0;
         return 1;
-    } else if (parse_attrs((char **)&str, &attr)) {
+    } else if (parse_attrs(str, &attr, 0)) {
         *attrp = attr;
         return 1;
     } else {
@@ -2776,7 +2769,7 @@ static int set_attr_var(Var *var, attr_t *attrp)
     }
 }
 
-static void set_attr(String *line, char *dest, attr_t *starting,
+static void set_attr(String *line, int offset, attr_t *starting,
     attr_t current)
 {
     /* starting_attrs is set by the attrs parameter and/or codes at the
@@ -2787,17 +2780,18 @@ static void set_attr(String *line, char *dest, attr_t *starting,
      * (it expects prompt->attrs to be the original starting attributes).
      */
     if (!line->charattrs) {
-	if (dest == line->data) {
+	if (line->len == 0) {
 	    /* start of visible line */
 	    *starting = current;
 	} else if (*starting != current) {
 	    /* First mid-line attr change. */
-	    check_charattrs(line, dest - line->data, *starting,
+	    check_charattrs(line, line->len, *starting,
 		__FILE__, __LINE__);
 	}
     }
     if (line->charattrs)
-        line->charattrs[dest - line->data] = current;
+	while (offset < line->len)
+	    line->charattrs[offset++] = current;
 }
 
 /* Return the result of combining adj into base.  If adj has the 'x' attr,
@@ -2834,24 +2828,24 @@ attr_t adj_attr(attr_t base, attr_t adj)
 
 /* Interpret embedded codes from a subset of ansi codes:
  * ansi attribute/color codes are converted to tf character or line attrs;
- * all other codes are ignored.
+ * tabs are expanded (if %expand_tabs is on); all other codes are ignored.
  * (backspaces and EMUL_DEBUG were handled in handle_socket_input())
  */
-attr_t decode_ansi(String *line, attr_t attrs, int emul)
+String *decode_ansi(const char *s, attr_t attrs, int emul, attr_t *final_attrs)
 {
-    char *s, *t;
+    String *dst;
     int i;
     attr_t new = 0;
-    attr_t starting_attrs = adj_attr(line->attrs, attrs);
-    cattr_t *orig_charattrs;
-    attr_t orig_attrs;
+    attr_t starting_attrs = attrs;
 
-    if (emul == EMUL_RAW || emul == EMUL_DEBUG)
-        return attrs;
+    if (emul == EMUL_RAW || emul == EMUL_DEBUG) {
+	if (final_attrs) *final_attrs = attrs;
+	return Stringnew(s, -1, attrs);
+    }
 
-    orig_charattrs = line->charattrs;
+    dst = Stringnew(NULL, 1, 0);
 
-    for (s = t = line->data; *s; s++) {
+    for ( ; *s; s++) {
         if ((emul >= EMUL_ANSI_STRIP) &&
             (*s == ANSI_CSI || (s[0] == '\033' && s[1] == '[' && s++)))
         {
@@ -2894,55 +2888,55 @@ attr_t decode_ansi(String *line, attr_t attrs, int emul)
                 if (!*++s) break;
 
         } else if (is_print(*s) || *s == '\t') {
-	    orig_attrs = orig_charattrs ? orig_charattrs[s - line->data] : 0;
-            set_attr(line, t, &starting_attrs, adj_attr(orig_attrs, attrs));
-            *t++ = *s;
+	    int orig_len = dst->len;
+	    if (*s == '\t' && expand_tabs) {
+		Stringnadd(dst, ' ', tabsize - dst->len % tabsize);
+	    } else {
+		Stringadd(dst, *s);
+	    }
+	    set_attr(dst, orig_len, &starting_attrs, attrs);
 
         } else if (*s == '\07') {
-            line->attrs |= F_BELL;
+            dst->attrs |= F_BELL;
         }
     }
 
-    *t = '\0';
-    line->len = t - line->data;
-    if (!line->charattrs) {
+    if (!dst->charattrs) {
         /* No mid-line changes, so apply starting_attrs to entire line */
-        line->attrs |= starting_attrs;
+        dst->attrs |= starting_attrs;
     } else {
-        line->charattrs[line->len] = attrs;
+        dst->charattrs[dst->len] = attrs;
     }
 
-    return attrs;
+    if (final_attrs) *final_attrs = attrs;
+    return dst;
 }
 
 /* Convert embedded '@' codes to internal character or line attrs. */
-int decode_attr(String *line, attr_t attrs)
+String *decode_attr(const String *src, attr_t attrs)
 {
-    char *s, *t, *end;
+    const char *s;
+    String *dst;
     int off;
     attr_t new;
     attr_t starting_attrs;
     attr_t orig_attrs;
-    cattr_t *orig_charattrs = line->charattrs;
+    cattr_t *orig_charattrs = src->charattrs;
 
-    starting_attrs = line->attrs = adj_attr(line->attrs, attrs);
+    dst = Stringnew(NULL, src->len, 0);
+    starting_attrs = dst->attrs = adj_attr(src->attrs, attrs);
 
-    for (s = t = line->data; *s; s++) {
+    for (s = src->data; *s; s++) {
         if (s[0] == '@' && s[1] == '{') {
-	    int ok;
             s+=2;
             if ((off = (*s == '~'))) s++;
-            end = strchr(s, '}');
-            if (!end) {
+            s = (char*)parse_attrs(s, &new, '}');
+            if (!s) goto decode_attr_error;
+            if (*s != '}') {
                 eprintf("unmatched @{");
-                return 0;
+                goto decode_attr_error;
             }
-            *end = '\0';
-            ok = parse_attrs(&s, &new);
-            *end = '}';
-            if (!ok) return 0;
-            s = end;
-            if (new & F_BELL && !off) line->attrs |= F_BELL;
+            if (new & F_BELL && !off) dst->attrs |= F_BELL;
 	    new &= ~F_BELL;
             if (new & F_FGCOLOR) attrs &= ~F_FGCOLORMASK;
             if (new & F_BGCOLOR) attrs &= ~F_BGCOLORMASK;
@@ -2951,24 +2945,25 @@ int decode_attr(String *line, attr_t attrs)
             else attrs |= new;
 
         } else {
-	    orig_attrs = orig_charattrs ? orig_charattrs[s - line->data] : 0;
-            set_attr(line, t, &starting_attrs, adj_attr(orig_attrs, attrs));
+	    orig_attrs = orig_charattrs ? orig_charattrs[s - src->data] : 0;
+            Stringadd(dst, *s);
+            set_attr(dst, dst->len - 1, &starting_attrs, adj_attr(orig_attrs, attrs));
             if (s[0] == '@' && s[1] == '@')
                 s++;
-            *t++ = *s;
         }
     }
 
-    *t = '\0';
-    line->len = t - line->data;
-    if (!line->charattrs) {
+    if (!dst->charattrs) {
         /* No mid-line changes, so apply starting_attrs to entire line */
-        line->attrs |= starting_attrs;
+        dst->attrs |= starting_attrs;
     } else {
-        line->charattrs[line->len] = attrs;
+        dst->charattrs[dst->len] = attrs;
     }
+    return dst;
 
-    return 1;
+decode_attr_error:
+    Stringfree(dst);
+    return NULL;
 }
 
 #if USE_DMALLOC
@@ -2981,6 +2976,7 @@ void free_output(void)
     free_screen(default_screen);
     fg_screen = default_screen = NULL;
     Stringfree(outbuf);
+    Stringfree(status_line);
     while (status_field_list->head) {
         f = (StatusField*)unlist(status_field_list->head, status_field_list);
         if (f->name) FREE(f->name);

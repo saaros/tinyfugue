@@ -1,4 +1,4 @@
-/set savehist_version=$Id: savehist.tf,v 35000.1 2003/11/07 07:07:34 hawkeye Exp $
+/set savehist_version=$Id: savehist.tf,v 35000.3 2003/12/08 03:47:03 hawkeye Exp $
 ;;;; Save/restore world histories
 ;;;; Requires tf version 40a9 or later.
 
@@ -10,9 +10,9 @@
 ; /repeat -0:10 999999999 /save_histories
 
 
-/loaded savehist.tf
+/loaded __TFLIB__/savehist.tf
 
-/if (systype() !~ "unix")%; \
+/if (systype() !~ "unix") \
     /echo -e %% Warning: savehist.tf may not work on non-unix systems.%; \
 /endif
 
@@ -129,7 +129,7 @@
 	    /test count := max%; \
 	    /let mode=w%; \
 	    /test %{filesize} := 0%; \
-	/else%; \
+	/else \
 	    /setenv _tmp=%_dir/tfhist-$[getpid()]%; \
 	    /quote -S -decho %% !touch $$_tmp && chmod go-rwx $$_tmp && \
 		tail -$[max-count] $$_file > $$_tmp && mv $$_tmp $$_file%; \

@@ -39,7 +39,7 @@
 
 /require lisp.tf
 
-/def -ib'^[^I'	= /complete
+/def -i key_esc_tab = /complete
 /def -ib'^[;'	= /complete user_defined
 /def -ib'^[i'	= /complete input_history
 /def -ib'^[/'	= /complete filename
@@ -200,7 +200,7 @@
         /complete_variable %1%;\
     /elseif (_head =/ "*{/load*|/save*|/lcd|/cd|/log} {*}") \
         /complete_filename %1%;\
-    /elseif (_head =/ "*{/def|/edit|/edmac|/reedit|/undef|/list} {*}") \
+    /elseif (_head =/ "*{/def|/edit|/edmac|/reedit|/undef|/list} {*}*") \
         /complete_macroname %1%;\
 ;   /elseif (_head =/ "{wh*|page|tel*|kill} {*}") \
 ;       /complete_playername %1%;\

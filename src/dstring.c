@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: dstring.c,v 35004.33 2003/10/28 19:10:05 hawkeye Exp $";
+static const char RCSid[] = "$Id: dstring.c,v 35004.34 2003/11/15 18:48:42 hawkeye Exp $";
 
 
 /*********************************************************************
@@ -369,6 +369,14 @@ String *dSfncat(String *dest, const char *src, int n, const char *file, int line
     dest->data[dest->len] = '\0';
     if (dest->charattrs) extend_charattrs(dest, oldlen, 0);
     return dest;
+}
+
+String *Stringstriptrail(String *str)
+{
+    while (is_space(str->data[str->len - 1]))
+	--str->len;
+    str->data[str->len] = '\0';
+    return str;
 }
 
 #if 0

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: expand.h,v 35004.38 2003/05/27 01:09:21 hawkeye Exp $ */
+/* $Id: expand.h,v 35004.39 2003/11/23 20:10:22 hawkeye Exp $ */
 
 #ifndef EXPAND_H
 #define EXPAND_H
@@ -46,7 +46,6 @@ extern void   free_expand(void);
 
 extern struct Value *user_result;
 extern const char *current_command;
-extern char current_opt;
 extern int recur_count, breaking;
 
 #define return_user_result() do { \

@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: tfio.c,v 35004.92 2003/10/28 19:10:06 hawkeye Exp $";
+static const char RCSid[] = "$Id: tfio.c,v 35004.96 2003/12/10 02:20:38 hawkeye Exp $";
 
 
 /***********************************
@@ -260,10 +260,10 @@ TFILE *tfopen(const char *name, const char *mode)
         if ((fp = fopen(newname, mode)) != NULL) {  /* test readability */
             fclose(fp);
 #ifdef PLATFORM_UNIX
-            Sprintf(buffer, 0, "%s %s 2>/dev/null", prog, newname);
+            Sprintf(buffer, "%s %s 2>/dev/null", prog, newname);
 #endif
 #ifdef PLATFORM_OS2
-            Sprintf(buffer, 0, "%s %s 2>nul", prog, newname);
+            Sprintf(buffer, "%s %s 2>nul", prog, newname);
 #endif
             fp = popen(buffer->data, mode);
             type = TF_PIPE;
@@ -404,10 +404,9 @@ attr_t tfputansi(const char *str, TFILE *file, attr_t attrs)
     String *line;
 
     if (file && file->type != TF_NULL) {
-        (line = Stringnew(str, -1, 0))->links++;
-        attrs = decode_ansi(line, attrs, EMUL_ANSI_ATTR);
-        if (attrs >= 0)
-            tfputline(line, file);
+        line = decode_ansi(str, attrs, EMUL_ANSI_ATTR, &attrs);
+	line->links++;
+	tfputline(line, file);
         Stringfree(line);
     }
     return attrs;
@@ -625,32 +624,38 @@ void tfprintf(TFILE *file, const char *fmt, ...)
 /* Sprintf
  * Print into a String.  See vSprintf().
  */
-void Sprintf(String *buf, int flags, const char *fmt, ...)
+void Sprintf(String *buf, const char *fmt, ...)
 {
     va_list ap;
 
     va_start(ap, fmt);
-    vSprintf(buf, flags, fmt, ap);
+    vSprintf(buf, 0, fmt, ap);
+    va_end(ap);
+}
+
+void Sappendf(String *buf, const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+    vSprintf(buf, SP_APPEND, fmt, ap);
     va_end(ap);
 }
 
 void eprefix(String *buffer)
 {
+    extern char current_opt;
     Stringcpy(buffer, "% ");
     if (loadfile) {
-        Sprintf(buffer, SP_APPEND, "%s, line", loadfile->name);
+        Sappendf(buffer, "%s, line", loadfile->name);
         if (loadstart == loadline)
-            Sprintf(buffer, SP_APPEND, " %d: ", loadline);
+            Sappendf(buffer, " %d: ", loadline);
         else
-            Sprintf(buffer, SP_APPEND, "s %d-%d: ", loadstart, loadline);
+            Sappendf(buffer, "s %d-%d: ", loadstart, loadline);
     }
     if (current_command && *current_command != '\b')
-#if 0 /* XXX current_opt is not set correctly */
-	Sprintf(buffer, SP_APPEND, current_opt ? "%s -%c: " : "%s: ",
+	Sappendf(buffer, current_opt ? "%s -%c: " : "%s: ",
 	    current_command, current_opt);
-#else
-	Sprintf(buffer, SP_APPEND, "%s: ", current_command);
-#endif
 }
 
 static void veprintf(const char *fmt, va_list ap)
@@ -667,22 +672,6 @@ void eprintf(const char *fmt, ...)
     va_list ap;
     va_start(ap, fmt);
     veprintf(fmt, ap);
-    va_end(ap);
-}
-
-static void vaprintf(const char *fmt, va_list ap)
-{
-    String *buffer;
-    buffer = Stringnew(NULL, 0, 0);
-    vSprintf(buffer, SP_APPEND, fmt, ap);
-    alert(buffer);
-}
-
-void aprintf(const char *fmt, ...)
-{
-    va_list ap;
-    va_start(ap, fmt);
-    vaprintf(fmt, ap);
     va_end(ap);
 }
 

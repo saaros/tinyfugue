@@ -8,7 +8,7 @@
 
 ;;;; status bar definitions and utilities
 
-/loaded tfstatus.tf
+/loaded __TFLIB__/tfstatus.tf
 
 
 /set clock_format=%H:%M

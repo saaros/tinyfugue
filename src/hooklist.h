@@ -5,15 +5,16 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: hooklist.h,v 35000.18 2003/11/01 17:35:09 hawkeye Exp $ */
+/* $Id: hooklist.h,v 35000.20 2003/12/05 01:33:03 hawkeye Exp $ */
 
 /* This keeps the constants and the array in the same place
  * so they can't get out of sync.
  */
 
 gencode(ACTIVITY,	HT_ALERT | HT_XSOCK),
-gencode(BACKGROUND,	HT_ALERT | HT_XSOCK),
 gencode(BAMF,		HT_WORLD | HT_XSOCK),
+gencode(BGTEXT,		0),
+gencode(BGTRIG,		HT_ALERT | HT_XSOCK),
 gencode(CONFAIL,	HT_WORLD | HT_XSOCK),
 gencode(CONFLICT,	0),
 gencode(CONNECT,	HT_WORLD | HT_XSOCK),

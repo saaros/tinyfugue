@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: command.c,v 35004.115 2003/10/30 02:59:30 hawkeye Exp $";
+static const char RCSid[] = "$Id: command.c,v 35004.121 2003/12/10 09:12:02 hawkeye Exp $";
 
 
 /*****************************************************************
@@ -61,9 +61,7 @@ static HANDLER (handle_trigger_command);
 static HANDLER (handle_trigpc_command);
 static HANDLER (handle_unbind_command);
 static HANDLER (handle_undef_command);
-static HANDLER (handle_unhook_command);
 static HANDLER (handle_unlimit_command);
-static HANDLER (handle_untrig_command);
 static HANDLER (handle_version_command);
 
   /* It is IMPORTANT that the commands be in alphabetical order! */
@@ -124,10 +122,8 @@ static BuiltinCmd cmd_table[] =
   { "UNBIND"      , handle_unbind_command      , 0 },
   { "UNDEF"       , handle_undef_command       , 0 },
   { "UNDEFN"      , handle_undefn_command      , 0 },
-  { "UNHOOK"      , handle_unhook_command      , 0 },
   { "UNLIMIT"     , handle_unlimit_command     , 0 },
   { "UNSET"       , handle_unset_command       , 0 },
-  { "UNTRIG"      , handle_untrig_command      , 0 },
   { "UNWORLD"     , handle_unworld_command     , 0 },
   { "VERSION"     , handle_version_command     , 0 },
   { "WATCHDOG"    , handle_watchdog_command    , 0 },
@@ -135,6 +131,9 @@ static BuiltinCmd cmd_table[] =
 };
 
 #define NUM_CMDS (sizeof(cmd_table) / sizeof(BuiltinCmd))
+
+STATIC_STRING(limit_none, "% No previous limit.", 0);
+STATIC_STRING(limit_no_match, "% No lines matched criteria.", 0);
 
 /*****************************************
  * Find, process and run commands/macros *
@@ -151,7 +150,7 @@ static struct Value *handle_trigger_command(String *args, int offset)
     World *world = NULL;
     int usedefault = TRUE, is_global = FALSE, result = 0, exec_list_long = 0;
     int opt;
-    long hook = 0;
+    int hooknum = -1;
     String *old_incoming_text;
     char *ptr;
 
@@ -170,8 +169,8 @@ static struct Value *handle_trigger_command(String *args, int offset)
                     return shareval(val_zero);
                 break;
             case 'h':
-                hook = parse_hook(&ptr);
-                if (hook < 0) return shareval(val_zero);
+		if ((hooknum = hookname2int(ptr)) < 0)
+		    return shareval(val_zero);
                 break;
             case 'n':
                 if (exec_list_long == 0)
@@ -193,8 +192,8 @@ static struct Value *handle_trigger_command(String *args, int offset)
     old_incoming_text = incoming_text;
     (incoming_text = Stringodup(args, offset))->links++;
 
-    result = find_and_run_matches(NULL, hook, &incoming_text, world, is_global,
-	exec_list_long, 0);
+    result = find_and_run_matches(NULL, hooknum, &incoming_text, world,
+	is_global, exec_list_long);
 
     Stringfree(incoming_text);
     incoming_text = old_incoming_text;
@@ -202,38 +201,32 @@ static struct Value *handle_trigger_command(String *args, int offset)
 }
 
 int handle_substitute_func(
-    String *string,  /* shared */
+    String *src,
     const char *attrstr,
     int inline_flag)
 {
     attr_t attrs;
-    int result = 0;
-
-    string->links++;
+    String *newstr;
 
     if (!incoming_text) {
         eprintf("not called from trigger");
-        goto error_handle_substitute_func;
+        return 0;
     }
 
-    if (!parse_attrs((char **)&attrstr, &attrs))
+    if (!parse_attrs(attrstr, &attrs, 0))
 	return 0;
-    /* Start w/ incoming_text->attrs, adjust with string->attrs and attrstr. */
-    string->attrs = adj_attr(incoming_text->attrs, string->attrs);
-    string->attrs = adj_attr(string->attrs, attrs);
-    string->time = incoming_text->time;
 
-    if (inline_flag && !decode_attr(string, 0)) {
-	goto error_handle_substitute_func;
-    }
+    newstr = inline_flag ? decode_attr(src, 0) : Stringdup(src);
+    if (!newstr)
+	return 0;
+    /* Start w/ incoming_text->attrs, adjust with src->attrs and attrstr. */
+    newstr->attrs = adj_attr(incoming_text->attrs, src->attrs);
+    newstr->attrs = adj_attr(newstr->attrs, attrs);
+    newstr->time = incoming_text->time;
 
     Stringfree(incoming_text);
-    incoming_text = string;
+    (incoming_text = newstr)->links++;
     return 1;
-
-error_handle_substitute_func:
-    Stringfree(string);
-    return result;
 }
 
 /**********
@@ -366,41 +359,15 @@ static struct Value *handle_core_command(String *args, int offset)
 static struct Value *handle_features_command(String *args, int offset)
 {
     struct feature *f;
-    STATIC_BUFFER(buf);
 
-    static struct feature {
-	const char *name;
-	const int *flag;
-    } features[] = {
-	{ "core",		&feature_core, },
-	{ "float",		&feature_float },
-	{ "ftime",		&feature_ftime },
-	{ "history",		&feature_history },
-	{ "IPv6",		&feature_IPv6 },
-	{ "locale",		&feature_locale },
-	{ "MCCPv2",		&feature_MCCPv2 },
-	{ "process",		&feature_process },
-	{ "SOCKS",		&feature_SOCKS },
-	{ "ssl",		&feature_ssl },
-	{ "subsecond",		&feature_subsecond },
-	{ "TZ",			&feature_TZ, },
-	{ NULL,			NULL }
-    };
-
-    if (offset < args->len) {
+    if (args->len > offset) {
 	for (f = features; f->name; f++) {
 	    if (cstrcmp(f->name, args->data + offset) == 0)
 		return *f->flag ? shareval(val_one) : shareval(val_zero);
 	}
 	return shareval(val_zero);
     } else {
-	Stringtrunc(buf, 0);
-	for (f = features; f->name; f++) {
-	    Stringadd(buf, *f->flag ? '+' : '-');
-	    Stringcat(buf, f->name);
-	    if (f[1].name) Stringadd(buf, ' ');
-	}
-	oputline(buf);
+	oputline(featurestr);
 	return shareval(val_one);
     }
 }
@@ -432,7 +399,7 @@ static struct Value *handle_lcd_command(String *args, int offset)
 
 
 int handle_echo_func(
-    String *string,  /* shared */
+    String *src,
     const char *attrstr,
     int inline_flag,
     const char *dest)
@@ -441,12 +408,10 @@ int handle_echo_func(
     int raw = 0;
     TFILE *file = tfout;
     World *world = NULL;
-    int result = 0;
+    String *newstr;
 
-    string->links++;
-
-    if (!parse_attrs((char **)&attrstr, &attrs))
-        goto exit_handle_echo_func;
+    if (!parse_attrs(attrstr, &attrs, 0))
+        return 0;
     switch(*dest) {
         case 'r':  raw = 1;       break;
         case 'o':  file = tfout;  break;
@@ -455,32 +420,30 @@ int handle_echo_func(
         case 'w':
             dest++;
             if (!(world = named_or_current_world(dest)))
-                goto exit_handle_echo_func;
+                return 0;
             break;
         default:
             eprintf("illegal destination '%c'", *dest);
-            goto exit_handle_echo_func;
+            return 0;
     }
     if (raw) {
-        write(STDOUT_FILENO, string->data, string->len);
-        result = 1;
-        goto exit_handle_echo_func;
+        write(STDOUT_FILENO, src->data, src->len);
+        return 1;
     }
 
-    string->attrs = adj_attr(string->attrs, attrs);
-    if (inline_flag && !decode_attr(string, 0)) {
-	goto exit_handle_echo_func;
-    }
+    newstr = inline_flag ? decode_attr(src, 0) : Stringdup(src);
+    if (!newstr)
+	return 0;
+    newstr->links++;
+    newstr->attrs = adj_attr(newstr->attrs, attrs);
 
     if (world)
-        world_output(world, string);
+        world_output(world, newstr);
     else
-        tfputline(string, file);
-    result = 1;
+        tfputline(newstr, file);
 
-exit_handle_echo_func:
-    Stringfree(string);
-    return result;
+    Stringfree(newstr);
+    return 1;
 }
 
 
@@ -550,7 +513,7 @@ static struct Value *handle_limit_command(String *args, int offset)
     set_screen_filter(screen, has_new_pat ? &pat : NULL, attr_flag, sense);
 
     if (!(result = redraw_window(screen, 0))) {
-	aprintf("%s", "% No lines matched criteria.");
+	alert(limit_no_match);
 	redraw_window(screen, 0); /* XXX ? */
     }
     update_status_field(NULL, STAT_MORE);
@@ -565,10 +528,10 @@ static struct Value *handle_relimit_command(String *args, int offset)
     Value *result = val_one;
 
     if (!enable_screen_filter(screen)) {
-	aprintf("%s", "% No previous limit.");
+	alert(limit_none);
 	result = val_zero;
     } else if (!redraw_window(screen, 0)) {
-	aprintf("%s", "% No lines matched criteria.");
+	alert(limit_no_match);
 	redraw_window(screen, 0); /* XXX ? */
 	result = val_zero;
     }
@@ -624,7 +587,7 @@ int do_file_load(const char *args, int tinytalk)
             if (!is_absolute_path(path)) {
                 eprintf("warning: %.*s: invalid path value", end - path, path);
             } else {
-                Sprintf(libfile, 0, "%.*s/%s", end - path, path, args);
+                Sprintf(libfile, "%.*s/%s", end - path, path, args);
                 file = tfopen(expand_filename(libfile->data), "r");
             }
             path = end;
@@ -757,7 +720,7 @@ static struct Value *handle_undef_command(String *args, int offset)
 
     next = args->data + offset;
     while (*(name = stringarg(&next, NULL)))
-        result += remove_macro(name, 0, 0);
+        result += remove_macro_by_name(name);
     return newint(result);
 }
 
@@ -829,7 +792,7 @@ static struct Value *handle_hilite_command(String *args, int offset)
         return shareval(val_zero);
     } else {
         split_args(args->data + offset);
-        return newint(add_macro(new_macro(pattern, "", 0, NULL, body,
+        return newint(add_macro(new_macro(pattern, "", NULL, NULL, body,
             hpri, 100, F_HILITE, 0, matching)));
     }
 }
@@ -847,7 +810,7 @@ static struct Value *handle_gag_command(String *args, int offset)
         return shareval(val_zero);
     } else {
         split_args(args->data + offset);
-        return newint(add_macro(new_macro(pattern, "", 0, NULL, body,
+        return newint(add_macro(new_macro(pattern, "", NULL, NULL, body,
             gpri, 100, F_GAG, 0, matching)));
     }
 }
@@ -865,22 +828,8 @@ static struct Value *handle_trigpc_command(String *args, int offset)
     if ((pri = numarg(&ptr)) < 0) return shareval(val_zero);
     if ((prob = numarg(&ptr)) < 0) return shareval(val_zero);
     split_args(ptr);
-    return newint(add_macro(new_macro(pattern, "", 0, NULL, body, pri,
+    return newint(add_macro(new_macro(pattern, "", NULL, NULL, body, pri,
         prob, 0, 0, matching)));
-}
-
-static struct Value *handle_untrig_command(String *args, int offset)
-{
-    char c, *ptr;
-    attr_t attrs = 0, tmp;
-
-    startopt(args, "a:");
-    while ((c = nextopt(&ptr, NULL, NULL, &offset))) {
-        if (c != 'a') return shareval(val_zero);
-        if (!parse_attrs(&ptr, &tmp)) return shareval(val_zero);
-        attrs |= tmp;
-    }
-    return newint(remove_macro(args->data + offset, attrs ? attrs : 0, 0));
 }
 
 
@@ -901,12 +850,6 @@ static struct Value *handle_hook_command(String *args, int offset)
         return newint(add_hook(pattern, body));
     }
     return shareval(val_one);
-}
-
-
-static struct Value *handle_unhook_command(String *args, int offset)
-{
-    return newint(remove_macro(args->data + offset, 0, 1));
 }
 
 
@@ -931,8 +874,8 @@ static struct Value *handle_bind_command(String *args, int offset)
 
     if (!(args->len - offset)) return shareval(val_zero);
     split_args(args->data + offset);
-    spec = new_macro(NULL, print_to_ascii(pattern)->data, 0, NULL, body,
-        0, 0, 0, 0, 0);
+    spec = new_macro(NULL, print_to_ascii(pattern)->data, NULL, NULL, body,
+        0, 100, 0, FALSE, 0);
     return newint(add_macro(spec));
 }
 

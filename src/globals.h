@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: globals.h,v 35000.53 2003/09/01 20:20:12 hawkeye Exp $ */
+/* $Id: globals.h,v 35000.59 2003/12/10 02:20:37 hawkeye Exp $ */
 
 #ifndef GLOBALS_H
 #define GLOBALS_H
@@ -64,7 +64,7 @@ typedef struct Value {
     } u;
 } Value;
 
-extern Value *val_zero, *val_one;
+extern Value *val_zero, *val_one, *val_blank;
 /* shareval is a func, not a macro, so it doesn't eval v twice */
 static inline Value *shareval(Value *v)	{ v->count++; return v;}
 
@@ -156,7 +156,9 @@ enum Vars {
 #define cleardone	getintvar(VAR_cleardone)
 #define clearfull	getintvar(VAR_clearfull)
 #define clock_flag	getintvar(VAR_clock)
+#define defcompile	getintvar(VAR_defcompile)
 #define emulation 	getintvar(VAR_emulation)
+#define expand_tabs 	getintvar(VAR_expand_tabs)
 #define gag		getintvar(VAR_gag)
 #define async_name	getintvar(VAR_async_name)
 #define async_conn	getintvar(VAR_async_conn)
@@ -179,9 +181,10 @@ enum Vars {
 #define lpquote		getintvar(VAR_lpquote)
 #define maildelay	gettimevar(VAR_maildelay)
 #define matching	getintvar(VAR_matching)
-#define max_iter	getintvar(VAR_max_iter)
+#define max_instr	getintvar(VAR_max_instr)
 #define max_kbnum	getintvar(VAR_max_kbnum)
 #define max_recur	getintvar(VAR_max_recur)
+#define max_trig	getintvar(VAR_max_trig)
 #define mccp		getintvar(VAR_mccp)
 #define mecho		getintvar(VAR_mecho)
 #define meta_esc	getintvar(VAR_meta_esc)
@@ -213,6 +216,7 @@ enum Vars {
 #define time_format	getstrvar(VAR_time_format)
 #define virtscreen	getintvar(VAR_virtscreen)
 #define warn_curly_re	getintvar(VAR_warn_curly_re)
+#define warn_def_B	getintvar(VAR_warn_def_B)
 #define warn_status	getintvar(VAR_warn_status)
 #define watchdog	getintvar(VAR_watchdog)
 #define watchname	getintvar(VAR_watchname)

@@ -28,7 +28,7 @@
 TinyFugue can be installed and run on UNIX-like systems, OS/2, and Win32.
 For instructions, see the README file in the appropriate directory.
 For information on unofficial versions of TF for other operating systems,
-see the TF web page at http://tf.tcp.com/~hawkeye/tf/.
+see the TF web page at http://tf.tcp.com/.
 
 Note that the .tar.gz and .tar.Z distributions contain LF line delimiters,
 intended for UNIX, and the .zip distribution contains CR LF delimiters,
@@ -108,7 +108,7 @@ If you have an installation problem or other system-specific problem
 that is not described in this README or the README in the subdirectory
 for your system, contact the person who supports TF on your system.  If
 you have a problem that is not system-related, contact the author by
-email at hawkeye@tf.tcp.com.  Please provide the following information:
+email at hawkeye@tcp.com.  Please provide the following information:
 
     The version of TF (type "/version" in tf).
     The operating system version (on unix, type "uname -a" in the shell).

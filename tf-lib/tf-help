@@ -5,12 +5,12 @@ addworld()
 
   [1mFunction[22;0m usage: 
 
-  [1mADDWORLD[22;0m(<[4mname[24m>, <[4mtype[24m>, <[4mhost[24m>, <[4mport[24m> [, <[4mchar[24m>, <[4mpass[24m> [, <[4mfile[24m> [, 
-  <[4mflags[24m> [, <[4msrchost[24m>]]]])
+  [1mADDWORLD[22;0m(<[4mname[24m>, <[4mtype[24m>, [<[4mhost[24m>, <[4mport[24m> [, <[4mchar[24m>, <[4mpass[24m> [, <[4mfile[24m> [, 
+  <[4mflags[24m> [, <[4msrchost[24m>]]]]])
 
   Command usage: 
 
-  [1m/ADDWORLD[22;0m [-p] [-T<[4mtype[24m>] [-x] [-s<[4msrchost[24m>] <[4mname[24m> [<[4mchar[24m> <[4mpass[24m>] <[4mhost[24m> 
+  [1m/ADDWORLD[22;0m [-pxe] [-T<[4mtype[24m>] [-s<[4msrchost[24m>] <[4mname[24m> [<[4mchar[24m> <[4mpass[24m>] <[4mhost[24m> 
   <[4mport[24m> [<[4mfile[24m>]
   [1m/ADDWORLD[22;0m [-T<[4mtype[24m>] [-s<[4msrchost[24m>] <[4mname[24m>
   [1m/ADDWORLD[22;0m [-T<[4mtype[24m>] DEFAULT [<[4mchar[24m> <[4mpass[24m> [<[4mfile[24m>]]
@@ -22,7 +22,9 @@ addworld()
 
   <[4mHost[24m> is a server's internet hostname, IPv4 address, or (if your platform 
   supports it) IPv6 address.  <[4mPort[24m> is the number or name of a TCP port on 
-  the host.  
+  the host.  If <[4mhost[24m> and <[4mport[24m> are blank, then "connecting" to the world 
+  will only create a tf window for the world, it will not open an actual 
+  network connection; this is called a "connectionless" socket.  
 
   There may be a special [1mworld[22;0m named "default" which does not have a <[4mhost[24m> or 
   <[4mport[24m>.  If a normal [1mworld[22;0m is defined without a <[4mcharacter[24m>, <[4mpass[24m>, <[4mtype[24m>, 
@@ -41,6 +43,11 @@ addworld()
 
   If <[4mflags[24m> contains "x" (in function form) or -x is given (in command form), 
   TF will use the SSL protocol to make connections to this world.  
+
+  If <[4mflags[24m> contains "e" (in function form) or -e is given (in command form), 
+  all text sent to the world will be echoed right back as if it were received 
+  from the world (in addition to being sent to the server).  This is most 
+  useful with connectionless sockets.  
 
   The optional <[4msrchost[24m> defines the host name or IP address to use for the 
   local (tf) side of the connection.  This is useful if the host has multiple 
@@ -153,20 +160,24 @@ addworld()
 
   Usage: 
 
-  [1m/REQUIRE[22;0m at.tf
-
-  [1m/AT[22;0m <[4mwhen[24m> <[4mcommands[24m>
+  [1m/AT[22;0m [-v] [<[4mdate[24m>] <[4mtime[24m> <[4mcommands[24m>
   ____________________________________________________________________________
 
-  <[4mCommands[24m> will be executed at time-of-day <[4mwhen[24m>, which must be of the form 
-  "<[4mhours[24m>:<[4mminutes[24m>" or "<[4mhours[24m>:<[4mminutes[24m>:<[4mseconds[24m>" (<[4mhours[24m> is between 0 
-  and 23, and <[4mseconds[24m> may be specified to the nearest microsecond).  If 
-  <[4mwhen[24m> is less than equal to the current time of day, it is interpreted as 
-  that time tomorrow.  The "equal" condition makes it possible for /at to call 
-  /at again with the same <[4mwhen[24m> argument, and have it execute tomorrow 
-  instead of immediately.  
+  <[4mCommands[24m> will be executed at <[4mdate[24m> and <[4mtime[24m>.  <[4mDate[24m> must be of the 
+  form "<[4myear[24m>-<[4mmonth[24m>-<[4mday[24m>" or "<[4mmonth[24m>-<[4mday[24m>", where <[4myear[24m> may be 2 or 4 
+  digits.  <[4mTime[24m> must be of the form "<[4mhours[24m>:<[4mminutes[24m>" or 
+  "<[4mhours[24m>:<[4mminutes[24m>:<[4mseconds[24m>", where <[4mhours[24m> is between 0 and 23, and 
+  <[4mseconds[24m> may be specified to the nearest microsecond.  If any part of the 
+  date is omitted, it defaults to the nearest value for which <[4mdate[24m> and 
+  <[4mtime[24m> are in the future.  For example, if the current time is 16:00, then 
+  an argument of "15:00" means 15:00 tomorrow, and "17:00" means 17:00 today.  
 
-  Example: [1m/at[22;0m 23:30 [1m/echo[22;0m Stop mudding, it's time for Letterman! 
+  [1mOptions[22;0m: 
+  -v      verbose: prints full date and time 
+
+  Examples: 
+  [1m/at[22;0m 04-01 00:00:00 [1m/echo[22;0m Happy April Fools Day!
+  [1m/def[22;0m lunch_reminder = [1m/at[22;0m 12:00 [1m/echo[22;0m Lunchtime!%%; /lunch_reminder
 
   See: [1mprocesses[22;0m, [1m/repeat[22;0m, [1m/quote[22;0m 
 
@@ -333,7 +344,7 @@ addworld()
   is kept in the file [1m%TFLIBDIR[22;0m/CHANGES.  
 
   A list of changes in the latest version of tf can be found at 
-  [1mhttp://tf.tcp.com/~hawkeye/tf/CHANGES[22;0m.  
+  [1mhttp://tf.tcp.com/CHANGES[22;0m.  
 
   See: [1m/version[22;0m 
 
@@ -575,9 +586,9 @@ addworld()
 #/def -B
 #-B
   -B<[4mkeyname[24m> 
-          The [1mmacro[22;0m will be called when the key named <[4mkeyname[24m> is typed at 
-          the keyboard.  Default: no key.  The list of recognized <[4mkeyname[24m>s 
-          and other details are described under "[1mkeybindings[22;0m".  
+          Deprecated.  The [1mmacro[22;0m will be called when the key named <[4mkeyname[24m> 
+          (according to the termcap database) is typed at the keyboard.  
+          Default: none.  See "[1mkeybindings[22;0m".  
 
 #/def -p
 #-p
@@ -900,12 +911,13 @@ echo()
 
   Example: Both of these commands 
 
-    [1m/test[22;0m [1mecho[22;0m("@{u}Hello@{n}, world!", "B", 1)
-    [1m/echo[22;0m -aB -p @{u}Hello@{n}, world!
+    [1m/test[22;0m [1mecho[22;0m("@{u}Hello@{n}, world!", "BCred", 1)
+    [1m/echo[22;0m -aBCred -p @{u}Hello@{n}, world!
 
-  echo the following line, with "Hello" underlined, and the whole line bold: 
+  echo the following line, with "Hello" underlined, and the whole line bold 
+  red: 
 
-    [1m[4mHello[24m, world![22m
+    [31m[1m[4mHello[24m, world![22m[0m
 
   Echoed text is not matched against [1mtriggers[22;0m.  To do that, use [1m/trigger[22;0m.  
 
@@ -1453,8 +1465,7 @@ ftime()
   [1mtf[22m.  
 
 #html
-  The help document is available in HTML form at 
-  [1mhttp://tf.tcp.com/~hawkeye/tf/help/[22;0m.  
+  The help document is available in HTML form at [1mhttp://tf.tcp.com/help/[22;0m.  
 #
 
   See: [1mindex[22;0m, [1mintro[22;0m, [1moptions[22;0m 
@@ -1643,7 +1654,8 @@ index
   Commands marked with '+' are new in the current version.  Commands marked 
   with '*' have changed significantly in the current version.  
 
-  *[1mADDWORLD[22;0m       [1mFINGER[22;0m         [1mLISTWORLDS[22;0m    *[1mRESTRICT[22;0m       [1mTR[22;0m            
+  *[1mADDWORLD[22;0m      *[1mFG[22;0m             [1mLISTVAR[22;0m        [1mREPLACE[22;0m        [1mTOGGLE[22;0m        
+  *[1mAT[22;0m             [1mFINGER[22;0m         [1mLISTWORLDS[22;0m    *[1mRESTRICT[22;0m       [1mTR[22;0m            
    [1mBAMF[22;0m           [1mFOR[22;0m            [1mLOAD[22;0m           [1mRETURN[22;0m         [1mTRIG[22;0m          
    [1mBEEP[22;0m           [1mGAG[22;0m            [1mLOCALECHO[22;0m     +[1mRUNTIME[22;0m       *[1mTRIGGER[22;0m       
   *[1mBIND[22;0m           [1mGETFILE[22;0m        [1mLOG[22;0m            [1mSAVE[22;0m           [1mUNBIND[22;0m        
@@ -1662,7 +1674,6 @@ index
    [1mEXPORT[22;0m         [1mLIST[22;0m          *[1mRECALL[22;0m        *[1mtextutil.tf[22;0m                  
    [1mEXPR[22;0m          *[1mLISTSOCKETS[22;0m    [1mRECORDLINE[22;0m     [1mTICK[22;0m                         
   +[1mFEATURES[22;0m       [1mLISTSTREAMS[22;0m   *[1mREPEAT[22;0m         [1mTIME[22;0m                         
-   [1mFG[22;0m             [1mLISTVAR[22;0m        [1mREPLACE[22;0m        [1mTOGGLE[22;0m                       
 
   See also: [1mintro[22;0m, [1mtopics[22;0m 
 
@@ -2026,7 +2037,7 @@ list commands
   HOST    the host to which the [1msocket[22;0m is connected.  
   PORT    the port to which the [1msocket[22;0m is connected.  
 
-  The return value of [1m/listsockets[22;0m is the number of open sockets listed.  
+  The return value of [1m/listsockets[22;0m is the number of sockets listed.  
 
   See: [1msockets[22;0m, [1m%background[22;0m, [1m/connect[22;0m, [1m/fg[22;0m, [1mnactive()[22;0m, [1midle()[22;0m 
 
@@ -3005,6 +3016,7 @@ Quoter Commands
 
   See: [1m/recall[22;0m, [1m/quote[22;0m, [1mhistory[22;0m 
 
+&sleep
 &delay
 &/repeat
 
@@ -3050,9 +3062,50 @@ Quoter Commands
   without -S or -n), a useful trick is to use "[1m/repeat[22;0m -<[4mtime[24m> 1 <[4mcommand[24m>" to 
   delay the execution of a single command.  
 
-  Example: 
+  Example: [1m/repeat[22;0m -0:30 1 [1m/echo[22;0m -ab Dinner's ready 
+#sleep
 
-      [1m/repeat[22;0m -0:30 1 [1m/echo[22;0m -ab Dinner's ready
+  There is no good way to directly "sleep" within a [1mmacro[22;0m body.  Any attempt 
+  to write your own /sleep macro will, at best, "freeze" tf for the duration 
+  of the sleep, or even worse hog the machine's CPU time in a busy wait.  The 
+  best way to achieve the effect a sleep in a [1m/while[22;0m loop is probably to use a 
+  [1m/repeat[22;0m where each execution of the [1m/repeat[22;0m body corresponds to an iteration 
+  of the desired [1m/while[22;0m loop.  That is, if you want to write 
+
+      [1m/def[22;0m foo = \
+          /before_stuff%; \
+          [1m/while[22;0m (condition) \
+              /do_stuff%; \
+              /sleep 5%; \
+          [1m/done[22;0m%; \
+          /after_stuff
+
+  you must instead write: 
+
+      [1m/def[22;0m foo = \
+          /before_stuff%; \
+          /foo_loop
+
+      [1m/def[22;0m foo_loop = \
+          [1m/if[22;0m (condition) \
+              /do_stuff%; \
+              [1m/repeat[22;0m -5 1 /foo%; \
+          [1m/else[22;0m
+              /after_stuff%; \
+          [1m/endif[22;0m
+
+  Of course, local [1mvariables[22;0m will not survive between calls of /do_stuff in 
+  the second version as they would in the first (if it were possible), so any 
+  [1mvariables[22;0m you need to share between iterations must be global.  
+
+  But, if the reason you want to sleep is to wait for a response from a 
+  server, then you really don't want to sleep at all: you want a [1mtrigger[22;0m.  
+  First, set up [1mtriggers[22;0m on the possible responses, then send the command.  If 
+  one of the possible responses is no response at all, then a [1m/repeat[22;0m can be 
+  useful to wait for some maximum timeout and then handle the no-reponse case 
+  and delete the response [1mtriggers[22;0m.  This is in general the best way to write 
+  [1mmacros[22;0m that interact with a server.  
+#
 
   See: [1mprocesses[22;0m, [1m%ptime[22;0m, [1m/at[22;0m 
 
@@ -3184,7 +3237,7 @@ Quoter Commands
   is not put through any additional [1msubstitution[22;0m before being executed.  The 
   return value of [1m/runtime[22;0m is that of <[4mcommand[24m>.  
 
-  See: [1mcputime()[22;0m 
+  See: [1mcputime()[22;0m, [1mdebugging[22;0m.  
 
 &mudwho
 &rwho.tf
@@ -3934,7 +3987,7 @@ Text Utilities
   is matched against global [1mtriggers[22;0m or [1mhooks[22;0m, as well as [1mtriggers[22;0m or [1mhooks[22;0m 
   for the [1mcurrent[22;0m [1mworld[22;0m.  
 
-  See: [1mtriggers[22;0m, [1mhooks[22;0m, [1m/def[22;0m 
+  See: [1mtriggers[22;0m, [1mhooks[22;0m, [1mdebugging[22;0m, [1m/def[22;0m 
 
 &/false
 &/:
@@ -4093,7 +4146,7 @@ Text Utilities
   The latest version of TF should be available for anonymous ftp from [1m 
   ftp.tcp.com in pub/mud/Clients/tf[22;0m.  
 
-  Also see [1mhttp://tf.tcp.com/~hawkeye/tf/[22;0m for the latest info on TF.  
+  Also see [1mhttp://tf.tcp.com/[22;0m for the latest info on TF.  
 
   See: [1m/changes[22;0m 
 
@@ -4392,6 +4445,25 @@ copyright
   Other ftp sites may not have the latest version.  
 
   Also see [1mhttp://tf.tcp.com/[22;0m for the latest info on TF.  
+
+&debug
+&debugger
+&debugging
+
+Debugging
+
+  Debugging topics: 
+
+    * [1m%mecho[22;0m 
+    * [1m%qecho[22;0m 
+    * [1m%pedantic[22;0m 
+    * [1m%emulation[22;0m=debug 
+    * [1m%telopt[22;0m 
+    * [1m/trigger[22;0m -n 
+    * [1m/addworld[22;0m -e 
+    * [1m/runtime[22;0m 
+
+  See also: [1mhints[22;0m 
 
 &syntax
 &body
@@ -4968,6 +5040,13 @@ String functions
   [1mdecode_attr[22m([4ms[24m) 
           (str) Returns <[4ms[24m> with "@{<[4mattr[24m>}" codes interpeted as display 
           [1mattributes[22;0m, as in [1m/echo[22;0m -p.  
+#decode_ansi
+#decode_ansi()
+  [1mdecode_ansi[22m([4ms[24m) 
+          (str) Returns <[4ms[24m> with ANSI display codes interpeted as display 
+          [1mattributes[22;0m, and, if [1m%expand_tabs[22;0m is on, tabs are expanded to spaces 
+          according to [1m%tabsize[22;0m.  Any attributes originally on <[4ms[24m> are [4mnot[24m 
+          copied to the result.  
 #
   [1mtextencode[22m([4ms[24m) 
           (str) Returns <[4ms[24m> converted to a form containing only letters, 
@@ -5061,7 +5140,7 @@ Information functions
           [1mwinlines()[22;0m, [1mcolumns()[22;0m, [1m%LINES[22;0m.  
 #winlines
 #winlines()
-  [1mlines[22m() 
+  [1mwinlines[22m() 
           (int) Number of lines in the output window.  See also: [1mhooks 
           (RESIZE)[22;0m, [1mlines()[22;0m, [1mcolumns()[22;0m.  
 #morepaused
@@ -5378,14 +5457,20 @@ hints
     * "[1m/set[22;0m [1mpedantic[22;0m=on" to make tf generate warnings about some potential 
       problems.  
 
+    * "[1m/set[22;0m [1mdefcompile[22;0m=on" to see syntax errors in a [1mmacro[22;0m when you define 
+      it, instead of waiting until you first run it.  
+
     * "[1m/set[22;0m [1mmecho[22;0m=on" to see what commands are being executed, or [1m/connect[22;0m 
-      to a "[1mconnectionless socket[22;0m" to see what you're sending to the [1msocket[22;0m.  
+      to a normal or [1mconnectionless[22;0m [1msocket[22;0m defined with "[1m/addworld[22;0m -e" to see 
+      what you're sending to the [1msocket[22;0m.  
 
     * "[1m/set[22;0m [1memulation[22;0m=debug" and "[1mtelopt[22;0m=on" to see exactly what the 
       socket is sending to tf.  
 
-    * Use the -n or -l option of [1m/trigger[22;0m to see a list of trigger macros 
+    * Use the -n or -l option of [1m/trigger[22;0m to see a list of [1mtrigger[22;0m [1mmacros[22;0m 
       that would match a given line.  
+
+  See also [1mdebugging[22;0m.  
 
 &history
 
@@ -5473,10 +5558,13 @@ hooks
     ACTIVITY    world           A '% Activity in world <[4mworld[24m>'
                                   (called only the first time activity
                                   occurs on a given [1msocket[22;0m.)
-#BACKGROUND
-    BACKGROUND  world           A '% [1mTrigger[22;0m in world <[4mworld[24m>'
 #BAMF
     BAMF        world           W '% [1mBamfing[22;0m to <[4mworld[24m>'
+#BGTEXT
+    BGTEXT      world             Text was printed in background world <[4mworld[24m>
+#BGTRIG
+#BACKGROUND
+    BGTRIG      world           A '% [1mTrigger[22;0m in world <[4mworld[24m>'
 #CONFAIL
     CONFAIL     world, reason   W '% Unable to [1mconnect[22;0m to <[4mworld[24m>.'
 #CONFLICT
@@ -5485,6 +5573,7 @@ hooks
     CONNECT     world           W '% [1mConnected[22;0m to <[4mworld[24m>.'
 #CONNETFAIL
     CONNETFAIL  world, reason   W '% [1mConnection[22;0m to <[4mworld[24m> failed: <[4mreason[24m>'
+                                  (name is short for "CONnect NETwork FAILure")
 #DISCONNECT
     DISCONNECT  world, reason   W '% [1mConnection[22;0m to <[4mworld[24m> closed: <[4mreason[24m>.'
                                   (Called if you send the server's disconnect
@@ -5550,9 +5639,9 @@ hooks
   The -w and -T options to [1m/def[22;0m can be used to restrict [1mhooks[22;0m to matching only 
   when the [1mcurrent[22;0m world matches the world or world type.  
 
-  BACKGROUND's "% Trigger in world " message can be quieted for individual 
-  triggers by defining them with [1m/def[22;0m [1m-q[22;0m, or for all triggers with "/def -ag 
-  -hBACKGROUND".  
+  BGTRIG used to be called BACKGROUND, and the old name still works.  Its "% 
+  Trigger in world " message can be quieted for individual triggers by 
+  defining them with [1m/def[22;0m [1m-q[22;0m, or for all triggers with "/def -ag -hBGTRIG".  
 
   The SEND [1mhook[22;0m is called whenever text would be sent to the [1mcurrent[22;0m [1msocket[22;0m.  
   If a SEND [1mhook[22;0m matches the text that would be sent, the text is not sent 
@@ -5615,7 +5704,7 @@ topics
 
   Topics marked with + are new; those marked with * have changed since the 
   last version.  Many topics also have subtopics that are not listed here 
-  (e.g., individual [1mvariables[22;0m, *[1mhooks[22;0m, and functions).  
+  (e.g., individual [1mvariables[22;0m, [1mhooks[22;0m, and functions).  
 
 
    *[1mcopying[22;0m       copyright; no warranty
@@ -5626,7 +5715,7 @@ topics
    *[1mvisual[22;0m        split-screen mode
    *[1mcommands[22;0m      list of commands
    *[1mworlds[22;0m        defining worlds
-   *[1mpatterns[22;0m      pattern matching
+   *[1mpatterns[22;0m      glob and regexp pattern matching
    *[1mvariables[22;0m     state and environment
    *[1mglobals[22;0m       special tf variables
     [1mattributes[22;0m    special text display
@@ -5642,7 +5731,7 @@ topics
    *[1mprotocols[22;0m     protocols supported by TF
     [1mexpressions[22;0m   math and string operations
     [1mtriggers[22;0m      automatic command execution based on incoming text
-    [1mhooks[22;0m         automatic command execution based on tf events
+   *[1mhooks[22;0m         automatic command execution based on tf events
    +[1mmail[22;0m          mail checking
     [1mlibrary[22;0m       macros and variables in stdlib.tf
    *[1mtools[22;0m         extra commands in tools.tf
@@ -5651,6 +5740,7 @@ topics
    *[1msubs[22;0m          arithmetic, command, [1mmacro[22;0m, and variable substitutions
    *[1mfunctions[22;0m     special [1mexpression[22;0m operations
    *[1mhints[22;0m         some hints and style tips for [1mmacro[22;0m programming
+   +[1mdebugging[22;0m     debugging your [1mmacros[22;0m
    *[1mtfio[22;0m          output, error, and world streams
    *[1mproxy[22;0m         connecting to outside hosts via a proxy server (firewall)
    +[1mlocale[22;0m        multi-language support
@@ -5723,6 +5813,10 @@ introduction
   than one world at the same time, and switch between them.  See: [1m/connect[22;0m, 
   [1m/fg[22;0m, [1m/addworld[22;0m, [1mworlds[22;0m, [1mtfrc[22;0m.  
 
+  Normally, TF will split the screen into two windows: one for input, and one 
+  for output.  TF will display useful information on the line separating the 
+  two windows, such as the name of the [1mforeground[22;0m world.  See: [1mwindows[22;0m.  
+
   Any line you type that starts with a single '/' is a tf command.  Anything 
   else you type will be sent to the mud.  See: [1minterface[22;0m, [1mcommands[22;0m.  
 
@@ -5735,11 +5829,6 @@ introduction
   special way ([1mhilite[22;0m); not display the text at all ([1mgag[22;0m); execute a [1mmacro[22;0m 
   command ([1mtrigger[22;0m); or do any combination of these.  See: [1mattributes[22;0m, 
   [1mtriggers[22;0m, [1m/hilite[22;0m, [1m/gag[22;0m, [1m/trig[22;0m, [1m/def[22;0m.  
-
-  In [1mvisual mode[22;0m, TF will split the screen into two windows: one for input, 
-  and one for output.  TF will display useful information on the line 
-  separating the two windows, such as the name of the [1mforeground[22;0m world.  To 
-  use it, just type "[1m/visual[22;0m on".  See: [1m%visual[22;0m, [1mmode[22;0m.  
 
   TF keeps a [1mhistory[22;0m of every line it prints, every line sent by the mud, and 
   every command you enter.  You can see those histories using [1m/recall[22;0m.  You 
@@ -5762,41 +5851,52 @@ Default keybindings
   TF's default command line editing keys are similar to those in emacs and 
   bash.  In addition, several features may be invoked by more than one 
   keybinding, and TF has keybindings for unique features like switching the 
-  [1mforeground[22;0m [1msocket[22;0m.  Keys with "*" in the "Meaning" column make use of [1mkbnum[22;0m 
-  (see [1mbelow[22;0m).  
+  [1mforeground[22;0m [1msocket[22;0m.  
+
+  Here, and throughout the TF documentation, the notation "^X" means the 
+  character generated by typing the X key while holding the CTRL key.  Also, 
+  "^[" can be more easily typed just by pressing the ESC key.  Keys with "*" 
+  in the "Meaning" column make use of [1mkbnum[22;0m (see [1mbelow[22;0m).  
 
 Named keys
 
-  Key     Command                 Meaning
-  ---     -------                 -------
-  Up      [1m/dokey[22;0m recallb          *recall backward input [1mhistory[22;0m
-  Down    [1m/dokey[22;0m recallf          *recall forward input [1mhistory[22;0m
-  Right   [1m/dokey[22;0m RIGHT            *cursor right
-  Left    [1m/dokey[22;0m LEFT             *cursor left
-  Delete  [1m/dokey[22;0m dch              *delete character
-  F1      [1m/help[22;0m                    help
-  Home    [1m/dokey_home[22;0m              cursor to beginning of line
-  Insert  [1m/test[22;0m [1minsert[22;0m:=![1minsert[22;0m    toggle [1minsert[22;0m mode
-  PgDn    [1m/dokey_pgdn[22;0m             *scroll forward a screenful
-  PgUp    [1m/dokey_pgup[22;0m             *scroll back a screenful
+  Key         Command                 Meaning
+  ---         -------                 -------
+  Up          /kb_up_or_recallb       *cursor up or recall bkwd input [1mhistory[22;0m
+  Down        /kb_down_or_recallf     *cursor down or recall fwd input [1mhistory[22;0m
+  Right       [1m/dokey[22;0m RIGHT            *cursor right
+  Left        [1m/dokey[22;0m LEFT             *cursor left
+  Center      (none)
 
+  Esc_Left    [1m/fg[22;0m -<                  *[1mforeground[22;0m previous [1msocket[22;0m
+  Esc_Right   [1m/fg[22;0m ->                  *[1mforeground[22;0m next [1msocket[22;0m
 
-  Esc Left        [1m/fg[22;0m -<          *[1mforeground[22;0m previous [1msocket[22;0m
-  Esc Right       [1m/fg[22;0m ->          *[1mforeground[22;0m next [1msocket[22;0m
+  Ctrl_Up     [1m/dokey_recallb[22;0m          *recall backward input
+  Ctrl_Down   [1m/dokey_recallf[22;0m          *recall forward input
+  Ctrl_Right  [1m/dokey_wright[22;0m           *word right
+  Ctrl_Left   [1m/dokey_wleft[22;0m            *word left
 
-  If you prefer PgUp and PgDn to scroll a half screen instead of a full 
-  screen, you should not redefine the bindings.  Instead, you should redefine 
-  "/def dokey_pgdn = /dokey_hpage" and "/def dokey_pgup = /dokey_hpageback".  
+  Insert      [1m/test[22;0m [1minsert[22;0m:=![1minsert[22;0m    toggle [1minsert[22;0m mode
+  Delete      [1m/dokey[22;0m dch              *delete character
+  Home        [1m/dokey_home[22;0m              cursor to beginning of line
+  End         [1m/dokey_end[22;0m               cursor to end of line
+  PgDn        [1m/dokey_pgdn[22;0m             *scroll forward a screenful
+  PgUp        [1m/dokey_pgup[22;0m             *scroll back a screenful
+  Tab         [1m/dokey page[22;0m             *scroll forward a screenful
 
-#teraterm
-#niftytelnet
-#broken emulators
-  Note: some broken terminal emulators (TeraTerm, NiftyTelnet) send incorrect 
-  character sequences for the editor keypad (insert, delete, home, end, page 
-  up, page down).  TeraTerm users should fix their emulators by copying 
-  [1m%TFLIBDIR[22;0m/teraterm.keyboard.cnf to KEYBOARD.CNF in their TeraTerm directory. 
-  This will help all applications you use through TeraTerm, not just TF.  
-#
+  Ctrl_Home   [1m/dokey_recallbeg[22;0m         recall first line of input
+  Ctrl_End    [1m/dokey_recallend[22;0m         recall last line of input
+  Ctrl_PgDn   [1m/dokey_flush[22;0m             scroll forward to last screenful
+  Ctrl_PgUp   (reserved for future use)
+
+  F1          [1m/help[22;0m                    help
+  F2          (none)                   (see text below)
+  ...
+  F12         (none)
+
+  nkp1        (none)                   (see text below)
+  ...
+  nkp9        (none)
 
 Unnamed key sequences
 
@@ -5832,15 +5932,15 @@ Unnamed key sequences
   "^X]"   [1m/dokey[22;0m_hpage            *scroll forward a half screenful
   "^X{"   [1m/dokey[22;0m_pageback         *scroll back a screenful
   "^X}"   [1m/dokey[22;0m_page             *scroll forward a screenful
-  "^[^E"  [1m/kb_expand_line[22;0m          [1mexpand[22;0m current line in place
+  "^[^E"  [1m/kb_expand_line[22;0m          [1mexpand[22;0m current input line in place
   "^[^H"  [1m/kb_backward_kill_word[22;0m  *delete backward word (punctuation-delimited)
   "^[^I"  [1m/complete[22;0m                complete current word, depending on context
   "^[^L"  [1m/dokey[22;0m clear             clear screen
   "^[^N"  [1m/dokey[22;0m line             *scroll forward one line
   "^[^P"  [1m/dokey[22;0m lineback         *scroll back one line
-  "^[^W"  [1m/complete worldname[22;0m      complete tf world name
-  "^[$"   [1m/complete macroname[22;0m      complete tf macro name
-  "^[%"   [1m/complete variable[22;0m       complete tf variable name
+  "^[^W"  [1m/complete worldname[22;0m      complete TF world name
+  "^[$"   [1m/complete macroname[22;0m      complete TF macro name
+  "^[%"   [1m/complete variable[22;0m       complete TF variable name
   "^[/"   [1m/complete filename[22;0m       complete file name (unix only)
   "^[ "   [1m/kb_collapse_space[22;0m       change multiple spaces to a single space
   "^[-"   [1m/set[22;0m [1mkbnum[22;0m=-             start [1mkbnum[22;0m entry with -
@@ -5873,23 +5973,160 @@ Unnamed key sequences
   "^[^?"  [1m/kb_backward_kill_word[22;0m  *delete backward word (punctuation-delimited)
   "^]"    [1m/bg[22;0m                      put all [1msockets[22;0m in [1mbackground[22;0m
 
-  The one-time warning about certain new keybindings in 5.0 can be disabled by 
-  setting the variable [1mwarn_5keys[22;0m=off.  
-
 #terminal
 #tty
 #stty
-
 Terminal keys
-
   Some keys are interpeted by the terminal, not TF, so if you want to change 
   them, you must do so outside of TF (e.g.  with stty in unix).  Typical unix 
   terminal keys include: 
-  ^C      "int" - generates a SIGINT [1msignal[22;0m.  
-  ^\      "quit" - generates a SIGQUIT [1msignal[22;0m.  
-  ^Z      "susp" - suspends the process 
-  When tf starts, it disables the terminal driver's "stop" and "start" keys 
-  (typically ^S and ^Q), so they are available for binding within tf.  
+
+      Key   Name   Meaning
+      ---   ----   -------
+      ^C    int    generates a SIGINT [1msignal[22;0m.
+      ^\    quit   generates a SIGQUIT [1msignal[22;0m.
+      ^Z    susp   suspends the TF process
+
+  When TF starts, it disables the terminal driver's "stop" and "start" keys 
+  (typically ^S and ^Q), so they are available for binding within TF.  
+
+Using keys
+
+  Keys F1...F12 are the function keys, located across the top of most 
+  keyboards.  
+
+  Keys with names of the form "esc_<[4mname[24m>" correspond to the ESC key followed 
+  by the <[4mname[24m> key.  There is an "esc_<[4mname[24m>" for every single key in the 
+  Named Key table above, but only the ones with default meanings are listed in 
+  the table; the rest are available for custom definitions.  
+
+  Keys with names of the form "ctrl_<[4mname[24m>" correspond to holding down the 
+  CTRL key while pressing the <[4mname[24m> key.  However, many terminal emulators do 
+  not support these keys in a way that TF can use (i.e., they do not generate 
+  unique character sequences for these keys).  They are supported by recent 
+  versions of xterm with the modifyCursorKeys resource.  
+
+  [1mTF[22m tries to put the keypad in "application mode", which on many terminals 
+  will make the keypad keys generate unique character sequences if Num Lock is 
+  on.  Application mode can be disabled by setting [1m%keypad[22;0m to "off".  The 
+  meaning of your numeric keypad keys depends on your terminal emulator, 
+  setting of [1m%keypad[22;0m, and the state of NumLock.  For example, in some versions 
+  of xterm, the numbered keys of the numeric keypad act like this: 
+
+            NumLock off                       [1m%keypad[22;0m on
+                                            and NumLock on
+
+       +------+------+------+            +------+------+------+
+       |Home  |Up    |PgUp  |            |nkp7  |nkp8  |nkp9  |
+       +------+------+------+            +------+------+------+
+       |Left  |Center|Right |            |nkp4  |nkp5  |nkp6  |
+       +------+------+------+            +------+------+------+
+       |End   |Down  |PgDn  |            |nkp1  |nkp2  |nkp3  |
+       +------+------+------+            +------+------+------+
+
+  And in an xterm with [1m%keypad[22;0m off and NumLock on, they act like normal digit 
+  keys.  
+
+  In some configurations, unnamed key sequences consisting of "^[" (ESC) 
+  followed by one other character may also be typed by holding the META key 
+  while typing the other character instead of typing ESC before the other 
+  character.  See [1m%meta_esc[22;0m.  
+
+  The one-time warning about certain new keybindings in 5.0 can be disabled by 
+  setting the variable [1mwarn_5keys[22;0m=off.  
+
+Mapping Named Keys to functions
+
+  Each key in the Named Key table above is implemented by a macro named 
+  key_<[4mname[24m>; the standard definition of key_<[4mname[24m> is shown in the "Command" 
+  column.  If you wish to change the functionality of any named key, you 
+  should do so by redefining key_<[4mname[24m>, not by redefining the binding for the 
+  character sequence generated by the key, nor by redefining the /dokey_* or 
+  /kb_* command that key_<[4mname[24m> calls.  There are several advantages to this 
+  method: you do not need to know what characters are generated by the special 
+  keys on your keyboard, and they will work on multiple terminals.  For 
+  example, if you want PgUp and PgDn to scroll a half screen instead of a full 
+  screen, you should redefine "/def key_pgdn = /dokey_hpage" and "/def 
+  key_pgup = /dokey_hpageback".  If you want Insert to invoke your own macro 
+  /foo, you should redefine "/def key_insert = /foo".  
+
+  Before version 5.0, [1m/def -B[22;0m was the only way to bind a named key to a [1mmacro[22;0m. 
+  This, however, has been superceded by the use of "key_<[4mname[24m>" macros.  
+  Whereas [1m/def -B[22;0m depends strictly on termcap entries, the bindings to 
+  "key_<[4mname[24m>" macros are automatically generated from TF's own list of 
+  standard keybindings in addition to termcap entries.  Termcap entries are 
+  often incomplete or not well matched to your terminal emulator; TF's 
+  additional keybindings fill in the gaps.  So, to redefine the meaning of a 
+  named key, you should redefine "[1m/def[22;0m key_<[4mname[24m> = ...", not "[1m/def[22;0m [1m-B[22;0m<[4mname[24m> = 
+  ...".  The names recognized by [1m/def -B[22;0m are different than the names in the 
+  Named Key table.  For reference, they are: the function keys "F0", "F1",...  
+  "F19"; the keypad keys "KP1" (upper left), "KP2" (center), "KP3" (upper 
+  right), "KP4" (lower left), "KP5" (lower right); the arrow keys "Up", 
+  "Down", "Right", "Left"; and the other keys, "Backspace", "Clear EOL", 
+  "Clear EOS", "Clear Screen", "Delete", "Delete Line", "Home", "Home Down", 
+  "Insert", "Insert Line", "PgDn", "PgUp", "Scroll Down", "Scroll Up".  They 
+  must be spelled as shown, but capitalization is ignored.  The function 
+  [1mkeycode()[22;0m can be used to find the string generated by a key (as defined in 
+  the termcap entry for [1m%TERM[22;0m).  
+
+Mapping character sequences to functions
+
+  [1m/Def -b[22;0m (or [1m/bind[22;0m) allows you to bind a character sequence to a [1mmacro body[22;0m.  
+  Typing that sequence at the keyboard (which may mean pressing a single key 
+  that generates the sequence) will then execute the [1mmacro body[22;0m.  
+
+  TF's input handler recognizes ^H and ^? as backspace and ^J and ^M as 
+  newline, even when they are not bound to anything.  However, if a keybinding 
+  is defined for any of these keys, it will override the internal handling of 
+  that key.  
+
+  At [1mstartup[22;0m, TF also examines the terminal driver settings for character 
+  sequences corresponding to the [1m/dokey[22;0m functions BWORD, DLINE, REFRESH, and 
+  LNEXT, and binds them accordingly in addition to the default bindings listed 
+  above.  
+
+Mapping character sequences to Named Keys
+
+  Because [1mTF[22m runs in a terminal and not in a windowing system, it does not see 
+  actual keystrokes, but only the characters generated by a keystroke.  For 
+  example, the up arrow key on many terminals generates "^[[A", and that is 
+  what [1mTF[22m receives.  Thus, [1mTF[22m uses a set of definitions like "[1m/def 
+  -b[22;0m'<[4mcharsequence[24m>' = /key_<[4mname[24m>" to map chracter sequences to the keys that 
+  generate them.  If two different keys generate the same sequence of 
+  characters, there is no way for [1mTF[22m to tell them apart.  
+
+  At startup, [1mTF[22m automatically binds character sequences to the named key 
+  macros according to vt100, vt220, ANSI, and xterm definitions, plus OS/2 
+  definitions if running on OS/2, as well as the termcap entry corresponding 
+  to your [1m%TERM[22;0m variable.  If the named keys on your terminal generate 
+  character sequences that are not recognized by TF, you will need to bind 
+  them yourself with "[1m/def -b[22;0m'<[4mcharsequence[24m>' = /key_<[4mname[24m>".  For example, if 
+  your terminal's PgUp key generates "^[[3~", TF will think you pressed 
+  Delete, since that is the character sequence generated by Delete on most 
+  terminals.  To tell TF about PgUp on your terminal, you should do "[1m/def 
+  -b[22;0m'^[[3~' = /key_pgup".  
+
+#teraterm
+#niftytelnet
+#broken emulators
+  Note: some broken terminal emulators (TeraTerm, NiftyTelnet) send incorrect 
+  character sequences for the editor keypad (insert, delete, home, end, pgup, 
+  pgdn).  For TeraTerm users, the preferred fix is to copy 
+  [1m%TFLIBDIR[22;0m/teraterm.keyboard.cnf to KEYBOARD.CNF in their TeraTerm directory; 
+  this will help all applications you run within TeraTerm, not just TF.  Users 
+  of either terminal emulator may work around the problem with "[1m/load[22;0m 
+  kb_badterm.tf".  
+#
+
+  Note that before version 3.5 alpha 21 or beta 1, it was usually harmless to 
+  "[1m/set[22;0m [1mTERM[22;0m=vt100" on terminals that accepted a superset of vt100 display 
+  codes.  However, the termcap key definitions are often different for 
+  terminals that are otherwise similar (e.g., vt100 and xterm share many 
+  display codes, but the key definitions are different), so setting [1m%TERM[22;0m 
+  incorrectly may interfere with the operation of named keys.  Xterm users 
+  should also note that since 5.0, TF has its own [1mscrollback[22;0m, and xterm's 
+  scrollback will not work properly even if you try to trick TF with 
+  [1mTERM[22;0m=vt100.  
 
 #kbnum
 
@@ -5905,12 +6142,12 @@ Terminal keys
   For keybindings that have a sense of direction, negative values of [1m%kbnum[22;0m 
   reverse that direction: for example, typing "ESC - 4 PgDn" is like typing 
   "PgUp" 4 times.  The "^G" ([1m/beep[22;0m) keybinding does not honor [1m%kbnum[22;0m, so it 
-  can be used to cancel it with no effect.  The variable [1m%max_kbnum[22;0m sets an 
-  upper limit on the value of [1m%kbnum[22;0m that can be entered by the ESC and digit 
-  keys, to prevent typos from sending tf into very long loops.  
+  can be used to cancel [1m%kbnum[22;0m with no effect.  The variable [1m%max_kbnum[22;0m sets 
+  an upper limit on the value of [1m%kbnum[22;0m that can be entered by the ESC and 
+  digit keys, to prevent typos from sending TF into very long loops.  
 
   The interpretation of [1m%kbnum[22;0m must be done by the command called from the 
-  keybinding; it is not done automatically by tf.  So, for [1m%kbnum[22;0m to be 
+  keybinding; it is not done automatically by TF.  So, for [1m%kbnum[22;0m to be 
   meaningful in a macro you write, you must implement those semantics 
   yourself.  Additionally, most of the standard "/kb_*" and "[1m/dokey[22;0m" commands 
   that use [1m%kbnum[22;0m are optimized to not simply repeat the command a number of 
@@ -5937,85 +6174,23 @@ Other key bindings
 #bash
 #emacs
 #extra keybindings
+
   Some additional keyboard operations can be defined by [1m/load[22;0ming these library 
   files: 
   kb-old.tf 
-          keybindings like those in tf 4.0 and earlier 
+          keybindings like those in TF 4.0 and earlier 
   kb-emacs.tf 
           additional emacs-like keybindings 
   kbregion.tf 
           cut-and-paste operations 
   kbstack.tf 
-          save the current line with ESC-DOWN and recall it later with ESC-UP. 
+          save the current input line with ESC DOWN and restore it later with 
+          ESC UP.  
   See the comments at the top of each file for further documentation.  
 #
+  ____________________________________________________________________________
 
-Binding keys
-
-  [1m/Def[22;0m [1m-b[22;0m allows you to bind a character string to a [1mmacro[22;0m.  Typing that 
-  string at the keyboard (which may mean pressing a single key that generates 
-  the string) will then call the [1mmacro[22;0m.  
-
-  [1m/Def[22;0m [1m-B[22;0m allows you to bind a symbolic keyname to a [1mmacro[22;0m.  There are several 
-  advantages in using symbolic key names over key code strings.  First, you 
-  don't have to know what string is generated by the special keys on your 
-  keyboard.  They will work on multiple terminals, based on the value of [1m%TERM[22;0m 
-  (assuming the keys are defined in the termcap database).  Changing [1m%TERM[22;0m at 
-  any time will rebind the [1mmacros[22;0m to the new codes.  
-
-  The keynames recognized by tf are: 
-
-    * Function keys: F0, F1,...  F19 
-    * Keypad keys: KP1 (upper left), KP2 (upper right), KP3 (center), KP4 
-      (lower left), KP5 (lower right).  (It may be necessary to turn Num Lock 
-      off to enable these.) 
-    * Arrow keys: Up, Down, Right, Left 
-    * others: Backspace, Clear EOL, Clear EOS, Clear Screen, Delete, 
-      Delete Line, Home, Home Down, Insert, Insert Line, PgDn, PgUp, Scroll 
-      Down, Scroll Up 
-
-  Unfortunately, even if your terminal has a particular key, your termcap 
-  entries may not define it, so you may not be able to use it by name.  The 
-  arrow and function are pretty reliably defined, but many of the other keys 
-  are not.  Also, some terminal emulators do not match all the key 
-  definitions.  
-
-  They must be spelled as shown, but capitalization is ignored.  The function 
-  [1mkeycode()[22;0m can be used to find the string generated by a key (as defined in 
-  the termcap entry for [1m%TERM[22;0m).  
-
-  Because [1mTF[22m runs in a terminal and not in a windowing system, it does not see 
-  actual keystrokes, but only the characters generated by a keystroke.  If two 
-  different keys generate the same characters, [1mTF[22m can not tell them apart.  In 
-  earlier versions, this meant that on many terminals [1mTF[22m could not distinguish 
-  the numeric keypad keys from arrow or digit keys, because they generated the 
-  same character sequences.  Starting in 4.0 alpha 11, [1mTF[22m tries to put the 
-  keypad in "application mode", which on many terminals will make the keypad 
-  keys generate unique character sequences if Num Lock is on.  Application 
-  mode can be disabled by setting [1m%keypad[22;0m to "off".  
-
-  Note that before version 3.5 alpha 21 or beta 1, it was usually harmless to 
-  "[1m/set[22;0m [1mTERM[22;0m=vt100" on terminals that accepted a superset of vt100 display 
-  codes.  However, the termcap key definitions are often different for 
-  terminals that are otherwise similar (e.g., vt100 and xterm share many 
-  display codes, but the key definitions are different), so setting [1m%TERM[22;0m 
-  incorrectly will interfere with the operation of named keys.  Xterm users 
-  should also note that since 5.0, tf has its own [1mscrollback[22;0m, and xterm's 
-  scrollback will not work properly even if you try to trick tf with 
-  [1mTERM[22;0m=vt100.  
-
-Special keys
-
-  TF's input handler recognizes ^H and ^? as backspace and ^J and ^M as 
-  newline, even when they are not bound to [1mmacros[22;0m.  However, if a keybinding 
-  is defined for any of these keys, it will override the internal handling of 
-  that key.  
-
-  At [1mstartup[22;0m, tf also examines the terminal driver settings for keys 
-  corresponding to the [1m/dokey[22;0m functions BWORD, DLINE, REFRESH, and LNEXT, and 
-  binds them accordingly if different than the default bindings listed above.  
-
-  See: [1m/dokey[22;0m, [1m/bind[22;0m, [1m/complete[22;0m, [1m%wordpunct[22;0m, [1msignals[22;0m.  
+  See also: [1m/dokey[22;0m, [1m/bind[22;0m, [1m/complete[22;0m, [1m%wordpunct[22;0m, [1msignals[22;0m.  
 
 &stdlib.tf
 &local.tf
@@ -6412,7 +6587,7 @@ mailing list
   related to TinyFugue.  To subscribe, send email to [1mmajordomo@tcp.com[22;0m with a 
   body of "subscribe tinyfugue".  
 
-  Also see [1mhttp://tf.tcp.com/~hawkeye/tf/[22;0m for the latest info on TF.  
+  Also see [1mhttp://tf.tcp.com/[22;0m for the latest info on TF.  
 
 &mccpv2
 &mccp
@@ -6435,7 +6610,9 @@ Mud Client Compression Protocol
   See also: [1mprotocols[22;0m, [1mtelnet[22;0m 
 
 &visual
+&visual mode
 &nonvisual
+&non-visual
 &windows
 &screen
 &mode
@@ -6477,9 +6654,9 @@ Non-visual mode
 
   In the non-visual interface, input and output are both displayed on the 
   bottom line.  If you are typing and output appears, your input is cleared, 
-  the output is displayed, and your input is redisplayed on the last line.  If 
-  your input has wrapped around to a second or third line, only the last line 
-  will be cleared and redisplayed.  
+  the output is displayed and everything above it scrolls, and your input is 
+  redisplayed on the last line.  If your input has wrapped around to a second 
+  or third line, only the last line will be cleared and redisplayed.  
 
 #
   ____________________________________________________________________________
@@ -6610,15 +6787,15 @@ Globbing ("glob")
 Regular expressions ("regexp")
 
   TF implements regular expressions with the package PCRE 2.08, Copyright (c) 
-  1997-1999 University of Cambridge.  The PCRE regexp package is documented on 
-  [1mits own page[22;0m.  
+  1997-1999 University of Cambridge.  The PCRE regexp syntax is documented on 
+  its own page under the topic "[1mpcre[22;0m".  
 
   The syntax and semantics of these regular expressions is nearly identical to 
-  those in perl 5, and is roughly a superset of those used in tf 4.0.  There 
-  is one incompatability with tf 4.0 regexps: the "{" character is now 
-  special, and must be written "\{" to match a literal "{".  To help with the 
-  transition to the new syntax, you will be warned if you use a regexp 
-  containing "{", unless you turn off the [1mwarn_curly_re[22;0m variable.  
+  those in perl 5, and is roughly a superset of those used in versions of tf 
+  prior to 5.0.  There is one incompatability with old tf regexps: the "{" 
+  character is now special, and must be written "\{" to match a literal "{".  
+  To help with the transition to the new syntax, you will be warned if you use 
+  a regexp containing "{", unless you turn off the [1mwarn_curly_re[22;0m variable.  
 
   If all letters in a regexp are lower case, the regexp will default to using 
   caseless matching.  If a regexp contains any upper case letters, it will 
@@ -6631,6 +6808,9 @@ Regular expressions ("regexp")
   letters, digits, or whatever.  So, for example, while the regexp "[A-Za-z]" 
   will match only English letters, "[^\W\d_]" will match any letter defined by 
   the [1mlocale[22;0m.  
+
+  After a regexp match, [1m%Pn[22;0m substitutions can be used to get the value of the 
+  string that matched various parts of the regexp.  See [1m%Pn[22;0m.  
 
   For those of you who care about code details: TF compiles PCRE regexps with 
   the PCRE_DOLLAR_ENDONLY and PCRE_DOTALL options.  
@@ -6669,6 +6849,945 @@ Notes.
       the value of the left side.  
     * If a glob and regexp can do the same job, use the glob, it's usually 
       faster.  
+
+&pcre
+&pcre syntax
+  This document was extracted from the pcre.3.html documentation, Copyright 
+  (c) 1997-1999 University of Cambridge, and minimally adapted for use in 
+  TinyFugue.  
+
+    * 
+#SEC13
+      REGULAR EXPRESSION DETAILS 
+
+      The syntax and semantics of the regular expressions supported by PCRE 
+      are described below.  Regular expressions are also described in the Perl 
+      documentation and in a number of other books, some of which have copious 
+      examples.  Jeffrey Friedl's "Mastering Regular Expressions", published 
+      by O'Reilly (ISBN 1-56592-257-3), covers them in great detail.  The 
+      description here is intended as reference documentation.  
+
+      A regular expression is a pattern that is matched against a subject 
+      string from left to right.  Most characters stand for themselves in a 
+      pattern, and match the corresponding characters in the subject.  As a 
+      trivial example, the pattern 
+
+
+        The quick brown fox
+
+      matches a portion of a subject string that is identical to itself.  The 
+      power of regular expressions comes from the ability to include 
+      alternatives and repetitions in the pattern.  These are encoded in the 
+      pattern by the use of <[4mmeta-characters[24m>, which do not stand for 
+      themselves but instead are interpreted in some special way.  
+
+      There are two different sets of meta-characters: those that are 
+      recognized anywhere in the pattern except within square brackets, and 
+      those that are recognized in square brackets.  Outside square brackets, 
+      the meta-characters are as follows: 
+
+
+        \      general escape character with several uses
+        ^      assert start of subject (or line, in multiline mode)
+        $      assert end of subject (or line, in multiline mode)
+        .      match any character except newline (by default)
+        [      start character class definition
+        |      start of alternative branch
+        (      start subpattern
+        )      end subpattern
+        ?      extends the meaning of (
+               also 0 or 1 quantifier
+               also quantifier minimizer
+        *      0 or more quantifier
+        +      1 or more quantifier
+        {      start min/max quantifier
+
+      Part of a pattern that is in square brackets is called a "character 
+      class".  In a character class the only meta-characters are: 
+
+
+        \      general escape character
+        ^      negate the class, but only if the first character
+        -      indicates character range
+        ]      terminates the character class
+
+      The following sections describe the use of each of the meta-characters.  
+    * 
+#SEC14
+      BACKSLASH 
+
+      The backslash character has several uses.  Firstly, if it is followed by 
+      a non-alphameric character, it takes away any special meaning that 
+      character may have.  This use of backslash as an escape character 
+      applies both inside and outside character classes.  
+
+      For example, if you want to match a "*" character, you write "\*" in the 
+      pattern.  This applies whether or not the following character would 
+      otherwise be interpreted as a meta-character, so it is always safe to 
+      precede a non-alphameric with "\" to specify that it stands for itself.  
+      In particular, if you want to match a backslash, you write "\\".  
+
+      If a pattern is compiled with the "x" (PCRE_EXTRA) option, whitespace in 
+      the pattern (other than in a character class) and characters between a 
+      "#" outside a character class and the next newline character are 
+      ignored.  An escaping backslash can be used to include a whitespace or 
+      "#" character as part of the pattern.  
+
+      A second use of backslash provides a way of encoding non-printing 
+      characters in patterns in a visible manner.  There is no restriction on 
+      the appearance of non-printing characters, apart from the binary zero 
+      that terminates a pattern, but when a pattern is being prepared by text 
+      editing, it is usually easier to use one of the following escape 
+      sequences than the binary character it represents: 
+
+
+        \a     alarm, that is, the BEL character (hex 07)
+        \cx    "control-x", where x is any character
+        \e     escape (hex 1B)
+        \f     formfeed (hex 0C)
+        \n     newline (hex 0A)
+        \r     carriage return (hex 0D)
+        \t     tab (hex 09)
+        \xhh   character with hex code hh
+        \ddd   character with octal code ddd, or backreference
+
+      The precise effect of "\cx" is as follows: if "x" is a lower case 
+      letter, it is converted to upper case.  Then bit 6 of the character (hex 
+      40) is inverted.  Thus "\cz" becomes hex 1A, but "\c{" becomes hex 3B, 
+      while "\c;" becomes hex 7B.  
+
+      After "\x", up to two hexadecimal digits are read (letters can be in 
+      upper or lower case).  
+
+      After "\0" up to two further octal digits are read.  In both cases, if 
+      there are fewer than two digits, just those that are present are used.  
+      Thus the sequence "\0\x\07" specifies two binary zeros followed by a BEL 
+      character.  Make sure you supply two digits after the initial zero if 
+      the character that follows is itself an octal digit.  
+
+      The handling of a backslash followed by a digit other than 0 is 
+      complicated.  Outside a character class, PCRE reads it and any following 
+      digits as a decimal number.  If the number is less than 10, or if there 
+      have been at least that many previous capturing left parentheses in the 
+      expression, the entire sequence is taken as a <[4mback reference[24m>.  A 
+      description of how this works is given later, following the discussion 
+      of parenthesized subpatterns.  
+
+      Inside a character class, or if the decimal number is greater than 9 and 
+      there have not been that many capturing subpatterns, PCRE re-reads up to 
+      three octal digits following the backslash, and generates a single byte 
+      from the least significant 8 bits of the value.  Any subsequent digits 
+      stand for themselves.  For example: 
+
+
+        \040   is another way of writing a space
+        \40    is the same, provided there are fewer than 40
+                  previous capturing subpatterns
+        \7     is always a back reference
+        \11    might be a back reference, or another way of
+                  writing a tab
+        \011   is always a tab
+        \0113  is a tab followed by the character "3"
+        \113   is the character with octal code 113 (since there
+                  can be no more than 99 back references)
+        \377   is a byte consisting entirely of 1 bits
+        \81    is either a back reference, or a binary zero
+                  followed by the two characters "8" and "1"
+
+      Note that octal values of 100 or greater must not be introduced by a 
+      leading zero, because no more than three octal digits are ever read.  
+
+      All the sequences that define a single byte value can be used both 
+      inside and outside character classes.  In addition, inside a character 
+      class, the sequence "\b" is interpreted as the backspace character (hex 
+      08).  Outside a character class it has a different meaning (see below).  
+
+      The third use of backslash is for specifying generic character types: 
+
+
+        \d     any decimal digit
+        \D     any character that is not a decimal digit
+        \s     any whitespace character
+        \S     any character that is not a whitespace character
+        \w     any "word" character
+        \W     any "non-word" character
+
+      Each pair of escape sequences partitions the complete set of characters 
+      into two disjoint sets.  Any given character matches one, and only one, 
+      of each pair.  
+
+      A "word" character is any letter or digit or the underscore character, 
+      that is, any character which can be part of a Perl "word".  The 
+      definition of letters and digits is controlled by PCRE's character 
+      tables, and may vary if locale- specific matching is taking place (see 
+      "Locale support" above).  For example, in the "fr" (French) locale, some 
+      character codes greater than 128 are used for accented letters, and 
+      these are matched by \w.  
+
+      These character type sequences can appear both inside and outside 
+      character classes.  They each match one character of the appropriate 
+      type.  If the current matching point is at the end of the subject 
+      string, all of them fail, since there is no character to match.  
+
+      The fourth use of backslash is for certain simple assertions.  An 
+      assertion specifies a condition that has to be met at a particular point 
+      in a match, without consuming any characters from the subject string.  
+      The use of subpatterns for more complicated assertions is described 
+      below.  The backslashed assertions are 
+
+
+        \b     word boundary
+        \B     not a word boundary
+        \A     start of subject (same as "^" in tf)
+        \Z     end of subject (same as "$" in tf)
+        \z     end of subject (same as "$" in tf)
+
+      These assertions may not appear in character classes (but note that "\b" 
+      has a different meaning, namely the backspace character, inside a 
+      character class).  
+
+      A word boundary is a position in the subject string where the current 
+      character and the previous character do not both match \w or \W (i.e.  
+      one matches \w and the other matches \W), or the start or end of the 
+      string if the first or last character matches \w, respectively.  
+    * 
+#SEC15
+      CIRCUMFLEX AND DOLLAR 
+
+      Outside a character class, in the default matching mode, the circumflex 
+      character is an assertion which is true only if the current matching 
+      point is at the start of the subject string.  If the <[4mstartoffset[24m> 
+      argument of [1mpcre_exec()[22m is non-zero, circumflex can never match.  Inside 
+      a character class, circumflex has an entirely different meaning (see 
+      below).  
+
+      Circumflex need not be the first character of the pattern if a number of 
+      alternatives are involved, but it should be the first thing in each 
+      alternative in which it appears if the pattern is ever to match that 
+      branch.  If all possible alternatives start with a circumflex, that is, 
+      if the pattern is constrained to match only at the start of the subject, 
+      it is said to be an "anchored" pattern.  (There are also other 
+      constructs that can cause a pattern to be anchored.) 
+
+      A dollar character is an assertion which is true only if the current 
+      matching point is at the end of the subject string.  Dollar need not be 
+      the last character of the pattern if a number of alternatives are 
+      involved, but it should be the last item in any branch in which it 
+      appears.  Dollar has no special meaning in a character class.  
+    * 
+#SEC17
+      SQUARE BRACKETS 
+
+      An opening square bracket introduces a character class, terminated by a 
+      closing square bracket.  A closing square bracket on its own is not 
+      special.  If a closing square bracket is required as a member of the 
+      class, it should be the first data character in the class (after an 
+      initial circumflex, if present) or escaped with a backslash.  
+
+      A character class matches a single character in the subject; the 
+      character must be in the set of characters defined by the class, unless 
+      the first character in the class is a circumflex, in which case the 
+      subject character must not be in the set defined by the class.  If a 
+      circumflex is actually required as a member of the class, ensure it is 
+      not the first character, or escape it with a backslash.  
+
+      For example, the character class [aeiou] matches any lower case vowel, 
+      while [^aeiou] matches any character that is not a lower case vowel.  
+      Note that a circumflex is just a convenient notation for specifying the 
+      characters which are in the class by enumerating those that are not.  It 
+      is not an assertion: it still consumes a character from the subject 
+      string, and fails if the current pointer is at the end of the string.  
+
+      When caseless matching is set, any letters in a class represent both 
+      their upper case and lower case versions, so for example, a caseless 
+      [aeiou] matches "A" as well as "a", and a caseless [^aeiou] does not 
+      match "A", whereas a caseful version would.  
+
+      The minus (hyphen) character can be used to specify a range of 
+      characters in a character class.  For example, [d-m] matches any letter 
+      between d and m, inclusive.  If a minus character is required in a 
+      class, it must be escaped with a backslash or appear in a position where 
+      it cannot be interpreted as indicating a range, typically as the first 
+      or last character in the class.  
+
+      It is not possible to have the literal character "]" as the end 
+      character of a range.  A pattern such as [W-]46] is interpreted as a 
+      class of two characters ("W" and "-") followed by a literal string 
+      "46]", so it would match "W46]" or "-46]".  However, if the "]" is 
+      escaped with a backslash it is interpreted as the end of range, so 
+      [W-\]46] is interpreted as a single class containing a range followed by 
+      two separate characters.  The octal or hexadecimal representation of "]" 
+      can also be used to end a range.  
+
+      Ranges operate in ASCII collating sequence.  They can also be used for 
+      characters specified numerically, for example [\000-\037].  If a range 
+      that includes letters is used when caseless matching is set, it matches 
+      the letters in either case.  For example, [W-c] is equivalent to 
+      [][\^_`wxyzabc], matched caselessly, and if character tables for the 
+      "fr" locale are in use, [\xc8-\xcb] matches accented E characters in 
+      both cases.  
+
+      The character types \d, \D, \s, \S, \w, and \W may also appear in a 
+      character class, and add the characters that they match to the class.  
+      For example, [\dABCDEF] matches any hexadecimal digit.  A circumflex can 
+      conveniently be used with the upper case character types to specify a 
+      more restricted set of characters than the matching lower case type.  
+      For example, the class [^\W_] matches any letter or digit, but not 
+      underscore.  
+
+      All non-alphameric characters other than \, -, ^ (at the start) and the 
+      terminating ] are non-special in character classes, but it does no harm 
+      if they are escaped.  
+    * 
+#SEC18
+      VERTICAL BAR 
+
+      Vertical bar characters are used to separate alternative patterns.  For 
+      example, the pattern 
+
+
+        gilbert|sullivan
+
+      matches either "gilbert" or "sullivan".  Any number of alternatives may 
+      appear, and an empty alternative is permitted (matching the empty 
+      string).  The matching process tries each alternative in turn, from left 
+      to right, and the first one that succeeds is used.  If the alternatives 
+      are within a subpattern (defined below), "succeeds" means matching the 
+      rest of the main pattern as well as the alternative in the subpattern.  
+    * 
+#SEC19
+      INTERNAL OPTION SETTING 
+
+      The settings of PCRE_CASELESS, PCRE_EXTENDED, and PCRE_UNGREEDY can be 
+      changed from within the pattern by a sequence of Perl option letters 
+      enclosed between "(?" and ")".  The option letters are 
+
+
+        i  for PCRE_CASELESS
+        x  for PCRE_EXTENDED
+        U  for PCRE_UNGREEDY (not in perl)
+
+      For example, (?x) sets extended matching.  It is also possible to unset 
+      these options by preceding the letter with a hyphen, and a combined 
+      setting and unsetting such as (?x-i), which sets extended and while 
+      unsetting caseless, is also permitted.  If a letter appears both before 
+      and after the hyphen, the option is unset.  
+
+      The scope of these option changes depends on where in the pattern the 
+      setting occurs.  For settings that are outside any subpattern (defined 
+      below), the effect is the same as if the options were set or unset at 
+      the start of matching.  The following patterns all behave in exactly the 
+      same way: 
+
+
+        (?i)ABC
+        A(?i)BC
+        AB(?i)C
+        ABC(?i)
+
+      Such "top level" settings apply to the whole pattern (unless there are 
+      other changes inside subpatterns).  If there is more than one setting of 
+      the same option at top level, the rightmost setting is used.  
+
+      If an option change occurs inside a subpattern, the effect is different. 
+      This is a change of behaviour in Perl 5.005.  An option change inside a 
+      subpattern affects only that part of the subpattern that follows it, so 
+
+
+        (a(?-i)b)c
+
+      matches abc, Abc, abC and AbC, and no other strings (remember, in tf, 
+      regexps are caseless by default if they do not contain any capital 
+      letters).  By this means, options can be made to have different settings 
+      in different parts of the pattern.  Any changes made in one alternative 
+      do carry on into subsequent branches within the same subpattern.  For 
+      example, 
+
+
+        X(a(?i)b|c)
+
+      matches "Xab", "XaB", "Xc", and "XC", even though when matching "C" the 
+      first branch is abandoned before the option setting.  This is because 
+      the effects of option settings happen at compile time.  There would be 
+      some very weird behaviour otherwise.  
+    * 
+#SEC20
+      SUBPATTERNS 
+
+      Subpatterns are delimited by parentheses (round brackets), which can be 
+      nested.  Marking part of a pattern as a subpattern does two things: 
+
+      1.  It localizes a set of alternatives.  For example, the pattern 
+
+
+        cat(aract|erpillar|)
+
+      matches one of the words "cat", "cataract", or "caterpillar".  Without 
+      the parentheses, it would match "cataract", "erpillar" or the empty 
+      string.  
+
+      2.  It sets up the subpattern as a capturing subpattern (as defined 
+      above).  When the whole pattern matches, that portion of the subject 
+      string that matched the subpattern is passed back to the caller via the 
+      <[4movector[24m> argument of [1mpcre_exec()[22m.  Opening parentheses are counted from 
+      left to right (starting from 1) to obtain the numbers of the capturing 
+      subpatterns.  
+
+      For example, if the string "the red king" is matched against the pattern 
+
+
+        the ((red|white) (king|queen))
+
+      the captured substrings are "red king", "red", and "king", and are 
+      numbered 1, 2, and 3.  
+
+      The fact that plain parentheses fulfil two functions is not always 
+      helpful.  There are often times when a grouping subpattern is required 
+      without a capturing requirement.  If an opening parenthesis is followed 
+      by "?:", the subpattern does not do any capturing, and is not counted 
+      when computing the number of any subsequent capturing subpatterns.  For 
+      example, if the string "the white queen" is matched against the pattern 
+
+
+        the ((?:red|white) (king|queen))
+
+      the captured substrings are "white queen" and "queen", and are numbered 
+      1 and 2.  The maximum number of captured substrings is 99, and the 
+      maximum number of all subpatterns, both capturing and non-capturing, is 
+      200.  
+
+      As a convenient shorthand, if any option settings are required at the 
+      start of a non-capturing subpattern, the option letters may appear 
+      between the "?" and the ":".  Thus the two patterns 
+
+
+        (?i:saturday|sunday)
+        (?:(?i)saturday|sunday)
+
+      match exactly the same set of strings.  Because alternative branches are 
+      tried from left to right, and options are not reset until the end of the 
+      subpattern is reached, an option setting in one branch does affect 
+      subsequent branches, so the above patterns match "SUNDAY" as well as 
+      "Saturday".  
+    * 
+#SEC21
+      REPETITION 
+
+      Repetition is specified by quantifiers, which can follow any of the 
+      following items: 
+
+
+        a single character, possibly escaped
+        the . metacharacter
+        a character class
+        a back reference (see next section)
+        a parenthesized subpattern (unless it is an assertion - see below)
+
+      The general repetition quantifier specifies a minimum and maximum number 
+      of permitted matches, by giving the two numbers in curly brackets 
+      (braces), separated by a comma.  The numbers must be less than 65536, 
+      and the first must be less than or equal to the second.  For example: 
+
+
+        z{2,4}
+
+      matches "zz", "zzz", or "zzzz".  A closing brace on its own is not a 
+      special character.  If the second number is omitted, but the comma is 
+      present, there is no upper limit; if the second number and the comma are 
+      both omitted, the quantifier specifies an exact number of required 
+      matches.  Thus 
+
+
+        [aeiou]{3,}
+
+      matches at least 3 successive vowels, but may match many more, while 
+
+
+        \d{8}
+
+      matches exactly 8 digits.  An opening curly bracket that appears in a 
+      position where a quantifier is not allowed, or one that does not match 
+      the syntax of a quantifier, is taken as a literal character.  For 
+      example, {,6} is not a quantifier, but a literal string of four 
+      characters.  
+
+      The quantifier {0} is permitted, causing the expression to behave as if 
+      the previous item and the quantifier were not present.  
+
+      For convenience (and historical compatibility) the three most common 
+      quantifiers have single-character abbreviations: 
+
+
+        *    is equivalent to {0,}
+        +    is equivalent to {1,}
+        ?    is equivalent to {0,1}
+
+      It is possible to construct infinite loops by following a subpattern 
+      that can match no characters with a quantifier that has no upper limit, 
+      for example: 
+
+
+        (a?)*
+
+      Earlier versions of Perl and PCRE used to give an error at compile time 
+      for such patterns.  However, because there are cases where this can be 
+      useful, such patterns are now accepted, but if any repetition of the 
+      subpattern does in fact match no characters, the loop is forcibly 
+      broken.  
+
+      By default, the quantifiers are "greedy", that is, they match as much as 
+      possible (up to the maximum number of permitted times), without causing 
+      the rest of the pattern to fail.  The classic example of where this 
+      gives problems is in trying to match comments in C programs.  These 
+      appear between the sequences /* and */ and within the sequence, 
+      individual * and / characters may appear.  An attempt to match C 
+      comments by applying the pattern 
+
+
+        /\*.*\*/
+
+      to the string 
+
+
+        /* first command */  not comment  /* second comment */
+
+      fails, because it matches the entire string due to the greediness of the 
+      .* item.  
+
+      However, if a quantifier is followed by a question mark, then it ceases 
+      to be greedy, and instead matches the minimum number of times possible, 
+      so the pattern 
+
+
+        /\*.*?\*/
+
+      does the right thing with the C comments.  The meaning of the various 
+      quantifiers is not otherwise changed, just the preferred number of 
+      matches.  Do not confuse this use of question mark with its use as a 
+      quantifier in its own right.  Because it has two uses, it can sometimes 
+      appear doubled, as in 
+
+
+        \d??\d
+
+      which matches one digit by preference, but can match two if that is the 
+      only way the rest of the pattern matches.  
+
+      If the "U" (PCRE_UNGREEDY) option is set (an option which is not 
+      available in Perl) then the quantifiers are not greedy by default, but 
+      individual ones can be made greedy by following them with a question 
+      mark.  In other words, it inverts the default behaviour.  
+
+      When a parenthesized subpattern is quantified with a minimum repeat 
+      count that is greater than 1 or with a limited maximum, more store is 
+      required for the compiled pattern, in proportion to the size of the 
+      minimum or maximum.  
+
+      If a pattern starts with .* or .{0,}, then the pattern is implicitly 
+      anchored, because whatever follows will be tried against every character 
+      position in the subject string, so there is no point in retrying the 
+      overall match at any position after the first.  PCRE treats such a 
+      pattern as though it were preceded by \A.  
+
+      When a capturing subpattern is repeated, the value captured is the 
+      substring that matched the final iteration.  For example, after 
+
+
+        (tweedle[dume]{3}\s*)+
+
+      has matched "tweedledum tweedledee" the value of the captured substring 
+      is "tweedledee".  However, if there are nested capturing subpatterns, 
+      the corresponding captured values may have been set in previous 
+      iterations.  For example, after 
+
+
+        /(a|(b))+/
+
+      matches "aba" the value of the second captured substring is "b".  
+    * 
+#SEC22
+      BACK REFERENCES 
+
+      Outside a character class, a backslash followed by a digit greater than 
+      0 (and possibly further digits) is a back reference to a capturing 
+      subpattern earlier (i.e.  to its left) in the pattern, provided there 
+      have been that many previous capturing left parentheses.  
+
+      However, if the decimal number following the backslash is less than 10, 
+      it is always taken as a back reference, and causes an error only if 
+      there are not that many capturing left parentheses in the entire 
+      pattern.  In other words, the parentheses that are referenced need not 
+      be to the left of the reference for numbers less than 10.  See the 
+      section entitled "Backslash" above for further details of the handling 
+      of digits following a backslash.  
+
+      A back reference matches whatever actually matched the capturing 
+      subpattern in the current subject string, rather than anything matching 
+      the subpattern itself.  So the pattern 
+
+
+        (sens|respons)e and \1ibility
+
+      matches "sense and sensibility" and "response and responsibility", but 
+      not "sense and responsibility".  If caseful matching is in force at the 
+      time of the back reference, then the case of letters is relevant.  For 
+      example, 
+
+
+        ((?i)rah)\s+\1
+
+      matches "rah rah" and "RAH RAH", but not "RAH rah", even though the 
+      original capturing subpattern is matched caselessly.  
+
+      There may be more than one back reference to the same subpattern.  If a 
+      subpattern has not actually been used in a particular match, then any 
+      back references to it always fail.  For example, the pattern 
+
+
+        (a|(bc))\2
+
+      always fails if it starts to match "a" rather than "bc".  Because there 
+      may be up to 99 back references, all digits following the backslash are 
+      taken as part of a potential back reference number.  If the pattern 
+      continues with a digit character, then some delimiter must be used to 
+      terminate the back reference.  If the "x" (PCRE_EXTENDED) option is set, 
+      this can be whitespace.  Otherwise an empty comment can be used.  
+
+      A back reference that occurs inside the parentheses to which it refers 
+      fails when the subpattern is first used, so, for example, (a\1) never 
+      matches.  However, such references can be useful inside repeated 
+      subpatterns.  For example, the pattern 
+
+
+        (a|b\1)+
+
+      matches any number of "a"s and also "aba", "ababaa" etc.  At each 
+      iteration of the subpattern, the back reference matches the character 
+      string corresponding to the previous iteration.  In order for this to 
+      work, the pattern must be such that the first iteration does not need to 
+      match the back reference.  This can be done using alternation, as in the 
+      example above, or by a quantifier with a minimum of zero.  
+    * 
+#SEC23
+      ASSERTIONS 
+
+      An assertion is a test on the characters following or preceding the 
+      current matching point that does not actually consume any characters.  
+      The simple assertions coded as \b, \B, \A, \Z, \z, ^ and $ are described 
+      above.  More complicated assertions are coded as subpatterns.  There are 
+      two kinds: those that look ahead of the current position in the subject 
+      string, and those that look behind it.  
+
+      An assertion subpattern is matched in the normal way, except that it 
+      does not cause the current matching position to be changed.  Lookahead 
+      assertions start with (?= for positive assertions and (?! for negative 
+      assertions.  For example, 
+
+
+        \w+(?=;)
+
+      matches a word followed by a semicolon, but does not include the 
+      semicolon in the match, and 
+
+
+        foo(?!bar)
+
+      matches any occurrence of "foo" that is not followed by "bar".  Note 
+      that the apparently similar pattern 
+
+
+        (?!foo)bar
+
+      does not find an occurrence of "bar" that is preceded by something other 
+      than "foo"; it finds any occurrence of "bar" whatsoever, because the 
+      assertion (?!foo) is always true when the next three characters are 
+      "bar".  A lookbehind assertion is needed to achieve this effect.  
+
+      Lookbehind assertions start with (?<= for positive assertions and (?<! 
+      for negative assertions.  For example, 
+
+
+        (?<!foo)bar
+
+      does find an occurrence of "bar" that is not preceded by "foo".  The 
+      contents of a lookbehind assertion are restricted such that all the 
+      strings it matches must have a fixed length.  However, if there are 
+      several alternatives, they do not all have to have the same fixed 
+      length.  Thus 
+
+
+        (?<=bullock|donkey)
+
+      is permitted, but 
+
+
+        (?<!dogs?|cats?)
+
+      causes an error at compile time.  Branches that match different length 
+      strings are permitted only at the top level of a lookbehind assertion.  
+      This is an extension compared with Perl 5.005, which requires all 
+      branches to match the same length of string.  An assertion such as 
+
+
+        (?<=ab(c|de))
+
+      is not permitted, because its single top-level branch can match two 
+      different lengths, but it is acceptable if rewritten to use two 
+      top-level branches: 
+
+
+        (?<=abc|abde)
+
+      The implementation of lookbehind assertions is, for each alternative, to 
+      temporarily move the current position back by the fixed width and then 
+      try to match.  If there are insufficient characters before the current 
+      position, the match is deemed to fail.  Lookbehinds in conjunction with 
+      once-only subpatterns can be particularly useful for matching at the 
+      ends of strings; an example is given at the end of the section on 
+      once-only subpatterns.  
+
+      Several assertions (of any sort) may occur in succession.  For example, 
+
+
+        (?<=\d{3})(?<!999)foo
+
+      matches "foo" preceded by three digits that are not "999".  Notice that 
+      each of the assertions is applied independently at the same point in the 
+      subject string.  First there is a check that the previous three 
+      characters are all digits, then there is a check that the same three 
+      characters are not "999".  This pattern does <[4mnot[24m> match "foo" preceded 
+      by six characters, the first of which are digits and the last three of 
+      which are not "999".  For example, it doesn't match "123abcfoo".  A 
+      pattern to do that is 
+
+
+        (?<=\d{3}...)(?<!999)foo
+
+      This time the first assertion looks at the preceding six characters, 
+      checking that the first three are digits, and then the second assertion 
+      checks that the preceding three characters are not "999".  
+
+      Assertions can be nested in any combination.  For example, 
+
+
+        (?<=(?<!foo)bar)baz
+
+      matches an occurrence of "baz" that is preceded by "bar" which in turn 
+      is not preceded by "foo", while 
+
+
+        (?<=\d{3}(?!999)...)foo
+
+      is another pattern which matches "foo" preceded by three digits and any 
+      three characters that are not "999".  
+
+      Assertion subpatterns are not capturing subpatterns, and may not be 
+      repeated, because it makes no sense to assert the same thing several 
+      times.  If any kind of assertion contains capturing subpatterns within 
+      it, these are counted for the purposes of numbering the capturing 
+      subpatterns in the whole pattern.  However, substring capturing is 
+      carried out only for positive assertions, because it does not make sense 
+      for negative assertions.  
+
+      Assertions count towards the maximum of 200 parenthesized subpatterns.  
+    * 
+#SEC24
+      ONCE-ONLY SUBPATTERNS 
+
+      With both maximizing and minimizing repetition, failure of what follows 
+      normally causes the repeated item to be re-evaluated to see if a 
+      different number of repeats allows the rest of the pattern to match.  
+      Sometimes it is useful to prevent this, either to change the nature of 
+      the match, or to cause it fail earlier than it otherwise might, when the 
+      author of the pattern knows there is no point in carrying on.  
+
+      Consider, for example, the pattern \d+foo when applied to the subject 
+      line 
+
+
+        123456bar
+
+      After matching all 6 digits and then failing to match "foo", the normal 
+      action of the matcher is to try again with only 5 digits matching the 
+      \d+ item, and then with 4, and so on, before ultimately failing.  
+      Once-only subpatterns provide the means for specifying that once a 
+      portion of the pattern has matched, it is not to be re-evaluated in this 
+      way, so the matcher would give up immediately on failing to match "foo" 
+      the first time.  The notation is another kind of special parenthesis, 
+      starting with (?> as in this example: 
+
+
+        (?>\d+)bar
+
+      This kind of parenthesis "locks up" the part of the pattern it contains 
+      once it has matched, and a failure further into the pattern is prevented 
+      from backtracking into it.  Backtracking past it to previous items, 
+      however, works as normal.  
+
+      An alternative description is that a subpattern of this type matches the 
+      string of characters that an identical standalone pattern would match, 
+      if anchored at the current point in the subject string.  
+
+      Once-only subpatterns are not capturing subpatterns.  Simple cases such 
+      as the above example can be thought of as a maximizing repeat that must 
+      swallow everything it can.  So, while both \d+ and \d+? are prepared to 
+      adjust the number of digits they match in order to make the rest of the 
+      pattern match, (?>\d+) can only match an entire sequence of digits.  
+
+      This construction can of course contain arbitrarily complicated 
+      subpatterns, and it can be nested.  
+
+      Once-only subpatterns can be used in conjunction with lookbehind 
+      assertions to specify efficient matching at the end of the subject 
+      string.  Consider a simple pattern such as 
+
+
+        abcd$
+
+      when applied to a long string which does not match it.  Because matching 
+      proceeds from left to right, PCRE will look for each "a" in the subject 
+      and then see if what follows matches the rest of the pattern.  If the 
+      pattern is specified as 
+
+
+        ^.*abcd$
+
+      then the initial .* matches the entire string at first, but when this 
+      fails, it backtracks to match all but the last character, then all but 
+      the last two characters, and so on.  Once again the search for "a" 
+      covers the entire string, from right to left, so we are no better off.  
+      However, if the pattern is written as 
+
+
+        ^(?>.*)(?<=abcd)
+
+      then there can be no backtracking for the .* item; it can match only the 
+      entire string.  The subsequent lookbehind assertion does a single test 
+      on the last four characters.  If it fails, the match fails immediately.  
+      For long strings, this approach makes a significant difference to the 
+      processing time.  
+    * 
+#SEC25
+      CONDITIONAL SUBPATTERNS 
+
+      It is possible to cause the matching process to obey a subpattern 
+      conditionally or to choose between two alternative subpatterns, 
+      depending on the result of an assertion, or whether a previous capturing 
+      subpattern matched or not.  The two possible forms of conditional 
+      subpattern are 
+
+
+        (?(condition)yes-pattern)
+        (?(condition)yes-pattern|no-pattern)
+
+      If the condition is satisfied, the yes-pattern is used; otherwise the 
+      no-pattern (if present) is used.  If there are more than two 
+      alternatives in the subpattern, a compile-time error occurs.  
+
+      There are two kinds of condition.  If the text between the parentheses 
+      consists of a sequence of digits, then the condition is satisfied if the 
+      capturing subpattern of that number has previously matched.  Consider 
+      the following pattern, which contains non-significant white space to 
+      make it more readable (assume the "x" PCRE_EXTENDED option) and to 
+      divide it into three parts for ease of discussion: 
+
+
+        ( \( )?    [^()]+    (?(1) \) )
+
+      The first part matches an optional opening parenthesis, and if that 
+      character is present, sets it as the first captured substring.  The 
+      second part matches one or more characters that are not parentheses.  
+      The third part is a conditional subpattern that tests whether the first 
+      set of parentheses matched or not.  If they did, that is, if subject 
+      started with an opening parenthesis, the condition is true, and so the 
+      yes-pattern is executed and a closing parenthesis is required.  
+      Otherwise, since no-pattern is not present, the subpattern matches 
+      nothing.  In other words, this pattern matches a sequence of 
+      non-parentheses, optionally enclosed in parentheses.  
+
+      If the condition is not a sequence of digits, it must be an assertion.  
+      This may be a positive or negative lookahead or lookbehind assertion.  
+      Consider this pattern, again containing non-significant white space, and 
+      with the two alternatives on the second line: 
+
+
+        (?(?=[^a-z]*[a-z])
+        \d{2}[a-z]{3}-\d{2}  |  \d{2}-\d{2}-\d{2} )
+
+      The condition is a positive lookahead assertion that matches an optional 
+      sequence of non-letters followed by a letter.  In other words, it tests 
+      for the presence of at least one letter in the subject.  If a letter is 
+      found, the subject is matched against the first alternative; otherwise 
+      it is matched against the second.  This pattern matches strings in one 
+      of the two forms dd-aaa-dd or dd-dd-dd, where aaa are letters and dd are 
+      digits.  
+    * 
+#SEC26
+      COMMENTS 
+
+      The sequence (?# marks the start of a comment which continues up to the 
+      next closing parenthesis.  Nested parentheses are not permitted.  The 
+      characters that make up a comment play no part in the pattern matching 
+      at all.  
+
+      If the "x" PCRE_EXTENDED option is set, an unescaped # character outside 
+      a character class introduces a comment that continues up to the next 
+      newline character in the pattern.  
+    * 
+#SEC27
+      PERFORMANCE 
+
+      Certain items that may appear in patterns are more efficient than 
+      others.  It is more efficient to use a character class like [aeiou] than 
+      a set of alternatives such as (a|e|i|o|u).  In general, the simplest 
+      construction that provides the required behaviour is usually the most 
+      efficient.  Jeffrey Friedl's book contains a lot of discussion about 
+      optimizing regular expressions for efficient performance.  
+
+      Beware of patterns that contain nested indefinite repeats.  These can 
+      take a long time to run when applied to a string that does not match.  
+      Consider the pattern fragment 
+
+
+        (a+)*
+
+      This can match "aaaa" in 33 different ways, and this number increases 
+      very rapidly as the string gets longer.  (The * repeat can match 0, 1, 
+      2, 3, or 4 times, and for each of those cases other than 0, the + 
+      repeats can match different numbers of times.) When the remainder of the 
+      pattern is such that the entire match is going to fail, PCRE has in 
+      principle to try every possible variation, and this can take an 
+      extremely long time.  
+
+      An optimization catches some of the more simple cases such as 
+
+
+        (a+)*b
+
+      where a literal character follows.  Before embarking on the standard 
+      matching procedure, PCRE checks that there is a "b" later in the subject 
+      string, and if there is not, it fails the match immediately.  However, 
+      when there is no following literal this optimization cannot be used.  
+      You can see the difference by comparing the behaviour of 
+
+
+        (a+)*\d
+
+      with the pattern above.  The former gives a failure almost instantly 
+      when applied to a whole line of "a" characters, whereas the latter takes 
+      an appreciable time with strings longer than about 20 characters.  
+    * 
+#SEC28
+      AUTHOR 
+
+      Philip Hazel <ph10@cam.ac.uk> 
+      University Computing Service, 
+      New Museums Site, 
+      Cambridge CB2 3QG, England.  
+      Phone: +44 1223 334714 
+
+      Last updated: 29 July 1999 
+      Copyright (c) 1997-1999 University of Cambridge.  
 
 &priorities
 &fallthru
@@ -6726,9 +7845,8 @@ problems
   fixed.  The latest version of TF should be available for anonymous ftp from 
   tf.tcp.com in pub/tinyfugue.  
 
-  Also see [1mhttp://tf.tcp.com/~hawkeye/tf/[22;0m for the latest info on TF.  See 
-  "/help mailing list" for information on how to subscribe to the tinyfugue 
-  mailing list.  
+  Also see [1mhttp://tf.tcp.com/[22;0m for the latest info on TF.  See "/help mailing 
+  list" for information on how to subscribe to the tinyfugue mailing list.  
 
   Send general bug reports, questions, etc, to hawkeye@tcp.com.  For problems 
   specific to the OS/2 version, contact Andreas Sahlbach at asa@stardiv.de.  
@@ -7214,9 +8332,9 @@ sockets
 #connectionless socket
 
   A "connectionless" socket is created when you [1m/connect[22;0m to a [1mworld[22;0m that does 
-  not have a host or port defined.  Any text you "send" to a connectionless 
-  socket is immediately "received", as if you were connected to an echo 
-  server.  
+  not have a host or port defined.  If the world also has the echo flag set, 
+  any text you "send" to the socket is immediately "received", as if you were 
+  connected to an echo server.  
 
   See also: [1mworlds[22;0m 
 
@@ -7450,7 +8568,7 @@ Special global variables
 #%borg
   [1mborg[22m=on 
           (flag) Enables [1mtrigger[22;0m bodies ([1mattributes[22;0m are unaffected).  (See: 
-          [1mtriggers[22;0m) 
+          [1mtriggers[22;0m, [1m%max_trig[22;0m) 
 
 #clearfull
 #%clearfull
@@ -7484,9 +8602,26 @@ Special global variables
           allows you to continue doing other things while TF tries to 
           establish a new connection.  See also [1m%gethostbyname[22;0m.  
 
+#defcompile
+#%defcompile
+  [1mdefcompile[22m=off 
+          (flag) If off, [1mmacros[22;0m are compiled the first time they are executed; 
+          if on, [1mmacros[22;0m are compiled immediately when they are defined.  Since 
+          syntax checking is performed during compilation, setting 
+          [1mdefcompile[22;0m=on will allow you to see the syntax errors in a macro 
+          when you define it.  
+
 #%e
   [1me[22m=2.718281828...  
           Euler's number.  
+
+#expand_tabs
+#%expand_tabs
+  [1mexpand_tabs[22m=on 
+          (flag) If on (and [1m%emulation[22;0m) is "print", "ansi_strip", or 
+          "ansi_attr"), tabs received from a server are expanded to spaces 
+          (according to [1m%tabsize[22;0m) immediately, before any [1mtrigger[22;0m) processing. 
+          If off, tab characters are left in received lines.  
 
 #raw
 #canon
@@ -7500,16 +8635,17 @@ Special global variables
           Determines how special codes sent by the server should be 
           interpreted by TF.  The set of printable characters is determined by 
           the current [1mlocale[22;0m.  Valid values for [1m%emulation[22;0m are: 
-          raw:    No processing done; lines not wrapped; all nonprintable 
-                  characters are displayed, and their effect is undefined 
-                  (depending mainly on your terminal).  TF's input display is 
-                  not guaranteed correct; use at your own risk.  This mode 
-                  allows the server to have most of the control over the 
-                  screen, but is not guaranteed to give the desired effect.  
-                  For best results, [1m%visual[22;0m should be "off", and TF [1mattributes[22;0m 
-                  should not be used.  
-          print:  Tabs expanded; backspaces interpreted; lines wrapped; 
-                  nonprintable characters removed.  
+          raw:    No conversion is done; lines are not wrapped; all 
+                  nonprintable characters are displayed, and their effect is 
+                  undefined (depending mainly on your terminal).  TF's input 
+                  display is not guaranteed correct; use at your own risk.  
+                  This mode allows the server to have most of the control over 
+                  the screen, but is not guaranteed to give the desired 
+                  effect.  For best results, [1m%visual[22;0m should be "off", and TF 
+                  [1mattributes[22;0m should not be used.  
+          print:  Tabs are expanded (if [1m%expand_tabs[22;0m is on); backspaces are 
+                  interpreted; lines are wrapped; nonprintable characters 
+                  removed.  
           ansi_strip: 
                   Like "print", but ANSI display codes are also removed.  
           ansi_attr: 
@@ -7520,7 +8656,8 @@ Special global variables
                   vt100/ansi display [1mattribute[22;0m codes.  
           debug:  converts nonprinting characters to a printable form.  See 
                   also: [1m%telopt[22;0m.  
-          See also: [1m%istrip[22;0m, [1m%meta_esc[22;0m, [1m%tabsize[22;0m, [1mlocale[22;0m, [1mattributes[22;0m 
+          See also: [1m%istrip[22;0m, [1m%meta_esc[22;0m, [1m%tabsize[22;0m, [1m%expand_tabs[22;0m, [1mlocale[22;0m, 
+          [1mattributes[22;0m, [1mdebugging[22;0m.  
 
 #end_color
 #%end_color
@@ -7600,7 +8737,7 @@ Special global variables
 #%kecho
   [1mkecho[22m=off 
           (flag) Re-echoing of keyboard input, preceded by [1m%{kprefix}[22;0m.  See 
-          also: [1m/localecho[22;0m.  
+          also: [1m/localecho[22;0m, [1m/addworld[22;0m -e.  
 
 #keepalive
 #%keepalive
@@ -7658,13 +8795,18 @@ Special global variables
                   regular expression.  
           See also: [1mpatterns[22;0m, [1mregmatch()[22;0m, [1m%Pn[22;0m.  
 
-#max_iter
+#max_instr
 #iteration
 #iterations
-#%max_iter
-  [1mmax_iter[22m=1000 
-          Maximum number of iterations in a [1m/while[22;0m loop.  A value of 0 will 
-          allow unlimited iterations.  
+#instruction
+#instructions
+#%max_instr
+  [1mmax_instr[22m=5000 
+          Maximum number of instructions in a [1mmacro[22;0m execution.  A value of 0 
+          will allow unlimited instructions.  An "instruction" is a basic 
+          internal tf operation, such as addition, testing an /if or /while 
+          condition, a substitution, sending a line of text to a server, or 
+          joining two commands with a "%|" pipe.  
 
 #max_kbnum
 #%max_kbnum
@@ -7677,15 +8819,22 @@ Special global variables
 #recursions
 #%max_recur
   [1mmax_recur[22m=100 
-          Maximum depth of recursive [1mmacro[22;0m calls or [1mtriggers[22;0m.  A value of 0 
-          will allow unlimited recursion.  
+          Maximum depth of recursive [1mmacro[22;0m calls or [1mtriggers[22;0m.  This helps 
+          prevent infinite macro loops.  A value of 0 will allow unlimited 
+          recursion.  
+
+#max_trig
+#%max_trig
+  [1mmax_trig[22m=100 
+          Maximum number of [1mtriggers[22;0m allowed in a 10 second period.  When this 
+          value is exceeded, a message is printed and [1m%borg[22;0m is automatically 
+          turned off to disable triggers.  This helps prevent infinite trigger 
+          loops.  A value of 0 will allow unlimited triggers.  
 
 #%mccp
   [1mmccp[22m=on (if tf was compiled with MCCP support) 
           (flag) If on, MCCPv2 is allowed on new connections.  See [1mmccp[22;0m.  
 
-#debug
-#debugging
 #mecho
 #%mecho
   [1mmecho[22m=off 
@@ -7696,7 +8845,7 @@ Special global variables
           "all" (2): 
                   echo [1mexpansions[22;0m of all [1mmacros[22;0m.  
           [1m%{mprefix}[22;0m will be prepended once for each recursion level when 
-          [1mmacro[22;0m [1mexpansion[22;0m echoing is enabled.  
+          [1mmacro[22;0m [1mexpansion[22;0m echoing is enabled.  See also [1mdebugging[22;0m.  
 
 #meta_esc
 #meta
@@ -7745,7 +8894,8 @@ Special global variables
   [1mpedantic[22m=off 
           (flag) If on, TF will generate warnings about some potential 
           problems in your macro code.  Often the warnings indicate code that 
-          is technically valid but may not do what you intended.  
+          is technically valid but may not do what you intended.  See also 
+          [1mdebugging[22;0m.  
 
 #prompt_sec
 #%prompt_sec
@@ -7778,7 +8928,8 @@ Special global variables
 #qecho
 #%qecho
   [1mqecho[22m=off 
-          (flag) Echoing of [1m/quote[22;0m text, prefixed by [1m%{qprefix}[22;0m.  
+          (flag) Echoing of [1m/quote[22;0m text, prefixed by [1m%{qprefix}[22;0m.  See also 
+          [1mdebugging[22;0m.  
 
 #qprefix
 #%qprefix
@@ -7881,13 +9032,13 @@ Special global variables
 #%tabsize
   [1mtabsize[22m=8 
           Tabs will be replaced with spaces to pad to a multiple of 
-          [1m%{tabsize}[22;0m.  
+          [1m%{tabsize}[22;0m.  See also: [1m%expand_tabs[22;0m, [1m%emulation[22;0m.  
 
 #telopt
 #%telopt
   [1mtelopt[22m=off 
           (flag) Display [1mtelnet[22;0m option negotiations (for debugging purposes).  
-          See also: [1m%emulation[22;0m=debug.  
+          See also: [1m%emulation[22;0m=debug, [1mdebugging[22;0m.  
 
 #tfhost
 #%tfhost
@@ -8588,7 +9739,7 @@ tf
   TF honors several [1mlocale[22;0m categories, which can be set to make TF work better 
   with languages other than English.  See [1mlocale[22;0m.  
 
-  See [1mhttp://tf.tcp.com/~hawkeye/tf/[22;0m for the latest info on TF.  
+  See [1mhttp://tf.tcp.com/[22;0m for the latest info on TF.  
 
   See also: [1mintro[22;0m, [1mtfrc[22;0m, [1mlibrary[22;0m, [1mworlds[22;0m, [1m/addworld[22;0m 
 
@@ -8839,10 +9990,10 @@ triggers
   chosen for execution as described under "[1mpriority[22;0m".  
 
   The <[4mtext[24m> which [1mtriggers[22;0m a [1mmacro[22;0m is given to the [1mmacro[22;0m as arguments, as if 
-  it had been called with ``/<[4mmacro[24m> <[4mtext[24m>''.  Positional parameters refer 
-  the the corresponding word in the [1mtrigger[22;0ming text (see also: [1m%n[22;0m).  If the 
-  [1mtrigger[22;0m is a [1mregexp[22;0m, subexpression parameters refer to the text matched by 
-  the corresponding parenthesised subexpression (see also: [1m%Pn[22;0m).  
+  it had been called with ``/<[4mmacro[24m> <[4mtext[24m>''.  Positional parameters (e.g., 
+  [1m%1[22;0m) refer the the corresponding word in the [1mtrigger[22;0ming text.  If the [1mtrigger[22;0m 
+  is a [1mregexp[22;0m, subexpression parameters refer to the text matched by the 
+  corresponding parenthesised subexpression (see also: [1m%Pn[22;0m).  
 
   If the selected [1mmacro[22;0m(s) have display [1mattributes[22;0m, the [1mattributes[22;0m are used to 
   display the text which [1mtrigger[22;0med the [1mmacro[22;0m.  
@@ -8858,7 +10009,9 @@ triggers
   If the [1m%{background}[22;0m flag is turned off, text from [1mbackground[22;0m [1msockets[22;0m will 
   not cause [1mtrigger[22;0ming until that [1msocket[22;0m is brought into the [1mforeground[22;0m.  
 
-  [1mTriggers[22;0m can also be invoked manually with the command [1m/trigger[22;0m.  
+  [1mTriggers[22;0m can also be invoked manually with the command [1m/trigger[22;0m.  The 
+  command "[1m/trigger[22;0m -n" can be used to test which [1mtriggers[22;0m would match a given 
+  line.  
 
   The [1m/def[22;0m command is the only way to define a multi-shot [1mtrigger[22;0m.  All other 
   commands which define [1mtriggers[22;0m will create permanent [1mtriggers[22;0m.  
@@ -8870,18 +10023,24 @@ triggers
   [1mTriggers[22;0m are only matched against normal lines.  To have a macro invoked by 
   a [1mprompt[22;0m, use the [1mprompt[22;0m [1mhook[22;0m.  
 
-  Triggers are not expanded for variable substitutions or anything else.  To 
-  make a variable trigger, write a macro that redefines the trigger.  For 
-  example, 
+  By default, TF expands tabs and removes ANSI display codes and other non 
+  printable characters from received lines before comparing them against 
+  [1mtriggers[22;0m, so your [1mtriggers[22;0m need to match only visible text.  But if you 
+  change [1m%expand_tabs[22;0m or [1m%emulation[22;0m, received lines may still contain 
+  invisible codes when compared against [1mtriggers[22;0m.  
 
-      /def set_victim = \
-          /def -t"%{1} has arrived." kill_victim = \
-              kill %%{1}
+  Trigger patterns are not expanded for variable substitutions or anything 
+  else.  To get the effect of a variable trigger, write a macro that redefines 
+  the trigger.  For example, 
+
+      [1m/def[22;0m set_victim = \
+          [1m/def[22;0m -t"[1m%{1}[22;0m has arrived." kill_victim = \
+              kill [1m%%[22;0m{1}
     
 
-  Then, to change the victim to "Bill", execute "/set_victim Bill".  
+  Then, to change the victim to "Bill", type "/set_victim Bill".  
 
-  See also: [1mpatterns[22;0m, [1mmacros[22;0m, [1mgags[22;0m, [1mhilites[22;0m, [1mhooks[22;0m, [1mpriority[22;0m 
+  See also: [1mpatterns[22;0m, [1mmacros[22;0m, [1mgags[22;0m, [1mhilites[22;0m, [1mhooks[22;0m, [1mpriority[22;0m, [1m%max_trig[22;0m 
 
 &util
 &utils

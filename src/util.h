@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.h,v 35004.43 2003/07/03 17:23:56 hawkeye Exp $ */
+/* $Id: util.h,v 35004.45 2003/11/30 20:03:21 hawkeye Exp $ */
 
 #ifndef UTIL_H
 #define UTIL_H
@@ -26,6 +26,11 @@ typedef struct Pattern {
     RegInfo *ri;
     int mflag;
 } Pattern;
+
+struct feature {
+    const char *name;
+    const int *flag;
+};
 
 #undef CTRL
 /* convert to or from ctrl character */
@@ -57,6 +62,8 @@ extern struct timeval mail_update;
 extern int mail_count;
 extern struct mail_info_s *maillist;
 extern char tf_ctype[];
+extern Stringp featurestr;
+extern struct feature features[];
 
 #define is_quote(c)	(tf_ctype[(unsigned char)c] & IS_QUOTE)
 #define is_statmeta(c)	(tf_ctype[(unsigned char)c] & IS_STATMETA)
@@ -98,7 +105,7 @@ extern void   tf_reg_free(RegInfo *ri);
 extern int    regsubstr(struct String *dest, int n);
 extern int    init_pattern(Pattern *pat, const char *str, int mflag);
 extern int    init_pattern_str(Pattern *pat, const char *str);
-extern int    init_pattern_mflag(Pattern *pat, int mflag);
+extern int    init_pattern_mflag(Pattern *pat, int mflag, int opt);
 #define copy_pattern(dst, src)  (init_pattern(dst, (src)->str, (src)->mflag))
 extern int    patmatch(const Pattern *pat, String *Sstr, const char *str);
 extern void   free_pattern(Pattern *pat);

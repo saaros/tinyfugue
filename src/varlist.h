@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: varlist.h,v 35000.50 2003/09/01 20:20:12 hawkeye Exp $ */
+/* $Id: varlist.h,v 35000.56 2003/12/11 01:12:41 hawkeye Exp $ */
 
 /* This keeps the constants and the array in the same place, so they can't
  * get out of sync.
@@ -55,7 +55,9 @@ varenum(VAR_cecho,	"cecho",	0,		NULL,	enum_mecho)
 varflag(VAR_cleardone,	"cleardone",	FALSE,		NULL)
 varflag(VAR_clearfull,	"clearfull",	FALSE,		NULL)
 varenum(VAR_async_conn,	"connect",	TRUE,		NULL,	enum_block)
+varflag(VAR_defcompile,	"defcompile",	FALSE,		NULL)
 varenum(VAR_emulation,	"emulation",	EMUL_ANSI_ATTR,	NULL,	enum_emul)
+varflag(VAR_expand_tabs,"expand_tabs",	TRUE,		NULL)
 varflag(VAR_gag,	"gag",		TRUE,		NULL)
 varenum(VAR_async_name,	"gethostbyname",TRUE,		NULL,	enum_block)
 varint (VAR_gpri,	"gpri",		0,		NULL)
@@ -78,9 +80,10 @@ varflag(VAR_lp,		"lp",		FALSE,		tog_lp)
 varflag(VAR_lpquote,	"lpquote",	FALSE,		ch_lpquote)
 vartime(VAR_maildelay,	"maildelay",	60,0,		ch_maildelay)
 varenum(VAR_matching,	"matching",	1,		NULL,	enum_match)
-varint (VAR_max_iter,	"max_iter",	1000,		NULL)
+varint (VAR_max_instr,	"max_instr",	50000,		NULL)
 varint (VAR_max_kbnum,	"max_kbnum",	999,		NULL)
 varint (VAR_max_recur,	"max_recur",	100,		NULL)
+varint (VAR_max_trig,	"max_trig",	100,		NULL)
 #if HAVE_MCCP
 varflag(VAR_mccp,	"mccp",		TRUE,		NULL)
 #else
@@ -124,6 +127,7 @@ varflag(VAR_virtscreen,	"virtscreen",	TRUE,		NULL)
 varflag(VAR_visual,	"visual",	-1,		ch_visual)
 varflag(VAR_warn_5keys, "warn_5keys",	TRUE,		NULL)
 varflag(VAR_warn_curly_re,"warn_curly_re",TRUE,		NULL)
+varflag(VAR_warn_def_B,	"warn_def_B",	TRUE,		NULL)
 varflag(VAR_warn_status,"warn_status",	TRUE,		NULL)
 varflag(VAR_watchdog,	"watchdog",	FALSE,		NULL)
 varflag(VAR_watchname,	"watchname",	FALSE,		NULL)

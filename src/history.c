@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: history.c,v 35004.96 2003/10/17 00:26:34 hawkeye Exp $";
+static const char RCSid[] = "$Id: history.c,v 35004.100 2003/12/10 02:20:37 hawkeye Exp $";
 
 
 /****************************************************************
@@ -58,7 +58,9 @@ static int      do_watch(char *args, int id, int *wlines, int *wmatch);
 static struct History input[1];
 static int wnmatch = 4, wnlines = 5, wdmatch = 2, wdlines = 5;
 
-struct History globalhist[1], localhist[1];
+struct History globalhist_buf, localhist_buf;
+struct History * const globalhist = &globalhist_buf;
+struct History * const localhist = &localhist_buf;
 int log_count = 0;
 int norecord = 0;	/* supress history (but not log) recording */
 int nolog = 0;		/* supress log (but not history) recording */
@@ -262,7 +264,7 @@ int do_recall(String *args, int offset)
     while ((opt = next_hist_opt(&ptr, &offset, &hist, &ival))) {
         switch (opt) {
         case 'a': case 'f':
-            if (!parse_attrs(&ptr, &tmpattrs))
+            if (!parse_attrs(ptr, &tmpattrs, 0))
                 goto do_recall_exit;
             attrs |= tmpattrs;
             break;
@@ -457,7 +459,7 @@ int do_recall(String *args, int offset)
 		if (numbers) {
 		    if (!buffer)
 			buffer= Stringnew(NULL, line->len + 8, 0);
-		    Sprintf(buffer, SP_APPEND, "%d: ", j+1);
+		    Sappendf(buffer, "%d: ", j+1);
 		}
 		if (recall_time_format->data) {
 		    if (!buffer)
@@ -481,7 +483,7 @@ int do_recall(String *args, int offset)
 		    if (diff < 0) { sign = '-'; diff = -diff; }
 		    if (!buffer)
 			buffer = Stringnew(NULL, 40, 0);
-		    Sprintf(buffer, 0, "%d (%010p): %c%lx", j, line, sign, diff);
+		    Sprintf(buffer, "%d (%010p): %c%lx", j, line, sign, diff);
 		    nextline = line;
 		    line = buffer;
 		    buffer = NULL;
@@ -573,10 +575,10 @@ int is_watchname(History *hist, String *line)
         if (++nmatches == wnmatch) break;
     }
     if (nmatches < wnmatch) return 0;
-    Sprintf(buf, 0, "{%.*s}*", end - line->data, line->data);
+    Sprintf(buf, "{%.*s}*", end - line->data, line->data);
     oprintf("%% Watchname: gagging \"%S\"", buf);
-    return add_macro(new_macro(buf->data, "", 0, NULL, "", gpri, 100, F_GAG, 0,
-        MATCH_GLOB));
+    return add_macro(new_macro(buf->data, "", NULL, NULL, "", gpri, 100, F_GAG,
+	0, MATCH_GLOB));
 }
 
 int is_watchdog(History *hist, String *line)

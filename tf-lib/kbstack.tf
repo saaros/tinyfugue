@@ -7,10 +7,10 @@
 
 /loaded __TFLIB__/kbstack.tf
 
-/def -ib^[^[OB = /kb_push
-/def -ib^[^[[B = /kb_push
-/def -ib^[^[OA = /kb_pop
-/def -ib^[^[[A = /kb_pop
+/purge -i key_esc_down
+/purge -i key_esc_up
+/def -i key_esc_down = /kb_push
+/def -i key_esc_up = /kb_pop
 
 /def -i kb_push = \
     /let n=$[+kbnum]%; \

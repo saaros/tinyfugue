@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: process.c,v 35004.55 2003/07/03 17:23:56 hawkeye Exp $";
+static const char RCSid[] = "$Id: process.c,v 35004.58 2003/12/03 20:07:12 hawkeye Exp $";
 
 /************************
  * Fugue processes.     *
@@ -85,7 +85,9 @@ static Proc *proctail = NULL;		/* tail of process list */
 
 static void format_approx_interval(char *buf, struct timeval *tvp)
 {
-    if (tvp->tv_sec >= 60)
+    if (tvp->tv_sec >= 60*60*100)
+        sprintf(buf, "%6ld h", (long)tvp->tv_sec/3600);
+    else if (tvp->tv_sec >= 60)
         sprintf(buf, "%2ld:%02ld:%02ld", (long)tvp->tv_sec/3600,
             (long)(tvp->tv_sec/60) % 60, (long)tvp->tv_sec % 60);
     else
@@ -444,7 +446,7 @@ static int do_quote(Proc *proc)
 
     if (!tfgetS(line, proc->input)) return 0;
     if (proc->type == P_QSHELL) readers_clear(fileno(proc->input->u.fp));
-    Sprintf(proc->buffer, 0, "%s%S%s", proc->pre, line, proc->suf);
+    Sprintf(proc->buffer, "%s%S%s", proc->pre, line, proc->suf);
     if (qecho) tfprintf(tferr, "%s%S", qprefix ? qprefix : "", proc->buffer);
     switch (proc->disp) {
     case DISP_ECHO:
@@ -568,10 +570,10 @@ struct Value *handle_quote_command(String *args, int offset)
     case P_QSHELL:
         /* null input, and capture stderr */
 #ifdef PLATFORM_UNIX
-        Sprintf(newcmd, 0, "{ %s; } </dev/null 2>&1", cmd);
+        Sprintf(newcmd, "{ %s; } </dev/null 2>&1", cmd);
 #endif
 #ifdef PLATFORM_OS2
-        Sprintf(newcmd, 0, "( %s ) <nul 2>&1", cmd);
+        Sprintf(newcmd, "( %s ) <nul 2>&1", cmd);
 #endif
 	/* RESTRICT_SHELL is checked by tfopen() */
         if ((input = tfopen(newcmd->data, "p")) == NULL) {
@@ -623,6 +625,10 @@ struct Value *handle_repeat_command(String *args, int offset)
         return shareval(val_zero);
     ptr = args->data + offset;
     if (tolower(*ptr) == 'i') {
+	if (ptime.tv_sec == PTIME_SYNC) {
+	    eprintf("-S i would cause an infinite busy loop.");
+	    return shareval(val_zero);
+	}
         count = -1;
         for (++ptr; is_space(*ptr); ptr++);
     } else if ((count = numarg(&ptr)) <= 0) {

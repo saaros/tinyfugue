@@ -1,4 +1,4 @@
-# $Id: unix.mak,v 35004.41 2003/06/11 19:52:07 hawkeye Exp $
+# $Id: unix.mak,v 35004.42 2003/12/10 01:52:05 hawkeye Exp $
 ########################################################################
 #  TinyFugue - programmable mud client
 #  Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003 Ken Keys
@@ -20,10 +20,10 @@ BUILDERS   = Makefile
 
 default: all
 
-install:  _failmsg _all PREFIXDIRS $(TF) LIBRARY $(MANPAGE) $(SYMLINK)
-	@echo '#####################################################' > exitmsg
-	@echo '## TinyFugue installation successful.' >> exitmsg
-	@echo "## You can safely delete everything in `cd ..; pwd`". >> exitmsg
+install:  _all PREFIXDIRS $(TF) LIBRARY $(MANPAGE) $(SYMLINK)
+	@echo '#####################################################'
+	@echo '## TinyFugue installation successful.'
+	@echo "## You can safely delete everything in `cd ..; pwd`".
 	@DIR=`echo $(TF) | sed 's;/[^/]*$$;;'`; \
 	echo ":$(PATH):" | egrep ":$${DIR}:" >/dev/null 2>&1 || { \
 	    echo ; \
@@ -31,19 +31,19 @@ install:  _failmsg _all PREFIXDIRS $(TF) LIBRARY $(MANPAGE) $(SYMLINK)
 	    echo "To run tf, you will need to type its path name"; \
 	    echo "(e.g., $(TF)),"; \
 	    echo "or add $$DIR to your PATH."; \
-	} >> exitmsg
+	}
 
 all files:  _all
-	@echo '#####################################################' > exitmsg
-	@echo '## TinyFugue build successful.' >> exitmsg
-	@echo '## Use "unixmake install" to install the files.' >> exitmsg
+	@echo '#####################################################'
+	@echo '## TinyFugue build successful.'
+	@echo '## Use "$(MAKE) install" to install the files in $(PREFIX).'
 
 _all:  tf$(X) ../tf-lib/tf-help.idx
 
 _failmsg:
-	@echo '#####################################################' > exitmsg
-	@echo '## TinyFugue installation FAILED.' >> exitmsg
-	@echo '## See README for help.' >> exitmsg
+#	@echo '#####################################################'
+#	@echo '## TinyFugue installation FAILED.'
+#	@echo '## See README for help.'
 #	@if [ "$(STD_C)" != "1" ]; then \
 #	    echo '## '; \
 #	    echo '## TF requires a standard (ANSI/ISO 9889-1990) C compiler.'; \
@@ -58,7 +58,7 @@ _failmsg:
 #	    echo '## Perhaps $(CC) is not configured correctly.  Before'; \
 #	    echo '## contacting the TF author, try setting the environment'; \
 #	    echo '## variable CC to "cc", and run ./configure again.'; \
-#	fi >> exitmsg
+#	fi
 
 pcre:
 # ranlib is required by MacOS X, maybe others

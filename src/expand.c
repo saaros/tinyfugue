@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: expand.c,v 35004.184 2003/08/31 08:04:52 hawkeye Exp $";
+static const char RCSid[] = "$Id: expand.c,v 35004.194 2003/12/11 02:06:19 hawkeye Exp $";
 
 
 /********************************************************************
@@ -39,7 +39,6 @@ typedef struct { BuiltinCmd *cmd; opcode_t op; } opcmd_t;
 Value *user_result = NULL;		/* result of last user command */
 int recur_count = 0;			/* expansion nesting count */
 const char *current_command = NULL;
-char current_opt = '\0';
 String *argstring = NULL;		/* command argument string */
 Arg *tf_argv = NULL;			/* shifted command argument vector */
 int tf_argc = 0;			/* shifted command/function arg count */
@@ -47,6 +46,7 @@ int argtop = 0;				/* top of function argument stack */
 keyword_id_t block = 0;			/* type of current block */
 Value *val_zero = NULL;
 Value *val_one = NULL;
+Value *val_blank = NULL;
 const char *oplabel[256];
 
 static int cmdsub_count = 0;		/* cmdsub nesting count */
@@ -85,6 +85,7 @@ void init_expand(void)
 {
     val_zero = newint(0);
     val_one = newint(1);
+    val_blank = newSstr(blankline);
 
 #define defopcode(name, num, optype, argtype, resulttype) \
     oplabel[num] = #name;
@@ -118,8 +119,6 @@ void prog_free(Program *prog)
     FREE(prog);
 }
 
-#define Sprintfa1(buf, fmt, arg) Sprintf(buf, SP_APPEND, fmt, arg)
-
 static void inst_dump(Program *prog, int i, char prefix)
 {
     String *buf;
@@ -129,32 +128,32 @@ static void inst_dump(Program *prog, int i, char prefix)
     BuiltinCmd *cmd;
 
     (buf = Stringnew(NULL, 0, 0))->links++;
-    Sprintf(buf, 0, "%c%5d: ", prefix, i);
+    Sprintf(buf, "%c%5d: ", prefix, i);
     op = prog->code[i].op;
     if (op >= 0x20 && op < 0x7F) {
-	Sprintf(buf, SP_APPEND, "%c        %d", op, prog->code[i].arg.i);
+	Sappendf(buf, "%c        %d", op, prog->code[i].arg.i);
     } else {
 	if (!oplabel[opnum(op)]) {
-	    Sprintfa1(buf, "0x%04X   ", op);
+	    Sappendf(buf, "0x%04X   ", op);
 	} else if (op_type_is(op, CTRL) && (op & OPR_FALSE)) {
-	    Sprintfa1(buf, "!%-7s ", oplabel[opnum(op)]);
+	    Sappendf(buf, "!%-7s ", oplabel[opnum(op)]);
 	} else {
-	    Sprintfa1(buf, "%-8s ", oplabel[opnum(op)]);
+	    Sappendf(buf, "%-8s ", oplabel[opnum(op)]);
 	}
 	switch(op_arg_type(op)) {
 	case OPA_INT:
-	    Sprintfa1(buf, "%d", prog->code[i].arg.i);
+	    Sappendf(buf, "%d", prog->code[i].arg.i);
 	    break;
 	case OPA_CHAR:
-	    Sprintfa1(buf, "%c", prog->code[i].arg.c);
+	    Sappendf(buf, "%c", prog->code[i].arg.c);
 	    break;
 	case OPA_STRP:
 	    str = prog->code[i].arg.str;
-	    Sprintfa1(buf, str ? "\"%S\"" : "NULL", str);
+	    Sappendf(buf, str ? "\"%S\"" : "NULL", str);
 	    break;
 	case OPA_CMDP:
 	    cmd = prog->code[i].arg.cmd;
-	    Sprintfa1(buf, "%s", cmd->name);
+	    Sappendf(buf, "%s", cmd->name);
 	    break;
 	case OPA_VALP:
 	    if (!(val = prog->code[i].arg.val)) {
@@ -162,21 +161,21 @@ static void inst_dump(Program *prog, int i, char prefix)
 		break;
 	    }
 	    switch (val->type & TYPES_BASIC) {
-	    case TYPE_ID:    Sprintfa1(buf, "ID %s", val->name); break;
-	    case TYPE_FUNC:  Sprintfa1(buf, "FUNC %s", val->name); break;
-	    case TYPE_CMD:   Sprintfa1(buf, "CMD %s", val->name); break;
-	    case TYPE_STR:   Sprintfa1(buf, "STR \"%S\"", valstr(val));
+	    case TYPE_ID:    Sappendf(buf, "ID %s", val->name); break;
+	    case TYPE_FUNC:  Sappendf(buf, "FUNC %s", val->name); break;
+	    case TYPE_CMD:   Sappendf(buf, "CMD %s", val->name); break;
+	    case TYPE_STR:   Sappendf(buf, "STR \"%S\"", valstr(val));
 			     if (val->type & TYPE_REGEX)
 				 Stringcat(buf, " (RE)");
 			     if (val->type & TYPE_EXPR)
 				 Stringcat(buf, " (EXPR)");
 			     break;
-	    case TYPE_ENUM:  Sprintfa1(buf, "ENUM \"%S\"", valstr(val)); break;
-	    case TYPE_POS:   Sprintfa1(buf, "POS %S", valstr(val)); break;
-	    case TYPE_INT:   Sprintfa1(buf, "INT %S", valstr(val)); break;
-	    case TYPE_TIME:  Sprintfa1(buf, "TIME %S", valstr(val)); break;
-	    case TYPE_FLOAT: Sprintfa1(buf, "FLOAT %S", valstr(val)); break;
-	    default:         Sprintfa1(buf, "? %S", valstr(val)); break;
+	    case TYPE_ENUM:  Sappendf(buf, "ENUM \"%S\"", valstr(val)); break;
+	    case TYPE_POS:   Sappendf(buf, "POS %S", valstr(val)); break;
+	    case TYPE_INT:   Sappendf(buf, "INT %S", valstr(val)); break;
+	    case TYPE_TIME:  Sappendf(buf, "TIME %S", valstr(val)); break;
+	    case TYPE_FLOAT: Sappendf(buf, "FLOAT %S", valstr(val)); break;
+	    default:         Sappendf(buf, "? %S", valstr(val)); break;
 	    }
 	    break;
 	}
@@ -190,7 +189,7 @@ static void prog_dump(Program *prog)
     int i;
 
     for (i = 0; i < prog->len; i++)
-	inst_dump(prog, i, 'p');
+	inst_dump(prog, i, 'c');
 }
 
 
@@ -444,7 +443,7 @@ static int do_parmsub(String *dest, int first, int last, int *emptyp)
     }
 
     if (to_stack) {
-	if (!val) val = newSstr(dest && dest->len ? dest : blankline);
+	if (!val) val = dest && dest->len ? newSstr(dest) : shareval(val_blank);
 	result = pushval(val);
 	if (dest) Stringfree(dest);
     }
@@ -471,6 +470,7 @@ Value *prog_interpret(Program *prog, int in_expr)
     int empty;	/* for varsub default */
     opcode_t op;
     int first, last, n;
+    int instruction_count = 0;
     String *buf;
     const char *cstr, *old_cmd;
     BuiltinCmd *cmd;
@@ -499,10 +499,15 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    eprintf("Macro execution interrupted.");
 	    goto prog_interpret_exit;
 	}
+	if (max_instr > 0 && instruction_count > max_instr) {
+	    eprintf("instruction count exceeded %max_instr (%d).", max_instr);
+	    goto prog_interpret_exit;
+	}
+	instruction_count++;
 	user_result_is_set = 0;
 	op = prog->code[cip].op;
 	if (mecho > invis_flag) do_mecho(prog, cip);
-	if (iecho > invis_flag) inst_dump(prog, cip, 'x');
+	if (iecho > invis_flag) inst_dump(prog, cip, 'i');
 
 	if (op_type_is(op, EXPR)) {
 	    if (!reduce(op, prog->code[cip].arg.i))
@@ -818,7 +823,7 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    empty = 0;
 	    switch (prog->code[cip].arg.c) {
 	    case '#':
-		Sprintf(buf, SP_APPEND, "%d", tf_argc);
+		Sappendf(buf, "%d", tf_argc);
 		break;
 	    case '?':
 		SStringcat(buf, valstr(user_result));
@@ -852,7 +857,7 @@ Value *prog_interpret(Program *prog, int in_expr)
 		break;
 	    case '0':
 		if ((empty = (current_command && *current_command != '\b')))
-		    val = newSstr(blankline);
+		    val = shareval(val_blank);
 		else
 		    val = newstr(current_command, -1);
 		if (!pushval(val))
@@ -899,11 +904,11 @@ Value *prog_interpret(Program *prog, int in_expr)
 	    stacktop - (stackbot + in_expr));
     }
 
-prog_interpret_exit:
-    if (frame != &first_frame) {
+    if (frame != &first_frame)
 	internal_error(__FILE__, __LINE__, "invalid frame");
-	frame = &first_frame;
-    }
+
+prog_interpret_exit:
+    frame = &first_frame; /* if loop aborted, frame may be wrong */
     tfin = frame->orig_tfin;
     tfout = frame->orig_tfout;
 
@@ -925,7 +930,7 @@ int prog_run(Program *prog, String *args, int offset, const char *name,
     List scope[1];
 
     if (++recur_count > max_recur && max_recur) {
-        eprintf("too many recursions");
+        eprintf("recursion count exceeded %max_recur (%d)", max_recur);
         recur_count--;
         return 0;
     }
@@ -986,9 +991,9 @@ String *do_mprefix(void)
     Stringadd(buffer, ' ');
     if (current_command) {
         if (*current_command == '\b') {
-            Sprintf(buffer, SP_APPEND, "%s: ", current_command+1);
+            Sappendf(buffer, "%s: ", current_command+1);
         } else {
-            Sprintf(buffer, SP_APPEND, "/%s: ", current_command);
+            Sappendf(buffer, "/%s: ", current_command);
         }
     }
     return buffer;
@@ -1156,6 +1161,27 @@ static void vcode_add(Program *prog, opcode_t op, int use_mark, va_list ap)
 		}
 	    }
 	    return;
+
+	case OPT_SUB:
+	    /* sub of a macro whose name is literal */
+	    if ((inst->op == OP_PMAC || inst->op == OP_AMAC) &&
+		!inst->arg.str && prog->len > 2 && inst[-2].op == OP_PUSHBUF &&
+		inst[-1].op == OP_APPEND)
+	    {
+		/* e.g. {PUSHBUF; APPEND name; PMAC NULL} to {PMAC name} */
+		inst[-2].op = inst->op;
+		inst[-2].arg.str = inst[-1].arg.str;
+		prog->len -= 2;
+	    }
+
+	    if (inst->op == OP_PBUF && !inst->arg.str && prog->len > 2 &&
+		inst[-2].op == OP_PUSHBUF && inst[-1].op == OP_APPEND)
+	    {
+		/* {PUSHBUF; APPEND text; PBUF NULL} to {PUSH text} */
+		inst[-2].op = OP_PUSH;
+		inst[-2].arg.val = newSstr(inst[-1].arg.str);
+		prog->len -= 2;
+	    }
 
 	default:
 	    return;
@@ -1393,9 +1419,16 @@ static int list(Program *prog, int subs)
 		code_add(prog, OP_ENDIF);   /* no-op, to hold mecho pointers */
                 result = 1;  goto list_exit;
 
-	    case TEST:
 	    case RETURN:
 	    case RESULT:
+		if (cmdsub_count) {
+		    eprintf("/%s may be called only directly from a macro, "
+			"not in $() command substitution.",
+			keyword_table[block-BREAK]);
+                    goto list_exit;
+		}
+		/* FALL THROUGH */
+	    case TEST:
 	    {
 		Value *val = NULL;
 		String *dest;
@@ -1716,7 +1749,7 @@ static const char *error_text(Program *prog)
         if (is_alnum(*ip) || is_quote(*ip) || *ip == '/') {
             while (is_alnum(*end)) end++;
         }
-        Sprintf(buf, 0, "'%.*s'", end - ip, ip);
+        Sprintf(buf, "'%.*s'", end - ip, ip);
         return buf->data;
     } else {
         return "end of body";
@@ -2059,6 +2092,7 @@ struct Value *handle_shift_command(String *args, int offset)
 void free_expand()
 {
     freeval(user_result);
+    freeval(val_blank);
     freeval(val_one);
     freeval(val_zero);
 }

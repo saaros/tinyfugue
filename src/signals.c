@@ -5,7 +5,7 @@
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: signals.c,v 35004.52 2003/10/30 02:22:01 hawkeye Exp $";
+static const char RCSid[] = "$Id: signals.c,v 35004.53 2003/11/30 20:03:21 hawkeye Exp $";
 
 /* Signal handling, core dumps, job control, and interactive shells */
 
@@ -345,6 +345,7 @@ static void coremsg(void)
     fputs("occured, and whether you can repeat it.\r\n\n", stderr);
     fprintf(stderr, "> %s\r\n", version);
     if (*sysname) fprintf(stderr, "> %s\r\n", sysname);
+    fprintf(stderr, "> %s\r\n", featurestr->data);
     fprintf(stderr,"> virtscreen=%ld, visual=%ld, emulation=%ld, lp=%ld, sub=%ld\r\n",
         virtscreen, visual, emulation, lpflag, sub);
 #if SOCKS
