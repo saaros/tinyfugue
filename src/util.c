@@ -116,7 +116,7 @@ char strtochr(sp)
     return (char)(c % 128);
 }
 
-int strtoi(**sp)
+int strtoi(sp)
     char **sp;
 {
     int i;

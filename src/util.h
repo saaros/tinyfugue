@@ -35,7 +35,7 @@ extern char lowercase_values[128], uppercase_values[128];
 # define strtoi(sp)     (int)strtol(*(sp), sp, 10)
 #else
 extern char   FDECL(strtochr,(char **sp));
-extern char   FDECL(strtoi,(char **sp));
+extern int    FDECL(strtoi,(char **sp));
 #endif
 extern void   NDECL(init_util);
 extern void   NDECL(init_mail);

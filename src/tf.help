@@ -1142,8 +1142,9 @@ have changed since the last version.
   or 0 if no macros were listed (because of error or none matched the
   specified options).
 
-  The standard library also defines the	macros /listbind, /listdef,
-  /listgag, /listhilite, /listhook, and	/listtrig.
+  The standard library also defines the macros /listbind, /listdef,
+  /listgag, /listhilite, /listfullhilite, /listpartial, /listhook, and
+  /listtrig, which list macros of the appropriate type.
 
   Example:  /list -mregexp -n0 -t -aurfdh ^foo =
   will list all	macros whose names begin with "foo"; have a trigger;
@@ -1691,6 +1692,10 @@ have changed since the last version.
   /savebind, /savehilite, /savegag, /savetrig, and /savehook.  These
   macros will save macros of the appropriate type to a file.  If no
   file name is specified, a default file name will be used.
+
+  I personally find it easier to write my macros with an editor and
+  then /load them in tf, instead of writing them in tf and /save'ing
+  them to a file.  Use whatever works best for you.
 
   See: macros, patterns, attributes, library, DEF, LIST, LOAD
 
@@ -3287,6 +3292,10 @@ have changed since the last version.
     SHADOW	var_name	   '% Variable <var_name> overshadows global'
 #SHELL
     SHELL	type, command	   '% Executing	<type>:	<command>'
+#SIGHUP
+    SIGHUP			   (tf terminates)
+#SIGTERM
+    SIGTERM			   (tf terminates)
 #WORLD
     WORLD	world		   '---- World <world> ----'
 #
@@ -3313,6 +3322,12 @@ Notes:
     was pending.  The standard library defines a default CONNECT hook
     to switch to the socket; define your own hook to override this
     automatic switch.
+
+    The SIGHUP and SIGTERM hooks are called when the corresponding
+    signal is received.  TF will terminate immediately after executing
+    the hook; if the hook calls any commands with delayed effects
+    (/repeat, /quote, /connect), those effects will not occur before
+    termination.
 
   Examples:
 

@@ -90,6 +90,8 @@ static char *hook_table[] = {
   "SEND",
   "SHADOW",
   "SHELL",
+  "SIGHUP",
+  "SIGTERM",
   "WORLD"
 };
 

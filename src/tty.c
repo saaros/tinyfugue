@@ -44,12 +44,10 @@
 # define ingetattr_error "TCGETA ioctl"
 #endif
 
-#ifdef USE_TERMIOS
-# ifdef M_XENIX
-#  include <sys/types.h>              /* Needed for sys/stream.h, which is... */
-#  include <sys/stream.h>             /* needed for sys/ptem.h, which is... */
-#  include <sys/ptem.h>               /* needed for struct winsize.  Ugh. */
-# endif
+#ifdef NEED_PTEM_H                   /* Xenix, maybe others */
+# include <sys/types.h>              /* Needed for sys/stream.h, which is... */
+# include <sys/stream.h>             /* needed for sys/ptem.h, which is... */
+# include <sys/ptem.h>               /* needed for struct winsize.  Ugh. */
 #endif
 
 #ifdef USE_SGTTY

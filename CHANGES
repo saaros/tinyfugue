@@ -3,7 +3,14 @@ sometimes changed code was released without updating version numbers.
 I don't do this any more.
 Only the most recent version will have detailed changes described.
 
-3.3 beta 5
+3.3 beta 6 (4/28/94)
+----------
+Added SIGHUP and SIGTERM hooks.
+/savehilite and /listhilite include partial hilites.
+Added /listpartial and /listfullhilite.
+Fixed porting problems (33b5).
+
+3.3 beta 5 (4/26/94)
 ----------
 Added %{max_iter} to control runaway /while loops.
 Improved /listsockets format.

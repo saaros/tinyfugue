@@ -85,7 +85,7 @@ static sig_set pending_signals;
 static RETSIG FDECL((*parent_tstp_handler),(int sig));
 
 static void   NDECL(interrupt);
-static RETSIG FDECL(terminate,(int sig));
+static void   FDECL(terminate,(int sig));
 static RETSIG FDECL(core_handler,(int sig));
 static RETSIG FDECL(signal_scheduler,(int sig));
 #ifndef SIG_IGN
@@ -122,8 +122,8 @@ void init_signals()
 {
     SIG_ZERO();
     setsighandler(SIGINT  , signal_scheduler);
-    setsighandler(SIGTERM , terminate);
-    setsighandler(SIGHUP  , terminate);
+    setsighandler(SIGTERM , signal_scheduler);
+    setsighandler(SIGHUP  , signal_scheduler);
 #if SIGTSTP
     parent_tstp_handler = setsighandler(SIGTSTP , signal_scheduler);
 #endif
@@ -209,7 +209,7 @@ static RETSIG core_handler(sig)
     kill(getpid(), sig);
 }
 
-static RETSIG terminate(sig)
+static void terminate(sig)
     int sig;
 {
     setsighandler(sig, SIG_DFL);
@@ -235,6 +235,11 @@ void process_signals()
     if (SIG_ISSET(SIGWINCH))
         if (!get_window_size()) operror("TIOCGWINSZ ioctl");
 #endif
+    if (SIG_ISSET(SIGHUP))   do_hook(H_SIGHUP, NULL, "");
+    if (SIG_ISSET(SIGTERM))  do_hook(H_SIGTERM, NULL, "");
+
+    if (SIG_ISSET(SIGHUP))   terminate(SIGHUP);
+    if (SIG_ISSET(SIGTERM))  terminate(SIGTERM);
     SIG_ZERO();
 }
 

@@ -540,10 +540,10 @@ fi
 
 ### Look for rand() or random().
 
-if egrep '(^|[^a-z])srandom([^a-z]|$)' libc.list >/dev/null 2>&1; then
+if egrep '(^|[^a-z_])_?_?srandom([^a-z]|$)' libc.list >/dev/null 2>&1; then
     echo "#define HAVE_RANDOM" >&4
     echo "Found random() in your C library."
-elif egrep '(^|[^a-z])srand([^a-z]|$)' libc.list >/dev/null 2>&1; then
+elif egrep '(^|[^a-z_])_?_?srand([^a-z]|$)' libc.list >/dev/null 2>&1; then
     echo "#define HAVE_RAND" >&4
     echo "Found rand() in your C library."
 else
@@ -552,7 +552,7 @@ else
 fi
 
 ### Look for bsearch().
-if egrep '(^|[^a-z])bsearch([^a-z]|$)' libc.list >/dev/null 2>&1; then
+if egrep '(^|[^a-z_])_?_?bsearch([^a-z]|$)' libc.list >/dev/null 2>&1; then
     echo "Found bsearch() in your C library."
     echo "#define HAVE_BSEARCH" >&4
 else
@@ -562,10 +562,10 @@ fi
 
 ### See if getcwd(), getwd(), or neither is available.  This isn't vital.
 
-if egrep '(^|[^a-z])getcwd([^a-z]|$)' libc.list >/dev/null 2>&1; then
+if egrep '(^|[^a-z_])_?_?getcwd([^a-z]|$)' libc.list >/dev/null 2>&1; then
     echo "Found getcwd() in your C library."
     echo "#define HAVE_GETCWD" >&4
-elif egrep '(^|[^a-z])getwd([^a-z]|$)' libc.list >/dev/null 2>&1; then
+elif egrep '(^|[^a-z_])_?_?getwd([^a-z]|$)' libc.list >/dev/null 2>&1; then
     echo "Found getwd() in your C library."
     echo "#define HAVE_GETWD" >&4
 else
@@ -575,10 +575,10 @@ fi
 
 ### Look for memcpy() or bcpy().
 
-if egrep '(^|[^a-z])memcpy([^a-z]|$)' libc.list >/dev/null 2>&1; then
+if egrep '(^|[^a-z_])_?_?memcpy([^a-z]|$)' libc.list >/dev/null 2>&1; then
     echo "Found memcpy() in your C library."
     echo "#define HAVE_MEMCPY" >&4
-elif egrep '(^|[^a-z])bcpy([^a-z]|$)' libc.list >/dev/null 2>&1; then
+elif egrep '(^|[^a-z_])_?_?bcpy([^a-z]|$)' libc.list >/dev/null 2>&1; then
     echo "Found bcpy() in your C library."
     echo "#define HAVE_BCOPY" >&4
 else
@@ -591,13 +591,13 @@ fi
 ### Note:  Solaris brain damage:  libtermcap uses [r]index() instead of
 ### str[r]chr().  So we check for index() even if we find strchr().
 
-if egrep '(^|[^a-z])strchr([^a-z]|$)' libc.list >/dev/null 2>&1; then
+if egrep '(^|[^a-z_])_?_?strchr([^a-z]|$)' libc.list >/dev/null 2>&1; then
     echo "Found strchr() in your C library."
     echo "#define HAVE_STRCHR" >&4
 else
     echo "/* #define HAVE_STRCHR */" >&4
 fi
-if egrep '(^|[^a-z])index([^a-z]|$)' libc.list >/dev/null 2>&1; then
+if egrep '(^|[^a-z_])_?_?index([^a-z]|$)' libc.list >/dev/null 2>&1; then
     echo "Found index() in your C library."
     echo "#define HAVE_INDEX" >&4
 else
@@ -606,7 +606,7 @@ fi
 
 ### Look for strstr().
 
-if egrep '(^|[^a-z])strstr([^a-z]|$)' libc.list >/dev/null 2>&1; then
+if egrep '(^|[^a-z_])_?_?strstr([^a-z]|$)' libc.list >/dev/null 2>&1; then
     echo "Found strstr() in your C library."
     echo "#define HAVE_STRSTR" >&4
 else
@@ -616,7 +616,7 @@ fi
 
 ### Look for strtol().
 
-if egrep '(^|[^a-z])strtol([^a-z]|$)' libc.list >/dev/null 2>&1; then
+if egrep '(^|[^a-z_])_?_?strtol([^a-z]|$)' libc.list >/dev/null 2>&1; then
     echo "Found strtol() in your C library."
     echo "#define HAVE_STRTOL" >&4
 else
@@ -626,7 +626,7 @@ fi
 
 ### Look for strftime().
 
-if egrep '(^|[^a-z])strftime([^a-z]|$)' libc.list >/dev/null 2>&1; then
+if egrep '(^|[^a-z_])_?_?strftime([^a-z]|$)' libc.list >/dev/null 2>&1; then
     echo "Found strftime() in your C library."
     echo "#define HAVE_STRFTIME" >&4
 elif ${CC} ${CCFLAGS} -lintl libtest.o >/dev/null 2>&1; then
@@ -658,7 +658,7 @@ fi
 ### If gethostbyname() isn't in libc, look for -lnsl_s, -lnsl, or -lresolv.
 # note: can't assume existance of libs implies need; must check libc first. (?)
 
-if egrep '(^|[^a-z])gethostbyname([^a-z]|$)' libc.list >/dev/null 2>&1; then
+if egrep '(^|[^a-z_])_?_?gethostbyname([^a-z]|$)' libc.list >/dev/null 2>&1; then
     echo "Found gethostbyname() in your C library."
 elif ${CC} ${CCFLAGS} libtest.o -lnsl_s ${LIBS} >/dev/null 2>&1; then
     echo "Will link with -lnsl_s."
@@ -758,6 +758,11 @@ if [ -z "$TTYDRIVER" ]; then
     fi
 fi
 echo "#define $TTYDRIVER" >&4
+
+### Some brain damaged systems (Xenix) need <sys/ptem.h> for struct winsize.
+if { egrep 'winsize' /usr/include/sys/ptem.h; } >/dev/null 2>&1; then
+    echo "#define NEED_PTEM_H" >&4
+fi
 
 FLAGS="$CCFLAGS $FLAGS"
 

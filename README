@@ -51,12 +51,13 @@
 
                        INSTALLING TINYFUGUE
 
-Installing TinyFugue is quite easy on most systems:  simply type "make"
-in the directory you unarchived.  The autoconfig script will attempt to
-figure out everything it needs to know about your system and install
-all files in their proper location.  If you have any problems, or want
-to change a default installation option, be sure to read the rest of
-this file, and the Config file.  Changes should be made in Config only.
+Installing TinyFugue is quite easy on most unix-like systems:  simply
+type "make" in the directory you unarchived.  The autoconfig script
+will attempt to figure out everything it needs to know about your
+system and install all files in their proper location.  If you have any
+problems, or want to change a default installation option, be sure to
+read the rest of this file, and the Config file.  Changes should be
+made in Config only.
 
 Make options:
 

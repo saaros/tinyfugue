@@ -267,7 +267,9 @@
 ;;; list macros
 
 /def -i listdef		= /list %*
-/def -i listhilite	= /list -mglob -h0 -b{} -t'$(/escape ' %*)' -aurfdhbBC0
+/def -i listfullhilite	= /list -mglob -h0 -b{} -t'$(/escape ' %*)' -aurfdhbBC0
+/def -i listpartial	= /list -mglob -h0 -b{} -t'$(/escape ' %*)' -P
+/def -i listhilite	= /listfullhilite%; /listpartial
 /def -i listgag		= /list -mglob -h0 -b{} -t'$(/escape ' %*)' -ag
 /def -i listtrig	= /list -mglob -h0 -b{} -t'$(/escape ' %*)' -an
 /def -i listbind	= /list -mglob -h0 -b'$(/escape ' %*)'
@@ -300,13 +302,16 @@
 /~def_file_command  load  hook    HOOK
 /~def_file_command  load  world   WORLD
 
-/~def_file_command  save  def     MACRO   -mglob -h0 -b{} -t{} ?*
-/~def_file_command  save  hilite  HILITE  -mglob -h0 -b{} -t -aurfdhbBC0
-/~def_file_command  save  gag     GAG     -mglob -h0 -b{} -t -ag
-/~def_file_command  save  trig    TRIG    -mglob -h0 -b{} -t -an
-/~def_file_command  save  bind    BIND    -mglob -h0 -b
-/~def_file_command  save  hook    HOOK    -mglob -h
+/~def_file_command  save  def		MACRO   -mglob -h0 -b{} -t{} ?*
+/~def_file_command  save  gag		GAG     -mglob -h0 -b{} -t -ag
+/~def_file_command  save  trig		TRIG    -mglob -h0 -b{} -t -an
+/~def_file_command  save  bind		BIND    -mglob -h0 -b
+/~def_file_command  save  hook		HOOK    -mglob -h
 
+/def -i savehilite = \
+    /let file=%1%%;\
+    /@eval /save %%{file-${HILITEFILE}} -mglob -h0 -b{} -t -aurfdhbBC0%;\
+    /@eval /save -a %%{file-${HILITEFILE}} -mglob -h0 -b{} -t -P
 
 ;; library loading
 

@@ -53,6 +53,8 @@ enum Hooks {
   H_SEND,
   H_SHADOW,
   H_SHELL,
+  H_SIGHUP,
+  H_SIGTERM,
   H_WORLD,
   NUM_HOOKS                              /* not a hook, but a count */
 };
