@@ -34,7 +34,7 @@
 #include "expand.h"
 #include "keyboard.h"
 
-char version[] = "TinyFugue version 3.2 beta 1, Copyright (C) 1993 Ken Keys";
+char version[] = "TinyFugue version 3.2 beta 4, Copyright (C) 1993 Ken Keys";
 
 int restrict = 0;
 

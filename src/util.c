@@ -269,7 +269,7 @@ void reghold(re, str, temp)
     reginfo.re = re;
     reginfo.str = temp ? STRDUP(str) : str;
     reginfo.temp = temp;
-    reginfo.ok = 0;
+    reginfo.ok = 1;
 }
 
 /* regrelease

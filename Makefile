@@ -11,7 +11,7 @@
 # Top level Makefile.
 #
 
-TFVER = 32b1
+TFVER = 32b4
 SHELL = /bin/sh
 MAKE  = make
 

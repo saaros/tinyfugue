@@ -3,8 +3,20 @@ sometimes changed code was released without updating version numbers.
 I don't do this any more.
 Only the most recent version will have detailed changes described.
 
-3.2 beta 1
+3.2 beta 4
 ----------
+Fixed bug causing %P subs to not work after a regexp trigger.
+
+3.2 beta 3
+----------
+Fixed bug in /hook that was defining macros with -aCred -t"".
+
+3.2 beta 2
+----------
+Fixed fatal bug in /hook.
+
+3.2 beta 1 (12/19/93)
+---------------------
 Changes from 3.1 to 3.2:
 Added REGULAR EXPRESSIONS, and ability to extract arbitrary pieces of
   of matched text using %Pn.  See: patterns, matching, regmatch, %Pn.

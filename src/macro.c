@@ -616,7 +616,7 @@ int add_hook(args, body)                  /* define a new Macro with hook */
     if ((hook = parse_hook(&args)) < 0) return 0;
     args = stripstr(args);
     if (!*args) args = NULL;
-    return add_macro(new_macro("", "", NULL, hook, args, body, 0,100,1,0));
+    return add_macro(new_macro("", NULL, "", hook, args, body, 0,100,F_NORM,0));
 }
 
 int handle_edit_command(args)                      /* edit an existing Macro */
