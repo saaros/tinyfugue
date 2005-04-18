@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: history.c,v 35004.107 2004/07/16 21:13:51 hawkeye Exp $";
+static const char RCSid[] = "$Id: history.c,v 35004.112 2005/04/18 03:15:35 kkeys Exp $";
 
 
 /****************************************************************
@@ -16,16 +16,18 @@ static const char RCSid[] = "$Id: history.c,v 35004.107 2004/07/16 21:13:51 hawk
  ****************************************************************/
 
 #include <limits.h>
-#include "config.h"
+#include "tfconfig.h"
 #include "port.h"
 #include "tf.h"
 #include "util.h"
+#include "pattern.h"
 #include "search.h"		/* CQueue; List in recall_history() */
 #include "tfio.h"
 #include "history.h"
 #include "socket.h"		/* xworld() */
 #include "world.h"
 #include "output.h"		/* update_status_field(), etc */
+#include "attr.h"
 #include "macro.h"		/* add_new_macro() */
 #include "cmdlist.h"
 #include "keyboard.h"		/* keybuf */
@@ -307,11 +309,11 @@ int do_recall(String *args, int offset)
 
     } else if (*ptr == '-') {                                 /*  -y */
         ++ptr;
-	if (!parsenumber(ptr, &ptr, TYPE_TIME | TYPE_INT, val)) {
+	if (!parsenumber(ptr, &ptr, TYPE_DTIME | TYPE_INT, val)) {
             eprintf("syntax error in recall range");
             goto do_recall_exit;
         }
-        if (val->type & TYPE_TIME) {
+        if (val->type & TYPE_DTIME) {
 	    tvp1 = &tv1;
 	    tv1 = val->u.tval;
 	    if (val->type & TYPE_HMS)
@@ -325,18 +327,18 @@ int do_recall(String *args, int offset)
         want = strtoint(ptr, &ptr);
 
     } else if (is_digit(*ptr)) {                              /* x... */
-	if (!parsenumber(ptr, &ptr, TYPE_TIME | TYPE_INT, val)) {
+	if (!parsenumber(ptr, &ptr, TYPE_DTIME | TYPE_INT, val)) {
             eprintf("syntax error in recall range");
             goto do_recall_exit;
         }
-        if (val->type & TYPE_TIME) {
+        if (val->type & TYPE_DTIME) {
             tvp0 = &tv0;
 	    tv0 = val->u.tval;
         } else /* if (val->type & TYPE_INT) */ {
             n0 = val->u.ival;
         }
         if (*ptr != '-') {                                    /* x   */
-            if (val->type & TYPE_TIME) {
+            if (val->type & TYPE_DTIME) {
                 struct timeval now;
                 gettime(&now);
                 tvsub(&tv0, &now, &tv0);
@@ -347,11 +349,11 @@ int do_recall(String *args, int offset)
             if (val->type & TYPE_INT) n0 = n0 - 1;
             else if (val->type & TYPE_HMS) abstime(&tv0);
 
-	    if (!parsenumber(ptr, &ptr, TYPE_TIME | TYPE_INT, val)) {
+	    if (!parsenumber(ptr, &ptr, TYPE_DTIME | TYPE_INT, val)) {
 		eprintf("syntax error in recall range");
 		goto do_recall_exit;
 	    }
-            if (val->type & TYPE_TIME) {
+            if (val->type & TYPE_DTIME) {
 		tvp1 = &tv1;
 		tv1 = val->u.tval;
                 if (val->type & TYPE_HMS)

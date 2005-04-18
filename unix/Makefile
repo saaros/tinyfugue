@@ -1,8 +1,8 @@
-# $Id: Makefile,v 35000.37 2004/07/16 20:55:14 hawkeye Exp $
+# $Id: Makefile,v 35000.38 2005/04/18 03:15:56 kkeys Exp $
 ########################################################################
 #
 #  TinyFugue - programmable mud client
-#  Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+#  Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
 #
 #  TinyFugue (aka "tf") is protected under the terms of the GNU
 #  General Public Licence.  See the file "COPYING" for details.

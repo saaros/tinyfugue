@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: variable.h,v 35004.35 2004/07/16 21:13:53 hawkeye Exp $ */
+/* $Id: variable.h,v 35004.38 2005/04/18 03:15:36 kkeys Exp $ */
 
 #ifndef VARIABLE_H
 #define VARIABLE_H
@@ -22,6 +22,7 @@
         setexistingvar(&special_var[id], TYPE_INT, &ival, FALSE); \
     } while (0)
 
+extern Pattern looks_like_special_sub_ic;
 
 extern void init_variables(void);
 extern Var   *hfindnearestvar(const Value *idval);
@@ -39,7 +40,7 @@ extern Var *setexistingvar(Var *var, int type, void *value, int exportflag);
 extern int  unsetvar(Var *var);
 extern void freevar(Var *var);
 extern char *spanvar(const char *start);
-extern char *spansetspace(const char *p);
+extern int  setdelim(const char **pp);
 extern int  do_set(const char *name, unsigned int hash, conString *value,
 	    int offset, int exportflag, int localflag);
 extern int  command_set(String *args, int offset, int exportflag,

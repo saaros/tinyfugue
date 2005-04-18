@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: output.h,v 35004.64 2004/07/21 00:19:41 hawkeye Exp $ */
+/* $Id: output.h,v 35004.67 2005/04/18 03:15:36 kkeys Exp $ */
 
 #ifndef OUTPUT_H
 #define OUTPUT_H
@@ -48,11 +48,13 @@ extern int  ch_expnonvis(Var *var);
 extern int  ch_wrap(Var *var);
 extern int  ch_status_int(Var *var);
 extern int  ch_status_fields(Var *var);
+extern int  ch_status_height(Var *var);
 extern void update_status_field(Var *var, stat_id_t internal);
 extern void format_status_line(void);
 extern int  display_status_line(void);
 extern int  update_status_line(Var *var);
 extern int handle_status_width_func(const char *name);
+extern conString *status_field_text(int row);
 extern void fix_screen(void);
 extern void minimal_fix_screen(void);
 extern void iput(int len);
@@ -72,11 +74,6 @@ extern void enscreen(Screen *screen, conString *line);
 extern void screenout(conString *line);
 extern void update_prompt(conString *newprompt, int display);
 extern int  wraplen(const char *str, int len, int indent);
-extern int  ch_attr(Var *var);
-extern int  ch_status_attr(Var *var);
-extern String *decode_attr(const conString *src, attr_t attrs, int offset);
-extern String *decode_ansi(const char *src, attr_t attrs, int emul,
-    attr_t *final_attr);
 extern const char *get_keycode(const char *name);
 
 extern int moresize(Screen *screen);

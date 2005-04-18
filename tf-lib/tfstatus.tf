@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; TinyFugue - programmable mud client
-;;;; Copyright (C) 1998-2002, 2003, 2004 Ken Keys
+;;;; Copyright (C) 1998-2002, 2003, 2004, 2005 Ken Keys
 ;;;;
 ;;;; TinyFugue (aka "tf") is protected under the terms of the GNU
 ;;;; General Public License.  See the file "COPYING" for details.
@@ -11,12 +11,9 @@
 /loaded __TFLIB__/tfstatus.tf
 
 
-/set clock_format=%H:%M
+/set std_clock_format=%H:%M
 
-; disable warnings
-/set warn_status=0
-
-/set status_int_more \
+/set status_std_int_more \
     (limit() | morepaused()) ? status_int_more() : ""
 /def -i status_int_more = \
     /let new=$[moresize("ln")]%; \
@@ -32,101 +29,47 @@
 	/result pad(limit() ? "LIM " : "More", 4,  new, 4)%; \
     /endif
 
-/set status_int_world   \
+/set status_std_int_world   \
      fg_world() =~ "" ? "(no world)" : \
      strcat(!is_open(fg_world()) ? "!" : "",  fg_world())
-/set status_int_read    nread() ? "(Read)" : ""
-/set status_int_active  nactive() ? pad("(Active:", 0, nactive(), 2, ")") : ""
-/set status_int_log     nlog() ? "(Log)" : ""
-/set status_int_mail \
+/set status_std_int_read    nread() ? "(Read)" : ""
+/set status_std_int_active  nactive() ? pad("(Active:", 0, nactive(), 2, ")") : ""
+/set status_std_int_log     nlog() ? "(Log)" : ""
+/set status_std_int_mail \
     !nmail() ? "" : \
     nmail()==1 ? "(Mail)" : \
     pad("Mail", 0, nmail(), 2)
-/set status_var_insert  insert ? "" : "(Over)"
-/set status_int_clock   ftime(clock_format)
+/set status_std_var_insert  insert ? "" : "(Over)"
+/set status_std_int_clock   ftime(clock_format)
 
 /set status_field_defaults \
     @more:8:Br :1 @world :1 \
     @read:6 :1 @active:11 :1 @log:5 :1 @mail:6 :1 insert:6 :1 \
     kbnum:4 :1 @clock:5
-/eval /set status_fields=%status_field_defaults
 
-; re-enable warnings
-/set warn_status=1
-
-
-;;; /status_add [options] field[:width[:attrs]]
-;; add argument to %status_fields.
-;; -A[<name>]   add after field <name>, or at end
-;; -B[<name>]   add before field <name>, or at beginning
-;; -s<N>        insert spacer <N> (default 1)
-;; -x           don't add if already present
-;; If neither -A nor -B is given, -A is assumed.
-/def -i status_add = \
-    /let opt_A=:%; \
-    /let opt_B=:%; \
-    /let opt_s=1%; \
-    /let opt_x=0%; \
-    /if (!getopts("A:B:s#x")) /return 0%; /endif%; \
-    /let new=%*%; \
-    /let space=$[opt_s > 0 ? strcat(" :", +opt_s) : ""]%; \
-    /if (opt_x) \
-	/let regexp=(^| +)%new(:-?\\d*(:[\\w,]*)?)?( +|$$)%; \
-	/if (regmatch(regexp, status_fields)) \
-	    /return 0%; \
-	/endif%; \
-    /endif%; \
-    /let old_warn_status=%warn_status%; \
+/def -i status_defaults = \
+    /let _old_warn_status=%warn_status%; \
     /set warn_status=0%; \
-    /if (opt_B =~ "") \
-	/set status_fields=%new%space %status_fields%; \
-    /elseif (opt_B !~ ":") \
-	/let regexp=(^| +)(%opt_B(:-?\\d*(:[\\w,]*)?)?)( +|$$)%; \
-	/if (regmatch(regexp, status_fields)) \
-	    /set status_fields=%PL%P1%new%space %P2 %PR%; \
-	/endif%; \
-    /elseif (opt_A =~ "" | opt_A =~ ":") \
-	/set status_fields=%status_fields%space %new%; \
-    /else \
-	/let regexp=(^| +)(%opt_A(:-?\\d*(:[\\w,]*)?)?)( +|$$)%; \
-	/if (regmatch(regexp, status_fields)) \
-	    /set status_fields=%PL %P2%space %new %PR%; \
-	/endif%; \
-    /endif%; \
-    /set warn_status=%old_warn_status
+    /set clock_format=%std_clock_format%; \
+    /set status_int_more=%status_std_int_more%; \
+    /set status_int_world=%status_std_int_world%; \
+    /set status_int_read=%status_std_int_read%; \
+    /set status_int_active=%status_std_int_active%; \
+    /set status_int_log=%status_std_int_log%; \
+    /set status_int_mail=%status_std_int_mail%; \
+    /set status_var_insert=%status_std_var_insert%; \
+    /set status_int_clock=%status_std_int_clock%; \
+    /status_add -c - %status_field_defaults%; \
+    /set warn_status=%_old_warn_status
 
-;;; /status_rm field
-;; remove field from status_fields
-/def -i status_rm = \
-    /let regexp=(^| +)(:(-?\\d*) +)?%1(:-?\\d*(:[\\w,]*)?)?( +:(-?\\d*))?($$| +)%; \
-    /if (regmatch(regexp, status_fields)) \
-	/let old_warn_status=%warn_status%; \
-	/set warn_status=0%; \
-	/if ({P1} !~ "" & {P8} !~ "" & ({P3} | {P7})) \
-;	    keep the larger of the two neighboring spacers
-	    /set status_fields=%PL :$[({P3} > {P7}) ? {P3} : {P7}] %PR%; \
-	/else \
-	    /set status_fields=%PL %PR%; \
-	/endif%; \
-	/set warn_status=%old_warn_status%; \
-    /endif
+/def -i status_save = \
+    /set _status_save_%1=$[status_fields()]
 
-;;; /status_edit field[:width[:attrs]]
-;; replace existing field with argument
-/def -i status_edit = \
-    /if (regmatch("^([^: ]+)(:-?\\d*(:[\\w,]*)?)?$", {*})) \
-	/let label=%P1%; \
-	/let regexp=(^| )%label(:-?\\d*(:[\\w,]*)?)?($$| )%; \
-	/if (regmatch(regexp, status_fields)) \
-	    /let old_warn_status=%warn_status%; \
-	    /set warn_status=0%; \
-	    /set status_fields=%PL%P1%*%P4%PR%; \
-	    /set warn_status=%old_warn_status%; \
-	/else \
-	    /echo -e %% No field matches "%label".%; \
-	/endif%; \
+/def -i status_restore = \
+    /if /isvar _status_save_%1%; /then \
+	/eval /status_add -c %%_status_save_%1%; \
     /else \
-	/echo -e %% Invalid field "%*".%; \
+	/echo -e %% No saved status "%1".%; \
     /endif
 
 /def -i clock = \
@@ -143,4 +86,6 @@
 	    /status_add -A -x @clock:%width%; \
 	/endif%; \
     /endif
+
+/status_defaults
 

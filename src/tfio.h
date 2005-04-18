@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.h,v 35004.60 2004/07/16 21:13:52 hawkeye Exp $ */
+/* $Id: tfio.h,v 35004.64 2005/04/18 03:15:36 kkeys Exp $ */
 
 #ifndef TFIO_H
 #define TFIO_H
@@ -31,7 +31,8 @@
 typedef enum { TF_NULL, TF_QUEUE, TF_FILE, TF_PIPE } TFILE_type_t;
 
 /* Sprintf flags */
-#define SP_APPEND   1
+#define SP_APPEND   1	/* don't truncate first, just append */
+#define SP_CHECK    2	/* make sure char* args won't SIGSEGV or SIGBUS */
 
 typedef struct PhysLine {
     conString *str;
@@ -64,6 +65,7 @@ struct Screen {
     int scr_wrapflag;		/* wrapflag used to wrap plines */
     int scr_wrapsize;		/* wrapsize used to wrap plines */
     int scr_wrapspace;		/* wrapspace used to wrap plines */
+    int scr_wrappunct;		/* wrappunct used to wrap plines */
     Pattern filter_pat;		/* filter pattern */
     char filter_enabled;	/* is filter enabled? */
     char filter_sense;		/* 0 = negative, 1 = positive */
@@ -151,6 +153,7 @@ extern void   tfprintf(TFILE *file, const char *fmt, ...)
                      format_printf(2, 3);
 extern void   eprefix(String *buffer);
 extern void   eprintf(const char *fmt, ...) format_printf(1, 2);
+extern void   wprintf(const char *fmt, ...) format_printf(1, 2);
 extern char   igetchar(void);
 extern int    handle_tfopen_func(const char *name, const char *mode);
 extern TFILE *find_tfile(const char *handle);

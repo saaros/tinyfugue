@@ -18,6 +18,11 @@
 ;;; Don't give the warning if this file is reloaded
 /purge ~hook_redef_dokey
 
+/def -i -ag -mregexp -h'NOMACRO ^key_' no_named_key_macro = \
+    /echo -p %% The key "@{B}%PR@{n}" is undefined; \
+	you may use "@{B}/def key_%PR = <commands>@{n}" to define it.  \
+	See "@{B}/help keys@{n}".
+
 ;;; /dokey functions.
 
 /def -i dokey_bspc	= /@test kbdel(kbpoint() - (kbnum?:1))
@@ -63,10 +68,10 @@
 /def -i kb_backward_kill_line = /@test kbdel(0)
 
 /def -i kb_nth_word = \
-    /let i=%{1-1}%; \
+    /let _i=%{1-1}%; \
     /let point=$[kbpoint()]%; \
-    /while (i<0) /@test point:=kbwordleft(point), ++i%; /done%; \
-    /while (i>0) /@test point:=kbwordright(point), --i%; /done%; \
+    /while (_i<0) /@test point:=kbwordleft(point), ++_i%; /done%; \
+    /while (_i>0) /@test point:=kbwordright(point), --_i%; /done%; \
     /return point
 
 /def -i kb_kill_word = /@test kbdel(kb_nth_word(kbnum?:1))

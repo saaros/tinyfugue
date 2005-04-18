@@ -1,11 +1,13 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 2001-2003, 2004 Ken Keys
+ *  Copyright (C) 2001-2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfdefs.h.in,v 35004.5 2004/02/17 06:44:43 hawkeye Exp $ */
+/* $Id: tfdefs.h.in,v 35004.7 2005/04/18 03:15:36 kkeys Exp $ */
 
 #define UNAME "@UNAME@"
-#define LIBDIR "@prefix@/lib/@LIBNAME@"
+#define stringify_token(s) #s
+#define stringify_value(s) stringify_token(s)
+#define DEFAULT_TFLIBD stringify_value(DATADIR) "/@LIBNAME@"

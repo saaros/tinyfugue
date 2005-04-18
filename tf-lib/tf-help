@@ -449,24 +449,29 @@ addworld()
   Even if [1m%{gethostbyname}[22;0m and/or [1m%{connect}[22;0m are "blocking", they can be 
   interrupted with the SIGINT [1msignal[22;0m (^C).  
 
-  If the connection fails, TF prints "Connection to <[4mworld[24m> failed: <[4maddress[24m> 
-  <[4mport[24m>: <[4mreason[24m>" (the CONNETFAIL [1mhook[22;0m).  Then, if there was more than one 
-  IP address associated with the [1mworld[22;0m's hostname, TF will try to connect to 
-  each one in turn until one succeeds or there are no more addresses left.  If 
-  all addresses are exhausted, TF prints "Unable to connect to <[4mworld[24m>" (the 
-  CONFAIL [1mhook[22;0m).  
+  If the connection fails, TF normally prints "Connection to <[4mworld[24m> failed: 
+  <[4maddress[24m> <[4mport[24m>: <[4mreason[24m>" (the CONFAIL [1mhook[22;0m).  But, if the failure was in 
+  the specific address, and there is more than one address associated with the 
+  [1mworld[22;0m's hostname, the message will instead say "Intermediate connection to 
+  <[4mworld[24m> failed: ..." (the ICONFAIL [1mhook[22;0m), and TF will try to connect to the 
+  next address.  So, a failed [1m/connect[22;0m will always result in a series of zero 
+  or more ICONFAIL [1mhooks[22;0m followed by exactly one CONFAIL [1mhook[22;0m.  But an 
+  ICONFAIL may also be followed by a successful connection to an alternate 
+  address.  
 
   If the network connection is successful, or the [1msocket[22;0m is "connectionless", 
   these events occur: 
 
     * If the [1mworld[22;0m was defined with an <[4mmfile[24m>, that file will be loaded 
       (and the LOAD [1mhook[22;0m will be called); 
-    * The CONNECT [1mhook[22;0m is called (unless the socket is connectionless).  
+    * The CONNECT [1mhook[22;0m is called (unless the socket is connectionless or 
+      the connection is via a [1mproxy[22;0m).  
     * If [1m%{login}[22;0m is on, and a character and password is defined for the 
-      [1mworld[22;0m, the LOGIN [1mhook[22;0m is called (unless the socket is connectionless).  
-      The default LOGIN [1mhooks[22;0m sends the character name and password in a 
-      format corresponding to the world type.  To automatically login to a 
-      world that expects a different login format, define your own LOGIN [1mhook[22;0m. 
+      [1mworld[22;0m, the LOGIN [1mhook[22;0m is called (unless the socket is connectionless or 
+      the connection is via a [1mproxy[22;0m).  The default LOGIN [1mhooks[22;0m sends the 
+      character name and password in a format corresponding to the world type. 
+      To automatically login to a world that expects a different login format, 
+      define your own LOGIN [1mhook[22;0m.  
 
   If you have trouble connecting (especially if you use SOCKS), try "[1m/set[22;0m 
   [1mconnect[22;0m=blocking".  
@@ -1144,6 +1149,7 @@ eval()
 
     Feature           Meaning
     -------           -------
+    256colors         256 color support
     core              If tf crashes, it can dump a core file
     float             Floating point arithmetic and functions
     ftime             [1mftime[22;0m() accepts % formatting
@@ -1269,11 +1275,13 @@ ftime()
   [1mftime[22;0m([<[4mformat[24m> [, <[4mtime[24m>]])
   ____________________________________________________________________________
 
-  Returns a string formatted from a system time <[4mtime[24m> (obtained from [1mtime()[22;0m) 
-  according to <[4mformat[24m>.  If <[4mtime[24m> is omitted, it defaults to the current 
-  time.  If <[4mformat[24m> is omitted, it defaults to [1m%time_format[22;0m.  If <[4mformat[24m> is 
-  "@", a raw system time (e.g., seconds since 1970-01-01 00:00:00 UTC) will be 
-  displayed.  Otherwise, each "%" in <[4mformat[24m> describes a conversion: 
+  Returns a string formatted from an absolute system time <[4mtime[24m> (obtained 
+  from [1mtime()[22;0m or [1mmktime()[22;0m) according to <[4mformat[24m>.  If <[4mtime[24m> is omitted, it 
+  defaults to the current time.  If <[4mtime[24m> is out of range, ftime() returns an 
+  empty string and prints an error message.  If <[4mformat[24m> is omitted, it 
+  defaults to [1m%time_format[22;0m.  If <[4mformat[24m> is "@", a raw system time (e.g., 
+  seconds since 1970-01-01 00:00:00 UTC) will be displayed.  Otherwise, each 
+  "%" in <[4mformat[24m> describes a conversion: 
   %@      raw system time, in seconds, to the nearest microsecond 
           (nonstandard) 
   %.      microseconds since last whole second (nonstandard) 
@@ -1316,7 +1324,7 @@ ftime()
   command: [1m/expr[22;0m [1mftime[22;0m("Today is %a %b %d", [1mtime[22;0m())
   output: Today is Thu Jul 02
 
-  See: [1mfunctions[22;0m, [1mtime()[22;0m, [1mlocale[22;0m, [1m%TZ[22;0m.  [1m%time_format[22;0m 
+  See: [1mfunctions[22;0m, [1mtime()[22;0m, [1mlocale[22;0m, [1m%TZ[22;0m, [1m%time_format[22;0m, [1m%clock_format[22;0m.  
 
 &/gag
 
@@ -1624,8 +1632,7 @@ ftime()
   repeated for each [1m/ELSEIF[22;0m.  If none of the [1m/IF[22;0m or [1m/ELSEIF[22;0m <[4mlist[24m>s or <[4mexpr[24m>s 
   return non-zero, the [1m/ELSE[22;0m <[4mlist[24m> is executed if there is one.  
 
-  The return value of the [1m/IF[22;0m...[1m/ENDIF[22;0m statement is the return value of the 
-  last <[4mexpr[24m> evaluated or <[4mlist[24m> executed.  
+  The return value of the [1m/IF[22;0m...[1m/ENDIF[22;0m statement is undefined.  
 
   [1m/IF[22;0m (expr) body%; [1m/ENDIF[22;0m 
   is equivalent to
@@ -1876,6 +1883,7 @@ index
 #list options
   [1mOptions:[22;0m 
   -s      List [1mmacros[22;0m in short format.  
+  -S      Sort [1mmacros[22;0m by name.  
   -m<[4mmatching[24m> 
           Determines matching style used for comparison of string fields 
           ([1mtrigger[22;0m, keybinding, keyname, [1mhook[22;0m, worldtype, name, and body).  
@@ -1898,6 +1906,9 @@ index
   -a<[4mattrs[24m> 
           Matches [1mmacros[22;0m having one or more of the display [1mattributes[22;0m in 
           <[4mattrs[24m>.  
+  -P<[4mpart[24m><[4mattrs[24m> 
+          Matches [1mmacros[22;0m having a [1m-P[22;0m<[4mpart[24m> with one or more of the display 
+          [1mattributes[22;0m in <[4mattrs[24m>.  
   -i      Matches invisible [1mmacros[22;0m as well as normal [1mmacros[22;0m.  
   -I      Matches only invisible [1mmacros[22;0m.  
   <[4mname[24m>  A pattern that [1mmacro[22;0m names must match.  The [1mglob[22;0m pattern "{}" or 
@@ -1927,6 +1938,8 @@ index
   will list all [1mmacros[22;0m whose names begin with "foo"; have a [1mtrigger[22;0m; are not 
   multi-shots; have any of the underline, reverse, or [1mhilite[22;0m [1mattributes[22;0m; and 
   have an empty body.  
+
+  To list functions for named keys, try "[1m/list[22;0m -i key_*".  
 
   See: [1mmacros[22;0m, [1mtriggers[22;0m, [1mpatterns[22;0m, [1mattributes[22;0m, [1mlibrary[22;0m, [1m/def[22;0m 
 
@@ -1998,16 +2011,21 @@ list commands
 
   Usage: 
 
-  [1m/LISTSOCKETS[22;0m [-s] [-m<[4mstyle[24m>] [-T<[4mtype[24m>] [<[4mname[24m>]
+  [1m/LISTSOCKETS[22;0m [-sn] [-m<[4mstyle[24m>] [-S<[4mfield[24m>] [-T<[4mtype[24m>] [<[4mname[24m>]
   ____________________________________________________________________________
 
   Lists the [1msockets[22;0m to which TinyFugue is connected.  
 
   [1mOptions[22;0m and arguments: 
   -s      short form, list only world names 
+  -n      print host and port in numeric form 
   -m<[4mstyle[24m> 
           Use <[4mstyle[24m> for [1mpattern matching[22;0m in other options (default: 
           [1m%{matching}[22;0m).  
+  -S<[4mfield[24m> 
+          Sort sockets by <[4mfield[24m>.  <[4mField[24m> may be "name", "type", 
+          "character", "host", "port", "lines", "idle", or "-" (don't sort; 
+          this is the default).  Only the first character is necessary.  
   -T<[4mtype[24m> 
           list only worlds with a type matching the [1mpattern[22;0m <[4mtype[24m>.  
   <[4mname[24m>  list only worlds with a name matching the [1mpattern[22;0m <[4mname[24m>.  
@@ -2104,7 +2122,7 @@ list commands
 
   Usage: 
 
-  [1m/LISTWORLDS[22;0m [-cus] [-m<[4mstyle[24m>] [-T] [<[4mname[24m>]
+  [1m/LISTWORLDS[22;0m [-cus] [-m<[4mstyle[24m>] [-S<[4mfield[24m>] [-T<[4mtype[24m>] [<[4mname[24m>]
   ____________________________________________________________________________
 
   Lists world definitions.  
@@ -2115,6 +2133,10 @@ list commands
           (default: [1m%{matching}[22;0m).  
   -s      Display short format (world names only).  
   -c      Display command format (including passwords).  
+  -S<[4mfield[24m> 
+          Sort worlds by <[4mfield[24m>.  <[4mField[24m> may be "name" (the default), 
+          "type", "character", "host", "port", or "-" (don't sort).  Only the 
+          first character is necessary.  
   -u      Include unnamed temporary worlds in the listing.  
   -T<[4mtype[24m> 
           List only worlds with a type matching the [1mpattern[22;0m <[4mtype[24m>.  
@@ -2708,7 +2730,7 @@ mapping
 
     [1m/def[22;0m quit = /@quit -y
 
-  See: [1m/dc[22;0m 
+  See also: [1m/dc[22;0m, [1m%quitdone[22;0m 
 
 &/quote
 
@@ -3427,6 +3449,9 @@ Quoter Commands
   Note: The [1mvariables[22;0m 'L' and 'R' are reserved.  You should not assign values 
   to them.  
 
+  When setting a variable, [1m/set[22;0m returns 1 if successful, 0 if not.  When 
+  listing variables, [1m/set[22;0m returns the number of variables listed.  
+
   See: [1mvariables[22;0m, [1m/listvar[22;0m, [1m/setenv[22;0m, [1m/export[22;0m, [1m/let[22;0m, [1m/unset[22;0m, [1m/edvar[22;0m 
 
 &/setenv
@@ -3446,6 +3471,9 @@ Quoter Commands
 
   If <[4mname[24m> was already defined as an internal [1mvariable[22;0m, it will become an 
   environment [1mvariable[22;0m.  
+
+  When setting a variable, [1m/setenv[22;0m returns 1 if successful, 0 if not.  When 
+  listing variables, [1m/setenv[22;0m returns the number of variables listed.  
 
   See: [1mvariables[22;0m, [1m/listvar[22;0m, [1m/set[22;0m, [1m/export[22;0m 
 
@@ -3471,7 +3499,8 @@ Quoter Commands
   If the -q option is given, /sh will be quiet: the [1mSHELL[22;0m [1mhook[22;0m will not be 
   called, and the "Executing" line will not be printed.  
 
-  If the [1m%{shpause}[22;0m flag is on, TF will wait for a keypress before returning.  
+  If the [1m%{shpause}[22;0m and [1m%{interactive}[22;0m flags are on, TF will wait for a 
+  keypress before returning.  
 
   Note: calling [1m/sh[22;0m or [1m/psh[22;0m with arguments from a [1mtrigger[22;0m is very dangerous.  
   If not written carefully, such a [1mtrigger[22;0m could allow anyone connected to the 
@@ -3699,11 +3728,15 @@ spelling checker
   useful, but not useful enough to alter the fundamental line-by-line nature 
   of TF.  If you want a general telnet client, you know where to find it.  
 
-  TF supports most of the TELNET protocol and the options ECHO (lets server 
-  control echoing of input), SGA (suppress GOAHEAD), EOR (allows use of 
+  TF supports most of the TELNET protocol (even if a command other than 
+  [1m/telnet[22;0m was used to connect).  TF implements the TELNET options ECHO (lets 
+  server control echoing of input), SGA (suppress GOAHEAD), EOR (allows use of 
   END-OF-RECORD in [1mprompts[22;0m), NAWS (allows TF to send window size information 
-  to the server), and BINARY (allows transmission of 8-bit characters).  For 
-  information on TELNET protocol, see RFC 854 and 1123.  See also: [1mprompts[22;0m.  
+  to the server), TTYPE (allows server to ask about the terminal type), and 
+  BINARY (allows transmission of 8-bit characters).  For TTYPE queries, TF 
+  responds "TINYFUGUE", "ANSI-ATTR", "ANSI", and "UNKNOWN", in that order.  
+  For information on TELNET protocol, see RFC 854 and 1123.  See also: 
+  [1mprompts[22;0m.  
 
   See: [1m/addtelnet[22;0m, [1m/connect[22;0m, [1m%telopt[22;0m, [1m%binary_eol[22;0m, [1mprotocols[22;0m 
 
@@ -4274,7 +4307,7 @@ Text Utilities
 
   Usage: 
 
-  [1m/WORLD[22;0m [-lqn] [<[4mworld[24m>]
+  [1m/WORLD[22;0m [-lqnxfb] [<[4mworld[24m>]
   [1m/WORLD[22;0m <[4mhost[24m> <[4mport[24m>
   ____________________________________________________________________________
 
@@ -4285,7 +4318,7 @@ Text Utilities
 
   The second form is equivalent to "[1m/connect[22;0m <[4mhost[24m> <[4mport[24m>".  
 
-  The -lqn options are the same as those for [1m/fg[22;0m and [1m/connect[22;0m.  
+  The -lqnxfb options are the same as those for [1m/fg[22;0m and [1m/connect[22;0m.  
 
   See: [1m/connect[22;0m, [1m/fg[22;0m 
 
@@ -4308,14 +4341,15 @@ display attributes
   Many TF commands take an argument to specify an [1mattribute[22;0m list, containing 
   one or more of: "n" (none), "x" (exclusive), "g" ([1mgag[22;0m), "G" (nohistory), "L" 
   (nolog), "A" (noactivity), "u" (underline), "r" (reverse), "B" (bold), "b" 
-  (bell), "h" ([1mhilite[22;0m), or "C<[4mcolor[24m>" ([1mcolor[22;0m).  These [1mattributes[22;0m are used to 
-  display text associated with the command.  Use commas to separate attributes 
-  within an attribute list; commas may be omitted between single-letter 
-  attributes.  For example, "BuCred,Cbgyellow" means bold underlined red text 
-  on a yellow background.  
+  (bell), "h" ([1mhilite[22;0m), "E" (error), "W" (warning), or "C<[4mcolor[24m>" ([1mcolor[22;0m).  
+  These [1mattributes[22;0m are used to display text associated with the command.  Use 
+  commas to separate attributes within an attribute list; commas may be 
+  omitted between single-letter attributes.  For example, "BuCred,Cbgyellow" 
+  means bold underlined red text on a yellow background.  
 
-  "None" ("n") is useful only for finding macros without attributes, e.g.  
-  "[1m/list[22;0m -an".  
+  "None" ("n") is useful for finding macros without attributes (e.g.  "[1m/list[22;0m 
+  -an") or for turning off attributes in the middle of a line (e.g.  "[1m/echo[22;0m -p 
+  foo @{u}bar@{n} baz").  
 
   Normally, new attributes are combined with the pre-existing attributes.  But 
   if the new attributes include "x" (exclusive), the pre-existing display 
@@ -4336,15 +4370,16 @@ display attributes
         [1m/def[22;0m [1m-a[22;0mA [1m-q[22;0m [1m-t[22;0m"{*} has {*connected.}" noact_connect
     
 
-  The "C<[4mname[24m>" ([1mColor[22;0m) [1mattribute[22;0m allows you to specify black, red, green, 
-  yellow, blue, magenta, cyan, white, 8 thru 15, bgblack, bgred, bggreen, 
-  bgyellow, bgblue, bgmagenta, bgcyan, or bgwhite.  The "C" must be followed 
-  by the <[4mname[24m> of the color; a comma after the <[4mname[24m> can be used to separate 
-  it from attributes that follow it.  See: [1mcolor[22;0m.  
+  The "C<[4mname[24m>" ([1mColor[22;0m) [1mattribute[22;0m allows you to name a color.  The "C" must be 
+  followed by the <[4mname[24m> of the color; a comma after the <[4mname[24m> can be used to 
+  separate it from attributes that follow it.  Depending on your terminal and 
+  how tf was compiled, there may be 8, 16, or 256 colors available.  See: 
+  [1mcolor[22;0m.  
 
-  The "h" ([1mhilite[22;0m) [1mattribute[22;0m is special.  If specified, the [1mattributes[22;0m listed 
-  in the [1m%{hiliteattr}[22;0m [1mvariable[22;0m will be combined with the other [1mattributes[22;0m 
-  listed.  For example, the commands 
+  The "h" ([1mhilite[22;0m), "E" (error), and "W" (warning) [1mattributes[22;0m is special.  If 
+  specified, the [1mattributes[22;0m listed in the [1m%{hiliteattr}[22;0m, [1m%{error_attr}[22;0m, or 
+  [1m%{warning_attr}[22;0m [1mvariable[22;0m, respectively, will be combined with the other 
+  [1mattributes[22;0m listed.  For example, the commands 
 
         [1m/set[22;0m [1mhiliteattr[22;0m=r
         [1m/echo[22;0m -ahu foobar
@@ -4388,6 +4423,7 @@ display attributes
 &color
 &colour
 &colours
+&256colors
 &colors
 
 colors
@@ -4395,45 +4431,86 @@ colors
   Color is enabled by default.  To disable it, use "/color_off"; to re-enable 
   color using ANSI codes, use "/color_on".  
 
-  The color [1mattribute[22;0m ("C<[4mname[24m>") allows you to specify any one of: [30mblack[0m 
-  (black), [31mred[0m, [32mgreen[0m, [33myellow[0m, [34mblue[0m, [35mmagenta[0m, [36mcyan[0m, [37mwhite[0m (white), 8 through 
-  15, [40mbgblack[0m (bgblack), [41mbgred[0m, [42mbggreen[0m, [43mbgyellow[0m, [44mbgblue[0m, [45mbgmagenta[0m, [46mbgcyan[0m, 
-  or [47mbgwhite[0m (bgwhite).  (If you are reading this in tf, and the previous 
-  sentence did not contain colored words, you do not have working color 
-  support.  If it contained strange codes, you should do "/color_off" or 
-  redefine the codes as described below.) The first eight are defined in 
-  stdlib.tf as ANSI foreground colors.  The bg* colors are defined in 
-  stdlib.tf as ANSI background colors.  The numbered colors are defined in 
-  stdlib.tf to work with the corresponding color xterm colors.  They can all 
-  be redefined as described below.  
+  The color [1mattribute[22;0m allows you to specify a foreground color with "C<[4mname[24m>" 
+  or a background color with "Cbg<[4mname[24m>".  Any terminal that supports color 
+  should support the 8 basic colors: [30mblack[0m (black), [31mred[0m, [32mgreen[0m, [33myellow[0m, [34mblue[0m, 
+  [35mmagenta[0m, [36mcyan[0m, [37mwhite[0m (white).  (If you are reading this in tf, and the 
+  previous sentence did not contain colored words, you do not have working 
+  color support.  If it contained strange codes, you should do "/color_off" or 
+  redefine the codes as described below.) The standard library defines these 8 
+  basic colors with ANSI control codes, which will work on most terminals that 
+  support color.  
+
+  Many terminals also support brighter versions of the 8 basic colors, but may 
+  need to be configured to do so.  On xterm, you may want to disable the 
+  "boldColors" resource so that bold plus a normal color does not produce one 
+  of these bright colors.  The bright color names are: gray, brightred, 
+  brightgreen, brightyellow, brightblue, brightmagenta, brightcyan, or 
+  brightwhite.  The standard library defines these 8 bright colors with ISO 
+  6429 extension control codes, which will work on most terminals that support 
+  16 colors.  
+
+  Some newer terminals can display 256 colors.  If tf was built with the 
+  "256colors" [1mfeature[22;0m, tf will recognize the following additional color names. 
+  Names names of the form "rgb<[4mR[24m><[4mG[24m><[4mB[24m>" describe a color within a 6x6x6 color 
+  cube: <[4mR[24m>, <[4mG[24m> and <[4mB[24m> are each a single digit between 0 and 5 that 
+  specifies the brightness of the red, green, or blue component of the color.  
+  For example, "rgb020" is a dark green, and "rgb520" is reddish orange.  
+  Names of the form "gray<[4mN[24m>" describe a point on a grayscale, where <[4mN[24m> is 
+  between 0 (dark) and 23 (light).  The standard library defines the "rgb*" 
+  and "gray*" colors with xterm 256 color extension control codes.  
+
+  To test the functionality and appearance of colors in tf, you can "[1m/load[22;0m 
+  testcolor.tf".  
 
   You can use a defined color in any [1mattribute[22;0m string.  For example, to make 
   [1m/hilite[22;0m'd text appear blue, you can [1m/set[22;0m [1mhiliteattr[22;0m=Cblue.  
 
-  On some terminals, lighter versions of ANSI colors can be produced by 
-  combining bold with a color; for example, light red is BCred.  
+  To define your own control codes for terminals that don't accept the 
+  predefined codes, you will need to edit the color [1mvariables[22;0m.  The code to 
+  enable foreground or background color <[4mname[24m> is stored in a [1mvariable[22;0m called 
+  [1m%{start_color_<[4mname[24m>}[22;0m or [1m%{start_color_bg<[4mname[24m>}[22;0m.  The code to turn off 
+  colors is stored in [1m%{end_color}[22;0m.  These [1mvariables[22;0m may contain carat 
+  notation and backslashed ascii codes in decimal, octal, or hexadecimal 
+  (e.g., ESC is ^[, \27, \033, or \0x1B).  
 
-  Note: color will not work if you are running tf under older versions of 
-  iscreen, since they do not understand the color codes.  Also, some versions 
-  of xterm don't support color; some variants that do include dtterm, cxterm, 
-  color_xterm, rxvt, nxterm.  
+  The default definition of [1m%end_color[22;0m is "\033[39;49;0m", which should work 
+  on most ANSI-like terminals.  If this does not work on your terminal, then 
+  try "[1m/set[22;0m [1mend_color[22;0m \033[30;47;0m" (for black on white) or "[1m/set[22;0m [1mend_color[22;0m 
+  \033[37;40;0m" (for white on black).  
 
-  To define your own codes for terminals that don't accept the ANSI codes, you 
-  will need to edit the color [1mvariables[22;0m.  The code to enable color <[4mname[24m> is 
-  stored in a [1mvariable[22;0m called [1m%{start_color_<[4mname[24m>}[22;0m.  The code to turn it off 
-  is stored in [1m%{end_color}[22;0m.  These [1mvariables[22;0m may contain carat notation and 
-  backslashed ascii codes in decimal, octal, or hexadecimal (e.g., ESC is ^[, 
-  \27, \033, or \0x1B).  
+  If [1m%{emulation}[22;0m is set to "ansi_attr" (the default), then ANSI, ISO 6429, 
+  and xterm 256 color extension codes sent by the server will be interpreted 
+  by tf.  As a result, if the [1m%{start_color_<[4mname[24m>}[22;0m [1mvariables[22;0m are set 
+  correctly for your terminal, tf will translate color codes from the server 
+  into codes for your terminal, displaying them correctly even if your 
+  terminal does not use the same codes the server sends.  See: [1m%emulation[22;0m.  
 
-  The default definition of [1m%end_color[22;0m is "\033[37;40;0m", which should work 
-  on most ANSI-like terminals.  If you find that all text is reversed after 
-  displaying some colored text, then try "[1m/set[22;0m [1mend_color[22;0m \033[30;47;0m".  
+  Note for "screen(1)" users: to make 8-16 colors work under Screen, you need 
+  the following screenrc settings: 
 
-  If [1m%{emulation}[22;0m is set to "ansi_attr", ANSI codes sent by the server will be 
-  interpreted by tf.  As a result, if the [1m%{start_color_<[4mname[24m>}[22;0m [1mvariables[22;0m are 
-  set correctly for your terminal, tf will translate ANSI color codes from the 
-  server into codes for your terminal, even if your terminal does not use ANSI 
-  codes.  See: [1m%emulation[22;0m.  
+      termcap  xterm AF=\E[3%dm
+      terminfo xterm AF=\E[3%p1%dm
+      termcap  xterm AB=\E[4%dm
+      terminfo xterm AB=\E[4%p1%dm
+    
+
+  To make 256 colors work under Screen, it must have been compiled with 
+  "--enable-colors256", and you need the following screenrc settings: 
+
+      terminfo xterm Co=256
+      termcap  xterm Co=256
+      termcap  xterm AF=\E[38;5;%dm
+      terminfo xterm AF=\E[38;5;%p1%dm
+      termcap  xterm AB=\E[48;5;%dm
+      terminfo xterm AB=\E[48;5;%p1%dm
+    
+
+  Colors are numbered 0 through 255 in the order in which they are described 
+  above, but refering to colors by their enumeration number is generally not 
+  recommended, as the numbering is subject to change.  In particular, the 
+  numbering and interpretation of background colors changed in version 5.0 
+  beta 7.  
 
   See: [1mattributes[22;0m 
 
@@ -4445,8 +4522,8 @@ colors
 copyright
 
   TinyFugue - programmable mud client
-  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken 
-  Keys 
+  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 
+  2005 Ken Keys 
 
   PCRE regexp package is Copyright (C) 1997-1999 University of Cambridge 
 
@@ -4643,6 +4720,8 @@ expressions
 #real
 #integer
 #string
+#dtime
+#atime
 #hours:minutes:seconds
 #hours:minutes
 #hh:mm
@@ -4660,11 +4739,14 @@ Operands
     * Real decimal point constants ("reals", for short) containing a 
       decimal point (e.g., 12.3456789) or exponent (e.g., 1e-2) or both (e.g., 
       1.23e4).  
-    * Time values of the form <[4mhours[24m>:<[4mminutes[24m>, 
+    * Time duration ("dtime") values of the form <[4mhours[24m>:<[4mminutes[24m>, 
       <[4mhours[24m>:<[4mminutes[24m>:<[4mseconds[24m>, or <[4mseconds[24m> (where <[4mseconds[24m> may contain a 
       decimal point followed by up to 6 digits), will be interpreted as real 
       seconds (e.g., 0:01:02.3 == 62.3), and can be used anywhere a number is 
       expected.  
+    * Absolute time ("atime") values, in the form of a number with up to 6 
+      decimal places.  On most systems, this represents the number of seconds 
+      since 1970-01-01 00:00:00 UTC.  
     * Strings of characters, surrounded with quotes (", ', or `, with the 
       same kind of quote on each end), like "hello world".  
     * [1mVariable[22;0m references (see below) like visual.  
@@ -4739,8 +4821,8 @@ Operators
   [4mn[24m ? : [4me2[24m    Conditional.  If [4mn[24m is nonzero, the result is the value of 
               [1mexpression[22;0m [4me1[24m; otherwise it is the value of [1mexpression[22;0m [4me2[24m.  If 
               [4me1[24m is omitted, the value of [4mn[24m is used in its place.  Note that 
-              digits followed by a colon is interpreted as a time value, so if 
-              the [4me2[24m operand of the ?: operator is an integer, you must 
+              digits followed by a colon is interpreted as a dtime value, so 
+              if the [4me2[24m operand of the ?: operator is an integer, you must 
               separate it from the colon (with a space or parenthesis, for 
               example).  
 
@@ -4775,9 +4857,9 @@ Operators
   operator.  
 
     * String to numeric: leading signs, digits, colons, and exponents are 
-      interpreted as an integer, decimal (real), or time (real) value; e.g., 
-      "12abc" becomes 12, "12.3junk" becomes 12.3, "0:01:02.3" becomes 62.3, 
-      and "xyz" becomes 0.  
+      interpreted as an integer, decimal (real), or dtime (real) value; e.g., 
+      "12abc" becomes 12, "12.3junk" becomes 12.3, "0:01:02.3" becomes 
+      0:01:02.3, and "xyz" becomes 0.  
     * Integer to real: straightforward.  
     * Real to integer: the fractional part is truncated.  
     * [1mEnumerated variable[22;0m to string: straightforward string value.  
@@ -5077,6 +5159,14 @@ String functions
           (int) Returns an integer less than, equal to, or greater than 0 if 
           <[4ms1[24m> is lexicographically less than, equal to, or greater than <[4ms2[24m>, 
           respectively.  
+#strcmpattr
+#strcmpattr()
+  [1mstrcmpattr[22m([4ms1[24m, [4ms2[24m) 
+          (int) Like [1mstrcmp()[22;0m, except that in order for the strings to be 
+          considered equal, both their text and their attributes must be 
+          equal.  In other words, [1mstrcmp[22;0m([1mencode_attr[22;0m(<[4ms1[24m>), [1mencode_attr[22;0m(<[4ms2[24m>)) 
+          The ordering of attributes is not documented, and may change between 
+          versions of tf.  
 #strlen
 #strlen()
   [1mstrlen[22m([4ms[24m) 
@@ -5133,10 +5223,19 @@ String functions
 #decode_ansi
 #decode_ansi()
   [1mdecode_ansi[22m([4ms[24m) 
-          (str) Returns <[4ms[24m> with ANSI display codes interpeted as display 
+          (str) Returns <[4ms[24m> with attribute control codes interpeted as display 
           [1mattributes[22;0m, and, if [1m%expand_tabs[22;0m is on, tabs are expanded to spaces 
           according to [1m%tabsize[22;0m.  Any attributes originally on <[4ms[24m> are [4mnot[24m 
-          copied to the result.  
+          copied to the result.  The attribute control codes recognzied 
+          include ANSI codes, ISO 6429 16-color extension codes, and xterm 
+          256-color extension codes.  
+#encode_ansi
+#encode_ansi()
+  [1mencode_ansi[22m([4ms[24m) 
+          (str) Returns <[4ms[24m> with display [1mattributes[22;0m encoded in terminal 
+          control code form.  The control codes generated include ANSI codes, 
+          ISO 6429 16-color extension codes, and xterm 256-color extension 
+          codes.  
 #
   [1mtextencode[22m([4ms[24m) 
           (str) Returns <[4ms[24m> converted to a form containing only letters, 
@@ -5209,9 +5308,9 @@ Information functions
 
 #time
 #time()
-  [1mtime[22m()  (time) System time in seconds, to the nearest microsecond (typically 
-          measured since 1970-01-01 00:00:00 UTC).  See also: [1mcputime()[22;0m, 
-          [1mmktime()[22;0m, [1midle()[22;0m, [1msidle()[22;0m, [1m/time[22;0m, [1mftime()[22;0m.  
+  [1mtime[22m()  (atime) Absolute system time in seconds, to the nearest microsecond 
+          (typically measured since 1970-01-01 00:00:00 UTC).  See also: 
+          [1mcputime()[22;0m, [1mmktime()[22;0m, [1midle()[22;0m, [1msidle()[22;0m, [1m/time[22;0m, [1mftime()[22;0m.  
 #cputime
 #cputime()
   [1mcputime[22m() 
@@ -5306,19 +5405,19 @@ Information functions
           (int) Returns 1 if [1mworld[22;0m <[4ms[24m> is open, 0 otherwise.  
 #idle
 #idle()
-  [1midle[22m()  (time) Number of seconds (to the nearest microsecond) since the last 
-          keypress.  
+  [1midle[22m()  (dtime) Number of seconds (to the nearest microsecond) since the 
+          last keypress.  
   [1midle[22m([4ms[24m) 
-          (time) Number of seconds (to the nearest microsecond) since the last 
-          text was received on the [1msocket[22;0m connected to [1mworld[22;0m <[4ms[24m>, or -1 on 
-          error.  
+          (dtime) Number of seconds (to the nearest microsecond) since the 
+          last text was received on the [1msocket[22;0m connected to [1mworld[22;0m <[4ms[24m>, or -1 
+          on error.  
 #sidle
 #sidle()
   [1msidle[22m() 
   [1msidle[22m([4ms[24m) 
-          (time) Number of seconds (to the nearest microsecond) since the last 
-          text was sent on the [1mcurrent socket[22;0m or the [1msocket[22;0m connected to [1mworld[22;0m 
-          <[4ms[24m>, or -1 on error.  
+          (dtime) Number of seconds (to the nearest microsecond) since the 
+          last text was sent on the [1mcurrent socket[22;0m or the [1msocket[22;0m connected to 
+          [1mworld[22;0m <[4ms[24m>, or -1 on error.  
 #nlog
 #nlog()
   [1mnlog[22m()  (int) Number of open log files.  
@@ -5356,16 +5455,17 @@ Other functions
           (str) Performs filename expansion on <[4ms[24m> as described under 
           "[1mfilenames[22;0m".  
 #
-  [1mftime[22m([4ms[24m,[4mi[24m) 
+  [1mftime[22m([4ms[24m,[4mn[24m) 
   [1mftime[22m([4ms[24m) 
   [1mftime[22m() 
-          (str) Formats a system time <[4mi[24m> (obtained from [1mtime()[22;0m) according to 
-          format <[4ms[24m>.  See: [1mftime()[22;0m.  
+          (str) Formats a system time <[4mn[24m> (obtained from [1mtime()[22;0m) according to 
+          format <[4ms[24m>, or prints an error message and returns an empty string 
+          if <[4mn[24m> is out of range.  See: [1mftime()[22;0m.  
 #mktime
 #mktime()
   [1mmktime[22m([4myear[24m [, [4mmonth[24m [, [4mday[24m [, [4mhour[24m [, [4mminute[24m [, [4msecond[24m [, 
   [4mmicrosecond[24m]]]]]]) 
-          (time) Returns the system time in seconds of the date in the local 
+          (atime) Returns the system time in seconds of the date in the local 
           [1mtime zone[22;0m represented by the arguments.  Returns -1 if the arguments 
           do not represent a valid date.  Omitted [4mmonth[24m or day arguments 
           default to 1; other omitted arguments default to 0.  See: [1m%TZ[22;0m, 
@@ -5374,6 +5474,14 @@ Other functions
   [1mgetopts[22m(s1, s2) 
           (int) Parse macro options according to format <s1>.  See 
           "[1mgetopts()[22;0m".  
+#test()
+  [1mtest[22m(s) 
+          Interprets the contents of the string s as an expression and returns 
+          the result.  See also: [1m/test[22;0m, [1m/expr[22;0m.  
+#status_fields()
+  [1mstatus_fields[22m([i]) 
+          Returns the list of fields of status row i, or row 0 if i is 
+          omitted.  [1mstatus area[22;0m.  
 #
   [1msubstitute[22m(s [,attrs [,inline]]) 
           (int) Replaces trigger text.  See "[1m/substitute[22;0m".  
@@ -5660,14 +5768,15 @@ hooks
 #BGTRIG
     BGTRIG      world           A '% [1mTrigger[22;0m in world <[4mworld[24m>'
 #CONFAIL
-    CONFAIL     world, reason   W '% Unable to [1mconnect[22;0m to <[4mworld[24m>.'
+    CONFAIL  world, reason      W '% [1mConnection[22;0m to <[4mworld[24m> failed: <[4mreason[24m>'
+#CONFAIL
+    CONFAIL     world, reason   W '% Unable to [1mconnect[22;0m to <[4mworld[24m>: <[4mreason[24m>'
 #CONFLICT
     CONFLICT    [1mmacro[22;0m             '% <[4mmacro[24m> conflicts with builtin command.'
 #CONNECT
-    CONNECT     world           W '% [1mConnected[22;0m to <[4mworld[24m>.'
-#CONNETFAIL
-    CONNETFAIL  world, reason   W '% [1mConnection[22;0m to <[4mworld[24m> failed: <[4mreason[24m>'
-                                  (name is short for "CONnect NETwork FAILure")
+    CONNECT     world, cipher   W '% [1mConnected[22;0m to <[4mworld[24m>[ using <[4mcipher[24m>].'
+#ICONFAIL
+    ICONFAIL  world, reason     W '% [1mIntermediate connection[22;0m to <[4mworld[24m> failed: <[4mreason[24m>'
 #DISCONNECT
     DISCONNECT  world, reason   W '% [1mConnection[22;0m to <[4mworld[24m> closed: <[4mreason[24m>.'
                                   (Called if you send the server's disconnect
@@ -5733,6 +5842,9 @@ hooks
   The -w and -T options to [1m/def[22;0m can be used to restrict [1mhooks[22;0m to matching only 
   when the [1mcurrent[22;0m world matches the world or world type.  
 
+  When a [1mmacro[22;0m is defined with the same name as an existing [1mmacro[22;0m, the REDEF 
+  [1mhook[22;0m will be called, [4munless[24m the new [1mmacro[22;0m is identical to the original.  
+
   BGTRIG used to be called BACKGROUND, and the old name still works.  Its "% 
   Trigger in world " message can be quieted for individual triggers by 
   defining them with [1m/def[22;0m [1m-q[22;0m, or for all triggers with "/def -ag -hBGTRIG".  
@@ -5745,11 +5857,11 @@ hooks
   command line that sends plain text.  
 
   When successfully connected to a new [1msocket[22;0m, these events occur: 1) If this 
-  is a [1mproxy[22;0m connection, the PROXY [1mhook[22;0m is called; 2) If this is not a [1mproxy[22;0m 
-  connection, the CONNECT [1mhook[22;0m is called; 3) If [1m%{login}[22;0m is on, a character 
-  and password are defined, and this is not a [1mproxy[22;0m connection, the [1mLOGIN[22;0m [1mhook[22;0m 
-  is called.  4) If there is a file associated with the world, the file will 
-  be loaded (and the LOAD [1mhook[22;0m will be called).  
+  is a [1mproxy[22;0m connection, the PROXY [1mhook[22;0m is called; 2) If there is a file 
+  associated with the world, the file will be loaded (and the LOAD [1mhook[22;0m will 
+  be called).  3) If this is not a [1mproxy[22;0m connection, the CONNECT [1mhook[22;0m is 
+  called; 4) If [1m%{login}[22;0m is on, a character and password are defined, and this 
+  is not a [1mproxy[22;0m connection, the [1mLOGIN[22;0m [1mhook[22;0m is called.  
 
   When a (non-[1mgag[22;0mged) line is displayed in a background world, the PREACTIVITY 
   hook is called immediately before the line is displayed, and the ACTIVITY 
@@ -5789,6 +5901,11 @@ hooks
 
   will [1mlog[22;0m the last 10 lines of output if you are unexpectedly disconnected 
   from your tf session.  
+
+#CONNETFAIL
+  The CONNETFAIL hook, which existed in versions 5.0 alpha 13 through 5.0 beta 
+  6, has been replaced with the [1mICONFAIL[22;0m hook.  
+#
 
   See also: [1mmacros[22;0m, [1mtriggers[22;0m, [1mpatterns[22;0m, [1mpriority[22;0m, [1msignals[22;0m.  
 
@@ -5959,7 +6076,10 @@ Default keybindings
   In the tables below, keys with "*" in the "Meaning" column make use of [1mkbnum[22;0m 
   (see [1mbelow[22;0m).  
 
+#named keys
 Named keys
+  To redefine the named keys, see the section titled "[1mMapping Named Keys to 
+  functions[22;0m".  
 
   Key         Command                 Meaning
   ---         -------                 -------
@@ -5991,14 +6111,24 @@ Named keys
   Ctrl_PgUp   (reserved for future use)
 
   F1          [1m/help[22;0m                    help
-  F2          (none)                   (see text below)
+  F2          (none)                   (function key F1)
   ...
-  F12         (none)
+  F20         (none)                   (function key F20)
 
-  nkp1        (none)                   (see text below)
+  nkpTab      (none)                   (see "[1mkeypad[22;0m" section below)
+  nkpEnt      (none)                   (see "[1mkeypad[22;0m" section below)
+  nkp*        (none)                   (see "[1mkeypad[22;0m" section below)
+  nkp+        (none)                   (see "[1mkeypad[22;0m" section below)
+  nkp,        (none)                   (see "[1mkeypad[22;0m" section below)
+  nkp-        (none)                   (see "[1mkeypad[22;0m" section below)
+  nkp.        (none)                   (see "[1mkeypad[22;0m" section below)
+  nkp/        (none)                   (see "[1mkeypad[22;0m" section below)
+  nkp0        (none)                   (see "[1mkeypad[22;0m" section below)
   ...
-  nkp9        (none)
+  nkp9        (none)                   (see "[1mkeypad[22;0m" section below)
+  nkp=        (none)                   (see "[1mkeypad[22;0m" section below)
 
+#unnamed keys
 Unnamed key sequences
 
   String  Command                 Meaning
@@ -6075,6 +6205,8 @@ Unnamed key sequences
   "^[^?"  [1m/kb_backward_kill_word[22;0m  *delete backward word (punctuation-delimited)
   "^]"    [1m/bg[22;0m                      put all [1msockets[22;0m in [1mbackground[22;0m
 
+#
+
 Other useful commands not bound by default
 
   Command                 Meaning
@@ -6102,6 +6234,7 @@ Terminal keys
 
   When TF starts, it disables the terminal driver's "stop" and "start" keys 
   (typically ^S and ^Q), so they are available for binding within TF.  
+#
 
 Using keys
 
@@ -6119,53 +6252,101 @@ Using keys
   numbered function keys, and calls /key_ctrl_<[4mname[24m>, /key_shift_<[4mname[24m>, or 
   /key_meta_<[4mname[24m>, respectively.  Additionally, by default, each 
   /key_meta_<[4mname[24m> calls the corresponding /key_esc_<[4mname[24m>, so, for example, 
-  pressing META-Left has the same effect as ESC Left.  If you use another 
-  terminal emulator that generates unique character sequences for ctrl-, 
-  shift-, and meta-modified keys, you can bind those sequences to call the 
-  corresponding /key_<[4mmod[24m>_<[4mname[24m> (and send them to the [1mauthor[22;0m for inclusion 
-  in a future release of tf).  
+  pressing META-Left has the same effect as ESC Left.  Note that some xterms 
+  capture shift_insert, shift_pgup, and shift_pgdn by default for their own 
+  use, so tf will not receive these sequences.  If you use another terminal 
+  emulator that generates unique character sequences for ctrl-, shift-, and 
+  meta-modified keys, you can bind those sequences to call the corresponding 
+  /key_<[4mmod[24m>_<[4mname[24m> (and send them to the [1mtf author[22;0m for inclusion in a future 
+  release of tf).  
 
+#keypad
+#numeric keypad
+Numeric keypad
   [1mTF[22m tries to put the keypad in "application mode", which on many terminals 
-  will make the keypad keys generate unique character sequences if Num Lock is 
-  on.  Application mode can be disabled by setting [1m%keypad[22;0m to "off".  The 
-  meaning of your numeric keypad keys depends on your terminal emulator, 
-  setting of [1m%keypad[22;0m, and the state of NumLock.  For example, in some versions 
-  of xterm, the numbered keys of the numeric keypad act like this: 
+  will make the keypad keys generate unique character sequences.  Application 
+  mode can be disabled by setting [1m%keypad[22;0m to "off".  The meaning of your 
+  numeric keypad keys depends on your terminal emulator and its settings, the 
+  setting of [1m%keypad[22;0m in tf, and the state of your NumLock key.  Two common 
+  configurations of the keypad are shown below.  A <[4mname[24m> on a key in the 
+  diagram indicates that it is bound in tf to "/key_<[4mname[24m>".  
 
-            NumLock off                       [1m%keypad[22;0m on
-                                            and NumLock on
+              configuration A                   configuration B
 
-       +------+------+------+            +------+------+------+
-       |Home  |Up    |PgUp  |            |nkp7  |nkp8  |nkp9  |
-       +------+------+------+            +------+------+------+
-       |Left  |Center|Right |            |nkp4  |nkp5  |nkp6  |
-       +------+------+------+            +------+------+------+
-       |End   |Down  |PgDn  |            |nkp1  |nkp2  |nkp3  |
-       +------+------+------+            +------+------+------+
+       +------+------+------+------+     +------+------+------+------+
+       |      |      |      |      |     |      |nkp/  |nkp*  |nkp-  |
+       +------+------+------+------+     +------+------+------+------+
+       |Home  |Up    |PgUp  |      |     |nkp7  |nkp8  |nkp9  |nkp+  |
+       +------+------+------+      |     +------+------+------+      |
+       |Left  |Center|Right |      |     |nkp4  |nkp5  |nkp6  |      |
+       +------+------+------+------+     +------+------+------+------+
+       |End   |Down  |PgDn  |      |     |nkp1  |nkp2  |nkp3  |nkpEnt|
+       +------+------+------+      |     +------+------+------+      |
+       |   Insert    |Delete|      |     |    nkp0     |nkp.  |      |
+       +-------------+------+------+     +-------------+------+------+
 
-  And in an xterm with [1m%keypad[22;0m off and NumLock on, they act like normal digit 
-  keys.  
+  How this works for some specific terminals: 
+  X Consortium xterm 
+          [1m%keypad[22;0m=on and NumLock on gives configuration B above; [1m%keypad[22;0m=off 
+          and NumLock on gives normal digit/punctuation keys; and NumLock off 
+          gives configuration A.  
+  XFree86/X.Org xterm 
+          Identical to X Consortium xterm [4mif[24m you disable the "Alt/numlock 
+          modifiers" option (under the ctrl-leftclick menu); if you do not, 
+          then [1m%keypad[22;0m=on and NumLock on gives normal digit/punctuation keys, 
+          and there is no way to get configuration B.  There is also a "VT220 
+          keyboard" option; if that is enabled, [1m%keypad[22;0m=on and NumLock off 
+          gives configuration B, and all other combinations of [1m%keypad[22;0m and 
+          NumLock give normal digit/punctuation keys.  
+  linux (Linux console) 
+          [1m%keypad[22;0m=on gives configuration B, with these changes: "NumLock" 
+          calls /key_f1, "/" calls /key_f2, "*" calls /key_f3, and "-" calls 
+          /key_f4.  With [1m%keypad[22;0m=off, NumLock chooses between configuration A 
+          and normal digit/punctuation keys.  (Prior to TF 5.0 beta 7, it was 
+          often impossible to set [1m%keypad[22;0m=on because many (if not all) "linux" 
+          termcap entries were missing a necessary code; TF now supplies that 
+          code automatically if it is missing and [1m%TERM[22;0m is "linux".) 
+  konsole and gnome-terminal 
+          As far as I can tell, [1m%keypad[22;0m has no effect, NumLock chooses between 
+          configuration A and normal digit/punctuation keys, and there is no 
+          way to get configuration B.  
+  PuTTY   [1m%keypad[22;0m=on and NumLock on gives configuration B above; [1m%keypad[22;0m=off 
+          and NumLock on gives normal digit/punctuation keys; and NumLock off 
+          gives a configuration similar to configuration A.  
+  Mac OSX Terminal 
+          By default, Terminal's keypad always acts like normal 
+          digit/punctuation keys.  But if you turn on "strict vt100 keypad 
+          behavior" under Terminal | Window Settings | Emulation, then 
+          [1m%keypad[22;0m=on will give a configuration similar to configuration B.  
+#
 
-  In some configurations, unnamed key sequences consisting of "^[" (ESC) 
+  In some environments, unnamed key sequences consisting of "^[" (ESC) 
   followed by one other character may also be typed by holding the META key 
   while typing the other character instead of typing ESC before the other 
   character.  See [1m%meta_esc[22;0m.  
 
   The one-time warning about certain new keybindings in 5.0 can be disabled by 
   setting the variable [1mwarn_5keys[22;0m=off.  
+#mapping_named_keys
 
 Mapping Named Keys to functions
 
-  Each key in the Named Key table above is implemented by a macro named 
-  key_<[4mname[24m>; the standard definition of key_<[4mname[24m> is shown in the "Command" 
-  column.  If you wish to change the functionality of any named key, you 
-  should do so by redefining key_<[4mname[24m>, not by redefining the binding for the 
-  character sequence generated by the key, nor by redefining the /dokey_* or 
-  /kb_* command that key_<[4mname[24m> calls.  There are several advantages to this 
-  method: you do not need to know what characters are generated by the special 
-  keys on your keyboard, and they will work on multiple terminals.  For 
-  example, if you want Insert to invoke your own macro /foo, you should 
-  redefine "/def key_insert = /foo".  
+  Named keys have two levels of mapping: first the character sequence 
+  generated by the key is bound (with [1m/def -b[22;0m) to call a macro named 
+  key_<[4mname[24m>; then the macro key_<[4mname[24m> is defined to execute a command.  If 
+  you wish to change the functionality of any named key, you should do so by 
+  redefining key_<[4mname[24m>.  For example, if you want Insert to invoke your own 
+  macro /foo, you should redefine "/def key_insert = /foo".  You should only 
+  make a direct keybinding if a key on your terminal generates a character 
+  sequence not covered by TF's default bindings; and then you should only bind 
+  the character sequence to call key_<[4mname[24m> (but first, see the "[1mkeypad[22;0m" 
+  section above).  For example, if your Insert key generates "^[Q", you can 
+  bind it with "[1m/def -b[22;0m'^[Q' = /key_insert".  You should never redefine any of 
+  the predefined /dokey_* or /kb_* commands.  
+
+  There are several advantages to this two-level mapping: redefining a key's 
+  function is independent of the terminal; and adding keybindings for new 
+  terminals is independent of the functions invoked by a named key.  
 
   Examples of popular alternatives to the standard key definitions: 
 
@@ -6202,6 +6383,7 @@ Mapping Named Keys to functions
   must be spelled as shown, but capitalization is ignored.  The function 
   [1mkeycode()[22;0m can be used to find the string generated by a key (as defined in 
   the termcap entry for [1m%TERM[22;0m).  
+#mapping_char_seqs
 
 Mapping character sequences to functions
 
@@ -6295,6 +6477,7 @@ Mapping character sequences to Named Keys
   it as you would any other variable.  Once it is set, all typed digits are 
   appended to it.  When any non-digit key is typed, that key will be executed, 
   and [1m%kbnum[22;0m will be cleared.  
+#kbnum
 
 Other key bindings
 
@@ -6724,6 +6907,7 @@ mailing list
 
   Also see [1mhttp://tf.tcp.com/[22;0m for the latest info on TF.  
 
+&mccpv1
 &mccpv2
 &mccp
 
@@ -6796,8 +6980,8 @@ Non-visual mode
   ____________________________________________________________________________
 
   In both modes, the output window is redrawn whenever necessary: when its 
-  size changes, when the mode changes, or when TF resumes after [1m/suspend[22;0m or 
-  [1m/sh[22;0m.  
+  size changes, when the mode changes, when [1m%wrap[22;0m, [1m%wrapsize[22;0m, or [1m%wrapspace[22;0m 
+  change, or when TF resumes after [1m/suspend[22;0m or [1m/sh[22;0m.  
 
   In both modes, output text is wrapped around at a right margin of one less 
   than the number of columns on your screen (typically 79) unless [1mwrapping[22;0m has 
@@ -6986,7 +7170,8 @@ Notes.
       inefficient, and not needed.  Use [1m%PL[22;0m instead if you need to retrieve 
       the value of the left side.  
     * If a glob and regexp can do the same job, use the glob, it's usually 
-      faster.  
+      slightly faster.  But if only a regexp can do what you need, don't 
+      hesitate to use it.  
 
 &pcre
 &pcre syntax
@@ -8390,11 +8575,13 @@ signals
   specially: 
   SIGINT (normally generated by typing ^C) 
           Aborts any running [1mmacro[22;0m or blocking [1mhostname resolution[22;0m or [1mconnect[22;0m, 
-          and offers a menu of choices:
-          C) continue tf; X) exit; T) disable triggers; P) kill processes.  
+          and, if [1minteractive[22;0m is on, offers a menu of choices:
+          C) continue tf; X) exit; T) disable triggers; P) kill processes.  If 
+          [1minteractive[22;0m is off, tf exits without prompting.  
   SIGQUIT (normally generated by typing ^\) 
-          Prompts the user to quit.  If the answer is 'y', TF will dump a core 
-          file if configured to do so, and exit.  
+          If [1minteractive[22;0m is on, TF prompts the user to quit.  If the answer is 
+          'y', or [1minteractive[22;0m is off, TF will dump a core file if configured 
+          to do so, and exit.  
   SIGTERM 
           Calls the SIGTERM [1mhook[22;0m, and then exits TF.  
   SIGHUP (normally generated when the terminal disconnects) 
@@ -8526,8 +8713,11 @@ special variables
   enumerated [1mvariables[22;0m which can have the values "off" (0) or "on" (1).  
   Numeric [1mvariables[22;0m can have any integer value (within the range allowed by 
   your system).  Attempting to unset numeric [1mvariable[22;0m or give it a string 
-  value will force its value to 0.  A variable's type (enumerated, numeric, or 
-  string) affects its behavior in [1mexpressions[22;0m.  
+  value will force its value to 0.  Dtime [1mvariables[22;0m represent a time duration 
+  or period; their values can be written as a number of seconds or in 
+  [4mhours[24m:[4mminutes[24m[:[4mseconds[24m] format, with up to 6 decimal places (microseconds).  
+  A variable's type (enumerated, numeric, dtime, or string) affects its 
+  behavior in [1mexpressions[22;0m.  
 
 Special substitute-only variables
 
@@ -8548,14 +8738,16 @@ Special substitute-only variables
   [1m1,2...[22m 
   [1mL1,L2...[22m 
   [1m*[22m 
-  [1mR[22m       Positional parameters.  See "[1msubstitution[22;0m".  
+  [1mR[22m       Positional parameters.  See "[1msubstitution[22;0m".  (As of 5.0 beta 7, 
+          these are case sensitive.) 
 
 #
   [1mP<[4mn[24m>[22m 
   [1mPL[22m 
   [1mPR[22m      The text matched by the <[4mn[24m>th parenthesized subexpression, or the 
           text to the left or right of the matched text, in the last 
-          successful [1mregexp[22;0m comparison.  See [1m%Pn[22;0m for more details.  
+          successful [1mregexp[22;0m comparison.  See [1m%Pn[22;0m for more details.  (As of 5.0 
+          beta 7, these are case sensitive.) 
 
 #
 
@@ -8660,7 +8852,7 @@ Special global variables
 #%TFPATH
   [1mTFPATH[22m= 
           A space-separated list of directories that will be searched by 
-          [1m/load[22;0m.  Literal spaces in a directory ename must be preceded by "\". 
+          [1m/load[22;0m.  Literal spaces in a directory name must be preceded by "\".  
           If this is set, [1m%{TFLIBDIR}[22;0m will be ignored by [1m/load[22;0m, so be sure to 
           include the value of [1m%{TFLIBDIR}[22;0m in [1m%{TFPATH}[22;0m if you want to be able 
           to [1m/load[22;0m files with relative names from the standard library 
@@ -8686,8 +8878,8 @@ Special global variables
 #alert_time
 #%alert_time
   [1malert_time[22m=5.0 
-          The number of seconds that [1malert[22;0m text is displayed on the [1mstatus 
-          line[22;0m.  See [1mtfio[22;0m.  
+          (dtime) The number of seconds that [1malert[22;0m text is displayed on the 
+          [1mstatus line[22;0m.  See [1mtfio[22;0m.  
 
 #background
 #%background
@@ -8709,6 +8901,7 @@ Special global variables
 #bamf
 #%bamf
   [1mbamf[22m=off 
+          (enumerated) 
           off     (0): server "[1mportals[22;0m" are ignored.  
           on      (1): Unter-style [1mbamfing[22;0m is enabled (disconnect).  
           old     (2): Old-style [1mbamfing[22;0m is enabled (no disconnect).  
@@ -8744,7 +8937,7 @@ Special global variables
 #%clearfull
   [1mclearfull[22m=off 
           (flag) In [1mvisual[22;0m mode, clear input window rather than scroll when 
-          full.  Always 1 if terminal can not scroll.  
+          full.  Always on if terminal can not scroll.  
 
 #cleardone
 #%cleardone
@@ -8762,7 +8955,7 @@ Special global variables
   [1mclock_format[22m=%H:%M 
           The format of the clock displayed on the [1mstatus line[22;0m.  To make the 
           clock display in 12-hour format, "/set [1mclock_format[22;0m=%I:%M".  See 
-          [1m/clock[22;0m.  
+          also: [1m/clock[22;0m, [1m%time_format[22;0m.  
 
 #connect
 #%connect
@@ -8779,7 +8972,7 @@ Special global variables
           if on, [1mmacros[22;0m are compiled immediately when they are defined.  Since 
           syntax checking is performed during compilation, setting 
           [1mdefcompile[22;0m=on will allow you to see the syntax errors in a macro 
-          when you define it.  
+          when you define it instead of waiting until execution.  
 
 #%e
   [1me[22m=2.718281828...  
@@ -8835,7 +9028,7 @@ Special global variables
 #%end_color
   [1mend_color[22m 
           The code that should be sent to your terminal to return to normal 
-          [1mcolor[22;0m after a [1m%{start_color_<[4mname[24m>}[22;0m code.  See: [1mcolor[22;0m.  
+          [1mcolor[22;0m after a [1m%{start_color_*}[22;0m code.  See: [1mcolor[22;0m.  
 
 #gag
 #%gag
@@ -8890,9 +9083,9 @@ Special global variables
 #interactive
 #%interactive
   [1minteractive[22m 
-          (flag) If off, TF will not prompt for [1m/quit[22;0m, returning from [1m/sh[22;0m, or 
-          [1mSIGINT[22;0m (^C).  Defaults to on if standard input and output are 
-          attatched to a terminal, off otherwise.  
+          (flag) If off, TF will not prompt for [1m/quit[22;0m, returning from [1m/sh[22;0m, 
+          [1mSIGINT[22;0m (^C), or [1mSIGQUIT[22;0m (^\).  Defaults to on if standard input and 
+          output are attatched to a terminal, off otherwise.  
 
 #isize
 #%isize
@@ -8915,8 +9108,8 @@ Special global variables
 #kecho
 #%kecho
   [1mkecho[22m=off 
-          (flag) Echoing of keyboard input, preceded by [1m%{kprefix}[22;0m.  See also: 
-          [1m%{kecho_attr}[22;0m.  [1m/localecho[22;0m, [1m/addworld[22;0m -e.  
+          (flag) Enables echoing of keyboard input, preceded by [1m%{kprefix}[22;0m.  
+          See also: [1m%{kecho_attr}[22;0m.  [1m%{secho}[22;0m.  [1m/localecho[22;0m, [1m/addworld[22;0m -e.  
 
 #kecho_attr
 #%kecho_attr
@@ -8931,13 +9124,13 @@ Special global variables
           timing of keepalive messages is a system parameter that can not be 
           changed from tf.  
 
-#keypad
 #%keypad
   [1mkeypad[22m=on 
           (flag) Enable application keypad mode, if supported by the terminal. 
           Application keypad mode makes the numeric keypad generate characters 
           different than the usual digit characters, so they may be 
           distinguished from the digit keys across the top of the keyboard.  
+          See: [1mkeybindings[22;0m.  
 
 #kprefix
 #%kprefix
@@ -8964,15 +9157,14 @@ Special global variables
 
 #maildelay
 #%maildelay
-  [1mmaildelay[22m=60.0 
-          (time) Delay in seconds between mail checks.  Setting this to 0 
-          disables mail checking.  The file to be checked is named by the 
-          [1m%{MAIL}[22;0m [1mvariable[22;0m.  
+  [1mmaildelay[22m=0:01:00.0 (60 seconds) 
+          (dtime) Delay between mail checks.  Setting this to 0 disables mail 
+          checking.  The file to be checked is named by the [1m%{MAIL}[22;0m [1mvariable[22;0m.  
 
 #matching
 #%matching
   [1mmatching[22m=glob 
-          Determines the default [1mpattern matching[22;0m style.  
+          (enumerated) Determines the default [1mpattern matching[22;0m style.  
           "[1msimple[22;0m": 
                   straightforward string comparison.  
           "[1mglob[22;0m": 
@@ -9024,6 +9216,7 @@ Special global variables
 #mecho
 #%mecho
   [1mmecho[22m=off 
+          (enumerated) 
           "off" (0): 
                   do not echo [1mmacro[22;0m [1mexpansions[22;0m.  
           "on" (1): 
@@ -9043,9 +9236,9 @@ Special global variables
 #meta
 #%meta_esc
   [1mmeta_esc[22m=nonprint 
-          (flag) If [1m%istrip[22;0m is off, typed characters with their meta (high) 
-          bit set may have the meta bit stripped and be prefixed with an ESC 
-          character.  This allows META-x and ESC x to invoke the same 
+          (enumerated) If [1m%istrip[22;0m is off, typed characters with their meta 
+          (high) bit set may have the meta bit stripped and be prefixed with 
+          an ESC character.  This allows META-x and ESC x to invoke the same 
           keybinding.  Possible values of [1m%meta_esc[22;0m: 
           "off" (0): 
                   Never convert a meta bit to ESC.  
@@ -9099,7 +9292,7 @@ Special global variables
 #prompt_wait
 #%prompt_wait
   [1mprompt_wait[22m=0.25 
-          (time) The delay (in seconds) used to recognize unterminated 
+          (dtime) The delay (in seconds) used to recognize unterminated 
           [1mprompts[22;0m.  (See: [1mprompts[22;0m).  
 
 #proxy_host
@@ -9114,8 +9307,8 @@ Special global variables
 #ptime
 #%ptime
   [1mptime[22m=1.0 
-          (time) Default delay (in seconds) between [1m/quote[22;0m and [1m/repeat[22;0m [1mprocess[22;0m 
-          runs.  
+          (dtime) Default delay (in seconds) between [1m/quote[22;0m and [1m/repeat[22;0m 
+          [1mprocess[22;0m runs.  
 
 #qecho
 #%qecho
@@ -9156,10 +9349,10 @@ Special global variables
 #refreshtime
 #%refreshtime
   [1mrefreshtime[22m=100000 
-          The delay (in microseconds) for redisplaying your keyboard input 
-          after it is overwritten by incoming text in [1mnon-visual[22;0m mode.  If you 
-          have a slow connection between you and tf, you may wish to increase 
-          this delay.  The default is 100000 (1/10 second).  
+          (int) The delay (in microseconds) for redisplaying your keyboard 
+          input after it is overwritten by incoming text in [1mnon-visual[22;0m mode.  
+          If you have a slow connection between you and tf, you may wish to 
+          increase this delay.  The default is 100000 (1/10 second).  
 
 #scroll
 #%scroll
@@ -9171,8 +9364,8 @@ Special global variables
 #%secho
   [1msecho[22m=off 
           (flag) Echoing of text before sending it to the server (above the 
-          TELNET layer).  See also: [1m%{sprefix}[22;0m, [1m%{secho_attr}[22;0m, [1m%{telopt}[22;0m, 
-          [1mdebugging[22;0m.  
+          TELNET layer).  See also: [1m%{sprefix}[22;0m, [1m%{secho_attr}[22;0m, [1m%{kecho}[22;0m.  
+          [1m%{telopt}[22;0m, [1mdebugging[22;0m.  
 
 #secho_attr
 #%secho_attr
@@ -9214,30 +9407,43 @@ Special global variables
 
 #start_color
 #%start_color
+#start_color_*
+#%start_color_*
 #start_color_name
 #%start_color_name
 #start_color_<name>
 #%start_color_<name>
+#start_color_bgname
+#%start_color_bgname
+#start_color_bg<name>
+#%start_color_bg<name>
   [1mstart_color_<[4mname[24m>[22m 
-          The code that should be sent to your terminal to produce [1mcolor[22;0m 
-          <[4mname[24m>.  See: [1mcolor[22;0m.  
+  [1mstart_color_bg<[4mname[24m>[22m 
+          The control code that should be sent to your terminal to produce 
+          foreground or background [1mcolor[22;0m <[4mname[24m>.  See: [1mcolor[22;0m.  
 
 #status_attr
 #%status_attr
   [1mstatus_attr[22m 
-          The [1mattributes[22;0m used to display the [1mstatus line[22;0m in [1mvisual mode[22;0m.  See: 
-          [1mstatus line[22;0m.  
+          The [1mattributes[22;0m used to display the [1mstatus area[22;0m in [1mvisual mode[22;0m.  See: 
+          [1mstatus area[22;0m.  
 
-#
+#%status_fields
   [1mstatus_fields[22m 
-          The list of fields displayed on the [1mstatus line[22;0m in [1mvisual mode[22;0m.  
-          See: [1mstatus line[22;0m.  
+          [1mDeprecated.[22m The list of fields displayed on row 0 of the [1mstatus area[22;0m 
+          in [1mvisual mode[22;0m.  See: [1mstatus area[22;0m.  
+
+#status_height
+#%status_height
+  [1mstatus_height[22m=1 
+          The number of rows in the [1mstatus area[22;0m in [1mvisual mode[22;0m.  See: [1mstatus 
+          area[22;0m.  
 
 #status_pad
 #%status_pad
   [1mstatus_pad[22m=_ 
-          The padding character used in displaying the [1mstatus line[22;0m in [1mvisual 
-          mode[22;0m.  See: [1mstatus line[22;0m.  
+          The padding character used in displaying the [1mstatus area[22;0m in [1mvisual 
+          mode[22;0m.  See: [1mstatus area[22;0m.  
 
 #tab
 #%tab
@@ -9262,11 +9468,11 @@ Special global variables
 #dividing line
 #%textdiv
   [1mtextdiv[22m=on 
-          (flag) When you bring a socket into the foreground, TF can help you 
-          distinguish old text that has been displayed before from new text 
-          that is being displayed for the first time by printing a dividing 
-          line between the old and new text or by clearing the old text.  The 
-          setting of [1m%textdiv[22;0m controls this behavior: 
+          (enumerated) When you bring a socket into the foreground, TF can 
+          help you distinguish old text that has been displayed before from 
+          new text that is being displayed for the first time by printing a 
+          dividing line between the old and new text or by clearing the old 
+          text.  The setting of [1m%textdiv[22;0m controls this behavior: 
           "off" (0): 
                   Never print a divider or clear the screen; just draw old and 
                   new text normally.  
@@ -9305,7 +9511,7 @@ Special global variables
   [1mtime_format[22m=%H:%M 
           The format used to display times in [1m/recall[22;0m and [1m/time[22;0m.  The default 
           displays hours and minutes.  See [1mftime()[22;0m for a description of the 
-          format.  
+          format.  See also: [1m%clock_format[22;0m.  
 
 #visual
 #%visual
@@ -9369,8 +9575,9 @@ Special global variables
   [1mwrappunct[22m=10 
           When [1mwrapping[22;0m, allow wrapping at any punctuation if wrapping only at 
           spaces would have caused more than [1m%wrappunct[22;0m characters to wrap.  
-          This is particularly useful for long URLs.  Setting [1m%wrappunct[22;0m to 0 
-          disables wrapping at punctuation other than spaces.  
+          This can make long URLs look nicer, but harder to cut and paste.  
+          Setting [1m%wrappunct[22;0m to 0 disables wrapping at punctuation other than 
+          spaces.  
 
 #wrapsize
 #%wrapsize
@@ -9407,13 +9614,13 @@ Special global variables
 
 &status
 &status fields
-&status_fields
 &%status_fields
 &visual bar
 &visual line
 &status bar
 &status_line
 &status line
+&status area
 
 status line
 
@@ -9434,61 +9641,84 @@ status line
       insert (that is, [1m%insert[22;0m is off).  
     * The current time is displayed at the right end of the status line.  
 
-Configuring the status line
+Configuring the status area
 
-  The status line is defined as a list of fields.  A status field is defined 
-  as follows: 
+  The status area may contain 1 or more rows; the number is determined by 
+  [1m%status_height[22;0m.  The rows are numbered from the top starting at 0.  Each row 
+  is defined as a list of fields.  A status field is defined as follows: 
 
     * an optional field name 
     * an optional ":" and number indicating the field width 
     * an optional ":" and [1mattribute[22;0m 
 
-  The current list of status fields is stored in the [1mstatus_fields[22;0m [1mvariable[22;0m, 
-  and the default list is stored in [1mstatus_field_defaults[22;0m.  If you have 
-  changed [1mstatus_fields[22;0m, you can restore it to its default value by typing 
-  "[1m/eval[22;0m [1m/set[22;0m [1mstatus_fields[22;0m=%[1mstatus_field_defaults[22;0m".  Except for restoring the 
-  default value, you should usually not set [1mstatus_fields[22;0m directly, but use 
-  the following commands instead.  
-#status_add
+  The current list of status fields for row <[4mN[24m> can be fetched with 
+  [1mstatus_fields(<[4mN[24m>)[22;0m.  
+#%status_field_defaults
 #status_rm
 #status_edit
+#status_defaults
+#status_save
+#status_restore
+#status_add
 #/clock
-#/status_add
 #/status_rm
 #/status_edit
+#/status_defaults
+#/status_save
+#/status_restore
+#/status_add
+  The following commands modify the fields of the status area: 
   /clock off 
           Remove the clock from the status bar (equivalent to "/status_rm 
           @clock").  
 
   /clock on 
-          Add a clock to the end of the status bar if there is not already a 
-          clock on the status bar.  The width of the @clock field will be set 
+          Add a clock to the end of status row 0 if there is not already a 
+          clock on status row 0.  The width of the @clock field will be set 
           exactly wide enough to hold a time formatted according to 
           [1m%clock_format[22;0m.  
 
   /clock [<[4mformat[24m>] 
-          Add a clock to the end of the status bar if there is not already a 
-          clock on the status bar; in either case, use <[4mformat[24m> to control the 
+          Add a clock to the end of status row 0 if there is not already a 
+          clock on status row 0; in either case, use <[4mformat[24m> to control the 
           format of the clock (see [1mftime()[22;0m for the meaning of <[4mformat[24m>).  If 
           <[4mformat[24m> is omitted, it defaults to "%H:%M".  The width of the 
           @clock field will be set exactly wide enough to hold a time 
           formatted according to <[4mformat[24m>.  
 
-          Example: display a clock in 12-hour format:
-          /clock %I:%M 
+          Example: display a clock in 12-hour format: 
+                  /clock %I:%M 
 
-  /status_rm <[4mname[24m> 
-          Remove status field <[4mname[24m> from the status bar.  If there are 
-          unnamed pad fields on both sides of the named field, the one with 
-          the smaller width is also removed; if the named field is at the 
-          beginning or end, the neighboring pad field (if any) is removed.  
+  /status_defaults 
+          Restore list of status fields for all rows and their formats 
+          (%status_int_* and %status_var_*) to their default values.  
+          (Previous versions of tf had a [1m%status_field_defaults[22;0m variable; this 
+          is now deprecated.) 
 
-          Example: Remove the @mail field from the status bar:
-          /status_rm @mail 
+  /status_save <[4mname[24m> 
+          Save the current list of fields in row 0 into memory slot with label 
+          <[4mname[24m>.  <[4mName[24m> must be a legal variable name.  (Saved fields will 
+          be forgotten when tf exits.) 
 
-  /status_add [<[4moptions[24m>] <[4mname[24m>[:<[4mwidth[24m>[:<[4mattributes[24m>]] 
+  /status_restore <[4mname[24m> 
+          Restore the list of fields in row 0 that was previously saved with 
+          "/status_save <[4mname[24m>".  
+
+  /status_rm [-r<[4mN[24m>] <[4mname[24m> 
+          Remove status field <[4mname[24m> from status row <[4mN[24m>.  If -r is not 
+          specified, all rows are searched.  Only the first matching field is 
+          removed.  If there are unnamed pad fields on both sides of the named 
+          field, the one with the smaller width is also removed; if the named 
+          field is at the beginning or end of a row, the neighboring pad field 
+          (if any) is removed.  
+
+          Example: Remove the @mail field from the status bar: 
+                  /status_rm @mail 
+
+  /status_add [<[4moptions[24m>] <[4mname[24m>[:<[4mwidth[24m>[:<[4mattributes[24m>]] ...  
           Add status field <[4mname[24m> to the status bar with optional <[4mwidth[24m> and 
           <[4mattributes[24m>.  Options: 
+          -r<[4mN[24m>   add to row <[4mN[24m> (default 0) 
           -A      add after all other fields (i.e., at end) 
           -A<[4mfield[24m> 
                   add after existing field <[4mfield[24m> 
@@ -9499,28 +9729,45 @@ Configuring the status line
                   neighbor selected by -A or -B (default 1) 
           -x      don't add the field if one with the same name is already 
                   present 
+          -c      clear all existing fields before adding new fields 
           If neither -A nor -B is given, -A is assumed.  
 
-          Example: Add a new field called "hp" after the world name:
-          /status_add -A@world hp:4 
+          Example: Add a new field after the world name to display the 
+          contents of the variable "hp": 
+                  /status_add -A@world hp:4 
 
-  /status_edit <[4mname[24m>[:<[4mwidth[24m>[:<[4mattributes[24m>]] 
-          If field <[4mname[24m> currently exists in the status bar, replace it with 
-          <[4mname[24m>[:<[4mwidth[24m>[:<[4mattributes[24m>]].  Neighboring padding is unchanged.  
+          Multiple fields may be specified, but padding is not automatically 
+          added between them; you must specify padding explicly.  For example, 
+                  /status_add -Aclock foo:4 :1 bar:4 :2 baz:4 
+          is equivalent to 
+                  /status_add -Aclock foo:4 
+                          /status_add -Afoo bar:4 
+                                  /status_add -Abar -s2 baz:4 
 
-          Example: Change the @log field to say "L" instead of "(Log)", and 
-          change the field's width to match:
-          /set status_int_log=nlog() ? "L" : ""
-          /status_edit @log:1 
+                  /status_edit [-r<[4mN[24m>] <[4mname[24m>[:<[4mwidth[24m>[:<[4mattributes[24m>]] 
+                          If field <[4mname[24m> currently exists in any status row, 
+                          replace it with <[4mname[24m>[:<[4mwidth[24m>[:<[4mattributes[24m>]].  
+                          Neighboring padding is unchanged.  If -r is given, 
+                          only row <[4mN[24m> is searched.  Only the first matching 
+                          field is edited.  
+
+                          Example: Change the @log field to say "L" instead of 
+                          "(Log)", and change the field's width to match: 
+                                  /set status_int_log=nlog() ? "L" : "" 
+                                          /status_edit @log:1 
 
 #
 
-  The default list of status fields is: 
+                          For backward compatiblity, you can get and set the 
+                          status fields for row 0 via the %status_fields 
+                          [1mvariable[22;0m, but doing so is deprecated.  
 
-    @more:8:Br :1 @world :1 @read:6 :1 @active:11 :1 @log:5 :1 @mail:6 :1 insert:6 :1 kbnum:4 :1 @clock:5
-    
+                          The default list of status fields is: 
 
-  There are several types of fields: 
+                              @more:8:Br :1 @world :1 @read:6 :1 @active:11 :1 @log:5 :1 @mail:6 :1 insert:6 :1 kbnum:4 :1 @clock:5
+                            
+
+                          There are several types of fields: 
 
     * Unnamed fields create padding between the fields on either side of 
       it.  Each of the ":1" fields in the default [1mstatus_fields[22;0m puts a space 
@@ -9543,29 +9790,28 @@ Configuring the status line
   statuses.  The internal statuses available are: 
   @more   Updated when there is a change in the number of lines below the 
           bottom of the window.  
-  @world  Updated when when the [1mforeground[22;0m [1mworld[22;0m changes.  During the format 
-          expression, the [1mcurrent socket[22;0m is the new [1msocket[22;0m.  
+  @world  Updated when when the [1mforeground[22;0m [1mworld[22;0m changes.  During the 
+          evaluation of the format expression, the [1mcurrent socket[22;0m is the new 
+          [1msocket[22;0m.  
   @read   Updated when entering or exiting a [1mread()[22;0m function call.  
   @active 
-          Updated when the number of active [1mworlds[22;0m changes.  During the format 
-          expression, the [1mcurrent socket[22;0m is the [1msocket[22;0m that became active.  
+          Updated when the number of active [1mworlds[22;0m changes.  During the 
+          evaluation of the format expression, the [1mcurrent socket[22;0m is the 
+          [1msocket[22;0m that became active.  
   @log    Updated when the number of open [1mlog[22;0m files changes.  
   @mail   Updated when mail arrives (See "[1mmail[22;0m").  
-  @clock  Updated every minute, at 0 seconds past the minute.  
-
-  Also, the entire status line will be updated whenever the screen is redrawn, 
-  any of the /status_{add,rm,edit} commands are called, or the [1mstatus_fields[22;0m 
-  [1mvariable[22;0m is modified.  
+  @clock  Updated every minute, on the minute.  
 
   A field's width determines how many columns it will take up on the screen.  
   If the width of a string literal field field is omitted, it defaults to the 
-  length of the string literal.  One other field width may be omitted, which 
-  means that field will use whatever columns are unused by the other fields.  
-  Normally, fields are left-justified within the width, but a negative field 
-  width will right-justify the field within the absolute value of the width.  
-  If the formatted text is wider than the field width, it will be truncated to 
-  fit within the specified width.  Fields may also be truncated if they would 
-  not fit on the screen.  
+  length of the string literal.  One other field width may be omitted or set 
+  to 0, which means that field will use whatever columns are unused by the 
+  other fields.  Normally, fields are left-justified within the width, but a 
+  negative field width will right-justify the field within the absolute value 
+  of the width.  A width of "-0" can be used to right-justify the 
+  variable-width field.  If the formatted text is wider than the field width, 
+  it will be truncated to fit within the specified width.  Fields may also be 
+  truncated if they would not fit on the screen.  
 
   The [1mattributes[22;0m explicily given in the field definiton are combined with 
   those in the corresponding %status_attr_int_<[4mfieldname[24m> (for internal state 
@@ -9807,19 +10053,23 @@ Variable and Argument substitution.
 
   L1, L2, etc.  
           selects the last positional parameter, second-to-last, etc.  "L" is 
-          the same as "L1".  
+          the same as "L1".  (As of 5.0 beta 7, these are case sensitive.) 
 
   -L1, -L2, etc.  
           selects all positional parameters except the last, all except the 
-          last two, etc.  "-L" is the same as "-L1".  
+          last two, etc.  "-L" is the same as "-L1".  (As of 5.0 beta 7, these 
+          are case sensitive.) 
 
   P[4mn[24m      selects the text matching the <[4mn[24m>th parenthesized subexpression from 
-          the last [1mregular expression[22;0m match.  See [1m%P[4mn[24m[22;0m.  
+          the last [1mregular expression[22;0m match.  See [1m%P[4mn[24m[22;0m.  (As of 5.0 beta 7, 
+          these are case sensitive.) 
 
-  R       selects a positional parameter at random.  (see also: [1mrand()[22;0m) 
+  R       selects a positional parameter at random.  (see also: [1mrand()[22;0m) (As of 
+          5.0 beta 7, this is case sensitive.) 
 
-  [1mVariable[22;0m names are case sensitive; "L", "R", and "P" selectors are not.  No 
-  substitutions are performed on <[4mselector[24m>.  
+  [1mVariable[22;0m name and selectors are case sensitive (prior to 5.0 beta 7, "L[4mn[24m", 
+  "P[4mn[24m" and "R" selectors were not).  No substitutions are performed on 
+  <[4mselector[24m>.  
 
   If the substitution determined by the <[4mselector[24m> would be empty, and a 
   <[4mdefault[24m> value is given, the default will be substituted instead.  Thus 

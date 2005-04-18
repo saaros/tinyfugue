@@ -11,6 +11,119 @@ If you have custom code to do any of the following in older versions,
   switch, or resuming from sh or suspend); scrollback; status line
   customizations; ...
 
+5.0 beta 7 (2005-04-17)
+----------
+Colors:
+    Added 16-color names: "gray", "brightred"..."brightwhite".
+    Added 256-color names: "rgb000"..."rgb555" and "gray0"..."gray23".
+    Added predefined codes for xterm 256-color extension.
+    Functions decode_ansi() and encode_ansi() work with xterm 256-color
+	extension codes.
+    Added "/feature 256colors".
+    Added "/load testcolor.tf" to test color functionality and appearance.
+Added "E" and "W" attributes, with corresponding defintions in %error_attr
+    and %warning_attr.
+Added encode_ansi() to generate a string with attribute control codes.
+Added test() for backward compatiblity with version 4.0.
+Added strcmpattr(), like strcmp() but also compares display attributes.
+In commands that match macros (/list, /purge, /save), a color attribute will
+    match only the same color attribute, not just any color attribute.
+/list, /listvar, /listworlds, and /listsockets can sort their results.
+Added -n option to /listsockets to print host and port in numeric form.
+%Pn, %L, and %R subs are now case sensitive, to reduce collisions with regular
+    variables.
+/prompt preserves embedded display attributes in its argument.
+CONNECT hook includes SSL cipher name.
+Added -f (foreground) and -b (background) options to /world; documented -x
+    (SSL) option.
+Uses system's copy of libpcre if possible.
+Redefinition of macros or keybindings does not invoke the REDEF hook if the
+    new and old defintions are identical (so file reloading is less noisy).
+    If you used to gag REDEF to reduce noise, you may want to ungag it now
+    that it is less noisy and more informative.
+Status bar changes:
+    Status bar can be multiple rows, determined by %status_height.
+    /status_{add,edit,rm} commands take an -r option to specify which row.
+    Added status_fields(<row>) to get fields of <row>.
+    Added /status_defaults to restore default status bar fields; use of
+	%status_field_defaults is deprecated.
+    Added "/status_save <name>" and "/status_restore <name>" to save and
+	restore a named set of status fields.
+    The variable width field may be right-justified by giving it width "-0".
+    Fixed: /status_edit did not work on a variable-width field.
+    Fixed: "/status_add -x name:width:attr" failed to detect existing field
+	with name if its width or attr were different.
+    Fixed: status_attr_{int,var}_* variables sometimes had no effect. (50b5)
+    Fixed: any attempt to set %status_pad in .tfrc failed if %visual had not
+	yet been explicitly set (also, in a RESIZE hook caused by a terminal
+	resize while in /suspend or /sh, but that's much less common). (50a13)
+Other screen display changes:
+    Changing %wrappunct immediately rewraps everything on screen.
+    Eliminated extra screen redraw when the terminal is resized.
+    Fixed: under some conditions, rewrapping screen could cause entire
+	scrollback buffer to be redrawn, instead of just a screenful.  (If
+	%more was on, this acted like a jump to the beginning of the buffer.)
+    Fixed: did not send new terminal size to server after resizing the terminal
+	in nonvisual mode.
+    Workaround for a window resize bug in Konsole.
+Keyboard changes:
+    Workaround for incomplete linux console terminfo entry which was preventing
+	%keypad from working.
+    Added friendlier message for using undefined named keys.
+    Improved documentation for numeric keypad, including instructions for
+	using it with some specific terminal emulators. (See "/help keypad".)
+    Added missing names for numeric keypad keys:  key_nkpTab key_nkpEnt
+	key_nkp* key_nkp+ key_nkp, key_nkp- key_nkp. key_nkp/ key_nkp=
+    Added default keybindings for shift-tab, sun function keys, and
+	vt220 function keys F13 - F20.
+    Fixed incorrect keybindings for bottom two rows of numeric keypad in some
+	environments.
+Installation changes:
+    ./configure now honors options --exec-prefix, --bindir, --datadir,
+	--program-prefix, --program-suffix, and --program-transform-name.
+    ./configure --enable-version does not automatically --enable-symlink.
+    Installation directory for tf-lib now defaults to PREFIX/share instead of
+	PREFIX/lib (configurable with --datadir).
+    Fixed ./configure --enable-mailcheck=DIR.
+ftime() now returns an empty string instead of an incorrect string if the time
+    is out of range (in addition to printing an error message).
+Time period values of 60s or larger are printed in h:mm[:ss.u] format.  This
+    applies to %alert_time, %maildelay, %prompt_wait, %ptime, idle(), sidle(),
+    and values derived from them (but not time() and mktime(), which are
+    absolute time values).
+The CONFAIL and CONNETFAIL hooks did not previously behave as documented.  The
+    CONNETFAIL hook has been removed; the new ICONFAIL hook is called for a
+    connection failure if there are more possible addresses to try, and the
+    CONFAIL hook is called for a connection failure on the last address.  (If
+    you had worked around the buggy behavior by duplicating CONFAIL and
+    CONNETFAIL hooks, you will probably want to go back to using the CONFAIL
+    hook only.)
+Improved error checking for /repeat arguments.
+Fixed inappropriate expansion of command lines (outside of macros) starting
+    with /let, /set, /setenv, /test, /result, /return.
+Fixed spurious error for "/break" without arguments at end of macro body.
+Fixed: a macro with no other statements outside of an "/if (expr)" statement
+    was incorrectly treated as an error, causing any macro that called it
+    to abort.
+Fixed: "/set var " (with trailing space) was setting var to blank instead
+    of printing its value.
+/listworlds and /listsockets ignore trailing space.
+Fixed: /runtime incorrectly evaluated its return value.
+Fixed: new -= operator added instead of subtracted.
+Fixed crash if left side of new += -= *= /= operators was not assignable.
+Fixed crash in strip_attr(). (50b5)
+Fixed crash in /list -P.
+Fixed class of crashes involving certain generated empty strings in macros:
+    - attribute strings in echo(), substitute(), and decode_attr()
+    - macro names
+    - expression operands
+    - etc.
+Fixed bug in binding local address on some systems.
+Will not crash if a bug in tf or library code supplies an invalid string in
+    an error message.
+Strengthened check for TERMCAP corruption by broken *csh.
+Fixed moresize() and morepaused() with virtscreen=off (undocumented).
+
 5.0 beta 6 (2004-08-04)
 ----------
 Fixed: lines with "A" attribute were not ignored as they should have been by

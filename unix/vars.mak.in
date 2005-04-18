@@ -1,7 +1,7 @@
-# $Id: vars.mak.in,v 35004.7 2004/02/17 06:44:47 hawkeye Exp $
+# $Id: vars.mak.in,v 35004.12 2005/04/18 03:15:56 kkeys Exp $
 ########################################################################
 #  TinyFugue - programmable mud client
-#  Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+#  Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
 #
 #  TinyFugue (aka "tf") is protected under the terms of the GNU
 #  General Public License.  See the file "COPYING" for details.
@@ -13,6 +13,9 @@
 # @configure_input@
 
 prefix     = @prefix@
+exec_prefix= @exec_prefix@
+bindir     = @bindir@
+datadir    = @datadir@
 mandir     = @mandir@
 
 TFVERSION  = @TFVERSION@
@@ -20,18 +23,20 @@ X          = @EXEEXT@
 O          = @OBJEXT@
 @SET_MAKE@
 PREFIX     = ${prefix}
-TF         = ${prefix}/bin/@EXENAME@${X}
-LIBDIR     = ${prefix}/lib/@LIBNAME@
+TF         = ${bindir}/@EXENAME@${X}
+# TF_LIBDIR is intentionally spelled differently than TFLIBDIR, which might
+# already exist in the environment.
+TF_LIBDIR  = ${datadir}/@LIBNAME@
 SYMLINK    = @SYMLINK@
-MANPAGE    = @MANPAGE@
-MANTYPE    = @MANTYPE@
+# MANPAGE    = ${mandir}/man1/tf.1
+# MANTYPE    = @MANTYPE@
 MODE       = @MODE@
 CC         = @CC@
-CFLAGS     = @CFLAGS@
-CPPFLAGS   = @CPPFLAGS@
+CFLAGS     = @CFLAGS@ @CPPFLAGS@
+LDFLAGS    = @LDFLAGS@
 STD_C      = @STD_C@
 STRIP      = @STRIP@
 RANLIB     = @RANLIB@
 LIBS       = @LIBS@
 OTHER_OBJS = @OTHER_OBJS@
-
+PCRE       = @PCRE@

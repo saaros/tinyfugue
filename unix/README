@@ -1,25 +1,27 @@
                       TinyFugue for UNIX-like systems
+		            (including MacOS X)
 
 
 Installing TinyFugue
+--------------------
 
-  TinyFugue should work on any Unix-like system that has an ANSI compiler
-  and BSD-style select().  This includes almost everything except some old
-  SVr3-like systems which either do not have select(), or have a select()
-  that works only on STREAMS devices but not terminals.
+TinyFugue should work on any Unix-like system that has an ANSI compiler
+and BSD-style select().  This includes almost everything except some old
+SVr3-like systems which either do not have select(), or have a select()
+that works only on STREAMS devices but not terminals.
 
-  Installing TinyFugue is quite easy on most Unix-like systems.
-  In the top directory, execute these commands:
-    ./configure
-    make install
-  The configure script will attempt to figure out everything it needs to
-  know about your system and install all files in their proper location.
-  If you have any problems, or want to change a default installation
-  option, be sure to read the rest of this file.
+Installing TinyFugue is quite easy on most Unix-like systems.
+In the top directory, execute these commands:
+  ./configure
+  make install
+The configure script will attempt to figure out everything it needs to
+know about your system and install all files in their proper location.
+If you have any problems, or want to change a default installation
+option, be sure to read the rest of this file.
 
 
-  In addition to the usual GNU configure options, TinyFugue's configure script
-  has these options:
+In addition to the usual GNU configure options, TinyFugue's configure script
+has these options:
 
   --enable-version        insert version number into name of tf executable
                           and library directory (implies --enable-symlink)
@@ -33,7 +35,6 @@ Installing TinyFugue
   --disable-mailcheck     disable mail checking
   --enable-mailcheck=DIR  enable checking for mail in directory DIR
                           (needed only if configure guesses incorrectly)
-  --enable-manpage        enable installation of man page (woefully obsolete)
   --enable-strip          strip debugging symbols from executable
   --enable-core           enable core files, enable debugging symbols in the
                           executable (-g), and disable optimization (-O)
@@ -45,6 +46,7 @@ Installing TinyFugue
   --with-inclibdirs=DIRS  same as --with-incdirs=DIRS --with-libdirs=DIRS
   --with-inclibpfx=DIRS   same, but appends '/include' and '/lib'
 
+For a complete list of options, run "./configure --help".
 
 The following environment variables are meaningful to configure.  Their
 default values are listed in brackets after the description.  They can
@@ -70,28 +72,31 @@ File Locations
 If you do not define the file prefix with ./configure --prefix=PREFIX,
 configure will choose a prefix:
 
-   "/usr/local" if you can write to /usr/local/bin and /usr/local/lib; or,
-   $HOME, otherwise.
+   "/usr/local" if you can write to /usr/local/bin and /usr/local/share;
+   otherwise, $HOME.
 
-The man page is not installed by default; use --enable-manpage to install it.
-But really, don't bother.  It's very out of date.  Instead, use "/help"
-within tf.
+The executable is installed in ${bindir}; the macro libraries are installed
+in ${datadir}.  These can be modified with the standard configure options
+--bindir, --datadir, and --prefix.
 
 If --enable-version is given, the tf executable and library directory will
 have a version number embedded in their names (e.g., PREFIX/bin/tf-50a1 and
 PREFIX/lib/tf-50a1-lib).  This is useful if you want to keep old versions
-around.  This option will automatically --enable-symlink.
+around.  To create a symlink from "tf" to the actual executable, use
+--enable-symlink (this is not implied by --enable-version, as in earlier
+releases).
+
+There is no man page for tf.  For basic usage options, run "tf -?".  For
+more information, use "/help" within tf.
 
 If you move or rename any files after installing (this includes copying
 TF to another machine where the file paths are different), you must let
-TF know.  One way is to reinstall, starting from ./configure.  The other is
-to set environment variable TFLIBDIR to the new path before running tf.
+TF know.  To do this without reinstalling, you can set the environment variable
+TFLIBDIR to the new path before running tf, or run tf with the -L option.
 This can be done with a shell script like this:
 
     #! /bin/sh
-    TFLIBDIR=/new/location/lib/tf-lib
-    export TFLIBDIR
-    exec /new/location/bin/tf "$@"
+    exec /new/location/bin/tf -L"/new/location/lib/tf-lib" "$@"
 
 The variables TFHELP and TFLIBRARY can also be set in the environment,
 but this should not normally be necessary, since their default values are
@@ -139,6 +144,14 @@ know to configure TinyFugue for your unix-like system.  But if it fails
 because your system is brain damaged, you may need to change some environment
 variables or disable some features.
 
+
+Problem: On MacOS X, configure fails with the message "configure: error:
+  C compiler cannot create executables".  Also, config.log contains the
+  message "ld: can't locate file for: -lcrt1.o".
+Solution:  The file /usr/lib/crt1.o is missing from your system.  Restore it
+  by reinstalling the DevTools ("Xcode Tools 1.1").  Copying the file
+  from another OSX box also appears to work, but do this at your own risk.
+  See also http://thread.gmane.org/gmane.os.apple.fink.beginners/9914
 
 Problem: On AIX 4.1, a bug in gcc 2.8.0 causes /addworld and some operators to
   fail with an error like "% internal error: reduce: bad op 037777777703"

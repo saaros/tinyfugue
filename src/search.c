@@ -1,18 +1,18 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: search.c,v 35004.28 2004/02/17 06:44:41 hawkeye Exp $";
+static const char RCSid[] = "$Id: search.c,v 35004.31 2005/04/18 03:15:36 kkeys Exp $";
 
 
 /**********************************************
  * trie, hash table, and linked list routines *
  **********************************************/
 
-#include "config.h"
+#include "tfconfig.h"
 #include "port.h"
 #include "malloc.h"
 #include "search.h"
@@ -207,6 +207,18 @@ int strstructcmp(const void *key, const void *datum)
 int cstrstructcmp(const void *key, const void *datum)
 {
     return cstrcmp((char *)key, *(char **)datum);
+}
+
+/* strpppcmp - for qsort array of ptrs to structs whose 1st member is char* */
+int strpppcmp(const void *a, const void *b)
+{
+    return strcmp(**(char ***)a, **(char ***)b);
+}
+
+/* cstrpppcmp - for qsort array of ptrs to structs whose 1st member is char* */
+int cstrpppcmp(const void *a, const void *b)
+{
+    return cstrcmp(**(char ***)a, **(char ***)b);
 }
 
 

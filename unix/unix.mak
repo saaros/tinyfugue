@@ -1,7 +1,7 @@
-# $Id: unix.mak,v 35004.44 2004/02/17 06:44:47 hawkeye Exp $
+# $Id: unix.mak,v 35004.49 2005/04/18 03:15:56 kkeys Exp $
 ########################################################################
 #  TinyFugue - programmable mud client
-#  Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+#  Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
 #
 #  TinyFugue (aka "tf") is protected under the terms of the GNU
 #  General Public License.  See the file "COPYING" for details.
@@ -21,22 +21,35 @@ BUILDERS   = Makefile
 default: all
 
 install:  _all PREFIXDIRS $(TF) LIBRARY $(MANPAGE) $(SYMLINK)
+	@echo
 	@echo '#####################################################'
 	@echo '## TinyFugue installation successful.'
-	@echo "## You can safely delete everything in `cd ..; pwd`".
+	@echo '##    tf binary: $(TF)'
+	@echo '##    library:   $(TF_LIBDIR)'
+#	@echo '##    manpage:   $(MANPAGE)'
 	@DIR=`echo $(TF) | sed 's;/[^/]*$$;;'`; \
 	echo ":$(PATH):" | egrep ":$${DIR}:" >/dev/null 2>&1 || { \
-	    echo ; \
-	    echo "Note:  $$DIR is not in your PATH."; \
-	    echo "To run tf, you will need to type its path name"; \
-	    echo "(e.g., $(TF)),"; \
-	    echo "or add $$DIR to your PATH."; \
+	    echo "##"; \
+	    echo "## Note:  $$DIR is not in your PATH."; \
+	    echo "## To run tf, you will need to type its full path name"; \
+	    echo "## or add $$DIR to your PATH."; \
 	}
+	@if test $(TF_LIBDIR) != `cat TF_LIBDIR.build`; then \
+	    echo "##"; \
+	    echo "## Note:  installed and compiled-in libraries disagree."; \
+	    echo "## To run tf, you will need TFLIBDIR=\"$(TF_LIBDIR)\""; \
+	    echo "## in your environment or the -L\"$(TF_LIBDIR)\" option."; \
+	fi
 
 all files:  _all
+	@echo '$(TF_LIBDIR)' > TF_LIBDIR.build
+	@echo
 	@echo '#####################################################'
 	@echo '## TinyFugue build successful.'
-	@echo '## Use "$(MAKE) install" to install the files in $(prefix).'
+	@echo '## Use "$(MAKE) install" to install:'
+	@echo '##    tf binary: $(TF)'
+	@echo '##    library:   $(TF_LIBDIR)'
+#	@echo '##    manpage:   $(MANPAGE)'
 
 _all:  tf$(X) ../tf-lib/tf-help.idx
 
@@ -66,16 +79,16 @@ pcre:
 	    $(MAKE) CC='$(CC)' CFLAGS='-O' O=o libpcre.a && \
 	    $(RANLIB) libpcre.a
 
-TF tf$(X):     $(OBJS) $(BUILDERS) pcre
-	$(CC) $(CFLAGS) -o tf$(X) $(OBJS) $(LIBS) -Lpcre-2.08 -lpcre
+TF tf$(X):     $(OBJS) $(BUILDERS) $(PCRE)
+	$(CC) $(LDFLAGS) -o tf$(X) $(OBJS) $(LIBS) -lpcre
 #	@# Some stupid linkers return ok status even if they fail.
 	@test -f "tf$(X)"
 #	@# ULTRIX's sh errors here if strip isn't found, despite "true".
 	-test -z "$(STRIP)" || $(STRIP) tf$(X) || true
 
 PREFIXDIRS:
-	test -d "$(prefix)/bin" || mkdir $(prefix)/bin
-	test -d "$(prefix)/lib" || mkdir $(prefix)/lib
+	test -d "$(bindir)" || mkdir $(bindir)
+	test -d "$(datadir)" || mkdir $(datadir)
 
 install_TF $(TF): tf$(X) $(BUILDERS)
 	-@rm -f $(TF)
@@ -85,35 +98,35 @@ install_TF $(TF): tf$(X) $(BUILDERS)
 SYMLINK $(SYMLINK): $(TF)
 	test -z "$(SYMLINK)" || { rm -f $(SYMLINK) && ln -s $(TF) $(SYMLINK); }
 
-LIBRARY $(LIBDIR): ../tf-lib/tf-help ../tf-lib/tf-help.idx
+LIBRARY $(TF_LIBDIR): ../tf-lib/tf-help ../tf-lib/tf-help.idx
 	@echo '## Creating library directory...'
 #	@# Overly simplified shell commands, to avoid problems on ultrix
-	-@test -n "$(LIBDIR)" || echo "LIBDIR is undefined."
-	test -n "$(LIBDIR)"
-	test -d "$(LIBDIR)" || mkdir $(LIBDIR)
-	-@test -d "$(LIBDIR)" || echo "Can't make $(LIBDIR) directory.  See if"
-	-@test -d "$(LIBDIR)" || echo "there is already a file with that name."
-	test -d "$(LIBDIR)"
+	-@test -n "$(TF_LIBDIR)" || echo "TF_LIBDIR is undefined."
+	test -n "$(TF_LIBDIR)"
+	test -d "$(TF_LIBDIR)" || mkdir $(TF_LIBDIR)
+	-@test -d "$(TF_LIBDIR)" || echo "Can't make $(TF_LIBDIR) directory.  See if"
+	-@test -d "$(TF_LIBDIR)" || echo "there is already a file with that name."
+	test -d "$(TF_LIBDIR)"
 #
-#	@#rm -f $(LIBDIR)/*;  # wrong: this would remove local.tf, etc.
+#	@#rm -f $(TF_LIBDIR)/*;  # wrong: this would remove local.tf, etc.
 	@echo '## Copying library files...'
 	cd ../tf-lib; \
 	for f in *; do test -f $$f && files="$$files $$f"; done; \
-	( cd $(LIBDIR); rm -f $$files tf.help tf.help.index; ); \
-	cp $$files $(LIBDIR); \
-	cd $(LIBDIR); \
+	( cd $(TF_LIBDIR); rm -f $$files tf.help tf.help.index; ); \
+	cp $$files $(TF_LIBDIR); \
+	cd $(TF_LIBDIR); \
 	chmod $(MODE) $$files; chmod ugo-wx $$files
-	-rm -f $(LIBDIR)/CHANGES 
-	cp ../CHANGES $(LIBDIR)
-	chmod $(MODE) $(LIBDIR)/CHANGES; chmod ugo-wx $(LIBDIR)/CHANGES
-	chmod $(MODE) $(LIBDIR)
-	-@cd $(LIBDIR); old=`ls replace.tf 2>/dev/null`; \
+	-rm -f $(TF_LIBDIR)/CHANGES 
+	cp ../CHANGES $(TF_LIBDIR)
+	chmod $(MODE) $(TF_LIBDIR)/CHANGES; chmod ugo-wx $(TF_LIBDIR)/CHANGES
+	chmod $(MODE) $(TF_LIBDIR)
+	-@cd $(TF_LIBDIR); old=`ls replace.tf 2>/dev/null`; \
 	if [ -n "$$old" ]; then \
-	    echo "## WARNING: Obsolete files found in $(LIBDIR): $$old"; \
+	    echo "## WARNING: Obsolete files found in $(TF_LIBDIR): $$old"; \
 	fi
 	@echo '## Creating links so old library names still work...'
 #	@# note: ln -sf isn't portable.
-	@cd $(LIBDIR); \
+	@cd $(TF_LIBDIR); \
 	rm -f bind-bash.tf;    ln -s  kb-bash.tf   bind-bash.tf;    \
 	rm -f bind-emacs.tf;   ln -s  kb-emacs.tf  bind-emacs.tf;   \
 	rm -f completion.tf;   ln -s  complete.tf  completion.tf;   \
@@ -150,11 +163,11 @@ Makefile: ../unix/vars.mak ../unix/unix.mak ../configure ../configure.in
 	@echo
 
 uninstall:
-	@echo "Remove $(LIBDIR) $(TF) $(MANPAGE)"
+	@echo "Remove $(TF_LIBDIR) $(TF) $(MANPAGE)"
 	@echo "Is this okay? (y/n)"
 	@read response; test "$$response" = "y"
 	rm -f $(TF) $(MANPAGE)
-	rm -rf $(LIBDIR)
+	rm -rf $(TF_LIBDIR)
 
 clean distclean cleanest:
 	cd ..; make -f unix/Makefile $@

@@ -1,21 +1,25 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: config.h.in,v 35004.29 2004/05/02 01:31:15 hawkeye Exp $ */
+/* $Id: tfconfig.h.in,v 35004.33 2005/04/18 03:15:36 kkeys Exp $ */
 
-#define PLATFORM_UNIX
+/* If tfconfig.h.in is incorrectly unpacked with trailing carriage returns,
+ * ./configure (at least with autoconf 2.13) will not substitute as intended
+ * in lines like "#undef RETSIGTYPE^M".  A trailing space and comment on
+ * these lines lets them work as intended even if a ^M is appended. */
 
-#undef MAILDIR
+#define PLATFORM_UNIX 1
 
-#undef RETSIGTYPE
-#undef pid_t
-#undef size_t
-#undef time_t
-#undef socklen_t
+#undef MAILDIR /**/
+#undef RETSIGTYPE /**/
+#undef pid_t /**/
+#undef size_t /**/
+#undef time_t /**/
+#undef socklen_t /**/
 
 #define HAVE_UNISTD_H 0
 #define HAVE_SYS_WAIT_H 0
@@ -80,19 +84,21 @@
 
 #define HAVE_SOCKADDR_SA_LEN 0
 #define HAVE_GETADDRINFO 0
+#define HAVE_GAI_STRERROR 0
 #define ENABLE_INET6 0
 #define DISABLE_CORE 0
-#undef IN6_ADDR
+#undef IN6_ADDR /**/
 #define NO_HISTORY 0
 #define NO_PROCESS 0
 #define NO_FLOAT 0
+#define NCOLORS 16
 
 #define HAVE_MCCP (HAVE_ZLIB_H && HAVE_LIBZ)
 
-#undef inline
+#undef inline /**/
 
 #include "tfdefs.h"
 
-#undef NDEBUG
+#undef NDEBUG /**/
 #include <assert.h>
 

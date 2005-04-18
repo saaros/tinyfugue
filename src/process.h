@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: process.h,v 35004.18 2004/07/18 01:12:38 hawkeye Exp $ */
+/* $Id: process.h,v 35004.19 2005/04/18 03:15:36 kkeys Exp $ */
 
 #ifndef PROCESS_H
 #define PROCESS_H

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: parse.h,v 35004.48 2004/07/16 21:13:52 hawkeye Exp $ */
+/* $Id: parse.h,v 35004.50 2005/04/18 03:15:36 kkeys Exp $ */
 
 #ifndef PARSE_H
 #define PARSE_H
@@ -101,7 +101,7 @@ extern int         dollarsub(Program *prog, String **destp);
 extern conString  *valstr(Value *val);
 extern const char *valstd(Value *val);
 extern long        valint(const Value *val);
-extern void        valtime(struct timeval *tv, const Value *val);
+extern int         valtime(struct timeval *tv, const Value *val);
 extern int         valbool(const Value *val);
 #if !NO_FLOAT
 extern double      valfloat(const Value *val);

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: varlist.h,v 35000.68 2004/07/26 08:30:56 hawkeye Exp $ */
+/* $Id: varlist.h,v 35000.76 2005/04/18 03:15:36 kkeys Exp $ */
 
 /* This keeps the constants and the array in the same place, so they can't
  * get out of sync.
@@ -18,7 +18,7 @@
 #define varint(id, name, ival, func) \
     varcode(id, name, NULL, TYPE_INT, 0, NULL, ival, 0, func)
 #define vartime(id, name, ival, uval, func) \
-    varcode(id, name, NULL, TYPE_TIME, 0, NULL, ival, uval, func)
+    varcode(id, name, NULL, TYPE_DTIME, 0, NULL, ival, uval, func)
 #define varpos(id, name, ival, func) \
     varcode(id, name, NULL, TYPE_POS, 0, NULL, ival, 0, func)
 #define varenum(id, name, ival, func, enums) \
@@ -37,7 +37,7 @@ varstrx(VAR_LC_TIME,	"LC_TIME",	NULL,		ch_locale)
 #endif /* HAVE_SETLOCALE */
 varstr (VAR_MAIL,	"MAIL",		NULL,		ch_mailfile)
 varstr (VAR_TERM,	"TERM",		NULL,		change_term)
-varstr (VAR_TFLIBDIR,	"TFLIBDIR",	LIBDIR,		NULL)
+varstr (VAR_TFLIBDIR,	"TFLIBDIR",	DEFAULT_TFLIBD,	NULL)
 varstr (VAR_TFMAILPATH,	"TFMAILPATH",	NULL,		ch_mailfile)
 varstr (VAR_TFPATH,	"TFPATH",	NULL,		NULL)
 varstrx(VAR_TZ,		"TZ",		NULL,		ch_timezone)
@@ -54,12 +54,13 @@ varflag(VAR_bg_output,	"bg_output",	TRUE,		NULL)
 varenum(VAR_binary_eol,	"binary_eol",	EOL_LF,		NULL,	enum_eol)
 varflag(VAR_borg,	"borg",		TRUE,		NULL)
 varenum(VAR_cecho,	"cecho",	0,		NULL,	enum_mecho)
-varstr (VAR_cecho_attr,	"cecho_attr",	NULL,		ch_attr)
+varstr (VAR_cecho_attr,	"cecho_attr",	"Cgreen",	ch_attr)
 varflag(VAR_cleardone,	"cleardone",	FALSE,		NULL)
 varflag(VAR_clearfull,	"clearfull",	FALSE,		NULL)
 varenum(VAR_async_conn,	"connect",	TRUE,		NULL,	enum_block)
 varflag(VAR_defcompile,	"defcompile",	FALSE,		NULL)
 varenum(VAR_emulation,	"emulation",	EMUL_ANSI_ATTR,	NULL,	enum_emul)
+varstr (VAR_error_attr,	"error_attr",	NULL,		ch_attr)
 varflag(VAR_expand_tabs,"expand_tabs",	TRUE,		NULL)
 varflag(VAR_expnonvis,	"expnonvis",	FALSE,		ch_expnonvis)
 varflag(VAR_gag,	"gag",		TRUE,		NULL)
@@ -71,7 +72,8 @@ varpos (VAR_histsize,	"histsize",	1000,		NULL)
 varflag(VAR_hook,	"hook",		TRUE,		NULL)
 varint (VAR_hpri,	"hpri",		0,		NULL)
 varenum(VAR_iecho,	"iecho",	0,		NULL,	enum_mecho)
-varstr (VAR_iecho_attr,	"iecho_attr",	NULL,		ch_attr)
+varstr (VAR_iecho_attr,	"iecho_attr",	"Cred",		ch_attr)
+varstr (VAR_info_attr,	"info_attr",	NULL,		ch_attr)
 varflag(VAR_insert,	"insert",	TRUE,		NULL)
 varflag(VAR_interactive,"interactive",	-1,		NULL)
 varpos (VAR_isize,	"isize",	3,		ch_visual)
@@ -128,6 +130,7 @@ varflag(VAR_sockmload,	"sockmload",	FALSE,		NULL)
 varstr (VAR_sprefix,	"sprefix",	NULL,		NULL)
 varstr (VAR_stat_attr,	"status_attr",	NULL,		ch_status_attr)
 varstr (VAR_stat_fields,"status_fields",NULL,		ch_status_fields)
+varpos (VAR_stat_height,"status_height",1,		ch_status_height)
 varstr (VAR_stat_pad,	"status_pad",	"_",		update_status_line)
 varstr (VAR_stint_clock,"status_int_clock",NULL,	ch_status_int)
 varstr (VAR_stint_more,	"status_int_more",NULL,		ch_status_int)
@@ -139,12 +142,13 @@ varenum(VAR_textdiv,	"textdiv",	TRUE,		NULL,	enum_textdiv)
 varstr (VAR_textdiv_str,"textdiv_str",	"=====",	NULL)
 varstr (VAR_tfhost,	"tfhost",	NULL,		NULL)
 varstr (VAR_time_format,"time_format",	"%H:%M",	NULL)
-varflag(VAR_virtscreen,	"virtscreen",	TRUE,		NULL)
+varflag(VAR_virtscreen,	"virtscreen",	TRUE,		undocumented_var)
 varflag(VAR_visual,	"visual",	-1,		ch_visual)
 varflag(VAR_warn_5keys, "warn_5keys",	TRUE,		NULL)
 varflag(VAR_warn_curly_re,"warn_curly_re",TRUE,		NULL)
 varflag(VAR_warn_def_B,	"warn_def_B",	TRUE,		NULL)
 varflag(VAR_warn_status,"warn_status",	TRUE,		NULL)
+varstr (VAR_warning_attr,"warning_attr",NULL,		ch_attr)
 varflag(VAR_watchdog,	"watchdog",	FALSE,		NULL)
 varflag(VAR_watchname,	"watchname",	FALSE,		NULL)
 varstr (VAR_wordpunct,	"wordpunct",	"_",		NULL)

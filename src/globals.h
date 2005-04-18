@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: globals.h,v 35000.68 2004/07/21 00:19:41 hawkeye Exp $ */
+/* $Id: globals.h,v 35000.73 2005/04/18 03:15:35 kkeys Exp $ */
 
 #ifndef GLOBALS_H
 #define GLOBALS_H
@@ -21,32 +21,33 @@ typedef enum {
     TYPE_ENUM     = 0x0004,	/* enumerated */
     TYPE_POS      = 0x0008,	/* positive integer */
     TYPE_INT      = 0x0010,	/* integer */
-    TYPE_TIME     = 0x0020,	/* seconds and microseconds */
-    TYPE_FLOAT    = 0x0040,	/* double */
-    TYPE_FILE     = 0x0080,	/* tfile (internal use only) */
-    TYPE_FUNC     = 0x0100,	/* resolved ExprFunc (internal only) */
-    TYPE_CMD      = 0x0200,	/* resolved BuiltinCmd (internal only) */
-    TYPE_REGEX    = 0x0400,	/* STR: regular expression (internal only) */
-    TYPE_EXPR     = 0x0800,	/* STR: tf expression (internal only) */
-    TYPE_ATTR     = 0x1000,	/* STR: attributes (internal only) */
-    TYPE_REGMATCH = 0x2000,	/* INT: result of regmatch() (internal only) */
-    TYPE_HMS      = 0x4000	/* TIME: was in H:M:S form (internal only) */
+    TYPE_DTIME    = 0x0020,	/* duration time (seconds and microseconds) */
+    TYPE_ATIME    = 0x0040,	/* absolute time (seconds and microseconds) */
+    TYPE_FLOAT    = 0x0080,	/* double */
+    TYPE_FILE     = 0x0100,	/* tfile (internal use only) */
+    TYPE_FUNC     = 0x0200,	/* resolved ExprFunc (internal only) */
+    TYPE_CMD      = 0x0400,	/* resolved BuiltinCmd (internal only) */
+    TYPE_REGEX    = 0x0800,	/* STR: regular expression (internal only) */
+    TYPE_EXPR     = 0x1000,	/* STR: tf expression (internal only) */
+    TYPE_ATTR     = 0x2000,	/* STR: attributes (internal only) */
+    TYPE_REGMATCH = 0x4000,	/* INT: result of regmatch() (internal only) */
+    TYPE_HMS      = 0x8000	/* TIME: was in H:M:S form (internal only) */
 } type_t;
 
 #define TYPES_BASIC \
-    ( TYPE_ID | TYPE_STR | TYPE_ENUM | TYPE_POS | TYPE_INT | TYPE_TIME | \
-    TYPE_FLOAT | TYPE_FILE | TYPE_FUNC | TYPE_CMD )
+    ( TYPE_ID | TYPE_STR | TYPE_ENUM | TYPE_POS | TYPE_INT | TYPE_DTIME | \
+    TYPE_ATIME | TYPE_FLOAT | TYPE_FILE | TYPE_FUNC | TYPE_CMD )
 
 /* numeric types */
 #if NO_FLOAT
-# define TYPE_NUM	(TYPE_INT | TYPE_TIME)
+# define TYPE_NUM	(TYPE_INT | TYPE_DTIME | TYPE_ATIME)
 #else
-# define TYPE_NUM	(TYPE_INT | TYPE_TIME | TYPE_FLOAT)
+# define TYPE_NUM	(TYPE_INT | TYPE_DTIME | TYPE_ATIME | TYPE_FLOAT)
 #endif
 
 /* Most types use the union for their value, and cache a string value in sval.
  * A pure TYPE_STR does not use the union, but it does if type is or'd with
- * TYPE_REGEX or TYPE_EXPR.
+ * TYPE_REGEX, TYPE_EXPR, or TYPE_ATTR.
  */
 typedef struct Value {
     const char *name;		/* identifier name (must be first member!) */
@@ -56,7 +57,7 @@ typedef struct Value {
     union {
         long ival;		/* integer value (ENUM, POS, INT) */
         double fval;		/* float value (FLOAT) */
-        struct timeval tval;	/* time value (TIME) */
+        struct timeval tval;	/* time value (DTIME, ATIME) */
 	struct RegInfo *ri;	/* compiled regexp (STR|REGEX) */
 	struct Program *prog;	/* compiled expression (STR|EXPR) */
 	void *p;		/* other pointer type (FILE, FUNC, CMD) */
@@ -72,7 +73,9 @@ static inline Value *shareval(Value *v)	{ v->count++; return v;}
 
 #define newval()	newval_fl(__FILE__, __LINE__)
 #define newint(i)	newint_fl(i, __FILE__, __LINE__)
-#define newtime(s, u)	newtime_fl(s, u, __FILE__, __LINE__)
+#define newtime(s, u, type)	newtime_fl(s, u, type, __FILE__, __LINE__)
+#define newdtime(s, u)	newtime_fl(s, u, TYPE_DTIME, __FILE__, __LINE__)
+#define newatime(s, u)	newtime_fl(s, u, TYPE_ATIME, __FILE__, __LINE__)
 #define newfloat(f)	newfloat_fl(f, __FILE__, __LINE__)
 #define newid(id,l)	newid_fl(id, l, __FILE__, __LINE__)
 #define newstr(s,l)	newstr_fl(s, l, __FILE__, __LINE__)
@@ -85,7 +88,7 @@ extern void clearval_fl(Value *val, const char *file, int line);
 extern struct Value *newval_fl(const char *file, int line);
 extern struct Value *newfloat_fl(double f, const char *file, int line);
 extern struct Value *newint_fl(long i, const char *file, int line);
-extern struct Value *newtime_fl(long s, long u,
+extern struct Value *newtime_fl(long s, long u, type_t type,
               const char *file, int line);
 extern struct Value *newSstr_fl(conString *S, const char *file, int line);
 extern struct Value *newstr_fl(const char *s, int len,
@@ -164,6 +167,7 @@ enum Vars {
 #define clock_flag	getintvar(VAR_clock)
 #define defcompile	getintvar(VAR_defcompile)
 #define emulation 	getintvar(VAR_emulation)
+#define error_attr	getattrvar(VAR_error_attr)
 #define expand_tabs 	getintvar(VAR_expand_tabs)
 #define expnonvis 	getintvar(VAR_expnonvis)
 #define gag		getintvar(VAR_gag)
@@ -176,6 +180,7 @@ enum Vars {
 #define hookflag	getintvar(VAR_hook)
 #define hpri		getintvar(VAR_hpri)
 #define iecho		getintvar(VAR_iecho)
+#define info_attr	getattrvar(VAR_info_attr)
 #define insert		getintvar(VAR_insert)
 #define interactive	getintvar(VAR_interactive)
 #define isize		getintvar(VAR_isize)
@@ -222,6 +227,7 @@ enum Vars {
 #define sprefix		getstrvar(VAR_sprefix)
 #define status_attr	getattrvar(VAR_stat_attr)
 #define status_fields	getstdvar(VAR_stat_fields)
+#define status_height	getintvar(VAR_stat_height)
 #define status_pad	getstdvar(VAR_stat_pad)
 #define sub		getintvar(VAR_sub)
 #define tabsize		getintvar(VAR_tabsize)
@@ -234,6 +240,7 @@ enum Vars {
 #define warn_curly_re	getintvar(VAR_warn_curly_re)
 #define warn_def_B	getintvar(VAR_warn_def_B)
 #define warn_status	getintvar(VAR_warn_status)
+#define warning_attr	getattrvar(VAR_warning_attr)
 #define watchdog	getintvar(VAR_watchdog)
 #define watchname	getintvar(VAR_watchname)
 #define wordpunct	getstdvar(VAR_wordpunct)

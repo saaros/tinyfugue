@@ -1,21 +1,22 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: world.c,v 35004.67 2004/07/16 21:13:53 hawkeye Exp $";
+static const char RCSid[] = "$Id: world.c,v 35004.76 2005/04/18 03:15:36 kkeys Exp $";
 
 
 /********************************************************
  * Fugue world routines.                                *
  ********************************************************/
 
-#include "config.h"
+#include "tfconfig.h"
 #include "port.h"
 #include "tf.h"
 #include "util.h"
+#include "pattern.h"
 #include "search.h"	/* for tfio.h */
 #include "tfio.h"
 #include "history.h"
@@ -31,7 +32,7 @@ static const char RCSid[] = "$Id: world.c,v 35004.67 2004/07/16 21:13:53 hawkeye
 #define LW_SHORT	004
 
 static int  list_worlds(const Pattern *name, const Pattern *type,
-    struct TFILE *file, int flags);
+    struct TFILE *file, int flags, int (*cmp)(const void *, const void *));
 static void free_world(World *w);
 static World *alloc_world(void);
 
@@ -165,7 +166,7 @@ World *new_world(const char *name, const char *type,
     if (pass && *pass && loadfile && (loadfile->mode & (S_IROTH | S_IRGRP)) &&
         !loadfile->warned)
     {
-        eprintf("Warning: file contains passwords and is readable by others.");
+        wprintf("file contains passwords and is readable by others.");
         loadfile->warned++;
     }
 # endif /* __CYGWIN32__ */
@@ -214,48 +215,81 @@ struct Value *handle_unworld_command(String *args, int offset)
     return newint(result);
 }
 
+static int worldtypecmp(const void *a, const void *b) {
+    return nullcstrcmp((*(World**)a)->type, (*(World**)b)->type);
+}
+
+static int worldhostcmp(const void *a, const void *b) {
+    return nullcstrcmp((*(World**)a)->host, (*(World**)b)->host);
+}
+
+static int worldportcmp(const void *a, const void *b) {
+    return nullcstrcmp((*(World**)a)->port, (*(World**)b)->port);
+}
+
+static int worldcharcmp(const void *a, const void *b) {
+    return nullcstrcmp((*(World**)a)->character, (*(World**)b)->character);
+}
 
 struct Value *handle_listworlds_command(String *args, int offset)
 {
-    int flags = LW_TABLE, mflag = matching, error = 0, result;
+    int flags = LW_TABLE, mflag = matching, error = 0, result, n;
     char c;
     const char *ptr;
+    int (*cmp)(const void *, const void *) = cstrpppcmp;
     Pattern type, name, *namep = NULL;
 
     init_pattern_str(&type, NULL);
     init_pattern_str(&name, NULL);
-    startopt(CS(args), "T:uscm:");
+    startopt(CS(args), "T:uscm:S:");
     while ((c = nextopt(&ptr, NULL, NULL, &offset))) {
         switch (c) {
-            case 'T':  free_pattern(&type);
-                       error += !init_pattern_str(&type, ptr);
-                       break;
-            case 'u':  flags |= LW_UNNAMED; break;
-            case 's':  flags |= LW_SHORT;   /* fall through */
-            case 'c':  flags &= ~LW_TABLE;  break;
-            case 'm':  error = ((mflag = enum2int(ptr,0,enum_match,"-m")) < 0);
-                       break;
-            default:   return shareval(val_zero);
+            case 'T':	free_pattern(&type);
+			error += !init_pattern_str(&type, ptr);
+			break;
+            case 'u':	flags |= LW_UNNAMED; break;
+            case 's':	flags |= LW_SHORT;   /* fall through */
+            case 'c':	flags &= ~LW_TABLE;  break;
+            case 'm':	error = ((mflag = enum2int(ptr,0,enum_match,"-m")) < 0);
+			break;
+	    case 'S':	n = strlen(ptr);
+			if (n == 0 || cstrncmp(ptr, "name", n) == 0)
+			    cmp = cstrpppcmp;
+			else if (cstrncmp(ptr, "type", n) == 0)
+			    cmp = worldtypecmp;
+			else if (cstrncmp(ptr, "host", n) == 0)
+			    cmp = worldhostcmp;
+			else if (cstrncmp(ptr, "port", n) == 0)
+			    cmp = worldportcmp;
+			else if (cstrncmp(ptr, "character", n) == 0)
+			    cmp = worldcharcmp;
+			else if (cstrncmp(ptr, "-", n) == 0)
+			    cmp = NULL;
+			else { eprintf("invalid sort criterion"); error++; }
+			break;
+            default:	return shareval(val_zero);
         }
     }
     if (error) return shareval(val_zero);
     init_pattern_mflag(&type, mflag, 'T');
-    if (args->len - offset) {
+    Stringstriptrail(args);
+    if (args->len > offset) {
         namep = &name;
         error += !init_pattern(namep, args->data + offset, mflag);
     }
     if (error) return shareval(val_zero);
-    result = list_worlds(namep, type.str?&type:NULL, tfout, flags);
+    result = list_worlds(namep, type.str?&type:NULL, tfout, flags, cmp);
     free_pattern(&name);
     free_pattern(&type);
     return newint(result);
 }
 
 static int list_worlds(const Pattern *name, const Pattern *type, TFILE *file,
-    int flags)
+    int flags, int (*cmp)(const void *, const void *))
 {
     World *p;
-    int first = 1, count = 0;
+    Vector worlds = vector_init(128);
+    int first = 1, i;
     int need, width, width_name, width_type, width_host, width_port;
     STATIC_BUFFER(buf);
 
@@ -270,13 +304,21 @@ static int list_worlds(const Pattern *name, const Pattern *type, TFILE *file,
             width_port, "PORT", "CHARACTER");
     }
 
-    Stringtrunc(buf, 0);
+    /* collect matching worlds */
     for (p = defaultworld; p || first; p = first ? hworld : p->next, first=0)
     {
         if (!p || (!(flags & LW_UNNAMED) && p->flags & WORLD_TEMP)) continue;
         if (name && !patmatch(name, NULL, p->name)) continue;
         if (type && !patmatch(type, NULL, p->type ? p->type : "")) continue;
-        count++;
+	vector_add(&worlds, p);
+    }
+
+    if (cmp)
+	vector_sort(&worlds, cmp);
+
+    Stringtrunc(buf, 0);
+    for (i = 0; i < worlds.size; i++) {
+	p = worlds.ptrs[i];
         if (flags & LW_SHORT) {
             tfputs(p->name, file);
         } else if (flags & LW_TABLE) {
@@ -327,7 +369,8 @@ listworld_tail:
             tfputs(buf->data, file);
         }
     }
-    return count;
+    vector_free(&worlds);
+    return worlds.size;
 }
 
 struct Value *handle_saveworld_command(String *args, int offset)
@@ -356,7 +399,7 @@ struct Value *handle_saveworld_command(String *args, int offset)
     }
     oprintf("%% %sing world definitions to %s", *mode == 'a' ? "Append" :
         "Writ", file->name);
-    result = list_worlds(NULL, NULL, file, 0);
+    result = list_worlds(NULL, NULL, file, 0, NULL);
     tfclose(file);
     return newint(result);
 }

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: search.h,v 35004.25 2004/07/16 21:13:52 hawkeye Exp $ */
+/* $Id: search.h,v 35004.28 2005/04/18 03:15:36 kkeys Exp $ */
 
 #ifndef SEARCH_H
 #define SEARCH_H
@@ -42,6 +42,27 @@
 #define nmod(n, d)   (((n) >= 0) ? ((n)%(d)) : ((d) - ((-(n)-1)%(d)) - 1))
 #define ndiv(n, d)   (((n) >= 0) ? ((n)/(d)) : (-((-(n)-1)/(d))-1))
 
+
+/* Resizable vector of pointers */
+typedef struct Vector {
+    int capacity;
+    int size;
+    void **ptrs;
+} Vector;
+
+#define vector_init(n)		{ (n)/2, 0, NULL }
+
+#define vector_add(v, p) \
+do { \
+    if (!(v)->ptrs || (v)->size >= (v)->capacity) \
+	(v)->ptrs = XREALLOC((v)->ptrs, ((v)->capacity *= 2) * sizeof(void*)); \
+    (v)->ptrs[(v)->size++] = (p); \
+} while (0)
+
+#define vector_sort(v, cmp)	qsort((v)->ptrs, (v)->size, sizeof(void*), cmp)
+#define vector_free(v)		do { if ((v)->ptrs) FREE((v)->ptrs); } while (0)
+
+
 #define TRIE_SUB	(-1)
 #define TRIE_SUPER	(-2)
 #define TRIE_DUP	(-3)
@@ -66,7 +87,7 @@ typedef struct List {
 } List;
 
 typedef struct HashTable {
-    int size;
+    int size;			/* number of buckets */
     Cmp *cmp;
     List **bucket;
 } HashTable;
@@ -109,6 +130,8 @@ extern void init_hashtable(HashTable *table, int size, Cmp *cmp);
 
 extern int strstructcmp(const void *key, const void *datum);
 extern int cstrstructcmp(const void *key, const void *datum);
+extern int strpppcmp(const void *a, const void *b);
+extern int cstrpppcmp(const void *a, const void *b);
 
 extern int intrie(TrieNode **root, void *datum,
     const unsigned char *key);

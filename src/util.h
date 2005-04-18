@@ -1,31 +1,14 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.h,v 35004.52 2004/07/18 01:12:39 hawkeye Exp $ */
+/* $Id: util.h,v 35004.60 2005/04/18 03:15:36 kkeys Exp $ */
 
 #ifndef UTIL_H
 #define UTIL_H
-
-#include "pcre-2.08/pcre.h"
-
-typedef struct RegInfo {
-    pcre *re;
-    pcre_extra *extra;
-    conString *Str;
-    int links;
-    int *ovector;
-    int ovecsize;
-} RegInfo;
-
-typedef struct Pattern {
-    char *str;
-    RegInfo *ri;
-    int mflag;
-} Pattern;
 
 struct feature {
     const char *name;
@@ -66,6 +49,7 @@ extern char tf_ctype[];
 extern Stringp featurestr;
 extern struct feature features[];
 
+extern const int feature_256colors;
 extern const int feature_core;
 extern const int feature_float;
 extern const int feature_ftime;
@@ -106,28 +90,16 @@ extern const int feature_TZ;
 extern int    enum2int(const char *str, long val, conString *vec, const char *msg);
 extern void   init_util1(void);
 extern void   init_util2(void);
-extern String*print_to_ascii(const char *str);
-extern String*ascii_to_print(const char *str);
+extern const conString* print_to_ascii(String *buf, const char *str);
+extern const conString* ascii_to_print(const char *str);
 extern char  *cstrchr(const char *s, int c);
 extern char  *estrchr(const char *s, int c, int e);
 extern int    numarg(const char **str);
+extern int    nullstrcmp(const char *s, const char *t);
+extern int    nullcstrcmp(const char *s, const char *t);
+extern int    cstrncmp(const char *s, const char *t, size_t n);
 extern char  *stringarg(char **str, const char **end);
 extern int    stringliteral(struct String *dest, const char **str);
-extern void   restore_reg_scope(RegInfo *old);
-extern int    regmatch_in_scope(Value *val, const char *pattern, String *Str);
-extern int    tf_reg_exec(RegInfo *ri, conString *Sstr, const char *str,
-		int offset);
-extern RegInfo*new_reg_scope(RegInfo *ri, String *Str);
-extern void   tf_reg_free(RegInfo *ri);
-extern int    regsubstr(struct String *dest, int n);
-extern int    init_pattern(Pattern *pat, const char *str, int mflag);
-extern int    init_pattern_str(Pattern *pat, const char *str);
-extern int    init_pattern_mflag(Pattern *pat, int mflag, int opt);
-#define copy_pattern(dst, src)  (init_pattern(dst, (src)->str, (src)->mflag))
-extern int    patmatch(const Pattern *pat, conString *Sstr, const char *str);
-extern void   free_pattern(Pattern *pat);
-extern int    smatch(const char *pat, const char *str);
-extern int    smatch_check(const char *s);
 extern char  *stripstr(char *s);
 extern void   startopt(const conString *args, const char *opts);
 extern char   nextopt(const char **arg, void *u, int *type, int *offp);
@@ -146,6 +118,7 @@ extern Value *parsenumber(const char *str, const char **caller_endp,
 		int typeset, Value *val);
 extern long   parsetime(const char *str, char **endp, int *istime);
 extern void   abstime(struct timeval *tv);
+extern void   append_usec(String *buf, long usec, int trunc);
 extern void   tftime(String *buf, const conString *fmt,
 		const struct timeval *tv);
 extern void   tvsub(struct timeval *a, const struct timeval *b,

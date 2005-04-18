@@ -1,12 +1,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; TinyFugue - programmable mud client
-;;;; Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+;;;; Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
 ;;;;
 ;;;; TinyFugue (aka "tf") is protected under the terms of the GNU
 ;;;; General Public License.  See the file "COPYING" for details.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-/set tf_stdlib_id=$Id: stdlib.tf,v 35000.87 2004/07/18 09:07:31 hawkeye Exp $
+/set tf_stdlib_id=$Id: stdlib.tf,v 35000.90 2005/04/18 03:15:48 kkeys Exp $
 
 ;;; TF macro library
 
@@ -138,11 +138,11 @@
     /endif
 
 
-;; /world [-nlqx] [<name>]
-;; /world [-nlqx] <host> <port>
+;; /world [-nlqxfb] [<name>]
+;; /world [-nlqxfb] <host> <port>
 
 /def -i world = \
-    /if (!getopts("lqnx", 0)) /return 0%; \
+    /if (!getopts("nlqxfb", 0)) /return 0%; \
     /endif%; \
     /let _args=%*%; \
     /if (_args =~ "") \
@@ -152,13 +152,17 @@
 	/endif%; \
     /endif%; \
     /let _opts=%; \
-    /if (opt_l) /let _opts=%opts -l%; /endif%; \
-    /if (opt_q) /let _opts=%opts -q%; /endif%; \
-    /if (opt_n) /let _opts=%opts -n%; /endif%; \
     /if (is_open(_args)) \
+	/if (opt_n) /let _opts=%_opts -n%; /endif%; \
+	/if (opt_q) /let _opts=%_opts -q%; /endif%; \
 	/@fg %_opts %_args%; \
     /else \
-	/@connect $[opt_x ? "-x" : ""] %_opts %_args%; \
+	/if (opt_l) /let _opts=%_opts -l%; /endif%; \
+	/if (opt_q) /let _opts=%_opts -q%; /endif%; \
+	/if (opt_x) /let _opts=%_opts -x%; /endif%; \
+	/if (opt_f) /let _opts=%_opts -f%; /endif%; \
+	/if (opt_b) /let _opts=%_opts -b%; /endif%; \
+	/@connect %_opts %_args%; \
     /endif
 
 
@@ -246,7 +250,7 @@
     /let _lead=0%; \
     /let _read=0%; \
     /if (!opt_q) \
-	/echo -ep %% Entering paste mode.  Type "@{B}%{_end}@{n}" or "@{B}.@{n}" to end, or @{B}%{_abort}@{n} to abort.%; \
+	/echo -ep %% Entering paste mode.  Type "@{B}%{_end}@{n}" or "@{B}.@{n}" to end, or "@{B}%{_abort}@{n}" to abort.%; \
     /endif%; \
     /while (1) \
 	/if ((_read := tfread(_line)) < 0 | _line =/ _abort) \
@@ -355,7 +359,7 @@
     /eval -s0 %{*}%; \
     /let result=%?%; \
     /_echo real=$[time() - real] cpu=$[cputime() - cpu]%; \
-    /return %result
+    /return result
 
 
 ;;; Extended world definition macros
@@ -387,9 +391,9 @@
 ; telnet prompt
     /def -ip1 -n1 -w -mregexp -h'PROMPT login: *$$' \
     ~detect_worldtype_telnet_${world_name} = \
-        /echo -e %%% This looks like a telnet world, so I'm redefining it as \
-            one.  You should explicitly set the type with the -T option of \
-            /addworld.%%;\
+        /echo -e %%% This looks like a telnet world, \
+	    so I'm redefining it as one.  You should explicitly set the type \
+	    with the -T"telnet" option of /addworld.%%;\
         /addworld -Ttelnet ${world_name}%%;\
         /set lp=1%%;\
         /localecho on%%; \
@@ -399,9 +403,9 @@
 ; generic prompt
     /def -ip0 -n1 -w -mregexp -h'PROMPT ...[?:] *$$' \
     ~detect_worldtype_prompt_${world_name} = \
-        /echo -e %%% This looks like an unterminated-prompt world, so I'm \
-            redefining it as one.  You should explicitly set the type with the \
-            -T option of /addworld.%%;\
+        /echo -e %%% This looks like an unterminated-prompt world, \
+	    so I'm redefining it as one.  You should explicitly set the type \
+	    with the -T"prompt" option of /addworld.%%;\
         /addworld -Tprompt ${world_name}%%; \
         /set lp=1%%; \
         /@test prompt(strcat({PL}, {P0}))%%; \

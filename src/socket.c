@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: socket.c,v 35004.265 2004/07/30 22:35:10 hawkeye Exp $";
+static const char RCSid[] = "$Id: socket.c,v 35004.279 2005/04/18 03:15:36 kkeys Exp $";
 
 
 /***************************************************************
@@ -18,7 +18,7 @@ static const char RCSid[] = "$Id: socket.c,v 35004.265 2004/07/30 22:35:10 hawke
  * Autologin handled here.
  ***************************************************************/
 
-#include "config.h"
+#include "tfconfig.h"
 #include <sys/types.h>
 #if HAVE_SYS_SELECT_H
 # include <sys/select.h>
@@ -62,6 +62,7 @@ struct sockaddr_in {
 #include "port.h"
 #include "tf.h"
 #include "util.h"
+#include "pattern.h"
 #include "search.h"
 #include "tfio.h"
 #include "tfselect.h"
@@ -69,6 +70,7 @@ struct sockaddr_in {
 #include "world.h"
 #include "socket.h"
 #include "output.h"
+#include "attr.h"
 #include "process.h"
 #include "macro.h"
 #include "keyboard.h"
@@ -335,7 +337,9 @@ static int   tfgetaddrinfo(const char *nodename, const char *port,
 static int   opensock(World *world, int flags);
 static int   openconn(Sock *new);
 static int   establish(Sock *new);
+#if 0
 static void  fg_live_sock(void);
+#endif
 static void  nuke_dead_socks(void);
 static void  nukesock(Sock *sock);
 static void  handle_prompt(String *str, int offset, int confirmed);
@@ -466,15 +470,11 @@ const int feature_MCCPv2 = HAVE_MCCP - 0;
 const int feature_ssl = HAVE_SSL - 0;
 const int feature_SOCKS = SOCKS - 0;
 
-#define CONNETFAIL(sock, what, why) \
-do { \
-    do_hook(H_CONNETFAIL, "%% Connection to %s failed: %s: %s", "%s %s: %s", \
-        (sock)->world->name, (what), (why)); \
-    oflush(); \
-} while (0)
+static const char *CONFAIL_fmt = "%% Connection to %s failed: %s: %s";
+static const char *ICONFAIL_fmt = "%% Intermediate connection to %s failed: %s: %s";
 
-#define CONNETFAILAI(sock, why) \
-    CONNETFAIL((sock), printai((sock)->addr), (why))
+#define ICONFAIL_AI(sock, why) \
+    ICONFAIL((sock), printai((sock)->addr, NULL), (why))
 
 #define CONFAILHP(sock, why) \
 do { \
@@ -485,7 +485,7 @@ do { \
 
 #define CONFAIL(sock, what, why) \
 do { \
-    do_hook(H_CONFAIL, "%% Unable to connect to %s: %s %s", "%s %s %s", \
+    do_hook(H_CONFAIL, CONFAIL_fmt, "%s %s %s", \
 	(sock)->world->name, (what), (why)); \
     oflush(); \
 } while (0)
@@ -504,13 +504,15 @@ static void ssl_err(const char *str)
 
 static void ssl_io_err(Sock *sock, int ret, int hook)
 {
+    /* NB: sock->addr may have already been changed by setupnextconn() */
     int err;
     const char *fmt;
 
     flushxsock();
 
     switch (hook) {
-    case H_CONFAIL: fmt = "%% Connection to %s failed: %s: %s"; break;
+    case H_CONFAIL: fmt = CONFAIL_fmt; break;
+    case H_ICONFAIL: fmt = ICONFAIL_fmt; break;
     case H_DISCONNECT: fmt = "%% Connection to %s closed: %s: %s"; break;
     }
 
@@ -958,7 +960,7 @@ int tog_keepalive(Var *var)
 	if (setsockopt(sock->fd, SOL_SOCKET, SO_KEEPALIVE, (void*)&flags,
 	    sizeof(flags)) < 0)
 	{
-	    eprintf("warning: setsockopt KEEPALIVE: %s", strerror(errno));
+	    wprintf("setsockopt KEEPALIVE: %s", strerror(errno));
 	}
     }
     return 1;
@@ -1216,6 +1218,7 @@ static int opensock(World *world, int flags)
         xsock->prev = tsock;
         tsock = *(tsock ? &tsock->next : &hsock) = xsock;
         xsock->prompt = NULL;
+	xsock->prompt_timeout = tvzero;
         xsock->next = NULL;
 	xsock->myhost = NULL;
 	xsock->myaddr = NULL;
@@ -1360,13 +1363,15 @@ static int opensock(World *world, int flags)
 }
 
 
-static const char *printai(struct addrinfo *ai)
+static const char *printai(struct addrinfo *ai, const char *fmt_hp)
 {
     static char buf[1024];
     static char hostbuf[INET6_ADDRSTRLEN+1];
     const void *hostaddr = NULL;
     unsigned short port = 0;
     const char *host = NULL;
+
+    if (!fmt_hp) fmt_hp = "%s %d";
 
     switch (ai->ai_family) {
 	case AF_INET:
@@ -1382,33 +1387,51 @@ static const char *printai(struct addrinfo *ai)
 	    break;
 #endif
     }
-    sprintf(buf, port ? "%s %d" : "%s", host ? host : "?", ntohs(port));
+    sprintf(buf, port ? fmt_hp : "%s", host ? host : "?", ntohs(port));
     return buf;
 }
 
 static inline int ai_connect(int s, struct addrinfo *ai)
 {
     do_hook(H_PENDING, "%% Trying to connect to %s: %s.", "%s %s",
-	xsock->world->name, printai(ai));
+	xsock->world->name, printai(ai, NULL));
     return connect(s, ai->ai_addr, ai->ai_addrlen);
 }
 
-static int nextconn(Sock *sock)
+static void setupnextconn(Sock *sock)
 {
-    struct addrinfo *ai;
-    /* try next address */
+    struct addrinfo *ai, *next = sock->addr;
+
     if (sock->fd >= 0)
 	close(sock->fd);
-next:
-    sock->addr = sock->addr->ai_next;
-    if (!sock->addr) return openconn(sock);
+retry:
+    next = next->ai_next;
     /* if next address is a duplicate of one we've already done, skip it */
-    for (ai = sock->addrs; ai != sock->addr; ai = ai->ai_next) {
-	if (memcmp(ai->ai_addr, xsock->addr->ai_addr, ai->ai_addrlen) == 0) {
-	    goto next;
+    for (ai = sock->addrs; next && ai != next; ai = ai->ai_next) {
+	if (memcmp(ai->ai_addr, next->ai_addr, ai->ai_addrlen) == 0) {
+	    goto retry;
 	}
     }
-    return openconn(sock);
+    sock->addr = next;
+}
+
+/* If there are more addresses to try, hook ICONFAIL and try the next;
+ * otherwise, hook CONFAIL and give up. */
+static int ICONFAIL(Sock *sock, const char *what, const char *why)
+{
+    setupnextconn(sock);
+
+    if (sock->addr) {
+	do_hook(H_ICONFAIL, ICONFAIL_fmt, "%s %s: %s",
+	    (sock)->world->name, (what), (why));
+	oflush();
+	return openconn(sock);
+    }
+    do_hook(H_CONFAIL, "%% Connection to %s failed: %s: %s", "%s %s: %s",
+	(sock)->world->name, (what), (why));
+    oflush();
+    killsock(sock);
+    return 0;
 }
 
 static int openconn(Sock *sock)
@@ -1470,8 +1493,7 @@ static int openconn(Sock *sock)
 #endif
 
     if (!xsock->addr) {
-	if (!xsock->addrs)
-	    CONFAILHP(xsock, "no address");
+	CONFAILHP(xsock, "no usable addresses");
 	killsock(xsock);
 	return 0;
     }
@@ -1480,7 +1502,7 @@ static int openconn(Sock *sock)
 	xsock->addr->ai_protocol);
     if (xsock->fd < 0) {
 	if (errno == EPROTONOSUPPORT || errno == EAFNOSUPPORT)
-	    return nextconn(xsock);
+	    return ICONFAIL(xsock, "socket", strerror(errno));
         CONFAIL(xsock, "socket", strerror(errno));
         killsock(xsock);
         return 0;
@@ -1489,7 +1511,7 @@ static int openconn(Sock *sock)
     if (xsock->myaddr && bind(xsock->fd, xsock->myaddr->ai_addr,
 	xsock->myaddr->ai_addrlen) < 0)
     {
-        CONFAIL(xsock, printai(xsock->myaddr), strerror(errno));
+        CONFAIL(xsock, printai(xsock->myaddr, NULL), strerror(errno));
         killsock(xsock);
         return 0;
     }
@@ -1522,7 +1544,7 @@ static int openconn(Sock *sock)
 	if (setsockopt(xsock->fd, SOL_SOCKET, SO_KEEPALIVE, (void*)&flags,
 	    sizeof(flags)) < 0)
 	{
-	    eprintf("warning: setsockopt KEEPALIVE: %s", strerror(errno));
+	    wprintf("setsockopt KEEPALIVE: %s", strerror(errno));
 	}
     }
 
@@ -1573,10 +1595,8 @@ static int openconn(Sock *sock)
 #endif /* 0 */
     }
 
-    /* The connection failed. */
-    CONNETFAILAI(sock, strerror(errno));
-
-    return nextconn(xsock); /* try next address */
+    /* The connection failed; try the next address. */
+    return ICONFAIL_AI(xsock, strerror(errno));
 }
 
 #if !HAVE_GETADDRINFO
@@ -1589,7 +1609,7 @@ static int tfgetaddrinfo(const char *nodename, const char *port,
 {
     struct servent *service;
     struct hostent *host;
-    unsigned short portnum, sa_len;
+    unsigned short portnum = 0, sa_len = 0;
     int err = 0;
     struct {
 	struct addrinfo ai;
@@ -1896,28 +1916,24 @@ static int establish(Sock *sock)
 #ifdef USE_SO_ERROR
         if (getsockopt(xsock->fd, SOL_SOCKET, SO_ERROR, (void*)&err, &len) < 0)
         {
-            CONNETFAIL(xsock, "getsockopt", strerror(errno));
-	    return nextconn(xsock);
+            return ICONFAIL(xsock, "getsockopt", strerror(errno));
         }
 
 #else
         {
             char ch;
             if (read(xsock->fd, &ch, 0) < 0) {
-		CONNETFAIL(xsock, "nonblocking connect/read", strerror(errno));
-		return nextconn(xsock);
+		return ICONFAIL(xsock, "nonblocking connect/read", strerror(errno));
             } else if ((ai_connect(xsock->fd, xsock->addr) < 0) &&
                 errno != EISCONN)
             {
                 read(xsock->fd, &ch, 1);   /* must fail */
-		CONNETFAIL(xsock, "nonblocking connect 2/read", strerror(errno));
-		return nextconn(xsock);
+		return ICONFAIL(xsock, "nonblocking connect 2/read", strerror(errno));
             }
         }
 #endif
         if (err != 0) {
-	    CONNETFAILAI(sock, strerror(err));
-	    return nextconn(xsock); /* try next address */
+	    return ICONFAIL_AI(xsock, strerror(err));
         }
 
         /* connect() worked.  Clear the pending stuff, and get on with it. */
@@ -1944,8 +1960,12 @@ static int establish(Sock *sock)
 	int sslret;
 	sslret = SSL_connect(xsock->ssl);
 	if (sslret <= 0) {
-	    ssl_io_err(xsock, sslret, H_CONFAIL);
-	    return nextconn(xsock);
+	    setupnextconn(xsock);
+	    ssl_io_err(xsock, sslret, xsock->addr ? H_ICONFAIL : H_CONFAIL);
+	    if (xsock->addr)
+		return openconn(xsock);
+	    killsock(xsock);
+	    return 0;
 	}
     }
 #endif
@@ -1969,7 +1989,13 @@ static int establish(Sock *sock)
     wload(sock->world);
 
     if (!(sock->flags & SOCKPROXY)) {
-        do_hook(H_CONNECT, "%% Connected to %s.", "%s", sock->world->name);
+#if HAVE_SSL
+	if (sock->ssl)
+	    do_hook(H_CONNECT, "%% Connected to %s using cipher %s.", "%s %s",
+		sock->world->name, SSL_get_cipher_name(sock->ssl));
+	else
+#endif
+	    do_hook(H_CONNECT, "%% Connected to %s.", "%s", sock->world->name);
 
         if (login && sock->flags & SOCKLOGIN) {
             if (world_character(sock->world) && world_pass(sock->world))
@@ -2127,9 +2153,9 @@ static void queue_socket_line(Sock *sock, const conString *line, int offset,
     attr_t attr)
 {
     String *new;
-    new = StringnewM(line->data + offset, line->len - offset, attr,
-	sock->world->md);
-    new->links++;
+    (new = StringnewM(NULL, line->len - offset, 0, sock->world->md))->links++;
+    SStringocat(new, line, offset);
+    new->attrs |= attr;
     gettime(&new->time);
     sock->time[SOCK_RECV] = new->time;
     new->attrs &= ~F_GAG; /* in case gagged line was passed via fake_recv() */
@@ -2177,21 +2203,55 @@ struct Value *handle_dc_command(String *args, int offset)
     return shareval(val_one);
 }
 
+static int socklinescmp(const void *a, const void *b) {
+    return (*(Sock**)a)->world->screen->nnew -
+	   (*(Sock**)b)->world->screen->nnew;
+}
+
+static int sockidlecmp(const void *a, const void *b) {
+    return tvcmp(&(*(Sock**)b)->time[SOCK_RECV],
+	         &(*(Sock**)a)->time[SOCK_RECV]);
+}
+
+static int socknamecmp(const void *a, const void *b) {
+    return nullcstrcmp((*(Sock**)a)->world->name, (*(Sock**)b)->world->name);
+}
+
+static int socktypecmp(const void *a, const void *b) {
+    return nullcstrcmp((*(Sock**)a)->world->type, (*(Sock**)b)->world->type);
+}
+
+static int sockhostcmp(const void *a, const void *b) {
+    return nullcstrcmp((*(Sock**)a)->world->host, (*(Sock**)b)->world->host);
+}
+
+static int sockportcmp(const void *a, const void *b) {
+    return nullcstrcmp((*(Sock**)a)->world->port, (*(Sock**)b)->world->port);
+}
+
+static int sockcharcmp(const void *a, const void *b) {
+    return nullcstrcmp((*(Sock**)a)->world->character,
+		       (*(Sock**)b)->world->character);
+}
+
 /* display list of open sockets and their state. */
 struct Value *handle_listsockets_command(String *args, int offset)
 {
     Sock *sock;
-    char idlebuf[16], linebuf[16], state;
+    Vector socks = vector_init(32);
+    char idlebuf[16], linebuf[16], addrbuf[64], state;
     const char *ptr;
     time_t now;
-    int t, opt;
-    int count = 0, error = 0, shortflag = FALSE, mflag = matching;
+    int t, n, opt, i, nnew, nold;
+    int error = 0, shortflag = FALSE, mflag = matching, numeric = 0;
     Pattern pat_name, pat_type;
+    int typewidth = 11, namewidth = 15, hostwidth = 26;
+    int (*cmp)(const void *, const void *) = NULL;
 
     init_pattern_str(&pat_name, NULL);
     init_pattern_str(&pat_type, NULL);
 
-    startopt(CS(args), "m:sT:");
+    startopt(CS(args), "m:sT:nS:");
     while ((opt = nextopt(&ptr, NULL, NULL, &offset))) {
         switch(opt) {
         case 'm':
@@ -2205,13 +2265,37 @@ struct Value *handle_listsockets_command(String *args, int offset)
             free_pattern(&pat_type);
             error += !init_pattern_str(&pat_type, ptr);
             break;
+	case 'n':
+	    numeric = 1;
+	    break;
+	case 'S':
+	    n = strlen(ptr);
+	    if (n == 0 || cstrncmp(ptr, "name", n) == 0)
+		cmp = socknamecmp;
+	    else if (cstrncmp(ptr, "lines", n) == 0)
+		cmp = socklinescmp;
+	    else if (cstrncmp(ptr, "idle", n) == 0)
+		cmp = sockidlecmp;
+	    else if (cstrncmp(ptr, "type", n) == 0)
+		cmp = socktypecmp;
+	    else if (cstrncmp(ptr, "host", n) == 0)
+		cmp = sockhostcmp;
+	    else if (cstrncmp(ptr, "port", n) == 0)
+		cmp = sockportcmp;
+	    else if (cstrncmp(ptr, "character", n) == 0)
+		cmp = sockcharcmp;
+	    else if (cstrncmp(ptr, "-", n) == 0)
+		cmp = NULL;
+	    else { eprintf("invalid sort criterion"); error++; }
+	    break;
         default:
             goto listsocket_error;
         }
     }
     if (error) goto listsocket_error;
     init_pattern_mflag(&pat_type, mflag, 'T');
-    if (args->len - offset)
+    Stringstriptrail(args);
+    if (args->len > offset)
         error += !init_pattern(&pat_name, args->data + offset, mflag);
     if (error) goto listsocket_error;
 
@@ -2220,20 +2304,36 @@ struct Value *handle_listsockets_command(String *args, int offset)
         goto listsocket_error;
     }
 
-    now = time(NULL);
-
-    if (!shortflag)
-        oputs("       LINES IDLE TYPE        NAME            HOST                       PORT");
+    /* collect matching socks */
     for (sock = hsock; sock; sock = sock->next) {
-        int nnew = sock->world->screen->nnew;
-        int nold = sock->world->screen->nback - nnew;
         if (pat_type.str &&
             !patmatch(&pat_type, NULL,
 		sock->world->type ? sock->world->type : ""))
             continue;
         if (args->len - offset && !patmatch(&pat_name, NULL, sock->world->name))
             continue;
-        count++;
+	vector_add(&socks, sock);
+    }
+
+    if (cmp)
+	vector_sort(&socks, cmp);
+
+    if (numeric) {
+	namewidth += 3;
+	typewidth += 3;
+	hostwidth = 20;
+    }
+
+    now = time(NULL);
+
+    if (!shortflag)
+        oprintf("    %8s %4s %-*s %-*s %-*s %s",
+	    "LINES", "IDLE", typewidth, "TYPE", namewidth, "NAME",
+	    hostwidth, "HOST", "PORT");
+    for (i = 0; i < socks.size; i++) {
+	sock = socks.ptrs[i];
+        nnew = sock->world->screen->nnew;
+        nold = sock->world->screen->nback - nnew;
         if (shortflag) {
             oputs(sock->world->name);
             continue;
@@ -2281,20 +2381,25 @@ struct Value *handle_listsockets_command(String *args, int offset)
 	    '#' /* shouldn't happen */;
 	if (sock->flags & SOCKCOMPRESS)
 	    state = lcase(state);
+	if (!numeric)
+	    sprintf(addrbuf, "%-*.*s %.6s",
+		hostwidth, hostwidth, sock->host, sock->port);
         oprintf("%c%c%c"
-	    " %s %s %-11.11s %-15.15s %-26.26s %.6s",
+	    " %s %s %-*.*s %-*.*s %s",
             (sock == xsock ? '*' : ' '),
 	    state,
 	    (sock->flags & SOCKPROXY ? 'P' : ' '),
             linebuf, idlebuf,
-            sock->world->type, sock->world->name, sock->host, sock->port);
+            typewidth, typewidth, sock->world->type,
+	    namewidth, namewidth, sock->world->name,
+	    numeric ? printai(sock->addr, "%-20.20s %d") : addrbuf);
     }
 
 listsocket_error:
     free_pattern(&pat_name);
     free_pattern(&pat_type);
 
-    return newint(count);
+    return newint(socks.size);
 }
 
 int handle_send_function(conString *string, const char *world,
@@ -2472,6 +2577,7 @@ static void handle_socket_lines(void)
 {
     static int depth = 0;
     conString *line;
+    int is_prompt;
 
     if (depth) return;	/* don't recurse */
     if (!(line = dequeue(&xsock->queue)))
@@ -2481,23 +2587,26 @@ static void handle_socket_lines(void)
 	if (!xsock->queue.list.head) /* just dequeued the last line */
 	    socks_with_lines--;
 
+	if (line->attrs & (F_TFPROMPT)) {
+	    incoming_text = line;
+	    handle_prompt(incoming_text, 0, TRUE);
+	    continue;
+	}
+
 	incoming_text = decode_ansi(line->data, xsock->attrs, emulation,
 	    &xsock->attrs);
 	incoming_text->time = line->time;
-	incoming_text->attrs |= line->attrs & (F_PROMPT | F_PROMPTHOOK);
+	is_prompt = line->attrs & F_SERVPROMPT;
 	conStringfree(line);
 	incoming_text->links++;
 
-	if (incoming_text->attrs & F_PROMPTHOOK) {
+	if (is_prompt) {
 	    if (do_hook(H_PROMPT, NULL, "%S", incoming_text)) {
 		Stringfree(incoming_text);
 	    } else {
 		handle_prompt(incoming_text, 0, TRUE);
 	    }
 
-	} else if (incoming_text->attrs & F_PROMPT) {
-	    handle_prompt(incoming_text, 0, TRUE);
-	
 	} else {
 	    if (borg || hilite || gag) {
 		if (find_and_run_matches(NULL, -1, &incoming_text, xworld(),
@@ -2593,7 +2702,7 @@ int tog_lp(Var *var)
 struct Value *handle_prompt_command(String *args, int offset)
 {
     if (xsock) {
-	queue_socket_line(xsock, CS(args), offset, F_PROMPT);
+	queue_socket_line(xsock, CS(args), offset, F_TFPROMPT);
     }
     return newint(!!xsock);
 }
@@ -2807,7 +2916,7 @@ static int handle_socket_input(const char *simbuffer, int simlen)
 		    flushxsock();
 		    /* On some systems, a socket that failed nonblocking connect
 		     * selects readable instead of writable.  If SS_CONNECTING,
-		     * that's what happened, so we do CONNETFAIL not DISCONNECT.
+		     * that's what happened, so we do CONFAIL not DISCONNECT.
 		     */
 		    zombiesock(xsock); /* before hook, so constate is correct */
 		    if (state == SS_CONNECTING)
@@ -2881,7 +2990,7 @@ static int handle_socket_input(const char *simbuffer, int simlen)
                 case TN_GA: case TN_EOR:
                     /* This is definitely a prompt. */
                     telnet_recv(rawchar, 0);
-		    queue_socket_line(xsock, CS(xsock->buffer), 0, F_PROMPTHOOK);
+		    queue_socket_line(xsock, CS(xsock->buffer), 0, F_SERVPROMPT);
 		    Stringtrunc(xsock->buffer, 0);
                     break;
                 case TN_SB:
@@ -3093,7 +3202,7 @@ non_telnet:
                 xsock->fsastate == '*')
 	    {
 		/* "*\b" is an LP editor prompt. */
-		queue_socket_line(xsock, CS(xsock->buffer), 0, F_PROMPTHOOK);
+		queue_socket_line(xsock, CS(xsock->buffer), 0, F_SERVPROMPT);
 		Stringtrunc(xsock->buffer, 0);
                 xsock->fsastate = '\0';
 		/* other occurances of '\b' are handled by decode_ansi(), so

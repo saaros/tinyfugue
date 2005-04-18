@@ -1,17 +1,17 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: tty.c,v 35004.32 2004/07/18 01:12:38 hawkeye Exp $";
+static const char RCSid[] = "$Id: tty.c,v 35004.36 2005/04/18 03:15:36 kkeys Exp $";
 
 /*
  * TTY driver routines.
  */
 
-#include "config.h"
+#include "tfconfig.h"
 #include "port.h"
 
 #ifdef EMXANSI
@@ -161,12 +161,26 @@ int get_window_size(void)
 {
 #ifdef CAN_GET_WINSIZE
     int ocol = columns, oline = lines;
+    int new_wrapsize;
 
 # ifdef TIOCGWINSZ
     struct winsize size;
+    int first = 1;
+retry:
     if (ioctl(STDIN_FILENO, TIOCGWINSZ, &size) < 0) return 0;
     if (size.ws_col > 0) columns = size.ws_col;
     if (size.ws_row > 0) lines = size.ws_row;
+
+    if (first && lines < 3) {
+	/* Konsole sometimes sends an incorrect resize followed by a correct
+	 * resize.  The incorrect one would make tf disable visual mode.  So
+	 * if the resize looks fishy, wait briefly for a second resize, and
+	 * if we get it, ignore the first. */
+	struct timeval timeout = {0,10000};
+	first = 0;
+	select(0, NULL, NULL, NULL, &timeout);
+	goto retry;
+    }
 # endif
 
 # ifdef EMXANSI
@@ -178,7 +192,11 @@ int get_window_size(void)
 # endif
 
     if (columns == ocol && lines == oline) return 1;
-    set_var_by_id(VAR_wrapsize, columns - (ocol - wrapsize));
+    new_wrapsize = columns - (ocol - wrapsize);
+    if (new_wrapsize < 1)
+	new_wrapsize = columns > 1 ? columns - 1 : 1;
+    /* set_var_direct avoids ch_wrap() */
+    set_var_direct(&special_var[VAR_wrapsize], TYPE_INT, &new_wrapsize);
     ch_visual(NULL);
     do_hook(H_RESIZE, NULL, "%d %d", columns, lines);
     return 1;

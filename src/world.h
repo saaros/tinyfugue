@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: world.h,v 35004.28 2004/02/17 06:44:45 hawkeye Exp $ */
+/* $Id: world.h,v 35004.31 2005/04/18 03:15:36 kkeys Exp $ */
 
 #ifndef WORLD_H
 #define WORLD_H
@@ -15,10 +15,10 @@
 #define WORLD_SSL	004
 #define WORLD_ECHO	010
 
-typedef struct World {		/* World structure */
+struct World {		/* World structure */
+    char *name;			/* name of world - first, for cstrpppcmp */
     int flags;
     struct World *next;
-    char *name;			/* name of world */
     char *character;		/* login name */
     char *pass;			/* password */
     char *host;			/* server host name */
@@ -37,7 +37,7 @@ typedef struct World {		/* World structure */
 #ifdef WORLD_VARS
     Var *special_vars[NUM_VARS];
 #endif
-} World;
+};
 
 extern World *defaultworld;
 

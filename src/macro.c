@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: macro.c,v 35004.165 2004/07/18 03:54:27 hawkeye Exp $";
+static const char RCSid[] = "$Id: macro.c,v 35004.184 2005/04/18 03:15:35 kkeys Exp $";
 
 
 /**********************************************
@@ -15,10 +15,11 @@ static const char RCSid[] = "$Id: macro.c,v 35004.165 2004/07/18 03:54:27 hawkey
  * are all processed here.                    *
  **********************************************/
 
-#include "config.h"
+#include "tfconfig.h"
 #include "port.h"
 #include "tf.h"
 #include "util.h"
+#include "pattern.h"
 #include "search.h"
 #include "tfio.h"
 #include "world.h"
@@ -27,18 +28,53 @@ static const char RCSid[] = "$Id: macro.c,v 35004.165 2004/07/18 03:54:27 hawkey
 #include "expand.h"
 #include "socket.h"	/* xworld() */
 #include "output.h"	/* get_keycode() */
+#include "attr.h"
 #include "cmdlist.h"
 #include "command.h"
 #include "parse.h"	/* valbool() for /def -E */
 #include "variable.h"	/* set_var_by_id() */
 
 typedef struct {
+    cattr_t attr;
+    short subexp;
+} subattr_t;
+
+struct Macro {
+    const char *name;
+    struct ListEntry *numnode;		/* node in maclist */
+    struct ListEntry *hashnode;		/* node in macro_table hash bucket */
+    struct ListEntry *trignode;		/* node in one of the triglists */
+    struct Macro *tnext;		/* temp list ptr for collision/death */
+    conString *body, *expr;
+    Program *prog, *exprprog;		/* compiled body, expr */
+    const char *bind, *keyname;
+    Pattern trig, hargs, wtype;		/* trigger/hook/worldtype patterns */
+    hookvec_t hook;			/* bit vector */
+    struct World *world;		/* only trig on text from world */
+    int pri, num;
+    attr_t attr;
+    int nsubattr;
+    subattr_t *subattr;
+    short prob, shots, invis;
+    short flags;
+    signed char fallthru, quiet;
+    struct BuiltinCmd *builtin;		/* builtin cmd with same name, if any */
+    int used[USED_N];			/* number of calls by each method */
+};
+
+typedef struct {
     Pattern name, body, bind, keyname, expr;
 } AuxPat;
 
+typedef struct {
+    int shortflag;
+    int usedflag;
+    Cmp *cmp;
+} ListOpts;
+
 int invis_flag = 0;
 
-static Macro  *macro_spec(String *args, int offset, int *mflag, int allowshort);
+static Macro  *macro_spec(String *args, int offset, int *xmflag, ListOpts *opts);
 static int     macro_match(Macro *spec, Macro *macro, AuxPat *aux);
 static int     add_numbered_macro(Macro *macro, unsigned int hash, int num,
 		ListEntry *numnode);
@@ -46,11 +82,12 @@ static int     complete_macro(Macro *spec, unsigned int hash, int num,
 		ListEntry *numnode);
 static int     init_aux_patterns(Macro *spec, int mflag, AuxPat *aux);
 static Macro  *match_exact(int hooknum, const char *str, attr_t attrs);
-static int     list_defs(TFILE *file, Macro *spec, int mflag);
+static int     list_defs(TFILE *file, Macro *spec, int mflag, ListOpts *opts);
 static void    apply_attrs_of_match(Macro *macro, String *text, int hooknum,
 		String *line);
 static int     run_match(Macro *macro, String *text, int hooknum);
 static const String *hook_name(const hookvec_t *hook) PURE;
+static conString *print_def(TFILE *file, String *buffer, Macro *p);
 static int     rpricmp(const Macro *m1, const Macro *m2);
 static void    nuke_macro(Macro *macro);
 
@@ -59,7 +96,6 @@ static void    nuke_macro(Macro *macro);
 
 #define MACRO_TEMP	0x01
 #define MACRO_DEAD	0x02
-#define MACRO_SHORT	0x04
 #define MACRO_HOOK	0x08
 #define MACRO_NOHOOK	0x10	/* -h0 */
 
@@ -111,56 +147,6 @@ void init_macros(void)
  * Routines for parsing macro commands *
  ***************************************/
 
-/* convert attr string to bitfields */
-char *parse_attrs(const char *str, attr_t *attrp, int delimiter)
-{
-    int color, len;
-    const char *name;
-    char buf[16];
-    char reject[3] = {',', '\0', '\0'};
-
-    reject[1] = delimiter;
-    *attrp = 0;
-
-    while (*str && *str != delimiter) {
-        ++str;
-        switch(str[-1]) {
-        case ',':  /* skip */             break;
-        case 'n':  *attrp |= F_NONE;      break;
-        case 'x':  *attrp |= F_EXCLUSIVE; break;
-        case 'G':  *attrp |= F_NOHISTORY; break;
-        case 'L':  *attrp |= F_NOLOG;     break;
-        case 'A':  *attrp |= F_NOACTIVITY;break;
-        case 'g':  *attrp |= F_GAG;       break;
-        case 'u':  *attrp |= F_UNDERLINE; break;
-        case 'r':  *attrp |= F_REVERSE;   break;
-        case 'f':  *attrp |= F_FLASH;     break;
-        case 'd':  *attrp |= F_DIM;       break;
-        case 'B':  *attrp |= F_BOLD;      break;
-        case 'b':  *attrp |= F_BELL;      break;
-        case 'h':  *attrp |= F_HILITE;    break;
-        case 'C':
-	    len = strcspn(str, reject);
-            if (str[len] && len < sizeof(buf)) {
-                name = strncpy(buf, str, len);
-                buf[len] = '\0';
-                str += len;
-            } else {
-                name = str;
-                while (*str) ++str;
-            }
-            if ((color = enum2int(name, 0, enum_color, "color")) < 0)
-                return NULL;
-            *attrp = adj_attr(*attrp, color2attr(color));
-            break;
-        default:
-            eprintf("invalid display attribute '%c'", str[-1]);
-            return NULL;
-        }
-    }
-    return (char*)str;
-}
-
 int hookname2int(const char *name)
 {
     const hookrec_t *hookrec;
@@ -170,7 +156,10 @@ int hookname2int(const char *name)
 	return hookrec - hook_table;
     if (cstrcmp(name, "BACKGROUND") == 0) /* backward compatability */
 	return H_BGTRIG;
-    eprintf("invalid hook event \"%s\"", name);
+    if (cstrcmp(name, "CONNETFAIL") == 0) /* backward compatability */
+	eprintf("invalid hook event \"%s\"; see \"/help /connect\"", name);
+    else
+	eprintf("invalid hook event \"%s\"", name);
     return -1;
 }
 
@@ -210,7 +199,7 @@ static int parse_hook(char **argp, hookvec_t *hookvec)
  * strings, NULL; for hooks, neither MACRO_HOOK nor MACRO_NOHOOK will
  * be set.
  */
-static Macro *macro_spec(String *args, int offset, int *xmflag, int allowshort)
+static Macro *macro_spec(String *args, int offset, int *xmflag, ListOpts *listopts)
 {
     Macro *spec;
     char opt;
@@ -243,11 +232,18 @@ static Macro *macro_spec(String *args, int offset, int *xmflag, int allowshort)
     spec->used[USED_NAME] = spec->used[USED_TRIG] =
 	spec->used[USED_HOOK] = spec->used[USED_KEY] = 0;
 
-    startopt(CS(args), "sp#c#b:B:E:t:w:h:a:f:P:T:FiIn#1m:qu" + !allowshort);
+    startopt(CS(args), "usSp#c#b:B:E:t:w:h:a:f:P:T:FiIn#1m:q" +
+	(listopts ? 0 : 3));
     while (!error && (opt = nextopt(&ptr, &num, NULL, &offset))) {
         switch (opt) {
+        case 'u':
+            listopts->usedflag = 1;
+            break;
         case 's':
-            spec->flags |= MACRO_SHORT;
+            listopts->shortflag = 1;
+            break;
+        case 'S':
+            listopts->cmp = cstrpppcmp;
             break;
         case 'm':
             if (!(error = ((i = enum2int(ptr, 0, enum_match, "-m")) < 0))) {
@@ -274,12 +270,12 @@ static Macro *macro_spec(String *args, int offset, int *xmflag, int allowshort)
         case 'b':
             if (spec->keyname) FREE(spec->keyname);
             if (spec->bind) FREE(spec->bind);
-            ptr = print_to_ascii(ptr)->data;
+            ptr = print_to_ascii(NULL, ptr)->data;
             spec->bind = STRDUP(ptr);
             break;
         case 'B':
 	    if (warn_def_B)
-		eprintf("warning: /def -B is deprecated.  See /help keys.");
+		wprintf("/def -B is deprecated.  See /help keys.");
             if (spec->keyname) FREE(spec->keyname);
             if (spec->bind) FREE(spec->bind);
             spec->keyname = STRDUP(ptr);
@@ -383,9 +379,6 @@ static Macro *macro_spec(String *args, int offset, int *xmflag, int allowshort)
         case '1':
             spec->shots = 1;
             break;
-        case 'u':
-            spec->used[0] = 1;
-            break;
         default:
             error = TRUE;
         }
@@ -459,112 +452,161 @@ static void free_aux_patterns(AuxPat *aux)
     free_pattern(&aux->expr);
 }
 
+/* return 1 if attr contains any of the attributes listed in sattr */
+static int attr_match(attr_t sattr, attr_t attr)
+{
+    if (sattr == F_NONE) {
+	return !attr;
+    } else {
+	if ((sattr & ~F_COLORS & attr) != 0)
+	    return 1;
+	if ((sattr & F_FGCOLOR) && (sattr & F_FGCOLORS) == (attr & F_FGCOLORS))
+	    return 1;
+	if ((sattr & F_BGCOLOR) && (sattr & F_BGCOLORS) == (attr & F_BGCOLORS))
+	    return 1;
+	return 0;
+    }
+}
+
 /* macro_match
  * Compares spec to macro.  aux contains patterns for string fields that
- * aren't normally patterns.  Returns 0 for match, 1 for nonmatch.
+ * aren't normally patterns.  Returns 1 for match, 0 for nonmatch.
  */
 static int macro_match(Macro *spec, Macro *macro, AuxPat *aux)
 {
-    if (!spec->invis && macro->invis) return 1;
-    if (spec->invis == 2 && !macro->invis) return 1;
-    if (spec->shots >= 0 && spec->shots != macro->shots) return 1;
-    if (spec->fallthru >= 0 && spec->fallthru != macro->fallthru) return 1;
-    if (spec->prob >= 0 && spec->prob != macro->prob) return 1;
-    if (spec->pri >= 0 && spec->pri != macro->pri) return 1;
-    if (spec->attr) {
-        if (spec->attr == F_NONE && macro->attr) return 1;
-        if (spec->attr != F_NONE && (spec->attr & macro->attr) == 0) return 1;
-    }
+    if (!spec->invis && macro->invis) return 0;
+    if (spec->invis == 2 && !macro->invis) return 0;
+    if (spec->shots >= 0 && spec->shots != macro->shots) return 0;
+    if (spec->fallthru >= 0 && spec->fallthru != macro->fallthru) return 0;
+    if (spec->prob >= 0 && spec->prob != macro->prob) return 0;
+    if (spec->pri >= 0 && spec->pri != macro->pri) return 0;
+    if (spec->attr && !attr_match(spec->attr, macro->attr)) return 0;
     if (spec->subattr) {
 	int i, j;
 	for (i = 0; i < spec->nsubattr; i++) {
-	    for (j = 0; ; j++)
-	    {
-		if (j > macro->nsubattr) return 1;
+	    for (j = 0; ; j++) {
+		if (j >= macro->nsubattr) return 0;
 		if (macro->subattr[j].subexp == spec->subattr[i].subexp) break;
-		if (spec->subattr[i].attr == F_NONE) {
-		    if (macro->subattr[j].attr)
-			return 1;
-		} else {
-		    if ((spec->subattr[i].attr & macro->subattr[j].attr) == 0)
-			return 1;
-		}
 	    }
+	    if (!attr_match(spec->subattr[i].attr, macro->subattr[j].attr))
+		return 0;
 	}
     }
     if (spec->world) {
         if (spec->world == &NoWorld) {
-            if (macro->world) return 1;
+            if (macro->world) return 0;
         } else if (spec->world == &AnyWorld) {
-            if (!macro->world) return 1;
-        } else if (spec->world != macro->world) return 1;
+            if (!macro->world) return 0;
+        } else if (spec->world != macro->world) return 0;
     }
 
     if (spec->keyname) {
         if (!*spec->keyname) {
-            if (!*macro->keyname) return 1;
+            if (!*macro->keyname) return 0;
         } else {
-            if (!patmatch(&aux->keyname, NULL, macro->keyname)) return 1;
+            if (!patmatch(&aux->keyname, NULL, macro->keyname)) return 0;
         }
     }
 
     if (spec->bind) {
         if (!*spec->bind) {
-            if (!*macro->bind) return 1;
+            if (!*macro->bind) return 0;
         } else {
-            if (!patmatch(&aux->bind, NULL, macro->bind)) return 1;
+            if (!patmatch(&aux->bind, NULL, macro->bind)) return 0;
         }
     }
 
     if (spec->expr) {
         if (!spec->expr->len) {
-            if (!macro->expr) return 1;
+            if (!macro->expr) return 0;
         } else {
-            if (!macro->expr) return 1;
-	    if (!patmatch(&aux->expr, NULL, macro->expr->data)) return 1;
+            if (!macro->expr) return 0;
+	    if (!patmatch(&aux->expr, NULL, macro->expr->data)) return 0;
         }
     }
 
     if (spec->flags & MACRO_NOHOOK) {
 	/* -h0 */
-	if (macro->flags & MACRO_HOOK) return 1;
+	if (macro->flags & MACRO_HOOK) return 0;
     } else if (spec->flags & MACRO_HOOK) {
 	int i, hit = 0;
-	if (!(macro->flags & MACRO_HOOK)) return 1;
+	if (!(macro->flags & MACRO_HOOK)) return 0;
 	for (i = 0; i < sizeof(spec->hook)/sizeof(long); i++) {
 	    if ((hit = (spec->hook.bits[i] & macro->hook.bits[i])))
 		break;
 	}
-	if (!hit) return 1;
+	if (!hit) return 0;
         if (spec->hargs.str && *spec->hargs.str) {
             if (!patmatch(&spec->hargs, NULL, NONNULL(macro->hargs.str)))
-                return 1;
+                return 0;
         }
     }
 
     if (spec->trig.str) {
         if (!*spec->trig.str) {
-            if (!macro->trig.str) return 1;
+            if (!macro->trig.str) return 0;
         } else {
             if (!patmatch(&spec->trig, NULL, NONNULL(macro->trig.str)))
-                return 1;
+                return 0;
         }
     }
     if (spec->wtype.str) {
         if (!*spec->wtype.str) {
-            if (!macro->wtype.str) return 1;
+            if (!macro->wtype.str) return 0;
         } else {
             if (!patmatch(&spec->wtype, NULL, NONNULL(macro->wtype.str)))
-                return 1;
+                return 0;
         }
     }
     if (spec->num && macro->num != spec->num)
-        return 1;
+        return 0;
     if (spec->name && !patmatch(&aux->name, NULL, macro->name))
-        return 1;
+        return 0;
     if (spec->body && !patmatch(&aux->body, macro->body, NULL))
-        return 1;
-    return 0;
+        return 0;
+    return 1;
+}
+
+/* macro_equal
+ * Returns true if m1 and m2 are exactly equivalent (except for num).
+ */
+int macro_equal(Macro *m1, Macro *m2)
+{
+    if (m1->invis != m2->invis) return 0;
+    if (m1->shots != m2->shots) return 0;
+    if (m1->fallthru != m2->fallthru) return 0;
+    if (m1->quiet != m2->quiet) return 0;
+    if (m1->prob != m2->prob) return 0;
+    if (m1->pri != m2->pri) return 0;
+    if (m1->attr != m2->attr) return 0;
+    if (m1->nsubattr != m2->nsubattr) return 0;
+    if (m1->subattr) {
+	int i, j;
+	for (i = 0; i < m1->nsubattr; i++) {
+	    for (j = 0; ; j++) {
+		if (j >= m2->nsubattr) return 0;
+		if (m2->subattr[j].subexp == m1->subattr[i].subexp)
+		    break;
+	    }
+	    if (m2->subattr[j].attr != m1->subattr[i].attr)
+		return 0;
+	}
+    }
+    if (m1->world != m2->world) return 0;
+
+    if ((m1->flags ^ m2->flags) &~ MACRO_TEMP) return 0;
+    if (m1->flags & MACRO_HOOK)
+	if (memcmp(&m1->hook, &m2->hook, sizeof(m1->hook)) != 0) return 0;
+
+    if (nullstrcmp(m1->keyname, m2->keyname) != 0) return 0;
+    if (nullstrcmp(m1->bind, m2->bind) != 0) return 0;
+    if (nullstrcmp(m1->trig.str, m2->trig.str) != 0) return 0;
+    if (nullstrcmp(m1->hargs.str, m2->hargs.str) != 0) return 0;
+    if (nullstrcmp(m1->wtype.str, m2->wtype.str) != 0) return 0;
+    if (nullstrcmp(m1->name, m2->name) != 0) return 0;
+    if (Stringcmp(m1->body, m2->body) != 0) return 0;
+    if (Stringcmp(m1->expr, m2->expr) != 0) return 0;
+    return 1;
 }
 
 /* find Macro by name */
@@ -654,24 +696,58 @@ int add_new_macro(const char *trig, const char *bind, const hookvec_t *hook,
     return 0;
 }
 
+static int bind_key_macro(Macro *spec)
+{
+    Macro *orig;
+
+    if ((orig = find_key(spec->bind))) {
+	if (macro_equal(orig, spec)) {
+	    return -1; /* leave orig in place, don't insert spec */
+        } else if (redef) {
+	    const char *obody = orig->body->data;
+	    const char *sbody = spec->body->data;
+	    if (strncmp(sbody, "/key_", 5) != 0 && orig->invis &&
+		strncmp(obody, "/key_", 5) == 0 && !strchr(obody, ' '))
+	    {
+		conString *buf = print_def(NULL, NULL, orig);
+		eprintf("%ARecommendation: leave \"%S\" defined and "
+		    "define a macro named \"%s\" instead.",
+		    warning_attr, buf, obody+1);
+		conStringfree(buf);
+	    }
+            kill_macro(orig); /* this guarantees intrie will succeed */
+	    do_hook(H_REDEF, "!Redefined %s %S", "%s %S",
+		"binding", ascii_to_print(spec->bind));
+        } else {
+            eprintf("Binding %S already exists.", ascii_to_print(spec->bind));
+            return 0;
+        }
+    }
+
+    return bind_key(spec, spec->bind);
+}
+
 /* add_macro
  * Install a permanent Macro in appropriate structures.
  * Only the keybinding is checked for conflicts; everything else is assumed
- * assumed to be error- and conflict-free.  If the bind_key fails, the
+ * assumed to be error- and conflict-free.  If the bind_key_macro fails, the
  * macro will be nuked.
  */
 static int add_numbered_macro(Macro *macro, unsigned int hash, int num,
     ListEntry *numnode)
 {
     if (!macro) return 0;
+
+    if (*macro->bind) {
+	int result = bind_key_macro(macro);
+	if (result <= 0) {
+	    nuke_macro(macro);
+	    return -result;
+	}
+    }
     macro->num = num ? num : ++mnum;
     macro->numnode = inlist((void *)macro, maclist, numnode);
 
-    if (*macro->bind && !bind_key(macro)) {
-	unlist(macro->numnode, maclist);
-	nuke_macro(macro);
-	return 0;
-    }
     if (*macro->name) {
         macro->hashnode = hashed_insert((void *)macro, hash, macro_table);
 	if (macro->builtin) { /* macro->builtin was set in complete_macro() */
@@ -693,7 +769,7 @@ static int add_numbered_macro(Macro *macro, unsigned int hash, int num,
     if (!*macro->name && (macro->trig.str || macro->flags & MACRO_HOOK) &&
 	macro->shots == 0 && pedantic)
     {
-        eprintf("warning: new macro (#%d) does not have a name.", macro->num);
+        wprintf("new macro (#%d) does not have a name.", macro->num);
     }
     return macro->num;
 }
@@ -714,16 +790,18 @@ void rebind_key_macros(void)
         if (strcmp(code, p->bind) == 0) {
             /* same code, don't need to rebind */
         } else {
-            if (*p->bind) unbind_key(p);
+            if (*p->bind) unbind_key(p->bind);
             FREE(p->bind);
             p->bind = STRDUP(code);
-            if (!*code)
-                eprintf("warning: no code for key \"%s\"", p->keyname);
-            else if (bind_key(p))
+            if (!*code) {
+                wprintf("no code for key \"%s\"", p->keyname);
+            } else if (bind_key_macro(p)) {
+		/* bind_key_macro can't return -1 here */
                 do_hook(H_REDEF, "!Redefined %s %s", "%s %s",
                     "key", p->keyname);
-            else
+            } else {
                 kill_macro(p);
+	    }
         }
     }
 }
@@ -739,7 +817,7 @@ struct Value *handle_def_command(String *args, int offset)
 {
     Macro *spec;
 
-    if (!(args->len - offset) || !(spec = macro_spec(args, offset, NULL, FALSE)))
+    if (!(args->len - offset) || !(spec = macro_spec(args, offset, NULL, NULL)))
         return shareval(val_zero);
     return newint(complete_macro(spec, macro_hash(spec->name), 0, NULL));
 }
@@ -750,7 +828,7 @@ struct Value *handle_def_command(String *args, int offset)
 static int complete_macro(Macro *spec, unsigned int hash, int num,
     ListEntry *numnode)
 {
-    Macro *macro = NULL;
+    Macro *orig = NULL;
     int i;
 
     if (spec->name && *spec->name) {
@@ -838,23 +916,28 @@ static int complete_macro(Macro *spec, unsigned int hash, int num,
         }
         spec->bind = STRDUP(spec->bind);
         if (!*spec->bind)
-            eprintf("warning: no code for key \"%s\".", spec->keyname);
+            wprintf("no code for key \"%s\".", spec->keyname);
     }
 
     if (!spec->bind) spec->bind = STRNDUP("", 0);
 
     if (*spec->name &&
-	(macro = (Macro *)hashed_find(spec->name, hash, macro_table)) &&
-	!redef)
+	(orig = (Macro *)hashed_find(spec->name, hash, macro_table)))
     {
-        eprintf("macro %s already exists", macro->name);
-        nuke_macro(spec);
-        return 0;
+	if (macro_equal(orig, spec)) {
+	    /* identical redefinition has no effect */
+	    nuke_macro(spec);
+	    return orig->num;
+	} else if (!redef) {
+	    eprintf("macro %s already exists", spec->name);
+	    nuke_macro(spec);
+	    return 0;
+	}
     }
     if (!add_numbered_macro(spec, hash, num, numnode)) return 0;
-    if (macro) {
-        do_hook(H_REDEF, "!Redefined %s %s", "%s %s", "macro", macro->name);
-        kill_macro(macro);
+    if (orig) {
+        do_hook(H_REDEF, "!Redefined %s %s", "%s %s", "macro", orig->name);
+        kill_macro(orig);
     }
     return spec->num;
 }
@@ -884,7 +967,7 @@ struct Value *handle_edit_command(String *args, int offset)
     unsigned int hash = 0;
     ListEntry *numnode;
 
-    if (!(args->len - offset) || !(spec = macro_spec(args, offset, NULL, FALSE))) {
+    if (!(args->len - offset) || !(spec = macro_spec(args, offset, NULL, NULL))) {
         return shareval(val_zero);
     } else if (!spec->name) {
         eprintf("You must specify a macro.");
@@ -980,7 +1063,7 @@ void kill_macro(Macro *macro)
     dead_macros = macro;
     unlist(macro->numnode, maclist);
     if (*macro->name) hash_remove(macro->hashnode, macro_table);
-    if (*macro->bind) unbind_key(macro);
+    if (*macro->bind) unbind_key(macro->bind);
 }
 
 void nuke_dead_macros(void)
@@ -1053,7 +1136,7 @@ struct Value *handle_purge_command(String *args, int offset)
     int mflag;
     AuxPat aux;
 
-    if (!(spec = macro_spec(args, offset, &mflag, FALSE)))
+    if (!(spec = macro_spec(args, offset, &mflag, NULL)))
         return shareval(val_zero);
     if (spec->name && *spec->name == '#') {
         spec->num = atoi(spec->name + 1);
@@ -1064,7 +1147,7 @@ struct Value *handle_purge_command(String *args, int offset)
 	goto error;
     for (node = maclist->head; node; node = next) {
 	next = node->next;
-	if (macro_match(spec, MAC(node), &aux) == 0) {
+	if (macro_match(spec, MAC(node), &aux)) {
 	    kill_macro(MAC(node));
 	    result++;
 	}
@@ -1139,7 +1222,7 @@ static const String *hook_name(const hookvec_t *hook)
     return buf;
 }
 
-static void print_def(TFILE *file, String *buffer, Macro *p)
+static conString *print_def(TFILE *file, String *buffer, Macro *p)
 {
     int mflag = -1;
 
@@ -1147,7 +1230,8 @@ static void print_def(TFILE *file, String *buffer, Macro *p)
 	buffer = Stringnew(NULL, 0, 0);
     buffer->links++;
 
-    if (!file) Sprintf(buffer, "%% %d: /def ", p->num);
+    if (file && file == tfout)
+	Sprintf(buffer, "%% %d: /def ", p->num);
     else Stringcpy(buffer, "/def ");
     if (p->invis) Stringcat(buffer, "-i ");
     if (p->trig.str || (p->flags & MACRO_HOOK))
@@ -1217,18 +1301,24 @@ static void print_def(TFILE *file, String *buffer, Macro *p)
     if (*p->name) Sappendf(buffer, "%s ", p->name);
     if (p->body && p->body->len) Sappendf(buffer, "= %S", p->body);
 
-    tfputline(CS(buffer), file ? file : tfout);
-    Stringfree(buffer);
+    if (file) {
+	tfputline(CS(buffer), file);
+	Stringfree(buffer);
+	return NULL;
+    } else {
+	return CS(buffer);
+    }
 }
 
 /* list all specified macros */
-static int list_defs(TFILE *file, Macro *spec, int mflag)
+static int list_defs(TFILE *file, Macro *spec, int mflag, ListOpts *listopts)
 {
     Macro *p;
     ListEntry *node;
     AuxPat aux;
     String *buffer = NULL;
-    int result = 0;
+    int result = 0, i;
+    Vector macs = vector_init(1024);
 
     if (!(init_aux_patterns(spec, mflag, &aux))) goto error;
     if (spec->name && *spec->name == '#') {
@@ -1240,13 +1330,21 @@ static int list_defs(TFILE *file, Macro *spec, int mflag)
     /* maclist is in reverse numeric order, so we start from tail */
     for (node = maclist->tail; node; node = node->prev) {
         p = MAC(node);
-        if (macro_match(spec, p, &aux) != 0) continue;
+        if (!macro_match(spec, p, &aux)) continue;
+	vector_add(&macs, p);
+    }
+
+    if (listopts && listopts->cmp)
+	vector_sort(&macs, listopts->cmp);
+
+    for (i = 0; i < macs.size; i++) {
+        p = macs.ptrs[i];
         result = p->num;
 
         if (!buffer)
             (buffer = Stringnew(NULL, 0, 0))->links++;
 
-        if (spec->flags & MACRO_SHORT) {
+        if (listopts && listopts->shortflag) {
             Sprintf(buffer, "%% %d: ", p->num);
             if (p->attr & F_NOHISTORY) Stringcat(buffer, "(nohistory) ");
             if (p->attr & F_NOLOG) Stringcat(buffer, "(nolog) ");
@@ -1263,13 +1361,13 @@ static int list_defs(TFILE *file, Macro *spec, int mflag)
                     Sappendf(buffer, "(%S) ",
                         &enum_color[attr2fgcolor(p->attr)]);
                 if (p->attr & F_BGCOLOR)
-                    Sappendf(buffer, "(%S) ",
+                    Sappendf(buffer, "(bg%S) ",
                         &enum_color[attr2bgcolor(p->attr)]);
             } else if (p->nsubattr > 0) {
                 Stringcat(buffer, "(partial) ");
             } else if (p->trig.str) {
 		Stringcat(buffer, "(trig");
-		if (spec->used[0])
+		if (listopts && listopts->usedflag)
 		    Sappendf(buffer, " %d", p->used[USED_TRIG]);
 		Stringcat(buffer, ") ");
             }
@@ -1278,14 +1376,14 @@ static int list_defs(TFILE *file, Macro *spec, int mflag)
 #if 0 /* obsolete */
             if (*p->keyname) {
 		Stringcat(buffer, "(key");
-		if (spec->used[0])
+		if (listopts && listopts->usedflag)
 		    Sappendf(buffer, " %d", p->used[USED_KEY]);
                 Sappendf(buffer, ") '%s' ", p->keyname);
             } else
 #endif
 	    if (*p->bind) {
 		Stringcat(buffer, "(bind");
-		if (spec->used[0])
+		if (listopts && listopts->usedflag)
 		    Sappendf(buffer, " %d", p->used[USED_KEY]);
                 Sappendf(buffer, ") '%q' ", '\'',
                     ascii_to_print(p->bind)->data);
@@ -1294,19 +1392,19 @@ static int list_defs(TFILE *file, Macro *spec, int mflag)
             }
             if (p->flags & MACRO_HOOK) {
 		Stringcat(buffer, "(hook");
-		if (spec->used[0])
+		if (listopts && listopts->usedflag)
 		    Sappendf(buffer, " %d", p->used[USED_HOOK]);
                 Sappendf(buffer, ") %S ", hook_name(&p->hook));
 	    }
             if (*p->name) {
 		Sappendf(buffer, "%s ", p->name);
-		if (spec->used[0])
+		if (listopts && listopts->usedflag)
 		    Sappendf(buffer, "(%d) ", p->used[USED_NAME]);
 	    }
 	    tfputline(CS(buffer), file ? file : tfout);
 
         } else {
-	    print_def(file, buffer, p);
+	    print_def(file ? file : tfout, buffer, p);
         }
 
         /* If something is sharing buffer, we can't reuse it in next loop. */
@@ -1316,6 +1414,7 @@ static int list_defs(TFILE *file, Macro *spec, int mflag)
         }
     }
     /* regrelease(); */
+    vector_free(&macs);
 error:
     free_aux_patterns(&aux);
     if (buffer) {
@@ -1344,7 +1443,7 @@ int save_macros(String *args, int offset)
     next = args->data + offset;
     name = stringarg(&next, NULL);
     offset = next - args->data;
-    if (!(spec = macro_spec(args, offset, &mflag, FALSE))) result = 0;
+    if (!(spec = macro_spec(args, offset, &mflag, NULL))) result = 0;
     if (result && !(file = tfopen(expand_filename(name), mode))) {
         operror(name);
         result = 0;
@@ -1353,7 +1452,7 @@ int save_macros(String *args, int offset)
     if (result) {
         oprintf("%% %sing macros to %s", *mode=='w' ? "Writ" : "Append",
             file->name);
-        result = list_defs(file, spec, mflag);
+        result = list_defs(file, spec, mflag, NULL);
     }
     if (file) tfclose(file);
     if (spec) nuke_macro(spec);
@@ -1366,9 +1465,10 @@ struct Value *handle_list_command(String *args, int offset)
     Macro *spec;
     int result = 1;
     int mflag;
+    ListOpts opts = { 0, 0, NULL };
 
-    if (!(spec = macro_spec(args, offset, &mflag, TRUE))) result = 0;
-    if (result) result = list_defs(NULL, spec, mflag);
+    if (!(spec = macro_spec(args, offset, &mflag, &opts))) result = 0;
+    if (result) result = list_defs(NULL, spec, mflag, &opts);
     if (spec) nuke_macro(spec);
     return newint(result);
 }
@@ -1421,6 +1521,7 @@ const char *macro_body(const char *name)
     Macro *m;
     const char *body;
 
+    if (!name) return NULL;
     if (strncmp("world_", name, 6) == 0 && (body = world_info(NULL, name + 6)))
         return body;
     if (!(m = find_macro(name))) return NULL;
@@ -1616,7 +1717,7 @@ int find_and_run_matches(String *text, int hooknum, String **linep,
 		    header = 1;
 		}
 		if (exec_list_long > 1)
-		    print_def(NULL, NULL, macro);
+		    print_def(tfout, NULL, macro);
 		else if (macro->name)
 		    oprintf("%% %c %10d %s", macro->fallthru ? 'F' : ' ',
 			macro->pri, macro->name);

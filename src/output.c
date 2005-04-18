@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: output.c,v 35004.207 2004/07/30 19:21:02 hawkeye Exp $";
+static const char RCSid[] = "$Id: output.c,v 35004.234 2005/04/18 03:15:36 kkeys Exp $";
 
 
 /*****************************************************************
@@ -19,20 +19,23 @@ static const char RCSid[] = "$Id: output.c,v 35004.207 2004/07/30 19:21:02 hawke
 #define TERM_vt220	2
 #define TERM_ansi	3
 
-#include "config.h"
+#include "tfconfig.h"
 #include "port.h"
 #include "tf.h"
 #include "util.h"
+#include "pattern.h"
 #include "search.h"
 #include "tfio.h"
 #include "socket.h"	/* fgprompt(), fgname() */
 #include "output.h"
+#include "attr.h"
 #include "macro.h"	/* add_ibind(), rebind_key_macros() */
 #include "tty.h"	/* init_tty(), get_window_wize() */
 #include "variable.h"
 #include "expand.h"	/* current_command */
 #include "parse.h"	/* expr_value_safe() */
 #include "keyboard.h"	/* keyboard_pos */
+#include "cmdlist.h"
 
 #ifdef EMXANSI
 # define INCL_VIO
@@ -93,8 +96,8 @@ TERMCODE (insert_char,		NULL,		"\033[@",	"\033[@")
 #endif
 TERMCODE (insert_start,		NULL,		NULL,		"\033[4h")
 TERMCODE (insert_end,		NULL,		NULL,		"\033[4l")
-TERMCODE (keypad_on,		"\033[?1h",	NULL,		NULL)
-TERMCODE (keypad_off,		"\033[?1l",	NULL,		NULL)
+TERMCODE (keypad_on,		"\033[?1h\033=",NULL,		NULL)
+TERMCODE (keypad_off,		"\033[?1l\033>",NULL,		NULL)
 TERMCODE (bell,			"\007",		"\007",		"\007")
 TERMCODE (underline,		"\033[4m",	"\033[4m",	"\033[4m")
 TERMCODE (reverse,		"\033[7m",	"\033[7m",	"\033[7m")
@@ -112,7 +115,7 @@ TERMCODE (standout_off,		NULL,		NULL,		NULL)
 
 
 /* If var==NULL and internal<0, the status is a constant string */
-typedef struct status_field {
+typedef struct statusfield {
     char *name;
     stat_id_t internal;	/* index of internal status being watched */
     Var *var;		/* variable being watched */
@@ -121,9 +124,12 @@ typedef struct status_field {
     int width;
     int rightjust;
     int column;
+    int row;
     attr_t attrs;	/* attibutes from status_fields */
     attr_t vattrs;	/* attibutes from status_attr_{int,var}_<name> */
 } StatusField;
+
+static Var bogusvar;   /* placeholder for StatusField->var */
 
 #define true_status_pad (status_pad && *status_pad ? *status_pad : ' ')
 #define sidescroll \
@@ -145,12 +151,10 @@ static void  scroll_input(int n);
 static void  ictrl_put(const char *s, int n);
 static int   ioutputs(const char *str, int len);
 static void  ioutall(int kpos);
-static int   format_status_field(StatusField *field);
 static void  attributes_off(attr_t attrs);
 static void  attributes_on(attr_t attrs);
-static void  color_on(long color);
+static void  color_on(const char *prefix, long color);
 static void  hwrite(conString *line, int start, int len, int indent);
-static void  set_attr(String *line, int n, attr_t *starting, attr_t current);
 static int   check_more(Screen *screen);
 static int   next_physline(Screen *screen);
 static void  output_novisual(PhysLine *pl);
@@ -194,14 +198,22 @@ static void  (*tp)(const char *str);
 #define moremin 1
 #define morewait 50
 
+String status_line[][1] = {	    /* formatted status lines, without alert */
+    STATIC_BUFFER_INIT, STATIC_BUFFER_INIT, STATIC_BUFFER_INIT,
+    STATIC_BUFFER_INIT, STATIC_BUFFER_INIT, STATIC_BUFFER_INIT };
+#define max_status_height   (sizeof(status_line)/sizeof(String))
+static StatusField *variable_width_field[max_status_height];
+
 STATIC_BUFFER(outbuf);              /* output buffer */
-STATIC_BUFFER(status_line);	    /* formatted status line, without alert */
 static int top_margin = -1, bottom_margin = -1;	/* scroll region */
 static int cx = -1, cy = -1;        /* Real cursor ((-1,-1)==unknown) */
 static int ox = 1, oy = 1;          /* Output cursor */
 static int ix, iy;                  /* Input cursor */
 static int old_ix = -1;		    /* original ix before output clobbered it */
-static int ystatus;                 /* line # of status bar */
+static int in_top, in_bot;	    /* top & bottom line # of input window */
+#define out_top 1		    /* top line # of output window */
+static int out_bot;		    /* bottom line # of output window */
+static int stat_top, stat_bot;	    /* top & bottom line # of status area */
 static int istarty, iendy, iendx;   /* start/end of current input line */
 static conString *prompt;           /* current prompt */
 static attr_t have_attr = 0;        /* available attributes */
@@ -209,9 +221,12 @@ static int screen_mode = -1;        /* -1=unset, 0=nonvisual, 1=visual */
 static int output_disabled = 1;     /* is it safe to oflush()? */
 static int can_have_visual = FALSE;
 static int can_have_expnonvis = FALSE;
-static List status_field_list[1];
-static int status_left = 0, status_right = 0;  /* size of status line pieces */
-static int alert_pos = 0, alert_len = 0;
+static List statusfield_list[max_status_height][1];
+static int status_left[max_status_height];  /* size of status line left part */
+static int status_right[max_status_height]; /* size of status line right part */
+static int alert_row = 0;	    /* row of status area where alert appears */
+static int alert_pos = 0;	    /* column where alert appears */
+static int alert_len = 0;	    /* length of current alert message */
 
 STATIC_STRING(moreprompt, "--More--", F_BOLD | F_REVERSE);  /* pager prompt */
 
@@ -283,9 +298,9 @@ static Keycode keycodes[] = {  /* this list is sorted by tolower(name)! */
     { "KP1",            "K1", KEYCODE( "\033Oq",   NULL,       NULL ) },
     { "KP2",            "K2", KEYCODE( "\033Or",   NULL,       NULL ) },
     { "KP3",            "K3", KEYCODE( "\033Os",   NULL,       NULL ) },
-    { "KP4",            "K4", KEYCODE( "\033Oq",   NULL,       NULL ) },
-    { "KP5",            "K5", KEYCODE( "\033Op",   NULL,       NULL ) },
-    { "Left",           "kl", KEYCODE( "\033On",   "\033[D",   "\033[D" ) },
+    { "KP4",            "K4", KEYCODE( "\033Op",   NULL,       NULL ) },
+    { "KP5",            "K5", KEYCODE( "\033Oq",   NULL,       NULL ) },
+    { "Left",           "kl", KEYCODE( "\033OD",   "\033[D",   "\033[D" ) },
     { "PgDn",           "kN", KEYCODE( NULL,       "\033[6~",  NULL ) },
     { "PgUp",           "kP", KEYCODE( NULL,       "\033[5~",  NULL ) },
     { "Right",          "kr", KEYCODE( "\033OC",   "\033[C",   "\033[C" ) },
@@ -373,13 +388,23 @@ int change_term(Var *var)
     return 1;
 }
 
+static void init_line_numbers(void)
+{
+    /* out_top = 1; */
+    out_bot = lines - isize - status_height;
+    stat_top = out_bot + 1;
+    stat_bot = out_bot + status_height;
+    in_top = stat_bot + 1;
+    in_bot = stat_bot + isize;
+}
+
 /* Initialize output data. */
 void init_output(void)
 {
     const char *str;
+    int i;
 
     tp = tbufputs;
-    init_list(status_field_list);
     init_tty();
 
     /* Window size: clear defaults, then try:
@@ -388,7 +413,7 @@ void init_output(void)
     lines = ((str = getvar("LINES"))) ? atoi(str) : 0;
     columns = ((str = getvar("COLUMNS"))) ? atoi(str) : 0;
     if (lines <= 0 || columns <= 0) get_window_size();
-    ystatus = lines - isize;
+    init_line_numbers();
     top_margin = 1;
     bottom_margin = lines;
 
@@ -396,11 +421,12 @@ void init_output(void)
     old_ix = -1;
 
     init_term();
-    Stringninit(status_line, columns);
-    check_charattrs(status_line, columns, 0, __FILE__, __LINE__);
-    ch_attr(&special_var[VAR_hiliteattr]);
-    ch_attr(&special_var[VAR_alert_attr]);
-    ch_attr(&special_var[VAR_stat_attr]);
+    for (i = 0; i < max_status_height; i++) {
+	init_list(statusfield_list[i]);
+	Stringninit(status_line[i], columns);
+	check_charattrs(status_line[i], columns, 0, __FILE__, __LINE__);
+    }
+
     redraw();
     output_disabled = 0;
 }
@@ -445,32 +471,29 @@ static void init_term(void)
 	 * hate it when people blame tf for a bug in another program,
 	 * especially when it's the evil csh or tcsh.)
 	 */
-	const char *str;
-	int len;
+	const char *str, *shell;
+	int len, is_csh;
 	if ((str = getvar("TERMCAP")) && (len = strlen(str)) > 0) {
+	    is_csh = ((shell = getenv("SHELL")) && smatch("*csh", shell) == 0);
 	    if (str[len-1] != ':') {
-		tfprintf(tferr,
-		    "%% Warning: unsetting invalid TERMCAP variable.%s",
-		    (len != 1023) ? "" :
-		    "  (Apparently your shell has incorrectly truncated it.)"
-		    );
+		wprintf("unsetting invalid TERMCAP variable%s.",
+		    is_csh ?  ", which appears to have been corrupted by your "
+		    "broken *csh shell" : "");
 		unsetvar(ffindglobalvar("TERMCAP"));
-	    } else if ((len == 1023) && (str = getenv("SHELL")) &&
-		(len = strlen(str)) >= 3 && strcmp(str+len-3, "csh") == 0)
-	    {
-		tfprintf(tferr, "%% Warning: the TERMCAP environment variable "
-		    "looks suspiciously like it has been truncated by your "
-		    "shell, which may cause problems with tf's display or "
-		    "keyboard input.  Recommend you \"unsetenv TERMCAP\" "
-		    "or fix its value before starting tf.");
+	    } else if (len == 1023 && (!getenv("TF_FORCE_TERMCAP")) && is_csh) {
+		wprintf("unsetting the TERMCAP environment variable because "
+		    "it looks like it has been truncated by your broken *csh "
+		    "shell.  To force TF to use TERMCAP, restart TF with the "
+		    "TF_FORCE_TERMCAP environment variable set.");
+		unsetvar(ffindglobalvar("TERMCAP"));
 	    }
 	}
     }
 
     if (!TERM || !*TERM) {
-        tfprintf(tferr, "%% Warning: TERM undefined.");
+        wprintf("TERM undefined.");
     } else if (tgetent(termcap_entry, TERM) <= 0) {
-        tfprintf(tferr, "%% Warning: \"%s\" terminal unsupported.", TERM);
+        wprintf("\"%s\" terminal unsupported.", TERM);
     } else {
         if (columns <= 0) columns = tgetnum("co");
         if (lines   <= 0) lines   = tgetnum("li");
@@ -525,9 +548,16 @@ static void init_term(void)
 #if 0	    /* Now that tf has virtual screens, the secondary buffer is ok. */
             enter_ca_mode = exit_ca_mode = NULL; /* Avoid secondary buffer. */
 #endif
-            /* Many old xterm termcaps mistakenly omit "cs". */
+            /* Many old "xterm" termcaps mistakenly omit "cs". */
             if (!set_scroll_region)
                 set_scroll_region = "\033[%i%d;%dr";
+        }
+        if (strcmp(TERM, "linux") == 0) {
+            /* Many "linux" termcaps mistakenly omit "ks" and "ke". */
+            if (!keypad_on && !keypad_off) {
+		keypad_on = "\033[?1h\033=";
+		keypad_off = "\033[?1l\033>";
+	    }
         }
     }
 
@@ -674,7 +704,7 @@ void setup_screen(void)
     if (visual && (!can_have_visual)) {
         eprintf("Visual mode is not supported on this terminal.");
         set_var_by_id(VAR_visual, 0);  /* XXX recursion problem?? */
-    } else if (visual && lines < 4) {
+    } else if (visual && lines < 1/*input*/ + 1/*status*/ + 2/*output*/) {
         eprintf("Screen is too small for visual mode.");
         set_var_by_id(VAR_visual, 0);  /* XXX recursion problem?? */
     }
@@ -687,10 +717,17 @@ void setup_screen(void)
 #ifdef SCREEN
     } else {
         prompt = fgprompt();
-        if (isize > lines - 3) set_var_by_id(VAR_isize, lines - 3);
-        ystatus = lines - isize;
+	if (isize + status_height + 2 > lines) {
+	    if ((1 + status_height + 2) <= lines) {
+		set_var_by_id(VAR_isize, lines - (status_height + 2));
+	    } else {
+		set_var_by_id(VAR_isize, 1);
+		set_var_by_id(VAR_stat_height, lines - (isize + 2));
+	    }
+	}
+	init_line_numbers();
 #if 0
-        outcount = ystatus - 1;
+        outcount = out_bot - out_top + 1;
 #endif
         if (enter_ca_mode) tp(enter_ca_mode);
     
@@ -699,7 +736,7 @@ void setup_screen(void)
         }
         update_status_line(NULL);
         ix = iendx = oy = 1;
-        iy = iendy = istarty = ystatus + 1;
+        iy = iendy = istarty = in_top;
         ipos();
 #endif
     }
@@ -998,7 +1035,7 @@ int enable_screen_filter(Screen *screen)
 
 int winlines(void)
 {
-    return visual ? ystatus - 1 : lines - 1;
+    return visual ? out_bot - out_top + 1 : lines - 1;
 }
 
 /* wraplines
@@ -1065,7 +1102,7 @@ static void rewrap(Screen *screen)
     screen->bot = screen->pline.tail;
     while (screen->bot->prev) {
 	pl = screen->bot->datum;
-	if (pl->start < old_bot_visible) break;
+	if (pl->start == 0 || pl->start < old_bot_visible) break;
 	screen->bot = screen->bot->prev;
 	screen->nback++;
     }
@@ -1087,7 +1124,7 @@ static void rewrap(Screen *screen)
     screen->maxbot = screen->pline.tail;
     while (screen->maxbot->prev) {
 	pl = screen->maxbot->datum;
-	if (pl->start < old_maxbot_visible) break;
+	if (pl->start == 0 || pl->start < old_maxbot_visible) break;
 	screen->maxbot = screen->maxbot->prev;
 	screen->nnew++;
     }
@@ -1109,9 +1146,10 @@ static void rewrap(Screen *screen)
     /* XXX TODO: should honor screen->partialview */
     screen_refilter(screen);
 
+    screen->scr_wrapflag = wrapflag;
     screen->scr_wrapsize = Wrap;
     screen->scr_wrapspace = wrapspace;
-    screen->scr_wrapflag = wrapflag;
+    screen->scr_wrappunct = wrappunct;
 }
 
 int redraw_window(Screen *screen, int already_clear)
@@ -1120,11 +1158,12 @@ int redraw_window(Screen *screen, int already_clear)
 	return 0;
 
     if (!already_clear)
-	clear_lines(1, visual ? ystatus - 1 : lines);
+	clear_lines(1, visual ? out_bot : lines);
 
     if (screen->scr_wrapflag != wrapflag ||
 	screen->scr_wrapsize != Wrap ||
-	screen->scr_wrapspace != wrapspace)
+	screen->scr_wrapspace != wrapspace ||
+	screen->scr_wrappunct != wrappunct)
     {
 	rewrap(screen);
     } else {
@@ -1147,7 +1186,7 @@ int redraw_window(Screen *screen, int already_clear)
 	ListEntry *node;
 	int first;
 
-        if (visual) xy(1, ystatus - screen->viewsize);
+        if (visual) xy(1, out_bot - (screen->viewsize - 1));
 
 	node = screen->top;
 	first = 1;
@@ -1165,7 +1204,7 @@ int redraw_window(Screen *screen, int already_clear)
 	    node = node->next;
         }
 	if (visual) {
-	    cx = 1; cy = ystatus - 1;
+	    cx = 1; cy = out_bot;
 	} else {
 	    crnl(1);
 	    cx = 1; cy = lines;
@@ -1218,203 +1257,472 @@ int clear_display_screen(void)
     return redraw_window(display_screen, 0);
 }
 
+static const char *parse_statusfield(StatusField *field, const char *s)
+{
+    const char *t;
+
+    memset(field, 0, sizeof(*field));
+    field->internal = -1;
+
+    if (is_quote(*s)) {                                /* string literal */
+	STATIC_BUFFER(buffer);
+	if (!stringliteral(buffer, &s)) {
+	    eprintf("%S", buffer);
+	    return NULL;
+	}
+	field->name = STRDUP(buffer->data);
+    } else if (*s == '@') {                            /* internal */
+	for (t = ++s; is_alnum(*s) || *s == '_'; s++);
+	field->name = strncpy(XMALLOC(s - t + 1), t, s - t);
+	field->name[s-t] = '\0';
+	field->internal = enum2int(field->name, 0, enum_status,
+	    "status_fields internal status");
+	FREE(field->name);
+	field->name = NULL;
+	if (field->internal < 0)
+	    return NULL;
+    } else if (is_alnum(*s) || *s == '_') {            /* variable */
+	for (t = s++; is_alnum(*s) || *s == '_'; s++);
+	field->name = strncpy(XMALLOC(s - t + 1), t, s - t);
+	field->name[s-t] = '\0';
+	field->var = &bogusvar;
+    } else {                                           /* blank */
+	field->name = NULL;
+    }
+
+    if (*s == ':') {
+	while (*++s == '-')
+	    field->rightjust = !field->rightjust;
+	field->width = strtoint(s, &s);
+    }
+
+    if (*s == ':') {
+	for (t = s + 1; *s && !is_space(*s); s++);
+	if (!parse_attrs(t, &field->attrs, ' '))
+	    return NULL;
+    }
+
+    if (*s && !is_space(*s)) {
+	eprintf("garbage in status field: %.8s", s);
+	return NULL;
+    }
+    return s;
+}
+
+static Var *status_var(const char *type, const char *suffix)
+{
+    STATIC_BUFFER(name);
+    Var *var;
+    Stringcat(Stringcat(Stringcpy(name, "status_"), type), suffix);
+    var = ffindglobalvar(name->data);
+    return var ? var : set_var_by_name(name->data, NULL);
+}
+
+conString *status_field_text(int row)
+{
+    ListEntry *node;
+    StatusField *f;
+    String *buf = Stringnew(NULL, -1, 0);
+    int width;
+
+    for (node = statusfield_list[row]->head; node; node = node->next) {
+	if (node != statusfield_list[row]->head)
+	    Stringadd(buf, ' ');
+	f = (StatusField*)node->datum;
+	width = f->width;
+	if (f->internal >= 0) {
+	    Stringadd(buf, '@');
+	    SStringcat(buf, &enum_status[f->internal]);
+	} else if (f->var) {
+	    Stringcat(buf, f->var->val.name);
+	} else if (f->name) {
+	    Sappendf(buf, "\"%q\"", '"', f->name);
+	    if (width == strlen(f->name)) width = 0;
+	}
+	if (!width && !f->attrs && !f->rightjust)
+	    continue;
+	Stringadd(buf, ':');
+	if (width || f->rightjust)
+	    Sappendf(buf, "%s%d", f->rightjust ? "-" : "", width);
+	if (!f->attrs)
+	    continue;
+	Stringadd(buf, ':');
+	attr2str(buf, f->attrs);
+    }
+    return CS(buf);
+}
+
+static void regen_status_fields(int row)
+{
+    ListEntry *node;
+    StatusField *f;
+    int column;
+
+    /* finish calculations on status_fields_list */
+    for (node = statusfield_list[row]->head; node; node = node->next) {
+        f = (StatusField*)node->datum;
+        if (f->var) { /* f->var == &bogusvar */
+	    if (f->var == &bogusvar) {
+		if (!(f->var = ffindglobalvar(f->name)))
+		    f->var = set_var_by_name(f->name, NULL);
+		FREE(f->name);
+		f->name = NULL;
+	    }
+            f->var->statuses++;
+	    f->fmtvar = status_var("var_", f->var->val.name);
+	    f->attrvar = status_var("attr_var_", f->var->val.name);
+	} else if (f->internal >= 0) {
+	    f->fmtvar = status_var("int_", enum_status[f->internal].data);
+	    f->attrvar = status_var("attr_int_", enum_status[f->internal].data);
+	} else {
+	    continue;
+	}
+	f->fmtvar->statusfmts++;
+	f->attrvar->statusattrs++;
+	if (ch_attr(f->attrvar))
+	    f->vattrs = f->attrvar->val.u.attr;
+    }
+
+    clock_update.tv_sec = 0;
+    variable_width_field[row] = NULL;
+    status_left[row] = status_right[row] = 0;
+    column = 0;
+    for (node = statusfield_list[row]->head; node; node = node->next) {
+        f = (StatusField*)node->datum;
+        status_left[row] = f->column = column;
+        if (f->width == 0) {
+	    variable_width_field[row] = f;
+	    break;
+	}
+        column += f->width;
+    }
+    column = 0;
+    if (node) {
+        for (node = statusfield_list[row]->tail; node; node = node->prev) {
+            f = (StatusField*)node->datum;
+            if (f->width == 0) break;
+            status_right[row] = -(f->column = (column -= f->width));
+        }
+    }
+
+    if (row == 0) {
+	/* regenerate the value of %status_fields for backward compatibility */
+	conString *buf = status_field_text(row);
+	/* set_var_direct avoids error checking and recursion */
+	set_var_direct(&special_var[VAR_stat_fields], TYPE_STR, buf);
+    }
+
+    update_status_line(NULL);
+}
+
+static ListEntry *find_statusfield_by_template(StatusField *target,
+    int full_comparison, const char *label)
+{
+    ListEntry *node;
+    StatusField *f;
+    int row;
+
+    for (row = 0; row < status_height; row++) {
+	if (target->row >= 0 && row != target->row) continue;
+	for (node = statusfield_list[row]->head; node; node = node->next) {
+	    f = (StatusField*)node->datum;
+	    if (target->internal >= 0) {
+		if (target->internal != f->internal) continue;
+	    } else if (target->var) {
+		if (!f->var || strcmp(target->name, f->var->val.name) != 0)
+		    continue;
+	    } else if (target->name) {
+		if (!f->name || cstrcmp(target->name, f->name) != 0)
+		    continue;
+	    }
+	    if (full_comparison) {
+		if (target->width && target->width != f->width) continue;
+		if (target->attrs && target->attrs != f->attrs) continue;
+	    }
+	    return node;
+	}
+    }
+    if (label) {
+	eprintf(
+	    target->row<0 ? "%s: no such field" : "%s: no such field in row %d",
+	    label, target->row);
+    }
+    return NULL;
+}
+
+static ListEntry *find_statusfield_by_name(int row, const char *spec)
+{
+    ListEntry *result = NULL;
+    StatusField target;
+    if (parse_statusfield(&target, spec)) {
+	target.row = row;
+	result = find_statusfield_by_template(&target, TRUE, spec);
+    }
+    if (target.name) FREE(target.name);
+    return result;
+}
+
 int ch_status_int(Var *var)
 {
     if (warn_status)
-	eprintf("Warning: the default value of %s has "
+	wprintf("the default value of %s has "
 	    "changed between tf version 4 and 5.", var->val.name);
     return 1;
 }
 
-int ch_status_fields(Var *var)
+static void free_statusfield(StatusField *field)
 {
-    const char *s, *t;
-    int width, column, i = 0, varfound = 0;
-    STATIC_BUFFER(scratch);
-    STATIC_BUFFER(varname);
-    ListEntry *last = status_field_list->tail;
-    StatusField *field;
-    ListEntry *node;
-    Var bogusvar;   /* placeholder */
+    if (field->var && field->var != &bogusvar && !--field->var->statuses)
+	freevar(field->var);
+    if (field->fmtvar && !--field->fmtvar->statuses)
+	freevar(field->fmtvar);
+    if (field->attrvar && !--field->attrvar->statuses)
+	freevar(field->attrvar);
+    if (field->name)
+	FREE(field->name);
+    FREE(field);
+}
 
-    if (warn_status) {
-	eprintf("Warning: the default definition of status_fields has "
-	    "changed between tf version 4 and 5.  The recommended way "
-	    "to change status_fields is by using /status_add, /status_rm, "
-	    "or /status_edit.");
+static int status_add(int reset, int nodup, int row, ListEntry *where,
+    const char *s,
+    long spacer) /* spacer>0 goes after new field, spacer<0 goes before */
+{
+    int totwidth = 0, vwf_found = 0;
+    List newlist[1];
+    StatusField *field;
+
+    init_list(newlist);
+
+    if (!reset) {
+	vwf_found = !!variable_width_field[row];
+	totwidth = status_left[row] + status_right[row];
     }
 
     /* validate and insert new fields */
-    Stringcpy(scratch, status_fields ? status_fields : "");
-    s = scratch->data;
-    width = 0;
     while (1) {
-        field = NULL;
         while(is_space(*s)) s++;
         if (!*s) break;
-        field = XCALLOC(sizeof(*field));
-        field->internal = -1;
-        i++;
-
-        if (is_quote(*s)) {                                /* string literal */
-            STATIC_BUFFER(buffer);
-            if (!stringliteral(buffer, &s)) {
-                eprintf("%S in status_fields", buffer);
-                goto ch_status_fields_error;
-            }
-            field->name = STRDUP(buffer->data);
-        } else if (*s == '@') {                            /* internal */
-            for (t = ++s; is_alnum(*s) || *s == '_'; s++);
-            field->name = strncpy(XMALLOC(s - t + 1), t, s - t);
-            field->name[s-t] = '\0';
-            field->internal = enum2int(field->name, 0, enum_status,
-                "status_fields internal status");
-            if (field->internal < 0) {
-		FREE(field->name);
-                goto ch_status_fields_error;
-	    }
-        } else if (is_alnum(*s) || *s == '_') {             /* variable */
-            for (t = s++; is_alnum(*s) || *s == '_'; s++);
-            field->name = strncpy(XMALLOC(s - t + 1), t, s - t);
-            field->name[s-t] = '\0';
-            if (!(field->var = ffindglobalvar(field->name)))
-		field->var = &bogusvar;
-        } else {                                           /* blank */
-            field->name = NULL;
-        }
-
-        if (*s == ':') {
-            s++;
-            field->width = strtoint(s, &s);
-            if ((field->rightjust = field->width < 0))
-                field->width = -field->width;
-        }
-
-        if (*s == ':') {
-            for (t = s + 1; *s && !is_space(*s); s++);
-            if (!parse_attrs(t, &field->attrs, ' '))
-                goto ch_status_fields_error;
-        }
-
-        if (*s && !is_space(*s)) {
-            eprintf("status_fields: garbage in field %d: %.8s", i, s);
-            goto ch_status_fields_error;
-        }
+        field = XMALLOC(sizeof(*field));
+	if (!(s = parse_statusfield(field, s)))
+            goto status_add_error;
+	field->row = row;
 
         if (!field->width && !field->var && field->internal < 0 && field->name)
             field->width = strlen(field->name);
 
-        if (field->width == 0) {
-            if (varfound) {
-                eprintf("status_fields: Only one variable width field is allowed.");
-                goto ch_status_fields_error;
-            }
-            varfound++;
-        } else {
-            width += field->width;
-        }
-
-        inlist(field, status_field_list, status_field_list->tail);
-    }
-
-    if (width > columns) {
-        eprintf("status_fields: status width (%d) is wider than screen (%d)",
-	    width, columns);
-    }
-
-    /* update new fields */
-    for (node = status_field_list->head; node; node = node->next) {
-        field = (StatusField*)node->datum;
-        if (!(field->var || field->internal >= 0))
+	if (nodup && find_statusfield_by_template(field, FALSE, NULL)) {
+	    free_statusfield(field);
 	    continue;
-        if (field->var) {
-	    if (field->var == &bogusvar)
-		field->var = set_var_by_name(field->name, NULL);
-            field->var->statuses++;
 	}
-	Stringcpy(varname, "status_");
-	Stringcat(varname, field->var ? "var_" : "int_");
-	Stringcat(varname, field->name);
-	field->fmtvar = ffindglobalvar(varname->data);
-	if (!field->fmtvar)
-	    field->fmtvar = set_var_by_name(varname->data, NULL);
-	field->fmtvar->statusfmts++;
-	Stringcpy(varname, "status_attr_");
-	Stringcat(varname, field->var ? "var_" : "int_");
-	Stringcat(varname, field->name);
-	field->attrvar = ffindglobalvar(varname->data);
-	if (!field->attrvar)
-	    field->attrvar = set_var_by_name(varname->data, NULL);
-	field->attrvar->statusattrs++;
-	if (ch_attr(field->attrvar))
-	    field->vattrs = field->attrvar->val.u.attr;
+
+        if (field->width != 0) {
+            totwidth += field->width;
+	} else {
+	    if (vwf_found) {
+		eprintf("Only one variable width status field is allowed.");
+		goto status_add_error;
+	    }
+	    vwf_found = 1;
+	}
+
+	inlist(field, newlist, newlist->tail);
     }
 
-    /* delete old fields and clean up referents */
-    for (node = last; node; node = last) {
-        last = node->prev;
-        field = (StatusField*)unlist(node, status_field_list);
-        if (field->var)
-            if (!--field->var->statuses)
-		freevar(field->var);
-        if (field->fmtvar)
-            if (!--field->fmtvar->statuses)
-		freevar(field->fmtvar);
-        if (field->attrvar)
-            if (!--field->attrvar->statuses)
-		freevar(field->attrvar);
-        if (field->name)
-            FREE(field->name);
-        FREE(field);
+    if (spacer && newlist->head && !reset && statusfield_list[row]->head) {
+        field = XCALLOC(sizeof(*field));
+        field->internal = -1;
+	field->row = row;
+	totwidth += (field->width = spacer < 0 ? -spacer : spacer);
+	inlist(field, newlist, spacer >= 0 ? NULL : newlist->tail);
     }
 
-    clock_update.tv_sec = 0;
-    status_left = status_right = 0;
-    column = 0;
-    for (node = status_field_list->head; node; node = node->next) {
-        field = (StatusField*)node->datum;
-        status_left = field->column = column;
-        if (field->width == 0) break;
-        column += field->width;
-    }
-    column = 0;
-    if (node) {
-        for (node = status_field_list->tail; node; node = node->prev) {
-            field = (StatusField*)node->datum;
-            if (field->width == 0) break;
-            status_right = -(field->column = (column -= field->width));
-        }
+    if (totwidth > columns) {
+        wprintf("total status width (%d) is wider than screen (%d)",
+	    totwidth, columns);
     }
 
-    update_status_line(NULL);
+    if (reset) {
+	/* delete old fields and clean up referents */
+	while (statusfield_list[row]->head)
+	    free_statusfield(unlist(statusfield_list[row]->head,
+		statusfield_list[row]));
+	*statusfield_list[row] = *newlist;
+    } else {
+	/* insert new fields into list */
+	/* (We could be faster with ptr swapping, but this isn't critical) */
+	while (newlist->head) {
+	    field = (StatusField*)unlist(newlist->head, newlist);
+	    where = inlist(field, statusfield_list[row], where);
+	}
+    }
+
+    regen_status_fields(row);
     return 1;
 
-ch_status_fields_error:
-    if (field) {
-        if (field->name) FREE(field->name);
-        FREE(field);
-    }
-    /* delete new fields */
-    if (last) {
-        for (node = last->next; node; node = last) {
-            last = node->next;
-            field = (StatusField*)unlist(node, status_field_list);
-            if (field->name) FREE(field->name);
-            FREE(field);
-        }
-    }
+status_add_error:
+    free_statusfield(field);
+    while (newlist->head)
+	free_statusfield(unlist(newlist->head, newlist));
     return 0;
 }
 
+struct Value *handle_status_add_command(String *args, int offset)
+{
+    int opt, nodup = FALSE, row = -1, reset = 0;
+    long num, spacer = 1;
+    const char *ptr, *before = NULL, *after = NULL;
+    ListEntry *where;
+
+    startopt(CS(args), "A:B:s#r#xc");
+    while ((opt = nextopt(&ptr, &num, NULL, &offset))) {
+	switch (opt) {
+	case 'A':  after = STRDUP(ptr);   before = NULL;  break;
+	case 'B':  before = STRDUP(ptr);  after = NULL;   break;
+	case 's':  spacer = num;  break;
+	case 'r':  row = num;     break;
+	case 'x':  nodup = TRUE;  break;
+	case 'c':  reset = 1;     break;
+        default:   return shareval(val_zero);
+	}
+    }
+
+    if (after) {
+	if (*after) {
+	    where = find_statusfield_by_name(row, after);
+	    if (!where) return shareval(val_zero);
+	    row = ((StatusField*)(where->datum))->row;
+	} else {
+	    if (row < 0) row = 0;
+	    where = statusfield_list[row]->tail;
+	}
+	FREE(after);
+    } else if (before) {
+	spacer = -spacer;
+	if (*before) {
+	    where = find_statusfield_by_name(row, before);
+	    if (!where) return shareval(val_zero);
+	    row = ((StatusField*)(where->datum))->row;
+	    where = where->prev;
+	} else {
+	    if (row < 0) row = 0;
+	    where = NULL;
+	}
+	FREE(before);
+    } else {
+	if (row < 0) row = 0;
+	where = statusfield_list[row]->tail;
+    }
+
+    return shareval(
+	status_add(reset, nodup, row, where, args->data + offset, spacer) ?
+	val_one : val_zero);
+}
+
+int ch_status_fields(Var *var)
+{
+    if (warn_status) {
+	wprintf("setting status_fields directly is deprecated, "
+	    "and may clobber useful new features introduced in version 5.  "
+	    "The recommended way to change "
+	    "status fields is with /status_add, /status_rm, or /status_edit. "
+	    "(This warning can be disabled with \"/set warn_status=off\".)");
+    }
+    return status_add(TRUE, FALSE, 0, NULL,
+	status_fields ? status_fields : "", 0);
+}
+
+static int getspacer(ListEntry *node)
+{
+    StatusField *f;
+    if (!node) return 0;
+    f = node->datum;
+    return (f->var || f->internal >= 0 || f->name) ? 0 : f->width;
+}
+
+struct Value *handle_status_rm_command(String *args, int offset)
+{
+    long row = -1;
+    int opt;
+    ListEntry *node;
+
+    startopt(CS(args), "r#");
+    while ((opt = nextopt(NULL, &row, NULL, &offset))) {
+	switch (opt) {
+	case 'r':  break;
+        default:   return shareval(val_zero);
+	}
+    }
+
+    node = find_statusfield_by_name(row, args->data + offset);
+    if (!node) return shareval(val_zero);
+    row = ((StatusField*)(node->datum))->row;
+    if (variable_width_field[row] == node->datum)
+	variable_width_field[row] = NULL;
+    if (!node->prev && getspacer(node->next)) {
+	unlist(node->next, statusfield_list[row]); /* remove leading spacer */
+    } else if (!node->next && getspacer(node->prev)) {
+	unlist(node->prev, statusfield_list[row]); /* remove trailing spacer */
+    } else if (getspacer(node->prev) && getspacer(node->next)) {
+	/* remove smaller of two neighboring spacers */
+	if (getspacer(node->prev) < getspacer(node->next))
+	    unlist(node->prev, statusfield_list[row]);
+	else
+	    unlist(node->next, statusfield_list[row]);
+    }
+    unlist(node, statusfield_list[row]);
+    regen_status_fields(row);
+    return shareval(val_one);
+}
+
+struct Value *handle_status_edit_command(String *args, int offset)
+{
+    long row = -1;
+    int opt;
+    StatusField *field;
+    ListEntry *node;
+
+    startopt(CS(args), "r#");
+    while ((opt = nextopt(NULL, &row, NULL, &offset))) {
+	switch (opt) {
+	case 'r':  break;
+        default:   return shareval(val_zero);
+	}
+    }
+
+    field = XMALLOC(sizeof(*field));
+    if (!parse_statusfield(field, args->data + offset)) {
+	free_statusfield(field);
+	return shareval(val_zero);
+    }
+    field->row = row;
+    node = find_statusfield_by_template(field, FALSE, args->data + offset);
+    if (!node) {
+	free_statusfield(field);
+	return shareval(val_zero);
+    }
+    row = field->row = ((StatusField*)(node->datum))->row;
+    if (!field->width && variable_width_field[row] &&
+	node->datum != variable_width_field[row])
+    {
+	eprintf("Only one variable width status field per row is allowed.");
+	free_statusfield(field);
+	return shareval(val_zero);
+    }
+    free_statusfield(node->datum);
+    node->datum = field;
+    regen_status_fields(field->row);
+    return shareval(val_one);
+}
+
 /* returns column of field, or -1 if field is obscured by alert */
-static inline int status_field_column(StatusField *field)
+static inline int statusfield_column(StatusField *field)
 {
     int column;
     if (field->column >= 0)
 	return (field->column > columns) ? columns : field->column;
     column = field->column +
-	((status_left + status_right > columns) ?
-	status_left + status_right : columns);
+	((status_left[field->row] + status_right[field->row] > columns) ?
+	status_left[field->row] + status_right[field->row] : columns);
     return (column > columns) ? columns : column;
 }
 
@@ -1422,7 +1730,8 @@ static int status_width(StatusField *field, int start)
 {
     int width;
     if (start >= columns) return 0;
-    width = (field->width == 0) ? columns - status_right - status_left :
+    width = (field->width == 0) ?
+	columns - status_right[field->row] - status_left[field->row] :
 	(field->width > 0) ? field->width : -field->width;
     if (width > columns - start)
         width = columns - start;
@@ -1431,38 +1740,15 @@ static int status_width(StatusField *field, int start)
     return width;
 }
 
-static StatusField *find_status_field(const char *name)
-{
-    ListEntry *node;
-    StatusField *field;
-    int internal = 0, var = 0;
-
-    /* XXX should handle quoted fields too */
-    if (*name == '@') {
-	name++;
-	internal = 1;
-    } else {
-	var = 1;
-    }
-
-    for (node = status_field_list->head; node; node = node->next) {
-        field = (StatusField*)node->datum;
-	if (internal && field->internal < 0) continue;
-	if (var && !field->var) continue;
-	if (cstrcmp(field->name, name) == 0)
-	    return field;
-    }
-    return NULL;
-}
-
 int handle_status_width_func(const char *name)
 {
+    /* XXX need to be able to specify row */
     StatusField *field;
-    field = find_status_field(name);
-    return field ? status_width(field, status_field_column(field)) : 0;
+    field = (StatusField*)find_statusfield_by_name(-1, name)->datum;
+    return field ? status_width(field, statusfield_column(field)) : 0;
 }
 
-static int format_status_field(StatusField *field)
+static int format_statusfield(StatusField *field)
 {
     STATIC_BUFFER(scratch);
     const char *old_command;
@@ -1498,7 +1784,7 @@ static int format_status_field(StatusField *field)
 		SStringcpy(scratch, blankline);
 	    }
         } else if (field->var) {
-            current_command = field->name;
+            current_command = field->var->val.name;
             val = getvarval(field->var);
             SStringcpy(scratch, val ? valstr(val) : blankline);
         }
@@ -1507,15 +1793,15 @@ static int format_status_field(StatusField *field)
         Stringcpy(scratch, field->name);
     }
 
-    x = status_field_column(field);
+    x = statusfield_column(field);
     width = status_width(field, x);
     if (scratch->len > width)
         Stringtrunc(scratch, width);
 
     if (field->rightjust && scratch->len < width) {          /* left pad */
 	for (i = 0; i < width - scratch->len; i++, x++) {
-	    status_line->data[x] = true_status_pad;
-	    status_line->charattrs[x] = status_attr;
+	    status_line[field->row]->data[x] = true_status_pad;
+	    status_line[field->row]->charattrs[x] = status_attr;
 	}
     }
 
@@ -1525,16 +1811,16 @@ static int format_status_field(StatusField *field)
         attrs = adj_attr(attrs, field->attrs);
         attrs = adj_attr(attrs, field->vattrs);
 	for (i = 0; i < scratch->len; i++, x++) {
-	    status_line->data[x] = scratch->data[i];
-	    status_line->charattrs[x] = scratch->charattrs ?
+	    status_line[field->row]->data[x] = scratch->data[i];
+	    status_line[field->row]->charattrs[x] = scratch->charattrs ?
 		adj_attr(attrs, scratch->charattrs[i]) : attrs;
 	}
     }
 
     if (!field->rightjust && scratch->len < width) {         /* right pad */
 	for (i = 0; i < width - scratch->len; i++, x++) {
-	    status_line->data[x] = true_status_pad;
-	    status_line->charattrs[x] = status_attr;
+	    status_line[field->row]->data[x] = true_status_pad;
+	    status_line[field->row]->charattrs[x] = status_attr;
 	}
     }
 
@@ -1556,57 +1842,63 @@ static int format_status_field(StatusField *field)
     return width;
 }
 
+static void display_status_segment(int row, int start, int width)
+{
+    if (!alert_len || row != alert_row ||
+	start + width <= alert_pos || start >= alert_pos + alert_len)
+    {
+	/* no overlap with alert */
+	xy(start + 1, stat_top + row);
+	hwrite(CS(status_line[row]), start, width, 0);
+    } else {
+	if (start < alert_pos) {
+	    /* segment starts left of alert */
+	    xy(start + 1, stat_top + row);
+	    hwrite(CS(status_line[row]), start, alert_pos - start, 0);
+	}
+	if (start + width >= alert_pos) {
+	    /* segment ends right of alert */
+	    xy(alert_pos + alert_len + 1, stat_top + row);
+	    hwrite(CS(status_line[row]), alert_pos + alert_len,
+		start + width - (alert_pos + alert_len), 0);
+	}
+    }
+}
+
 void update_status_field(Var *var, stat_id_t internal)
 {
     ListEntry *node;
     StatusField *field;
-    int column, width;
+    int row, column, width;
     int count = 0;
 
     if (screen_mode < 1) return;
 
-    if (var && var->statusattrs && (var->val.type & TYPE_ATTR)) {
+    if (var && var->statusattrs) {
 	if (!ch_attr(var))
 	    return; /* error */
     }
 
-    for (node = status_field_list->head; node; node = node->next) {
-        field = (StatusField*)node->datum;
-	if (var) {
-	    if (field->var == var)
-		/* do nothing */;
-	    else if (field->fmtvar == var)
-		/* do nothing */;
-	    else if (field->attrvar == var) 
-		field->vattrs = var->val.u.attr;
-	    else
-		continue;
-	}
-        if (internal >= 0 && field->internal != internal) continue;
-	column = status_field_column(field);
-	if (column >= columns) /* doesn't fit, nor will any later fields */
-	    break;
-	count++;
-        width = format_status_field(field);
-
-	if (!alert_len || column + width <= alert_pos ||
-	    column >= alert_pos + alert_len)
-	{
-	    /* no overlap with alert */
-	    xy(column + 1, ystatus);
-	    hwrite(CS(status_line), column, width, 0);
-	} else {
-	    if (column < alert_pos) {
-		/* field starts left of alert */
-		xy(column + 1, ystatus);
-		hwrite(CS(status_line), column, alert_pos - column, 0);
+    for (row = 0; row < status_height; row++) {
+	for (node = statusfield_list[row]->head; node; node = node->next) {
+	    field = (StatusField*)node->datum;
+	    if (var) {
+		if (field->var == var)
+		    /* do nothing */;
+		else if (field->fmtvar == var)
+		    /* do nothing */;
+		else if (field->attrvar == var) 
+		    field->vattrs = var->val.u.attr;
+		else
+		    continue;
 	    }
-	    if (column + width >= alert_pos) {
-		/* field ends right of alert */
-		xy(alert_pos + alert_len + 1, ystatus);
-		hwrite(CS(status_line), alert_pos + alert_len,
-		    column + width - (alert_pos + alert_len), 0);
-	    }
+	    if (internal >= 0 && field->internal != internal) continue;
+	    column = statusfield_column(field);
+	    if (column >= columns) /* doesn't fit, nor will any later fields */
+		break;
+	    count++;
+	    width = format_statusfield(field);
+	    display_status_segment(row, column, width);
 	}
     }
 
@@ -1620,41 +1912,34 @@ void format_status_line(void)
 {
     ListEntry *node;
     StatusField *field;
-    int column = 0, width = 0;
+    int row, column, width;
 
-    for (node = status_field_list->head; node; node = node->next) {
-        field = (StatusField*)node->datum;
+    for (row = 0; row < status_height; row++) {
+	column = 0;
+	width = 0;
+	for (node = statusfield_list[row]->head; node; node = node->next) {
+	    field = (StatusField*)node->datum;
 
-	if ((column = status_field_column(field)) >= columns)
-	    break;
-        width = format_status_field(field);
-    }
+	    if ((column = statusfield_column(field)) >= columns)
+		break;
+	    width = format_statusfield(field);
+	}
 
-    for (column += width; column < columns; column++) {
-	status_line->data[column] = true_status_pad;
-	status_line->charattrs[column] = status_attr;
+	for (column += width; column < columns; column++) {
+	    status_line[row]->data[column] = true_status_pad;
+	    status_line[row]->charattrs[column] = status_attr;
+	}
     }
 }
 
 int display_status_line(void)
 {
+    int row;
+
     if (screen_mode < 1) return 0;
 
-    if (!alert_len) {
-	/* no overlap with alert */
-	xy(1, ystatus);
-	hwrite(CS(status_line), 0, columns, 0);
-    } else {
-	/* overlap with alert (this could happen in ch_status_attr()) */
-	if (alert_pos > 0) {
-	    xy(1, ystatus);
-	    hwrite(CS(status_line), 0, alert_pos, 0);
-	}
-	if (alert_pos + alert_len < columns) {
-	    xy(alert_pos + alert_len + 1, ystatus);
-	    hwrite(CS(status_line), alert_pos + alert_len,
-		columns - (alert_pos + alert_len), 0);
-	}
+    for (row = 0; row < status_height; row++) {
+	display_status_segment(row, 0, columns);
     }
 
     bufflush();
@@ -1668,11 +1953,13 @@ int update_status_line(Var *var)
      * any change in status_line could call display_status_line() directly,
      * avoiding reformatting (in particular, status_{int,var}_* execution). */
     format_status_line();
-    return display_status_line();
+    display_status_line();
+    return 1; /* for variable func */
 }
 
 void alert(conString *msg)
 {
+    int row = 0;
     int new_pos, new_len;
     ListEntry *node;
     StatusField *field;
@@ -1690,7 +1977,7 @@ void alert(conString *msg)
 	new_len = msg->len > Wrap ? Wrap : msg->len;
 	if (msg->len < Wrap) {
 	    /* if there's a field after @world, and msg fits there, use it */
-	    for (node = status_field_list->head; node; node = node->next) {
+	    for (node = statusfield_list[row]->head; node; node = node->next) {
 		field = (StatusField*)node->datum;
 		if (field->internal == STAT_WORLD && node->next) {
 		    field = (StatusField*)node->next->datum;
@@ -1718,7 +2005,7 @@ void alert(conString *msg)
 	gettime(&alert_timeout);
 	tvadd(&alert_timeout, &alert_timeout, &alert_time);
 
-	xy(alert_pos + 1, ystatus);
+	xy(alert_pos + 1, stat_top + alert_row);
 	orig_attrs = msg->attrs;
 	msg->attrs = adj_attr(msg->attrs, alert_attr);
 	hwrite(msg, 0, alert_len, 0);
@@ -1733,49 +2020,60 @@ void alert(conString *msg)
 void clear_alert(void)
 {
     if (!alert_len) return;
-    xy(alert_pos + 1, ystatus);
-    hwrite(CS(status_line), alert_pos, alert_len, 0);
+    xy(alert_pos + 1, stat_top + alert_row);
+    hwrite(CS(status_line[alert_row]), alert_pos, alert_len, 0);
     bufflush();
     set_refresh_pending(REF_PHYSICAL);
     alert_timeout = tvzero;
     alert_pos = 0;
     alert_len = 0;
+    alert_id = 0;
 }
 
 /* used by %{visual}, %{isize}, SIGWINCH */
 int ch_visual(Var *var)
 {
-    int need_redraw;
+    int need_redraw = 0, resized = 0, row;
 
-    if (status_line->len < columns)
-	Stringnadd(status_line, '?', columns - status_line->len);
-    Stringtrunc(status_line, columns);
+    for (row = 0; row < status_height; row++) {
+	if (status_line[row]->len < columns)
+	    Stringnadd(status_line[row], '?', columns - status_line[row]->len);
+	Stringtrunc(status_line[row], columns);
+    }
 
     if (screen_mode < 0) {                /* e.g., called by init_variables() */
-        need_redraw = 0;
+        return 1;
     } else if (var == &special_var[VAR_visual]) {      /* %visual changed */
-        need_redraw = 1;
+        need_redraw = resized = 1;
 	alert_timeout = tvzero;
 	alert_pos = 0;
 	alert_len = 0;
-    } else if (!visual) {                 /* other changes have no effect */
-        need_redraw = 0;
-#ifdef SCREEN
     } else if (var == &special_var[VAR_isize]) {      /* %isize changed */
-        need_redraw = 1;
+        need_redraw = resized = visual;
+#ifdef SCREEN
     } else {                              /* SIGWINCH */
-        /* Set ystatus to the top of the area fix_screen() must erase. */
-        /* ystatus = 1; */
-        need_redraw = 1;
+        need_redraw = visual;
+	resized = 1;
         cx = cy = -1;  /* unknown */
         top_margin = bottom_margin = -1;  /* unknown */
 #endif
     }
 
-    if (need_redraw) {
+    if (need_redraw)
         redraw();
+    if (resized)
         transmit_window_size();
+    return 1;
+}
+
+int ch_status_height(Var *var)
+{
+    if (status_height > max_status_height) {
+	eprintf("%s must be <= %d", var->val.name, max_status_height);
+	return 0;
     }
+    if (visual) redraw();
+    transmit_window_size();
     return 1;
 }
 
@@ -1814,8 +2112,8 @@ void fix_screen(void)
     } else {
 	top_margin = bottom_margin = -1;  /* force scroll region reset */
         setscroll(1, lines);
-        clear_lines(ystatus, lines);
-        xy(1, ystatus);
+        clear_lines(stat_top, lines);
+        xy(1, stat_top);
         if (exit_ca_mode) tp(exit_ca_mode);
 #endif
     }
@@ -1858,9 +2156,9 @@ static void clear_lines(int start, int end)
 static void clear_input_window(void)
 {
     /* only called in visual mode */
-    clear_lines(ystatus + 1, lines);
+    clear_lines(in_top, lines);
     ix = iendx = 1;
-    iy = iendy = istarty = ystatus + 1;
+    iy = iendy = istarty = in_top;
     ipos();
 }
 
@@ -1878,14 +2176,14 @@ static void clear_input_line(void)
 static void scroll_input(int n)
 {
     if (n > isize) {
-        clear_lines(ystatus + 1, lines);
-        iendy = ystatus + 1;
+        clear_lines(in_top, lines);
+        iendy = in_top;
     } else if (delete_line) {
-        xy(1, ystatus + 1);
+        xy(1, in_top);
         for (iendy = lines + 1; iendy > lines - n + 1; iendy--)
             tp(delete_line);
     } else if (has_scroll_region) {
-        setscroll(ystatus + 1, lines);
+        setscroll(in_top, lines);
         xy(1, lines);
         crnl(n);  /* DON'T: cy += n; */
         iendy = lines - n + 1;
@@ -2049,7 +2347,7 @@ void iput(int len)
 	    }
         } else if (scroll && !clearfull) {
             scroll_input(1);
-            if (istarty > ystatus + 1) istarty--;
+            if (istarty > in_top) istarty--;
         } else {
             clear_input_window();
         }
@@ -2133,7 +2431,7 @@ void idel(int place)
             iy -= ((-ix) / Wrap) + 1;
             ix = Wrap - ((-ix) % Wrap);
         }
-        if (iy <= ystatus) {
+        if (iy < in_top) {
             logical_refresh();
             return;
         }
@@ -2292,7 +2590,7 @@ int igoto(int place)
             ioutall(place - (ix - 1) - (iy - lines - 1) * Wrap);
             iy = lines;
             ipos();
-        } else if ((iy < ystatus + 1) || (iy > lines)) {
+        } else if ((iy < in_top) || (iy > lines)) {
             logical_refresh();
         } else {
             ipos();
@@ -2433,7 +2731,7 @@ void update_prompt(conString *newprompt, int display)
 
 static void attributes_off(attr_t attrs)
 {
-    const char *cmd;
+    const char *ctlseq;
 
     if (attrs & F_HILITE) attrs |= hiliteattr;
     if (have_attr & attrs & F_SIMPLE) {
@@ -2443,8 +2741,8 @@ static void attributes_off(attr_t attrs)
             if (have_attr & attrs & F_BOLD     ) tp(standout_off);
         }
     }
-    if ((attrs & F_COLORS) && (cmd = getvar("end_color"))) {
-        bufputStr(CS(print_to_ascii(cmd)));
+    if ((attrs & F_COLORS) && (ctlseq = getvar("end_color"))) {
+        print_to_ascii(outbuf, ctlseq);
     }
 }
 
@@ -2475,23 +2773,22 @@ static void attributes_on(attr_t attrs)
         if (have_attr & attrs & F_FLASH)     tp(flash);
     }
 
-    if (attrs & F_FGCOLOR)  color_on(attr2fgcolor(attrs));
-    if (attrs & F_BGCOLOR)  color_on(attr2bgcolor(attrs));
+    if (attrs & F_FGCOLOR)  color_on("", attr2fgcolor(attrs));
+    if (attrs & F_BGCOLOR)  color_on("bg", attr2bgcolor(attrs));
 }
 
-static void color_on(long color)
+static void color_on(const char *prefix, long color)
 {
-    const char *cmd;
+    const char *ctlseq;
     smallstr buf;
 
-    sprintf(buf, "start_color_%s", enum_color[color].data);
-    if ((cmd = getvar(buf))) {
-        bufputStr(CS(print_to_ascii(cmd)));
+    sprintf(buf, "start_color_%s%s", prefix, enum_color[color].data);
+    if ((ctlseq = getvar(buf))) {
+        print_to_ascii(outbuf, ctlseq);
     } else {
-        sprintf(buf, "start_color_%ld", color);
-        if ((cmd = getvar(buf))) {
-            bufputStr(CS(print_to_ascii(cmd)));
-        }
+        sprintf(buf, "start_color_%s%ld", prefix, color);
+        if ((ctlseq = getvar(buf)))
+            print_to_ascii(outbuf, ctlseq);
     }
 }
 
@@ -2544,7 +2841,7 @@ void reset_outcount(Screen *screen)
 {
     if (!screen) screen = display_screen;
     screen->outcount = visual ?
-        (scroll ? (ystatus - 1) : screen->outcount) :
+        (scroll ? (out_bot - out_top + 1) : screen->outcount) :
         lines - 1;
 }
 
@@ -2579,7 +2876,7 @@ int clear_more(int new)
     if (new < 0) {
 	if (!visual /* XXX || !can_scrollback */) return 0;
 	use_insert = insert_line && -new < winlines();
-	setscroll(1, ystatus - 1);
+	setscroll(1, out_bot);
 	while (scrolled > new && prevtop(display_screen)) {
 	    pl = display_screen->top->datum;
 	    if (display_screen->viewsize <= winlines()) {
@@ -2627,8 +2924,9 @@ int clear_more(int new)
 	if (!display_screen->paused) return 0;
 	if (display_screen->nback_filtered) {
 	    if (visual) {
-		setscroll(1, ystatus - 1);
-		if (cy != ystatus - 1) xy(columns, ystatus - 1);
+		setscroll(1, out_bot);
+		if (cy != out_bot)
+		    xy(columns, out_bot);
 	    } else {
 		if (!need_refresh)
 		    old_ix = ix; /* physical_refresh() will restore ix */
@@ -2647,7 +2945,7 @@ int clear_more(int new)
 	    display_screen->outcount = new - scrolled;
 	    if (visual) {
 		update_status_field(NULL, STAT_MORE);
-		if (!scroll) display_screen->outcount = ystatus - 1;
+		if (!scroll) display_screen->outcount = out_bot;
 	    } else {
 		prompt = fgprompt();
 		old_ix = -1;
@@ -2814,6 +3112,7 @@ void enscreen(Screen *screen, conString *line)
 	screen->scr_wrapflag = wrapflag;
 	screen->scr_wrapsize = Wrap;
 	screen->scr_wrapspace = wrapspace;
+	screen->scr_wrappunct = wrappunct;
     }
     visible = screen_filter(screen, line);
     wrapped = wraplines(line, &screen->pline, visible);
@@ -2847,8 +3146,9 @@ void oflush(void)
 			old_ix = ix; /* physical_refresh() will restore ix */
                     clear_input_line();
                 } else if (scroll && has_scroll_region) {
-                    setscroll(1, ystatus - 1);
-                    if (cy != ystatus - 1) xy(columns, ystatus - 1);
+                    setscroll(1, out_bot);
+                    if (cy != out_bot)
+			xy(columns, out_bot);
                 }
             }
             if (screen_mode < 1) output_novisual(pl);
@@ -2889,11 +3189,11 @@ static void output_novisual(PhysLine *pl)
 static void output_noscroll(PhysLine *pl)
 {
     setscroll(1, lines);   /* needed after scroll_input(), etc. */
-    xy(1, (oy + 1) % (ystatus - 1) + 1);
+    xy(1, (oy + 1) % (out_bot) + 1);
     clear_line();
     xy(ox, oy);
     hwrite(pl->str, pl->start, pl->len, pl->indent);
-    oy = oy % (ystatus - 1) + 1;
+    oy = oy % (out_bot) + 1;
 }
 
 static void output_scroll(PhysLine *pl)
@@ -2905,7 +3205,7 @@ static void output_scroll(PhysLine *pl)
     } else {
         xy(1, 1);
         tp(delete_line);
-        xy(1, ystatus - 1);
+        xy(1, out_bot);
         tp(insert_line);
     }
     hwrite(pl->str, pl->start, pl->len, pl->indent);
@@ -3031,254 +3331,21 @@ void switch_screen(int quiet)
     }
 }
 
-
-/***********************************
- * Interfaces with rest of program *
- ***********************************/
-
-int ch_status_attr(Var *var)
-{
-    if (!ch_attr(var)) return 0;
-    update_status_line(NULL);
-    return 1;
-}
-
-int ch_attr(Var *var)
-{
-    Value *val;
-    const char *str;
-    attr_t attr;
-
-    if (!(val = getvarval(var)) || !(str = valstd(val))) {
-        var->val.u.attr = 0;
-    } else if (parse_attrs(str, &attr, 0)) {
-        var->val.u.attr = attr;
-    } else {
-	var->val.type &= ~TYPE_ATTR;
-        return 0;
-    }
-    var->val.type |= TYPE_ATTR;
-    return 1;
-}
-
-static void set_attr(String *line, int offset, attr_t *starting,
-    attr_t current)
-{
-    /* starting_attrs is set by the attrs parameter and/or codes at the
-     * beginning of the line.  If no visible mid-line changes occur, there is
-     * no need to allocate line->charattrs (which would increase the size of
-     * the line by ~5x).  Note that a trailing attribute change is considered
-     * a mid-line change; this is sub-optimal, but unprompt() depends on it
-     * (it expects prompt->attrs to be the original starting attributes).
-     */
-    if (!line->charattrs) {
-	if (line->len == 0) {
-	    /* start of visible line */
-	    *starting = current;
-	} else if (*starting != current) {
-	    /* First mid-line attr change. */
-	    check_charattrs(line, line->len, *starting,
-		__FILE__, __LINE__);
-	}
-    }
-    if (line->charattrs)
-	while (offset < line->len)
-	    line->charattrs[offset++] = current;
-}
-
-/* Return the result of combining adj into base.  If adj has the 'x' attr,
- * discard base.  If adj has any colors, they override colors in base.  Other
- * attrs are OR'd.
- */
-attr_t adj_attr(attr_t base, attr_t adj)
-{
-    /* XXX BUG:  User should be able to change hiliteattr, do a /recall, and
-     * see old hilited lines displayed with the new hiliteattr.  Interpreting
-     * F_HILITE here breaks that feature.  But the interpretation is necessary
-     * to make colors override correctly when hiliteattr includes a color.
-     */
-    if (base & F_HILITE) {
-	base &= ~F_HILITE;
-	base |= hiliteattr;
-    }
-    if (adj & F_HILITE) {
-	adj &= ~F_HILITE;
-	adj |= hiliteattr;
-    }
-
-    if (adj & F_EXCLUSIVE)
-	return adj;
-    if (base & adj & F_FGCOLOR)
-	base &= ~F_FGCOLORMASK;
-    if (base & adj & F_BGCOLOR)
-	base &= ~F_BGCOLORMASK;
-    return base | adj;
-}
-
-
-#define ANSI_CSI        (char)0233    /* ANSI terminal Command Sequence Intro */
-
-/* Interpret embedded codes from a subset of ansi codes:
- * ansi attribute/color codes are converted to tf character or line attrs;
- * tabs are expanded (if %expand_tabs is on); all other codes are ignored.
- * (EMUL_DEBUG was handled in handle_socket_input())
- */
-String *decode_ansi(const char *s, attr_t attrs, int emul, attr_t *final_attrs)
-{
-    String *dst;
-    int i;
-    attr_t new = 0;
-    attr_t starting_attrs = attrs;
-
-    if (emul == EMUL_RAW || emul == EMUL_DEBUG) {
-	if (final_attrs) *final_attrs = attrs;
-	return Stringnew(s, -1, attrs);
-    }
-
-    dst = Stringnew(NULL, 1, 0);
-
-    for ( ; *s; s++) {
-        if ((emul >= EMUL_ANSI_STRIP) &&
-            (*s == ANSI_CSI || (s[0] == '\033' && s[1] == '[' && s++)))
-        {
-            if (!*s) break;            /* in case code got truncated */
-            do {
-                s++;
-                i = strtoint(s, &s);
-                if (!i || emul < EMUL_ANSI_ATTR) {
-                    new = 0;
-                } else if (i >= 30 && i <= 37) {
-                    new = (new & ~F_FGCOLORMASK) | color2attr(i - 30);
-                } else if (i >= 40 && i <= 47) {
-                    new = (new & ~F_BGCOLORMASK) | color2attr(i - 40 + 16);
-                } else switch (i) {
-                    case 1:   new |= F_BOLD;        break;
-                    case 4:   new |= F_UNDERLINE;   break;
-                    case 5:   new |= F_FLASH;       break;
-                    case 7:   new |= F_REVERSE;     break;
-                    case 21:  /* 21 and 22 both end bold (don't ask me why) */
-                    case 22:  new &= ~F_BOLD;       break;
-                    case 24:  new &= ~F_UNDERLINE;  break;
-                    case 25:  new &= ~F_FLASH;      break;
-                    case 27:  new &= ~F_REVERSE;    break;
-                    default:  /* ignore it */       break;
-                }
-            } while (s[0] == ';' && s[1]);
-
-            if (!*s) {			/* in case code got truncated */
-		break;
-	    } else if (*s == '?') {	/* ignore ESC [ ? alnum */
-                if (!*++s) break;
-            } else if (*s == 'm') {	/* attribute command */
-                attrs = new;
-            } /* ignore any other CSI command */
-
-        } else if ((emul >= EMUL_ANSI_STRIP) && (*s == '\033')) {
-            /* ignore ESC # digit, ESC ( alnum, ESC ) alnum, and ESC alnum. */
-            if (!*++s) break;
-            if (*s == '(' || *s == ')' || *s == '#')
-                if (!*++s) break;
-
-        } else if (is_print(*s) || *s == '\t') {
-	    int orig_len = dst->len;
-	    if (*s == '\t' && expand_tabs) {
-		Stringnadd(dst, ' ', tabsize - dst->len % tabsize);
-	    } else {
-		Stringadd(dst, *s);
-	    }
-	    set_attr(dst, orig_len, &starting_attrs, attrs);
-
-        } else if (*s == '\b') {
-	    /* bug: doesn't handle expanded tabs */
-	    if (dst->len > 0)
-		Stringtrunc(dst, dst->len - 1);
-
-        } else if (*s == '\07') {
-            dst->attrs |= F_BELL;
-        }
-    }
-
-    if (!dst->charattrs) {
-        /* No mid-line changes, so apply starting_attrs to entire line */
-        dst->attrs |= starting_attrs;
-    } else {
-        dst->charattrs[dst->len] = attrs;
-    }
-
-    if (final_attrs) *final_attrs = attrs;
-    return dst;
-}
-
-/* Convert embedded '@' codes to internal character or line attrs. */
-String *decode_attr(const conString *src, attr_t attrs, int offset)
-{
-    const char *s;
-    String *dst;
-    int off;
-    attr_t new;
-    attr_t starting_attrs;
-    attr_t orig_attrs;
-    const cattr_t *orig_charattrs = src->charattrs;
-
-    dst = Stringnew(NULL, src->len, 0);
-    starting_attrs = dst->attrs = adj_attr(src->attrs, attrs);
-
-    for (s = src->data + offset; *s; s++) {
-        if (s[0] == '@' && s[1] == '{') {
-            s+=2;
-            if ((off = (*s == '~'))) s++;
-            s = (char*)parse_attrs(s, &new, '}');
-            if (!s) goto decode_attr_error;
-            if (*s != '}') {
-                eprintf("unmatched @{");
-                goto decode_attr_error;
-            }
-            if (new & F_BELL && !off) dst->attrs |= F_BELL;
-	    new &= ~F_BELL;
-            if (new & F_FGCOLOR) attrs &= ~F_FGCOLORMASK;
-            if (new & F_BGCOLOR) attrs &= ~F_BGCOLORMASK;
-            if (new & F_NONE) attrs = 0;
-            if (off) attrs &= ~new;
-            else attrs |= new;
-
-        } else {
-	    orig_attrs = orig_charattrs ? orig_charattrs[s - src->data] : 0;
-            Stringadd(dst, *s);
-            set_attr(dst, dst->len - 1, &starting_attrs, adj_attr(orig_attrs, attrs));
-            if (s[0] == '@' && s[1] == '@')
-                s++;
-        }
-    }
-
-    if (!dst->charattrs) {
-        /* No mid-line changes, so apply starting_attrs to entire line */
-        dst->attrs |= starting_attrs;
-    } else {
-        dst->charattrs[dst->len] = attrs;
-    }
-    return dst;
-
-decode_attr_error:
-    dst->links++;
-    Stringfree(dst);
-    return NULL;
-}
-
 #if USE_DMALLOC
 void free_output(void)
 {
-    StatusField *f;
+    int row;
 
     tfclose(tfscreen);
     tfclose(tfalert);
     free_screen(default_screen);
     fg_screen = default_screen = NULL;
     Stringfree(outbuf);
-    Stringfree(status_line);
-    while (status_field_list->head) {
-        f = (StatusField*)unlist(status_field_list->head, status_field_list);
-        if (f->name) FREE(f->name);
-        FREE(f);
+    for (row = 0; row < max_status_height; row++) {
+	Stringfree(status_line[row]);
+	while (statusfield_list[row]->head)
+	    free_statusfield(unlist(statusfield_list[row]->head,
+		statusfield_list[row]));
     }
 
     pfreepool(PhysLine, plpool, str);

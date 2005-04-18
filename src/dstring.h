@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: dstring.h,v 35004.30 2004/07/16 21:13:51 hawkeye Exp $ */
+/* $Id: dstring.h,v 35004.36 2005/04/18 03:15:35 kkeys Exp $ */
 
 #ifndef DSTRING_H
 #define DSTRING_H
@@ -62,9 +62,10 @@ static inline conString *CS(String *s) { return (conString*)s; }
 # define MD_INIT	/* blank */
 #endif
 
-#define STRING_LITERAL(data) \
+#define STRING_LITERAL_ATTR(data, attrs) \
     { (data), sizeof(data)-1, sizeof(data), 1, 1,0,0,0, \
-	0, NULL, { -1, -1 }, MD_INIT __FILE__, __LINE__ }
+	attrs, NULL, { -1, -1 }, MD_INIT __FILE__, __LINE__ }
+#define STRING_LITERAL(data) STRING_LITERAL_ATTR(data, 0)
 #define STRING_NULL \
     { NULL, 0, 0, 1, 1,0,0,0, \
 	0, NULL, { -1, -1 }, MD_INIT __FILE__, __LINE__ }
@@ -83,9 +84,10 @@ static inline conString *CS(String *s) { return (conString*)s; }
  * time.  It never needs to be Stringfree()'d.  Its data may be
  * modified and resized.  Not reentrant-safe.
  */
+#define STATIC_BUFFER_INIT \
+    {{ NULL, 0, 0, 1, 1,0,1,1, 0, NULL, { -1,-1 }, MD_INIT __FILE__, __LINE__ }}
 #define STATIC_BUFFER(name) \
-    static Stringp (name) = {{ NULL, 0, 0, 1, 1,0,1,1, \
-	0, NULL, { -1, -1 }, MD_INIT __FILE__, __LINE__ }}
+    static Stringp (name) = STATIC_BUFFER_INIT
 
 /* STATIC_STRING: The structure and data have static storage.  It can never
  * be modified or resized.
@@ -163,8 +165,7 @@ extern String *dSSoncat(String *dest, const conString *src, int start, int len, 
 extern String *dSncat  (String *dest, const char *src, int n, FL);
 extern String *dSfncat (String *dest, const char *src, int n, FL);
 extern String *Stringstriptrail(String *str);
-extern String *attr2str(String *dest, attr_t attrs);
-extern String *encode_attr(const conString *str, int offset);
+extern int Stringcmp(const conString *s, const conString *t);
 
 extern void check_charattrs(String *str, int n, cattr_t attrs,
     const char *file, int line);

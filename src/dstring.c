@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: dstring.c,v 35004.41 2004/07/18 02:05:36 hawkeye Exp $";
+static const char RCSid[] = "$Id: dstring.c,v 35004.48 2005/04/18 03:15:35 kkeys Exp $";
 
 
 /*********************************************************************
@@ -17,7 +17,7 @@ static const char RCSid[] = "$Id: dstring.c,v 35004.41 2004/07/18 02:05:36 hawke
  * median expected size.                                             *
  *********************************************************************/
 
-#include "config.h"
+#include "tfconfig.h"
 #include "port.h"
 #include "malloc.h"
 #include "tf.h"
@@ -99,14 +99,16 @@ static void resize(String *str, const char *file, int line)
 /* dSinit()
  *  data && len >= 0:  allocate exactly len, copy data
  *  data && len < 0:   allocate exactly strlen(data), copy data
- * !data && len > 0:   allocate rounded len
- * !data && len <= 0:  don't allocate
+ * !data && len < 0:   don't allocate
+ * !data && len >= 0:  allocate rounded len (allocating for 0 sometimes
+ *                     wastes an allocation, but not doing it can cause
+ *                     problems in code that expects (str->data != NULL))
  * md is used only if (!str && data).
  */
 String *dSinit(
     String *str,	/* if NULL, a String will be allocated */
     const char *data,	/* optional initializer data */
-    int len,		/* length of data */
+    int len,		/* optional length of data */
     attr_t attrs,	/* line display attributes */
     void *md,		/* mmalloc descriptor */
     const char *file,
@@ -150,13 +152,13 @@ String *dSinit(
         str->size = len + 1;
         memcpy(str->data, data, str->len);
         str->data[str->len] = '\0';
-    } else if (len > 0) {
+    } else if (len >= 0) {
 #if USE_MMALLOC
         str->md = NULL;
 #endif
         str->resizable = 1;
         str->dynamic_data = 1;
-        str->size = ((len + ALLOCSIZE - 1) / ALLOCSIZE) * ALLOCSIZE;
+        str->size = ((len + ALLOCSIZE) / ALLOCSIZE) * ALLOCSIZE;
         str->data = Smalloc(str, str->size);
         str->len = 0;
         str->data[str->len] = '\0';
@@ -382,79 +384,22 @@ String *Stringstriptrail(String *str)
     return str;
 }
 
-/* appends string representation of attrs to buffer */
-String *attr2str(String *buffer, attr_t attrs)
+/* like strcmp for Strings, extended to cover their attrs too. */
+int Stringcmp(const conString *s, const conString *t)
 {
-    if (attrs & F_NONE)       Stringadd(buffer, 'n');
-    if (attrs & F_EXCLUSIVE)  Stringadd(buffer, 'x');
-    if (attrs & F_GAG)        Stringadd(buffer, 'g');
-    if (attrs & F_NOHISTORY)  Stringadd(buffer, 'G');
-    if (attrs & F_NOLOG)      Stringadd(buffer, 'L');
-    if (attrs & F_NOACTIVITY) Stringadd(buffer, 'A');
-    if (attrs & F_UNDERLINE)  Stringadd(buffer, 'u');
-    if (attrs & F_REVERSE)    Stringadd(buffer, 'r');
-    if (attrs & F_FLASH)      Stringadd(buffer, 'f');
-    if (attrs & F_DIM)        Stringadd(buffer, 'd');
-    if (attrs & F_BOLD)       Stringadd(buffer, 'B');
-    if (attrs & F_BELL)       Stringadd(buffer, 'b');
-    if (attrs & F_HILITE)     Stringadd(buffer, 'h');
-    if (attrs & F_FGCOLOR)
-        SStringcat(Stringadd(buffer, 'C'), &enum_color[attr2fgcolor(attrs)]);
-    if (attrs & F_BGCOLOR) {
-        if (attrs & F_FGCOLOR) Stringadd(buffer, ',');
-        SStringcat(Stringadd(buffer, 'C'), &enum_color[attr2bgcolor(attrs)]);
+    int retval, i;
+    attr_t s_attrs, t_attrs;
+    if (!s && !t) return 0;
+    if (!s && t) return -257;
+    if (s && !t) return 257;
+    if ((retval = strcmp(s->data, t->data)) != 0) return retval;
+    if (!s->charattrs && !t->charattrs) return s->attrs - t->attrs;
+    for (i = 0; i < s->len; i++) {
+	s_attrs = s->charattrs ? adj_attr(s->attrs, s->charattrs[i]) : s->attrs;
+	t_attrs = t->charattrs ? adj_attr(t->attrs, t->charattrs[i]) : t->attrs;
+	if (s_attrs != t_attrs) return s_attrs - t_attrs;
     }
-    return buffer;
-}
-
-String *encode_attr(const conString *str, int offset)
-{
-    attr_t oldattrs = 0, attrs;
-    int i;
-    String *new;
-    
-    new = Stringnew(NULL, str->len, 0);
-    if (!str->charattrs) {
-	if (str->attrs)
-	    Stringadd(attr2str(Stringcat(new, "@{"), str->attrs), '}');
-	for (i = offset; i < str->len; i++) {
-	    Stringadd(new, str->data[i]);
-	    if (str->data[i] == '@')
-		Stringadd(new, '@');
-	}
-	if (str->attrs)
-	    Stringcat(new, "@{n}");
-    } else {
-	for (i = offset; i < str->len; i++) {
-	    attrs = adj_attr(str->attrs, str->charattrs[i]);
-	    if ((attrs ^ oldattrs) & F_HWRITE) {
-		if (!(attrs & F_HWRITE)) {
-		    /* no attrs */
-		    Stringcat(new, "@{n}");
-		} else if (((oldattrs & ~attrs) & F_ENCODE) == 0) {
-		    /* new attrs can be added to old attrs */
-		    attr_t added = attrs & ~(oldattrs & F_SIMPLE);
-		    if (((attrs ^ oldattrs) & F_FGCOLORS) == 0) /* fg same? */
-			added &= ~F_FGCOLORS; /* skip fg */
-		    if (((attrs ^ oldattrs) & F_BGCOLORS) == 0) /* bg same? */
-			added &= ~F_BGCOLORS; /* skip bg */
-		    Stringadd(attr2str(Stringcat(new, "@{"), added & F_HWRITE),
-			'}');
-		} else {
-		    /* attrs are different */
-		    Stringadd(attr2str(Stringcat(new, "@{n"), attrs & F_HWRITE),
-			'}');
-		}
-	    }
-	    Stringadd(new, str->data[i]);
-	    if (str->data[i] == '@')
-		Stringadd(new, '@');
-	    oldattrs = attrs;
-	}
-	if (attrs & F_HWRITE)
-	    Stringcat(new, "@{n}");
-    }
-    return new;
+    return 0;
 }
 
 #if USE_DMALLOC

@@ -1,24 +1,26 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: variable.c,v 35004.93 2004/07/18 02:09:08 hawkeye Exp $";
+static const char RCSid[] = "$Id: variable.c,v 35004.106 2005/04/18 03:15:36 kkeys Exp $";
 
 
 /**************************************
  * Internal and environment variables *
  **************************************/
 
-#include "config.h"
+#include "tfconfig.h"
 #include "port.h"
 #include "tf.h"
 #include "util.h"
+#include "pattern.h"
 #include "search.h"
 #include "tfio.h"
 #include "output.h"
+#include "attr.h"
 #include "socket.h"	/* tog_bg(), tog_lp() */
 #include "cmdlist.h"
 #include "process.h"	/* runall() */
@@ -41,6 +43,7 @@ static void   remove_env(const char *str);
 static int    listvar(const char *name, const char *value,
                        int mflag, int exportflag, int shortflag);
 static int    obsolete_prompt(Var *var);
+static int    undocumented_var(Var *var);
 static void   init_special_variable(Var *var, const char *cval,
                        long ival, long uval);
 
@@ -82,32 +85,6 @@ conString enum_sub[]	= {
     STRING_LITERAL("on"),
     STRING_LITERAL("full"),
     STRING_NULL };
-conString enum_color[]= {
-    STRING_LITERAL("black"),
-    STRING_LITERAL("red"),
-    STRING_LITERAL("green"),
-    STRING_LITERAL("yellow"),
-    STRING_LITERAL("blue"),
-    STRING_LITERAL("magenta"),
-    STRING_LITERAL("cyan"),
-    STRING_LITERAL("white"),
-    STRING_LITERAL("8"),
-    STRING_LITERAL("9"),
-    STRING_LITERAL("10"),
-    STRING_LITERAL("11"),
-    STRING_LITERAL("12"),
-    STRING_LITERAL("13"),
-    STRING_LITERAL("14"),
-    STRING_LITERAL("15"),
-    STRING_LITERAL("bgblack"),
-    STRING_LITERAL("bgred"),
-    STRING_LITERAL("bggreen"),
-    STRING_LITERAL("bgyellow"),
-    STRING_LITERAL("bgblue"),
-    STRING_LITERAL("bgmagenta"),
-    STRING_LITERAL("bgcyan"),
-    STRING_LITERAL("bgwhite"),
-    STRING_NULL };
 
 extern char **environ;
 
@@ -126,6 +103,8 @@ Var special_var[] = {
     {{ NULL, 0, 1, NULL }, 0, NULL, NULL, NULL, 0 }
 };
 
+Pattern looks_like_special_sub;    /* looks like a special substitution */
+Pattern looks_like_special_sub_ic; /* same, ignoring case */
 
 static inline Var *newglobalvar(const char *name, int type, void *value)
 {
@@ -155,7 +134,8 @@ static void init_special_variable(Var *var,
     case TYPE_POS:
         var->val.u.ival = ival;
         break;
-    case TYPE_TIME:
+    case TYPE_DTIME:
+    case TYPE_ATIME:
         var->val.u.tval.tv_sec = ival;
         var->val.u.tval.tv_usec = uval;
         break;
@@ -175,6 +155,11 @@ void init_variables(void)
 
     init_hashtable(var_table, HASH_SIZE, strstructcmp);
     init_list(localvar);
+
+    init_pattern(&looks_like_special_sub,
+	"(?-i)^(R|P[LR]|L\\d*|P\\d+)$", MATCH_REGEXP);
+    init_pattern(&looks_like_special_sub_ic,
+	 "(?i)^(R|P[LR]|L\\d*|P\\d+)$", MATCH_REGEXP);
 
     var = special_var;
 #define varcode(id, name, sval, type, flags, enums, ival, uval, func) \
@@ -295,9 +280,10 @@ Var *hfindnearestvar(const Value *idval)
     if (!(var = findlocalvar(name)) &&
 	!(var = hfindglobalvar(name, idval->u.hash)))
     {
-        if (smatch("{R|L|L[1-9]*|P[RL]|P[0-9]}", name) == 0) {
-            eprintf("Warning: \"%s\" may not be used as a variable reference.  "
-	        "Use the variable substitution \"{%s}\" instead.", name, name);
+        if (patmatch(&looks_like_special_sub, NULL, name)) {
+            wprintf("\"%s\" in an expression is a variable reference, "
+		"and is not the same as special substitution \"{%s}\".",
+		name, name);
         }
         return NULL;
     }
@@ -352,6 +338,12 @@ static Var *newvar(const char *name, int type, void *value)
     var->statusattrs = 0;
     set_var_direct(var, type, value);
     var->val.name = STRDUP(name);
+
+    if (patmatch(&looks_like_special_sub, NULL, name)) {
+	wprintf("\"%s\" conflicts with the name of a special "
+	    "substitution, so it will not be accessible with a \"%%%s\" or "
+	    "\"{%s}\" substitution.", name, name, name);
+    }
 
     return var;
 }
@@ -467,7 +459,8 @@ void set_var_direct(Var *var, int type, void *value)
         var->val.u.ival = *(int*)value;
         var->val.sval = NULL;
         break;
-    case TYPE_TIME:
+    case TYPE_DTIME:
+    case TYPE_ATIME:
         var->val.u.tval = (*(struct timeval*)value);
         var->val.sval = NULL;
         break;
@@ -510,7 +503,7 @@ Var *setnewvar(const char *name, unsigned int hash, int type,
     Var *var;
     var = newglobalvar(name, type, value);
     if (setting_nearest && pedantic) {
-	eprintf("warning: variable '%s' was not previously defined in any "
+	wprintf("variable '%s' was not previously defined in any "
 	    "scope, so it has been created in the global scope.", name);
     }
     set_env_var(var, exportflag);
@@ -550,12 +543,27 @@ char *spanvar(const char *start)
     return (char *)p;
 }
 
-char *spansetspace(const char *p)
+/* input: *pp points to first char after var name in /set.
+ * Advances *pp to first char of value.
+ * Returns -1 if invalid, 0 if no value, 1 if valid value.
+ */
+int setdelim(const char **pp)
 {
-    while (is_space(*p)) p++;
-    if (*p == '=')
-	eprintf("warning: '=' following space is part of value.");
-    return (char *)p;
+    if (!**pp) {
+	return 0; /* no value */
+    } else if (is_space(**pp)) {
+	do { (*pp)++; } while (is_space(**pp));
+	if (!**pp)
+	    return 0; /* no value */
+	if (**pp == '=')
+	    wprintf("'=' following space is part of value.");
+	return 1; /* valid value */
+    } else if (**pp == '=') {
+	(*pp)++;
+	return 1; /* valid value */
+    } else {
+	return -1; /* invalid */
+    }
 }
 
 int do_set(const char *name, unsigned int hash, conString *value, int offset,
@@ -582,14 +590,26 @@ int do_set(const char *name, unsigned int hash, conString *value, int offset,
 int command_set(String *args, int offset, int exportflag, int localflag)
 {
     char *p, *name = args->data + offset;
+    const char *val;
+    int foundval;
 
     if (!*name) {
         if (localflag) return 0;
 	return listvar(NULL, NULL, MATCH_SIMPLE, exportflag, 0);
     }
 
-    p = spanvar(name);
-    if (!*p) { /* no value */
+    val = p = spanvar(name);
+    foundval = setdelim(&val);
+
+    if (foundval == -1) { /* invalid */
+	while (*p && !is_space(*p) && *p != '=') p++;
+	*p = '\0';
+	eprintf("illegal variable name: %s", name);
+	return 0;
+    }
+
+    *p = '\0'; /* mark end of name */
+    if (foundval == 0) { /* no value */
 	Var *var = localflag ? findlocalvar(name) : findglobalvar(name);
         if (!var || !(var->flags & VARSET)) {
             oprintf("%% %s not set %sally", name, localflag ? "loc" : "glob");
@@ -599,22 +619,10 @@ int command_set(String *args, int offset, int exportflag, int localflag)
 	oprintf("%% %s=%S", name, var->val.sval);
 	return 1;
 
-    } else if (*p == '=') {
-	*(p++) = '\0';
-
-    } else if (*p == ' ') {
-	*(p++) = '\0';
-	p = spansetspace(p);
-
-    } else {
-	while (*p && !is_space(*p) && *p != '=') p++;
-	*p = '\0';
-	eprintf("illegal variable name: %s", name);
-	return 0;
+    } else { /* valid value */
+	return do_set(name, hash_string(name), CS(args), val - args->data,
+	    exportflag, localflag);
     }
-
-    return do_set(name, hash_string(name), CS(args), p - args->data,
-	exportflag, localflag);
 }
 
 struct Value *handle_listvar_command(String *args, int offset)
@@ -702,7 +710,8 @@ int unsetvar(Var *var)
 	case TYPE_POS:   /* fall through */
 	case TYPE_INT:   if (var->val.u.ival != 0) func = var->func; break;
 	case TYPE_FLOAT: if (var->val.u.fval != 0.0) func = var->func; break;
-	case TYPE_TIME:
+	case TYPE_ATIME: /* fall through */
+	case TYPE_DTIME:
 	    if (var->val.u.tval.tv_sec || var->val.u.tval.tv_usec)
 		func = var->func;
 	    break;
@@ -770,7 +779,8 @@ static int set_special_var(Var *var, int type, void *value, int funcflag,
             var->val.u.ival = enum2int(NULL, *(long*)value,
                 var->enumvec, var->val.name);
             break;
-        case TYPE_TIME:
+        case TYPE_ATIME:
+        case TYPE_DTIME:
             var->val.u.ival = enum2int(NULL,
 		(long)((struct timeval*)value)->tv_sec,
                 var->enumvec, var->val.name);
@@ -813,12 +823,13 @@ static int set_special_var(Var *var, int type, void *value, int funcflag,
         funcflag = funcflag & (var->val.u.ival != oldval.u.ival);
         break;
 
-    case TYPE_TIME:
+    case TYPE_ATIME:
+    case TYPE_DTIME:
         set_var_direct(var, type, value);
         /* force var back to its correct type */
         valtime(&tval, &var->val);
 	clearval(&var->val);
-        var->val.type = TYPE_TIME;
+        var->val.type = oldval.type & TYPES_BASIC;
         var->val.u.tval = tval;
         funcflag = funcflag & timercmp(&var->val.u.tval, &oldval.u.tval, ==);
         break;
@@ -868,8 +879,8 @@ static int listvar(
     int i;
     ListEntry *node;
     Var *var;
-    int count = 0;
     Pattern pname, pvalue;
+    Vector vars = vector_init(1024);
 
     init_pattern_str(&pname, NULL);
     init_pattern_str(&pvalue, NULL);
@@ -882,6 +893,7 @@ static int listvar(
         if (!init_pattern(&pvalue, value, mflag))
             goto listvar_end;
 
+    /* collect matching variables */
     for (i = 0; i < var_table->size; i++) {
         if (var_table->bucket[i]) {
             for (node = var_table->bucket[i]->head; node; node = node->next) {
@@ -891,28 +903,41 @@ static int listvar(
                 if (name && !patmatch(&pname, NULL, var->val.name)) continue;
                 if (!var->val.sval) valstr(&var->val); /* force sval to exist */
                 if (value && !patmatch(&pvalue, var->val.sval, NULL)) continue;
-                switch (shortflag) {
-                case 1:  oputs(var->val.name);     break;
-                case 2:  oputline(var->val.sval);  break;
-                default:
-                    oprintf("/set%s %s=%S",
-                        (var->flags & VAREXPORT) ? "env" : "",
-                        var->val.name, var->val.sval);
-                }
-                count++;
+		vector_add(&vars, node->datum);
             }
         }
     }
 
+    vector_sort(&vars, strpppcmp);
+
+    for (i = 0; i < vars.size; i++) {
+	var = vars.ptrs[i];
+	switch (shortflag) {
+	case 1:  oputs(var->val.name);     break;
+	case 2:  oputline(var->val.sval);  break;
+	default:
+	    oprintf("/set%s %s=%S",
+		(var->flags & VAREXPORT) ? "env" : "",
+		var->val.name, var->val.sval);
+	}
+    }
+    vector_free(&vars);
+
 listvar_end:
     free_pattern(&pname);
     free_pattern(&pvalue);
-    return count;
+    return vars.size;
 }
 
 static int obsolete_prompt(Var *var)
 {
-    eprintf("Warning: %s is obsolete.  Use prompt_wait instead.",
+    wprintf("%s is obsolete.  Use prompt_wait instead.", var->val.name);
+    return 1;
+}
+
+static int undocumented_var(Var *var)
+{
+    wprintf("%s is undocumented, and may be removed in a future version.",
 	var->val.name);
     return 1;
 }
@@ -923,6 +948,9 @@ void free_vars(void)
     char **p;
     int i;
     Var *var;
+
+    free_pattern(&looks_like_special_sub);
+    free_pattern(&looks_like_special_sub_ic);
 
     for (p = environ; *p; p++) FREE(*p);
     FREE(environ);

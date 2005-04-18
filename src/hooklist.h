@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: hooklist.h,v 35000.21 2004/02/17 06:44:38 hawkeye Exp $ */
+/* $Id: hooklist.h,v 35000.23 2005/04/18 03:15:35 kkeys Exp $ */
 
 /* This keeps the constants and the array in the same place
  * so they can't get out of sync.
@@ -18,8 +18,8 @@ gencode(BGTRIG,		HT_ALERT | HT_XSOCK),
 gencode(CONFAIL,	HT_WORLD | HT_XSOCK),
 gencode(CONFLICT,	0),
 gencode(CONNECT,	HT_WORLD | HT_XSOCK),
-gencode(CONNETFAIL,	HT_WORLD | HT_XSOCK),
 gencode(DISCONNECT,	HT_WORLD | HT_XSOCK),
+gencode(ICONFAIL,	HT_WORLD | HT_XSOCK),
 gencode(KILL,		0),
 gencode(LOAD,		0),
 gencode(LOADFAIL,	0),

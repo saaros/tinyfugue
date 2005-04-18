@@ -1,21 +1,22 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: keyboard.c,v 35004.82 2004/07/18 03:54:27 hawkeye Exp $";
+static const char RCSid[] = "$Id: keyboard.c,v 35004.86 2005/04/18 03:15:35 kkeys Exp $";
 
 /**************************************************
  * Fugue keyboard handling.
  * Handles all keyboard input and keybindings.
  **************************************************/
 
-#include "config.h"
+#include "tfconfig.h"
 #include "port.h"
 #include "tf.h"
 #include "util.h"
+#include "pattern.h"	/* for tfio.h */
 #include "search.h"
 #include "tfio.h"
 #include "macro.h"	/* Macro, find_macro(), do_macro()... */
@@ -75,46 +76,27 @@ void init_keyboard(void)
     gettime(&keyboard_time);
 }
 
-/* Find the macro assosiated with <key> sequence. */
+/* Find the macro associated with <key> sequence. */
 Macro *find_key(const char *key)
 {
     return (Macro *)trie_find(keytrie, (unsigned char*)key);
 }
 
-int bind_key(Macro *spec)   /* install Macro's binding in key structures */
+int bind_key(Macro *spec, const char *key)
 {
-    Macro *macro;
-    int status;
-
-    if ((macro = find_key(spec->bind))) {
-        if (redef) {
-            kill_macro(macro);
-            /* intrie is guaranteed to succeed */
-        } else {
-            eprintf("Binding %S already exists.", ascii_to_print(spec->bind));
-            return 0;
-        }
-    }
-
-    status = intrie(&keytrie, spec, (unsigned char*)spec->bind);
-
+    int status = intrie(&keytrie, spec, (const unsigned char*)key);
     if (status < 0) {
         eprintf("'%S' is %s an existing keybinding.",
-            ascii_to_print(spec->bind),
+            ascii_to_print(key),
             (status == TRIE_SUPER) ? "prefixed by" : "a prefix of");
         return 0;
     }
-
-    if (macro && redef)
-        do_hook(H_REDEF, "!Redefined %s %S", "%s %S",
-            "binding", ascii_to_print(spec->bind));
-
     return 1;
 }
 
-void unbind_key(Macro *macro)
+void unbind_key(const char *key)
 {
-    untrie(&keytrie, (unsigned char*)macro->bind);
+    untrie(&keytrie, (const unsigned char*)key);
     keynode = NULL;  /* in case it pointed to a node that no longer exists */
 }
 

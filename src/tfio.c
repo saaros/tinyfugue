@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: tfio.c,v 35004.104 2004/07/18 03:54:28 hawkeye Exp $";
+static const char RCSid[] = "$Id: tfio.c,v 35004.112 2005/04/18 03:15:36 kkeys Exp $";
 
 
 /***********************************
@@ -16,7 +16,7 @@ static const char RCSid[] = "$Id: tfio.c,v 35004.104 2004/07/18 03:54:28 hawkeye
  * Provides an interface similar to stdio.
  ***********************************/
 
-#include "config.h"
+#include "tfconfig.h"
 #include <sys/types.h>
 #if HAVE_SYS_SELECT_H
 # include <sys/select.h>
@@ -32,11 +32,13 @@ static const char RCSid[] = "$Id: tfio.c,v 35004.104 2004/07/18 03:54:28 hawkeye
 #include "tf.h"
 
 #include "util.h"
+#include "pattern.h"
 
 #include "search.h"	/* queues */
 #include "tfio.h"
 #include "tfselect.h"
 #include "output.h"
+#include "attr.h"
 #include "macro.h"	/* macro_body() */
 #include "history.h"
 #include "signals.h"	/* shell_status() */
@@ -121,7 +123,7 @@ char *expand_filename(const char *str)
         } else {
 
 #if !(HAVE_GETPWNAM && HAVE_PWD_H)
-            eprintf("warning: \"~user\" filename expansion is not supported.");
+            wprintf("\"~user\" filename expansion is not supported.");
 #else
             struct passwd *pw;
             Stringncpy(buffer, user, str - user);
@@ -390,7 +392,7 @@ void tfnputs(const char *str, int n, TFILE *file)
     if (!file || file->type == TF_NULL) {
         /* do nothing */
     } else if (file->type == TF_QUEUE) {
-        queueputline(CS(Stringnew(str, n, 0)), file);
+        queueputline(CS(Stringnew(str, n, file==tferr ? error_attr : 0)), file);
     } else {
         if (n < 0)
 	    fileputs(str, file->u.fp);
@@ -494,9 +496,9 @@ void vSprintf(String *buf, int flags, const char *fmt, va_list ap)
     char *specptr, quote;
     const conString *Sval;
     int len, min, max, leftjust, stars;
-    attr_t attrs = 0;
+    attr_t attrs = buf->attrs;
 
-    if (!(flags & SP_APPEND)) Stringtrunc(buf, 0);
+    if (!(flags & SP_APPEND) && buf->data) Stringtrunc(buf, 0);
     while (*fmt) {
         if (*fmt != '%' || *++fmt == '%') {
             for (q = fmt + 1; *q && *q != '%'; q++);
@@ -566,6 +568,7 @@ void vSprintf(String *buf, int flags, const char *fmt, va_list ap)
 
             if (*fmt == 's') {
                 sval = va_arg(ap, char *);
+		if (flags & SP_CHECK) sval = checkstring(sval);
                 len = sval ? strlen(sval) : 0;
             } else {
                 Sval = va_arg(ap, const conString *);
@@ -585,6 +588,7 @@ void vSprintf(String *buf, int flags, const char *fmt, va_list ap)
 	    max = (spec[1] == '.') ? atoi(&spec[2]) : 0x7FFF;
             if (!(quote = (char)va_arg(ap, int))) break;
             if (!(sval = va_arg(ap, char *))) break;
+	    if (flags & SP_CHECK) sval = checkstring(sval);
             for ( ; *sval; sval = q) {
 		if (*fmt == 'b' && !is_print(*q)) {
 		    if (max < 4) break;
@@ -613,6 +617,7 @@ void vSprintf(String *buf, int flags, const char *fmt, va_list ap)
         }
         fmt++;
     }
+    if (!buf->data) Stringtrunc(buf, 0); /* force buf->data != NULL */
     buf->attrs = attrs;
 }
 
@@ -626,7 +631,7 @@ void oprintf(const char *fmt, ...)
     va_list ap;
     String *buffer;
 
-    buffer = Stringnew(NULL, 0, 0);
+    buffer = Stringnew(NULL, -1, 0);
     va_start(ap, fmt);
     vSprintf(buffer, 0, fmt, ap);
     va_end(ap);
@@ -643,7 +648,7 @@ void tfprintf(TFILE *file, const char *fmt, ...)
     va_list ap;
     String *buffer;
 
-    buffer = Stringnew(NULL, 0, 0);
+    buffer = Stringnew(NULL, -1, 0);
     va_start(ap, fmt);
     vSprintf(buffer, 0, fmt, ap);
     va_end(ap);
@@ -688,20 +693,34 @@ void eprefix(String *buffer)
 	    current_command, current_opt);
 }
 
-static void veprintf(const char *fmt, va_list ap)
+static void veprintf(int warning, const char *fmt, va_list ap)
 {
     String *buffer;
-    buffer = Stringnew(NULL, 0, 0);
+    buffer = Stringnew(NULL, -1, 0);
     eprefix(buffer);
-    vSprintf(buffer, SP_APPEND, fmt, ap);
+    if (warning)
+	Stringcat(buffer, "Warning: ");
+    vSprintf(buffer, SP_APPEND|SP_CHECK, fmt, ap);
+    if (!buffer->attrs)
+	buffer->attrs = warning ? warning_attr : error_attr;
     tfputline(CS(buffer), tferr);
 }
 
+/* print a formatted error message */
 void eprintf(const char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    veprintf(fmt, ap);
+    veprintf(0, fmt, ap);
+    va_end(ap);
+}
+
+/* print a formatted warning message */
+void wprintf(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    veprintf(1, fmt, ap);
     va_end(ap);
 }
 
@@ -716,7 +735,7 @@ void internal_error(const char *file, int line, const char *fmt, ...)
     if (current_command) eprintf("cmd: \"%.32b\"", '\"', current_command);
 
     va_start(ap, fmt);
-    veprintf(fmt, ap);
+    veprintf(0, fmt, ap);
     va_end(ap);
 }
 
@@ -730,7 +749,7 @@ void internal_error2(const char *file, int line, const char *file2, int line2,
     if (current_command) eprintf("cmd: \"%.32b\"", '\"', current_command);
 
     va_start(ap, fmt);
-    veprintf(fmt, ap);
+    veprintf(0, fmt, ap);
     va_end(ap);
 }
 
@@ -772,7 +791,7 @@ String *tfgetS(String *str, TFILE *file)
             eprintf("keyboard can only be read from a command line command.");
             return NULL;
         }
-        if (read_depth) eprintf("warning: nested keyboard read");
+        if (read_depth) wprintf("nested keyboard read");
         oldtfout = tfout;
         oldtfin = tfin;
         tfout = tfscreen;

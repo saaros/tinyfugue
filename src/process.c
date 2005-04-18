@@ -1,21 +1,22 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: process.c,v 35004.65 2004/07/18 03:54:27 hawkeye Exp $";
+static const char RCSid[] = "$Id: process.c,v 35004.69 2005/04/18 03:15:36 kkeys Exp $";
 
 /************************
  * Fugue processes.     *
  ************************/
 
-#include "config.h"
+#include "tfconfig.h"
 #include <sys/types.h>
 #include "port.h"
 #include "tf.h"
 #include "util.h"
+#include "pattern.h"	/* for tfio.h */
 #include "search.h"	/* for tfio.h */
 #include "tfio.h"
 #include "history.h"
@@ -498,7 +499,6 @@ static int procopt(const char *opts, String *args, int *offsetp,
     const char *ptr;
     struct timeval tv;
 
-    if (!(args->len - *offsetp)) return 0;
     *world = NULL;
     ptime->tv_sec = PTIME_VAR;
     startopt(CS(args), opts);
@@ -648,8 +648,25 @@ struct Value *handle_repeat_command(String *args, int offset)
 	    return shareval(val_zero);
 	}
         count = -1;
-        for (++ptr; is_space(*ptr); ptr++);
-    } else if ((count = numarg(&ptr)) <= 0) {
+	ptr++;
+    } else if (is_digit(*ptr)) {
+	/* If we used numarg(), we couldn't tell "3x" from "3 x" */
+        count = strtoint(ptr, &ptr);
+	if (count <= 0) {
+	    eprintf("invalid repeat count (%d)", count);
+	    return shareval(val_zero);
+	}
+    } else {
+	eprintf("invalid repeat count (%.5s)", ptr);
+	return shareval(val_zero);
+    }
+    if (*ptr && !is_space(*ptr)) {
+	eprintf("repeat count followed by garbage (%.5s)", ptr);
+        return shareval(val_zero);
+    }
+    while(is_space(*ptr)) ptr++;
+    if (!*ptr) {
+	eprintf("missing command");
         return shareval(val_zero);
     }
     return newproc(P_REPEAT, do_repeat, count, "", "", NULL, world,

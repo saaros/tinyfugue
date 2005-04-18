@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: expr.c,v 35004.152 2004/07/27 16:15:05 hawkeye Exp $";
+static const char RCSid[] = "$Id: expr.c,v 35004.169 2005/04/18 03:15:35 kkeys Exp $";
 
 
 /********************************************************************
@@ -15,18 +15,20 @@ static const char RCSid[] = "$Id: expr.c,v 35004.152 2004/07/27 16:15:05 hawkeye
  * Parses and evaluates expressions.
  ********************************************************************/
 
-#include "config.h"
+#include "tfconfig.h"
 #include <math.h>
 #include <limits.h>
 #include "port.h"
 #include "tf.h"
 #include "util.h"
+#include "pattern.h"
 #include "search.h"
 #include "tfio.h"
 #include "macro.h"
 #include "signals.h"	/* interrupted() */
 #include "socket.h"	/* socktime() */
 #include "output.h"	/* igoto() */
+#include "attr.h"
 #include "keyboard.h"	/* do_kb*() */
 #include "parse.h"
 #include "expand.h"
@@ -77,8 +79,8 @@ static int and_expr(Program *prog);
 static int relational_expr(Program *prog);
 static int additive_expr(Program *prog);
 static int multiplicative_expr(Program *prog);
-static int unary_expr(Program *prog, int is_rhs_div);
-static int primary_expr(Program *prog, int is_rhs_div);
+static int unary_expr(Program *prog, int could_be_div_or_macro);
+static int primary_expr(Program *prog, int could_be_div_or_macro);
 static int reduce_arithmetic(opcode_t op, const Value *val0, int n, Value *res);
 static Value *function_switch(const ExprFunc *func, int n, const char *parent);
 static Value *do_function(int n);
@@ -146,12 +148,12 @@ Value *newint_fl(long i, const char *file, int line)
     return val;
 }
 
-Value *newtime_fl(long s, long u, const char *file, int line)
+Value *newtime_fl(long s, long u, type_t type, const char *file, int line)
 {
     Value *val;
 
     val = newval_fl(file, line);
-    val->type = TYPE_TIME;
+    val->type = type;
     val->u.tval.tv_sec = s;
     val->u.tval.tv_usec = u;
     return val;
@@ -218,14 +220,19 @@ Value *valval_fl(Value *val, const char *file, int line)
     if (!(result = hgetnearestvarval(val))) {
 	result = newSstr_fl(blankline, file, line);
     } else {
-	switch (result->type) {
+	switch (result->type & TYPES_BASIC) {
 	case TYPE_ENUM:
 	case TYPE_POS:
 	case TYPE_INT:
 	    result = newint_fl(result->u.ival, file, line); break;
-	case TYPE_TIME:
-	    valtime(&tv, result);
-	    result = newtime_fl(tv.tv_sec, tv.tv_usec, file, line); break;
+	case TYPE_DTIME:
+	case TYPE_ATIME:
+	    if (valtime(&tv, result))
+		result = newtime_fl(tv.tv_sec, tv.tv_usec, result->type,
+		    file, line);
+	    else
+		result = NULL;
+	    break;
 	case TYPE_FLOAT:
 	    result = newfloat_fl(valfloat(result), file, line); break;
 	default:
@@ -283,7 +290,7 @@ static const Value *valnum(const Value *val)
         if (!parsenumber(val->sval->data, NULL, TYPE_NUM, parsed)) {
 #if 0
             if (pedantic)
-                eprintf("warning: %s",
+                wprintf("%s",
                     "non-numeric string value used in numeric context");
 #endif
             return NULL;
@@ -301,7 +308,7 @@ int valbool(const Value *val)
 
     if (val->type & (TYPE_INT | TYPE_POS | TYPE_ENUM))
         return !!val->u.ival;
-    if (val->type & TYPE_TIME)
+    if (val->type & (TYPE_DTIME|TYPE_ATIME))
         return (val->u.tval.tv_sec || val->u.tval.tv_usec);
 #if !NO_FLOAT
     else if (val->type & TYPE_FLOAT)
@@ -318,7 +325,7 @@ long valint(const Value *val)
 
     if (val->type & (TYPE_INT | TYPE_POS | TYPE_ENUM))
         return val->u.ival;
-    if (val->type & TYPE_TIME)
+    if (val->type & (TYPE_DTIME|TYPE_ATIME))
         return (long)val->u.tval.tv_sec;
 #if !NO_FLOAT
     else if (val->type & TYPE_FLOAT) {
@@ -333,7 +340,7 @@ long valint(const Value *val)
 }
 
 /* copy timeval of item */
-void valtime(struct timeval *tvp, const Value *val)
+int valtime(struct timeval *tvp, const Value *val)
 {
     if (!(val = valnum(val)))
 	goto valtime_error;
@@ -344,7 +351,7 @@ void valtime(struct timeval *tvp, const Value *val)
     if (val->type & (TYPE_INT | TYPE_POS | TYPE_ENUM)) {
         tvp->tv_sec = val->u.ival;
         tvp->tv_usec = 0;
-    } else if (val->type & TYPE_TIME) {
+    } else if (val->type & (TYPE_DTIME|TYPE_ATIME)) {
         *tvp = val->u.tval;
 #if !NO_FLOAT
     } else if (val->type & TYPE_FLOAT) {
@@ -352,16 +359,17 @@ void valtime(struct timeval *tvp, const Value *val)
         double fival = val->u.fval < 0 ? ceil(val->u.fval) : floor(val->u.fval);
         if (fival != ival) {
 	    eprintf("real value too large to convert to time");
+	    goto valtime_error;
 	}
         tvp->tv_usec = (long)((val->u.fval - ival) * 1000000);
         tvp->tv_sec = ival;
 #endif
     }
-    return;
+    return 1;
 
 valtime_error:
     *tvp = tvzero;
-    return;
+    return 0;
 }
 
 #if !NO_FLOAT
@@ -378,7 +386,7 @@ double valfloat(const Value *val)
         return val->u.fval;
     if (val->type & (TYPE_INT | TYPE_POS | TYPE_ENUM))
         return (double)val->u.ival;
-    if (val->type & TYPE_TIME)
+    if (val->type & (TYPE_DTIME|TYPE_ATIME))
         return (double)val->u.tval.tv_sec + val->u.tval.tv_usec / 1000000.0;
     return val->sval ? strtod(val->sval->data, NULL) : 0.0;
 }
@@ -390,6 +398,7 @@ conString *valstr(Value *val)
 {
     const char *p;
     String *sval;
+    long sec, usec;
 
     if (!val) return NULL;
     if (val->type == TYPE_ID) {
@@ -413,9 +422,32 @@ conString *valstr(Value *val)
             Sprintf(sval, "%ld", val->u.ival);
             val->sval = CS(sval);
             break;
-        case TYPE_TIME:
+        case TYPE_DTIME:
             sval = Stringnew(NULL, 0, 0);
-            tftime(sval, NULL, &val->u.tval);
+            sec = val->u.tval.tv_sec;
+	    if (sec >= 60 || sec <= -60) {
+		/* h:mm:ss.u format */
+		usec = val->u.tval.tv_usec;
+		if (sec < 0) {
+		    Stringadd(sval, '-');
+		    sec = -sec;
+		    usec = -usec;
+		}
+		Sappendf(sval, "%ld:%02ld", sec/3600, (sec/60)%60);
+		if (sec % 60 || usec)
+		    Sappendf(sval, ":%02ld", sec % 60);
+		if (usec)
+		    append_usec(sval, usec, 1);
+	    } else {
+		/* s.u format */
+		tftime(sval, NULL, &val->u.tval);
+	    }
+            val->sval = CS(sval);
+            break;
+        case TYPE_ATIME:
+	    /* s.u format */
+            sval = Stringnew(NULL, 0, 0);
+	    tftime(sval, NULL, &val->u.tval);
             val->sval = CS(sval);
             break;
 #if !NO_FLOAT
@@ -477,7 +509,8 @@ static Value *assign(Var *var, const Value *idval, Value *val)
 	switch ((basic_type = (type = val->type) & TYPES_BASIC)) {
 	case TYPE_STR:   value = Stringdup(val->sval); break;
 	case TYPE_FLOAT: value = &val->u.fval; break;
-	case TYPE_TIME:  value = &val->u.tval; break;
+	case TYPE_ATIME: /* fall through */
+	case TYPE_DTIME: value = &val->u.tval; break;
 	case TYPE_ENUM:  /* fall through */
 	case TYPE_POS:   basic_type=TYPE_INT; /* fall through */
 	case TYPE_INT:   value = &val->u.ival; break;
@@ -526,13 +559,6 @@ int reduce(opcode_t op, int n)
         return 0;
     }
 
-    if ((op == OP_ASSIGN || op == OP_PREINC || op == OP_PREDEC) &&
-        (opd(n)->type != TYPE_ID))
-    {
-        eprintf("illegal object of assignment");
-        goto reduce_exit;
-    }
-
     switch (op) {
     case '>':
     case '<':
@@ -554,8 +580,10 @@ int reduce(opcode_t op, int n)
 		val = newfloat(res.u.fval);
 	    }
 	    break;
-	case TYPE_TIME:
-	    val = newtime(res.u.tval.tv_sec, res.u.tval.tv_usec); break;
+	case TYPE_ATIME:
+	case TYPE_DTIME:
+	    val = newtime(res.u.tval.tv_sec, res.u.tval.tv_usec, res.type);
+	    break;
 	case TYPE_INT:
 	    val = newint(res.u.ival); break;
 	default:
@@ -567,6 +595,7 @@ int reduce(opcode_t op, int n)
     case OP_SUBA:
     case OP_MULA:
     case OP_DIVA:
+	if (opd(n)->type != TYPE_ID) goto reduce_bad_assignment;
 	var = hfindnearestvar(opd(n));
 	val0 = var ? getvarval(var) : val_zero;
         if (!reduce_arithmetic(op, val0, n, &res))
@@ -581,6 +610,7 @@ int reduce(opcode_t op, int n)
 	break;
 
     case OP_ASSIGN:
+	if (opd(n)->type != TYPE_ID) goto reduce_bad_assignment;
 	var = hfindnearestvar(opd(2));
 	val = opd(1);
 	if (val && val->type == TYPE_ID)
@@ -589,14 +619,16 @@ int reduce(opcode_t op, int n)
 	    return 0;
 	break;
 
-    case OP_PREDEC: i = valint(getvarval(var = hfindnearestvar(opd(1)))) - 1;
+    case OP_PREDEC: if (opd(n)->type != TYPE_ID) goto reduce_bad_assignment;
+		    i = valint(getvarval(var = hfindnearestvar(opd(1)))) - 1;
 		    if (i == LONG_MAX)
 			eprintf("integer overflow in --%s", opd(1)->name);
 		    var = var ? setexistingvar(var, TYPE_INT, &i, 0) :
 			setnewvar(opd(1)->name, opd(1)->u.hash, TYPE_INT,&i, 0);
                     val = newint(var ? i : 0);
                     break;
-    case OP_PREINC: i = valint(getvarval(var = hfindnearestvar(opd(1)))) + 1;
+    case OP_PREINC: if (opd(n)->type != TYPE_ID) goto reduce_bad_assignment;
+		    i = valint(getvarval(var = hfindnearestvar(opd(1)))) + 1;
 		    if (i == LONG_MIN)
 			eprintf("integer overflow in ++%s", opd(1)->name);
 		    var = var ? setexistingvar(var, TYPE_INT, &i, 0) :
@@ -626,12 +658,15 @@ int reduce(opcode_t op, int n)
                     break;
     }
 
+    goto reduce_exit;
+reduce_bad_assignment:
+    eprintf("illegal object of assignment");
 reduce_exit:
     while (n--) freeval(popval());
     return val ? pushval(val) : 0;
 }
 
-/* Fills in *res with a TYPE_INT, TYPE_TIME, or TYPE_FLOAT value */
+/* Fills in *res with a TYPE_INT, TYPE_DTIME, TYPE_ATIME, or TYPE_FLOAT value */
 static int reduce_arithmetic(opcode_t op, const Value *val0, int n, Value *res)
 {
     int i;
@@ -643,12 +678,12 @@ static int reduce_arithmetic(opcode_t op, const Value *val0, int n, Value *res)
     Value localval[2];
 
 #define resint(i) \
-    ((res->type = TYPE_INT), (res->u.ival = i), 1)
+    ((res->type = TYPE_INT), (res->u.ival = (i)), 1)
 #define resfloat(f) \
-    ((res->type = TYPE_FLOAT), (res->u.fval = f), 1)
-#define restime(sec, usec) \
-    ((res->type = TYPE_TIME), (res->u.tval.tv_sec = sec), \
-    (res->u.tval.tv_usec = usec), 1)
+    ((res->type = TYPE_FLOAT), (res->u.fval = (f)), 1)
+#define restime(sec, usec, restype) \
+    ((res->type = restype), (res->u.tval.tv_sec = (sec)), \
+    (res->u.tval.tv_usec = (usec)), 1)
 
     for (i = 0; i < n; i++) {
 	val[i] = (i == 0) ? val0 : opd(n-i);
@@ -659,11 +694,26 @@ static int reduce_arithmetic(opcode_t op, const Value *val0, int n, Value *res)
 	    parsenumber(val[i]->sval->data, NULL, TYPE_NUM, &localval[i]);
 	    val[i] = &localval[i];
 	}
-        type = val[i]->type & TYPES_BASIC;
+	type = val[i]->type & TYPES_BASIC;
 	if (type & (TYPE_ENUM | TYPE_POS))
 	    type = TYPE_INT;
-        if (type > promoted_type)
-            promoted_type = type;
+	if (type > promoted_type)
+	    promoted_type = type;
+    }
+    if (n == 2 && val[0]->type & TYPE_ATIME && val[1]->type & TYPE_ATIME) {
+        switch (op & ~OPF_SIDE) {
+        case '+':
+        case '*':
+        case '/':
+	    wprintf("invalid operation %s on absolute time values.",
+		oplabel(op));
+        default:   break;
+        }
+	if (op == '-') /* atime - atime => dtime */
+	    promoted_type = TYPE_DTIME;
+    } else if (n == 1 && val[0]->type == TYPE_ATIME && op == '-') {
+	wprintf("invalid operation %s on absolute time value.", oplabel(op));
+	promoted_type = TYPE_ATIME;
     }
 
     if ((op == OP_EQUAL || op == OP_NOTEQ) &&
@@ -673,18 +723,18 @@ static int reduce_arithmetic(opcode_t op, const Value *val0, int n, Value *res)
 	    (val[1]->type & TYPE_REGMATCH && valint(val[0]) == 1) ||
 	    ((val[0]->type & TYPE_REGMATCH) && (val[1]->type & TYPE_REGMATCH)))
 	{
-	    eprintf("Warning: regmatch() may return >= 1 for success.");
+	    wprintf("regmatch() may return >= 1 for success.");
 	}
     }
 
-    if ((promoted_type & (TYPE_INT | TYPE_TIME)) &&
+    if ((promoted_type & (TYPE_INT | TYPE_ATIME | TYPE_DTIME)) &&
 	is_additive(op & ~OPF_SIDE))
     {
 	/* additive overflow causes promotion to float */
 	int0 = (n > 1) ? valint(val[0]) : 0;
 	int1 = valint(val[n-1]);
 	neg0 = int0 < 0;
-	if (op == '-') {
+	if ((op & ~OPF_SIDE) == '-') {
 	    neg1 = int1 >= 0;
 	    sum = (int0 - int1);
 	} else {
@@ -718,15 +768,17 @@ static int reduce_arithmetic(opcode_t op, const Value *val0, int n, Value *res)
         default:        return 0;
         }
 
-    case TYPE_TIME:
-        valtime(&t1, val[n-1]);
+    case TYPE_ATIME:
+    case TYPE_DTIME:
+        if (!valtime(&t1, val[n-1])) return 0;
         if (n == 1)
             t = tvzero;
         else
-            valtime(&t, val[0]);
+            if (!valtime(&t, val[0])) return 0;
 
         switch (op & ~OPF_SIDE) {
-        case '+':  tvadd(&t, &t, &t1);  return restime(t.tv_sec, t.tv_usec);
+        case '+':  tvadd(&t, &t, &t1);
+		   return restime(t.tv_sec, t.tv_usec, promoted_type);
         case '*':  return resfloat(valfloat(val[0]) * valfloat(val[1]));
         case '/':  return resfloat(valfloat(val[0]) / valfloat(val[1]));
         default:   break;
@@ -741,7 +793,7 @@ static int reduce_arithmetic(opcode_t op, const Value *val0, int n, Value *res)
         case OP_NOTEQ: return resint(t.tv_sec || t.tv_usec);
         case OP_GTE:   return resint(t.tv_sec ? t.tv_sec >=0 : t.tv_usec >=0);
         case OP_LTE:   return resint(t.tv_sec ? t.tv_sec <=0 : t.tv_usec <=0);
-        case '-':      return restime(t.tv_sec, t.tv_usec);
+        case '-':      return restime(t.tv_sec, t.tv_usec, promoted_type);
         default:       return 0;
         }
 
@@ -805,6 +857,9 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
 
         switch (symbol) {
 
+        case FN_test:
+	    return expr_value(opdstd(1));
+
         case FN_addworld:
     /* addworld(name, type, host, port, char, pass, file, flags, srchost) */
 	  {
@@ -855,6 +910,9 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
         case FN_winlines:
             return newint(winlines());
 
+        case FN_encode_ansi:
+	    return newSstr(CS(encode_ansi(opdstr(n-0), 0)));
+
         case FN_decode_ansi:
 	    constr = CS(decode_ansi(opdstd(n), 0, EMUL_ANSI_ATTR, NULL));
 	    return constr ? newSstr(constr) : shareval(val_blank);
@@ -875,10 +933,13 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
 
         case FN_strip_attr:
 	    constr = opdstr(n-0);
-	    return newstr(constr->data, Sstr->len);
+	    return newstr(constr->data, constr->len);
 
         case FN_status_width:
 	    return newint(handle_status_width_func(opdstd(n-0)));
+
+        case FN_status_fields:
+	    return newSstr(status_field_text(n>0 ? opdint(n-0) : 0));
 
         case FN_echo:
             i = (n>2) ?
@@ -961,7 +1022,7 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
             oldblock = block;  /* condition and evalflag are already correct */
             block = 0;
             j = -1;
-            (Sstr = Stringnew(NULL, 0, 0))->links++;
+            (Sstr = Stringnew(NULL, -1, 0))->links++;
             if (tfgetS(Sstr, tfile)) {
                 if (hsetnearestvar(opd(1), TYPE_STR, Sstr))
                     j = Sstr->len;
@@ -1008,7 +1069,7 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
 	    World *world;
 	    Screen *screen;
             world = (n>=1 && *opdstd(1)) ? find_world(opdstd(1)) : xworld();
-	    screen = world ? world->screen : display_screen;
+	    screen = (virtscreen && world) ? world->screen : display_screen;
 	    return newint(screen->paused);
 	  }
 
@@ -1030,7 +1091,7 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
 		}
 	    }
             world = (n>=2 && *opdstd(n-1)) ? find_world(opdstd(n-1)) : xworld();
-	    screen = world ? world->screen : display_screen;
+	    screen = (virtscreen && world) ? world->screen : display_screen;
 	    nnew = lim_only ? screen->nnew_filtered : screen->nnew;
 	    nback = lim_only ? screen->nback_filtered : screen->nback;
 	    if (screen == display_screen || screen->active || include_A ||
@@ -1103,14 +1164,16 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
 
         case FN_ftime:
             Sstr = Stringnew(NULL, 0, 0);
-            if (n > 1) opdtime(&tv, n-1);
-            else gettime(&tv);
+            if (n < 2)
+		gettime(&tv);
+	    else if (!opdtime(&tv, n-1))
+		return shareval(val_blank);
             tftime(Sstr, n>0 ? opdstr(n) : blankline, &tv);
             return newSstr(CS(Sstr));
 
         case FN_time:
             gettime(&tv);
-            return newtime(tv.tv_sec, tv.tv_usec);
+            return newatime(tv.tv_sec, tv.tv_usec);
 
         case FN_cputime:
 	    {
@@ -1128,10 +1191,10 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
                 then = socktime(opdstd(1), SOCK_RECV);
             else
                 then = &keyboard_time;
-            if (!then) return newtime(0, 0);
+            if (!then) return newdtime(0, 0);
             gettime(&tv);
             tvsub(&tv, &tv, then);
-            return newtime(tv.tv_sec, tv.tv_usec);
+            return newdtime(tv.tv_sec, tv.tv_usec);
 
         case FN_mktime:
 	    {
@@ -1156,12 +1219,12 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
 		}
 		t = mktime(&tm);
 		if (t == -1 || usec < 0 || usec > 999999)
-		    return newtime(-1, 0);
+		    return newatime(-1, 0);
 		if (t < 0 && usec > 0) {
 		    t += 1;
 		    usec -= 1000000;
 		}
-		return newtime(t, usec);
+		return newatime(t, usec);
 	    }
 
         case FN_filename:
@@ -1211,7 +1274,7 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
         case FN_strrep:
             constr = opdstr(2);
             i = opdint(1);
-            for (Sstr2 = Stringnew(NULL, 0, 0); i > 0; i--)
+            for (Sstr2 = Stringnew(NULL, constr->len * i, 0); i > 0; i--)
                 SStringcat(Sstr2, constr);
             return newSstr(CS(Sstr2));
 
@@ -1227,6 +1290,9 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
 
         case FN_strcmp:
             return newint(strcmp(opdstd(2), opdstd(1)));
+
+        case FN_strcmpattr:
+            return newint(Stringcmp(opdstr(2), opdstr(1)));
 
         case FN_strncmp:
             return newint(strncmp(opdstd(3), opdstd(2), opdint(1)));
@@ -1261,7 +1327,7 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
             i = opdint(n - 1);
 	    bound_check(i, constr->len);
 	    optional_int_arg(j, n, 3, constr->len - i, constr->len - i);
-            Sstr2 = Stringnew(NULL, 0, 0);
+            Sstr2 = Stringnew(NULL, j, 0);
             return newSstr(CS(SStringoncat(Sstr2, constr, i, j)));
 
         case FN_strstr:
@@ -1397,10 +1463,10 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
           }
 
         case FN_read:
-            eprintf("warning: read() will be removed in the near future.  Use tfread() instead.");
+            wprintf("read() is deprecated.  Use tfread() instead.");
             oldblock = block;  /* condition and evalflag are already correct */
             block = 0;
-            Sstr = Stringnew(NULL, 0, 0);
+            Sstr = Stringnew(NULL, -1, 0);
             if (!tfgetS(Sstr, tfin))
                 Stringtrunc(Sstr, 0);
             block = oldblock;
@@ -1434,7 +1500,8 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
 		case TYPE_ENUM:	  Stringcat(Sstr, "enum");	break;
 		case TYPE_INT:	  Stringcat(Sstr, "int");	break;
 		case TYPE_POS:	  Stringcat(Sstr, "pos");	break;
-		case TYPE_TIME:	  Stringcat(Sstr, "time");	break;
+		case TYPE_ATIME:  Stringcat(Sstr, "atime");	break;
+		case TYPE_DTIME:  Stringcat(Sstr, "dtime");	break;
 		case TYPE_FLOAT:  Stringcat(Sstr, "float");	break;
 		default:	  Sappendf(Sstr, "%d", opd(1)->type);
 		}
@@ -1689,10 +1756,11 @@ static int multiplicative_expr(Program *prog)
     return 1;
 }
 
-static int unary_expr(Program *prog, int is_rhs_div)
+static int unary_expr(Program *prog, int could_be_div_or_macro)
 {
     opcode_t op;
 
+    if (is_space(*ip)) could_be_div_or_macro = 0;
     while (is_space(*ip)) ip++;
 
     if (is_unary(*ip)) {
@@ -1709,7 +1777,7 @@ static int unary_expr(Program *prog, int is_rhs_div)
         return 1;
 
     } else {
-        if (!primary_expr(prog, is_rhs_div)) return 0;
+        if (!primary_expr(prog, could_be_div_or_macro)) return 0;
 
         if (*ip == '(') {
             /* function call expression */
@@ -1771,7 +1839,7 @@ static int unary_expr(Program *prog, int is_rhs_div)
     }
 }
 
-static int primary_expr(Program *prog, int is_rhs_div)
+static int primary_expr(Program *prog, int could_be_div_or_macro)
 {
     const char *end;
     Value *val;
@@ -1784,7 +1852,7 @@ static int primary_expr(Program *prog, int is_rhs_div)
 	code_add(prog, OP_PUSH, val);
     } else if (is_quote(*ip)) {
 	int error = 0;
-        (str = Stringnew(NULL, 0, 0))->links++;
+        (str = Stringnew(NULL, -1, 0))->links++;
         if (!stringliteral(str, &ip)) {
             eprintf("%S in string literal", str);
             error++;
@@ -1799,18 +1867,17 @@ static int primary_expr(Program *prog, int is_rhs_div)
         val = newid(ip, end - ip);
         ip = end;
 	code_add(prog, OP_PUSH, val);
-	if (is_rhs_div &&
+	if (could_be_div_or_macro &&
 	    (keyword(val->name) || find_builtin_cmd(val->name) ||
 	    find_macro(val->name)))
 	{
-	    eprintf("warning: possibly missing '%%;' or ')' before /%s",
-		val->name);
+	    wprintf("possibly missing '%%;' or ')' before /%s", val->name);
 	}
     } else if (*ip == '$') {
         static int warned = 0;
         ++ip;
         if ((!warned || pedantic) && *ip == '[') {
-            eprintf("warning: $[...] substitution in expression is legal, but redundant.  Try using (...) instead.");
+            wprintf("$[...] substitution in expression is legal, but redundant.  Try using (...) instead.");
             warned = 1;
         }
         dollarsub(prog, NULL);

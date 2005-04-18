@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: main.c,v 35004.104 2004/07/29 17:37:19 hawkeye Exp $";
+static const char RCSid[] = "$Id: main.c,v 35004.110 2005/04/18 03:15:36 kkeys Exp $";
 
 
 /***********************************************
@@ -17,10 +17,11 @@ static const char RCSid[] = "$Id: main.c,v 35004.104 2004/07/29 17:37:19 hawkeye
  * socket.c                                    *
  ***********************************************/
 
-#include "config.h"
+#include "tfconfig.h"
 #include "port.h"
 #include "tf.h"
 #include "util.h"
+#include "pattern.h"	/* for tfio.h */
 #include "search.h"
 #include "tfio.h"
 #include "history.h"
@@ -28,6 +29,7 @@ static const char RCSid[] = "$Id: main.c,v 35004.104 2004/07/29 17:37:19 hawkeye
 #include "socket.h"
 #include "macro.h"
 #include "output.h"
+#include "attr.h"
 #include "signals.h"
 #include "command.h"
 #include "keyboard.h"
@@ -47,12 +49,12 @@ const char version[] =
 #if DEVELOPMENT
     "DEVELOPMENT VERSION: "
 #endif
-    "TinyFugue version 5.0 beta 6";
+    "TinyFugue version 5.0 beta 7";
 
 const char mods[] = "";
 
 const char copyright[] =
-    "Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys (hawkeye@tcp.com)";
+    "Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys (hawkeye@tcp.com)";
 
 const char contrib[] =
 #ifdef PLATFORM_OS2
@@ -150,6 +152,7 @@ int main(int argc, char *argv[])
     init_macros();			/* macro.c    */
     init_histories();			/* history.c  */
     init_output();			/* output.c   */
+    init_attrs();			/* attr.c     */
     init_keyboard();			/* keyboard.c */
 
     oputs(version);
@@ -157,7 +160,7 @@ int main(int argc, char *argv[])
     oputs("Type `/help copyright' for more information.");
     if (*contrib) oputs(contrib);
     if (*mods) oputs(mods);
-    oputs("The PCRE regexp package is Copyright (c) 1997-1999 University of Cambridge.");
+    oprintf("Using PCRE version %s", pcre_version());
     oputs("Type `/help', `/help topics', or `/help intro' for help.");
     oputs("Type `/quit' to quit tf.");
     oputs("");
@@ -232,6 +235,7 @@ int main(int argc, char *argv[])
     free_expr();
     free_help();
     free_util();
+    free_patterns();
     free_dstring();
     free_reserve();
     fflush(stdout);

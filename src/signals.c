@@ -1,16 +1,17 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: signals.c,v 35004.57 2004/07/29 17:36:57 hawkeye Exp $";
+static const char RCSid[] = "$Id: signals.c,v 35004.62 2005/04/18 03:15:36 kkeys Exp $";
 
 /* Signal handling, core dumps, job control, and interactive shells */
 
-#include "config.h"
+#include "tfconfig.h"
 #include <signal.h>
+#include <setjmp.h>
 #include "port.h"
 #if DISABLE_CORE
 # include <sys/time.h>
@@ -18,6 +19,7 @@ static const char RCSid[] = "$Id: signals.c,v 35004.57 2004/07/29 17:36:57 hawke
 #endif
 #include "tf.h"
 #include "util.h"
+#include "pattern.h"	/* for tfio.h */
 #include "search.h"	/* for tfio.h */
 #include "tfio.h"
 #include "world.h" /* for process.h */
@@ -133,6 +135,7 @@ static void   terminate(int sig);
 static void   coremsg(void);
 static RETSIGTYPE core_handler(int sig);
 static RETSIGTYPE signal_scheduler(int sig);
+static RETSIGTYPE signal_jumper(int sig);
 #ifndef SIG_IGN
 static RETSIGTYPE SIG_IGN(int sig);
 #endif
@@ -140,6 +143,9 @@ static RETSIGTYPE SIG_IGN(int sig);
 
 static SigHandler *old_sighup_handler;
 static SigHandler *setsighandler(int sig, SigHandler *func);
+
+static jmp_buf jumpenv;
+static int fatal_signal = 0;
 
 /* HAVE_SIGACTION doesn't mean we NEED_sigaction.  On some systems that have
  * it, struct sigaction will not get defined unless _POSIX_SOURCE or similar
@@ -179,6 +185,41 @@ static SigHandler *setsighandler(int sig, SigHandler *func)
 #endif /* HAVE_SIGACTION */
 }
 
+/* Returns s, unless s is NULL, accessing s would cause a SIGBUS or SIGSEGV,
+ * or s is too long, in which case it returns another valid string describing
+ * the problem. */
+const char *checkstring(const char *s) {
+    SigHandler *old_sigsegv_handler, *old_sigbus_handler;
+    const char *p;
+
+    if (!s) return "";
+    fatal_signal = 0;
+
+    old_sigsegv_handler = setsighandler(SIGSEGV, signal_jumper);
+    old_sigbus_handler = setsighandler(SIGBUS, signal_jumper);
+
+    if (setjmp(jumpenv)) {
+	if (fatal_signal == SIGSEGV)
+	    s = "(invalid string: segmentation violation)";
+	else if (fatal_signal == SIGBUS)
+	    s = "(invalid string: bus error)";
+	else
+	    s = "(invalid string)";
+	goto exit;
+    }
+
+    for (p = s; *p; p++) {
+	if (p - s > 255) {
+	    s = "(invalid string: too long)";
+	    break;
+	}
+    }
+    
+exit:
+    setsighandler(SIGBUS, old_sigbus_handler);
+    setsighandler(SIGSEGV, old_sigsegv_handler);
+    return s;
+}
 
 void init_signals(void)
 {
@@ -356,6 +397,11 @@ static void coremsg(void)
     fprintf(stderr,"> TERM=\"%.32s\"\r\n", TERM ? TERM : "(NULL)");
     fprintf(stderr,"> cmd=\"%.32s\"\r\n",
 	current_command ? current_command : "(NULL)");
+    if (loadfile) {
+	fprintf(stderr,"> line %d-%d of file \"%.32s\"\r\n",
+	    loadstart, loadline,
+	    loadfile->name ? loadfile->name : "(NULL)");
+    }
 }
 
 static void terminate(int sig)
@@ -372,6 +418,13 @@ static RETSIGTYPE signal_scheduler(int sig)
     setsighandler(sig, signal_scheduler);  /* restore handler (POSIX) */
     VEC_SET(sig, &pending_signals);        /* set flag to deal with it later */
     have_pending_signals++;
+}
+
+static RETSIGTYPE signal_jumper(int sig)
+{
+    fatal_signal = sig;
+    longjmp(jumpenv, 1);
+    /* don't need to restore handler */
 }
 
 void process_signals(void)

@@ -1,21 +1,22 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: command.c,v 35004.132 2004/07/18 08:57:08 hawkeye Exp $";
+static const char RCSid[] = "$Id: command.c,v 35004.139 2005/04/18 03:15:35 kkeys Exp $";
 
 
 /*****************************************************************
  * Fugue command handlers
  *****************************************************************/
 
-#include "config.h"
+#include "tfconfig.h"
 #include "port.h"
 #include "tf.h"
 #include "util.h"
+#include "pattern.h"
 #include "search.h"
 #include "tfio.h"
 #include "cmdlist.h"
@@ -23,6 +24,7 @@ static const char RCSid[] = "$Id: command.c,v 35004.132 2004/07/18 08:57:08 hawk
 #include "world.h"	/* World, find_world() */
 #include "socket.h"	/* openworld() */
 #include "output.h"	/* oflush(), dobell() */
+#include "attr.h"
 #include "macro.h"
 #include "keyboard.h"	/* find_key(), find_efunc() */
 #include "expand.h"     /* macro_run() */
@@ -346,7 +348,7 @@ int handle_echo_func(
     switch(*dest) {
         case 'r':  raw = 1;       break;
         case 'o':  file = tfout;  break;
-        case 'e':  file = tferr;  break;
+        case 'e':  file = tferr;  if (!*attrstr) attrs = error_attr; break;
         case 'a':  file = tfalert;  break;
         case 'w':
             dest++;
@@ -522,8 +524,7 @@ int do_file_load(const char *args, int tinytalk)
 		    Stringadd(libfile, *path++);
 		}
 		if (!is_absolute_path(libfile->data)) {
-		    eprintf("warning: invalid directory in TFPATH: %S",
-			libfile);
+		    wprintf("invalid directory in TFPATH: %S", libfile);
 		} else {
 		    Sappendf(libfile, "/%s", args);
 		    file = tfopen(expand_filename(libfile->data), "r");
@@ -531,7 +532,7 @@ int do_file_load(const char *args, int tinytalk)
 	    } while (!file && *path);
 	} else {
 	    if (!is_absolute_path(TFLIBDIR)) {
-		eprintf("warning: invalid TFLIBDIR: %s", TFLIBDIR);
+		wprintf("invalid TFLIBDIR: %s", TFLIBDIR);
 	    } else {
 		Sprintf(libfile, "%s/%s", TFLIBDIR, args);
 		file = tfopen(expand_filename(libfile->data), "r");
@@ -574,8 +575,8 @@ int do_file_load(const char *args, int tinytalk)
         if (line->data[i]) {
             if (new_cmd && is_space(line->data[0]) && last_cmd_line > 0)
                 tfprintf(tferr,
-                    "%% %s: line %d: warning: possibly missing trailing \\",
-                    loadfile->name, last_cmd_line);
+                    "%% %s: line %d: Warning: possibly missing trailing \\%A",
+                    loadfile->name, last_cmd_line, warning_attr);
             last_cmd_line = loadline;
             SStringocat(cmd, CS(line), i);
             if (line->data[line->len - 1] == '\\') {
@@ -588,7 +589,7 @@ int do_file_load(const char *args, int tinytalk)
                 i = line->len - 1;
                 while (i > 0 && is_space(line->data[i])) i--;
                 if (line->data[i] == '\\')
-                    eprintf("warning: whitespace following final '\\'");
+                    wprintf("whitespace following final '\\'");
             }
         } else {
             last_cmd_line = 0;
@@ -813,7 +814,7 @@ struct Value *handle_unbind_command(String *args, int offset)
     Macro *macro;
 
     if (!(args->len - offset)) return shareval(val_zero);
-    if ((macro = find_key(print_to_ascii(args->data + offset)->data)))
+    if ((macro = find_key(print_to_ascii(NULL, args->data + offset)->data)))
         kill_macro(macro);
     else eprintf("No binding for %s", args->data + offset);
     return newint(!!macro);
@@ -823,7 +824,7 @@ struct Value *handle_bind_command(String *args, int offset)
 {
     if (!(args->len - offset)) return shareval(val_zero);
     split_args(args->data + offset);
-    return newint(add_new_macro(NULL, print_to_ascii(pattern)->data,
-	NULL, NULL, body, 0, 100, 0, FALSE, 0));
+    return newint(add_new_macro(NULL, print_to_ascii(NULL, pattern)->data,
+	NULL, NULL, body, 1, 100, 0, FALSE, 0));
 }
 

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: expand.c,v 35004.217 2004/07/18 03:54:26 hawkeye Exp $";
+static const char RCSid[] = "$Id: expand.c,v 35004.229 2005/04/18 03:15:35 kkeys Exp $";
 
 
 /********************************************************************
@@ -16,11 +16,12 @@ static const char RCSid[] = "$Id: expand.c,v 35004.217 2004/07/18 03:54:26 hawke
  * parameters, variables, macro bodies, and expressions.
  ********************************************************************/
 
-#include "config.h"
+#include "tfconfig.h"
 #include <math.h>
 #include "port.h"
 #include "tf.h"
 #include "util.h"
+#include "pattern.h"
 #include "search.h"
 #include "tfio.h"
 #include "macro.h"
@@ -175,11 +176,14 @@ static void inst_dump(const Program *prog, int i, char prefix)
 			     Stringcat(buf, " (RE)");
 			 if (val->type & TYPE_EXPR)
 			     Stringcat(buf, " (EXPR)");
+			 if (val->type & TYPE_ATTR)
+			     Stringcat(buf, " (ATTR)");
 			 break;
 	case TYPE_ENUM:  Sappendf(buf, "ENUM \"%S\"", valstr(val)); break;
 	case TYPE_POS:   Sappendf(buf, "POS %S", valstr(val)); break;
 	case TYPE_INT:   Sappendf(buf, "INT %S", valstr(val)); break;
-	case TYPE_TIME:  Sappendf(buf, "TIME %S", valstr(val)); break;
+	case TYPE_DTIME: Sappendf(buf, "DTIME %S", valstr(val)); break;
+	case TYPE_ATIME: Sappendf(buf, "ATIME %S", valstr(val)); break;
 	case TYPE_FLOAT: Sappendf(buf, "FLOAT %S", valstr(val)); break;
 	default:         Sappendf(buf, "? %S", valstr(val)); break;
 	}
@@ -466,10 +470,9 @@ static void do_mecho(const Program *prog, int i)
 
 Value *prog_interpret(const Program *prog, int in_expr)
 {
-    Value *val, *result = NULL;
+    Value *val, *val2, *result = NULL;
     String *str, *tbuf;
     conString *constr;
-    int user_result_is_set = 0;
     int cip, stackbot, no_arg;
     int empty;	/* for varsub default */
     opcode_t op;
@@ -507,7 +510,6 @@ Value *prog_interpret(const Program *prog, int in_expr)
 	    goto prog_interpret_exit;
 	}
 	instruction_count++;
-	user_result_is_set = 0;
 	op = prog->code[cip].op;
 	if (mecho > invis_flag) do_mecho(prog, cip);
 	if (iecho > invis_flag) inst_dump(prog, cip, 'i');
@@ -546,7 +548,6 @@ Value *prog_interpret(const Program *prog, int in_expr)
 	    if ((no_arg = !constr)) constr = CS(buf);
 	    handle_command(constr);
 	    if (no_arg) Stringtrunc(buf, 0);
-	    user_result_is_set = 1;
 	    setup_next_io();
 	    break;
 
@@ -574,7 +575,6 @@ Value *prog_interpret(const Program *prog, int in_expr)
 		opnum_eq(op, OP_BUILTIN));
 	    execute_end(old_cmd, !(op & OPF_NEG), str);
 	    if (no_arg) Stringtrunc(buf, 0);
-	    user_result_is_set = 1;
 	    setup_next_io();
 	    break;
 
@@ -585,7 +585,6 @@ Value *prog_interpret(const Program *prog, int in_expr)
 		prog->code[cip].arg.val->u.hash, str, 0);
 	    execute_end(old_cmd, !(op & OPF_NEG), str);
 	    if (no_arg) Stringtrunc(buf, 0);
-	    user_result_is_set = 1;
 	    setup_next_io();
 	    break;
 
@@ -601,7 +600,6 @@ Value *prog_interpret(const Program *prog, int in_expr)
 		if (!do_hook(H_SEND, NULL, "%S", constr)) {
 		    set_user_result(newint(send_line(constr->data, constr->len,
 			TRUE)));
-		    user_result_is_set = 1; /* XXX ? */
 		}
 	    }
 	    if (no_arg) Stringtrunc(buf, 0);
@@ -707,9 +705,7 @@ Value *prog_interpret(const Program *prog, int in_expr)
 	case OP_ACMDSUB:
 	case OP_PCMDSUB:
 	    if (op_is_push(op))
-		/* If we init tbuf to length 0, and queue is empty, tbuf->data
-		 * would stay NULL, breaking some uses of it (eg OP_STRNEQ) */
-		(tbuf = Stringnew(NULL, 1, 0))->links++;
+		(tbuf = Stringnew(NULL, 0, 0))->links++;
 	    else
 		tbuf = buf;
 	    first = 1;
@@ -769,7 +765,20 @@ Value *prog_interpret(const Program *prog, int in_expr)
 	    break;
 	case OP_AVAR:
 	    (val = (prog->code[cip].arg.val))->count++;
-	    constr = valstr(val);
+	    if (!(val2 = hgetnearestvarval(val))) {
+		constr = blankline;
+		if (patmatch(&looks_like_special_sub_ic, NULL, val->name)) {
+		    char upper[64];
+		    int i;
+		    for (i = 0; i < sizeof(upper) && val->name[i]; i++)
+			upper[i] = ucase(val->name[i]);
+		    wprintf("\"%%{%s}\" is a variable substitution, "
+			"and is not the same as special substitution "
+			"\"%%{%.*s}\".", val->name, i, upper);
+		}
+	    } else {
+		constr = valstr(val2);
+	    }
 	    empty = !constr->len;
 	    SStringcat(buf, constr);
 	    freeval(val);
@@ -898,13 +907,19 @@ Value *prog_interpret(const Program *prog, int in_expr)
 	default:
 	    internal_error(__FILE__, __LINE__, "invalid opcode 0x%04X at %d",
 		op, cip);
-	    cip = prog->len; /* end the loop */
-	    break;
+	    goto prog_interpret_exit;
 	}
     }
 
     if (stacktop == stackbot + in_expr) {
-	result = in_expr ? popval() : user_result;
+	if (in_expr) {
+	    result = popval();
+	} else {
+	    /* Note: a macro prog may never set user_result, but have no
+	     * errors either; in that case we must set user_result here. */
+	    if (!user_result) user_result = shareval(val_blank);
+	    result = user_result;
+	}
     } else {
 	eprintf("expression stack underflow or dirty (%+d)",
 	    stacktop - (stackbot + in_expr));
@@ -1330,8 +1345,6 @@ static int list(Program *prog, int subs)
             if (subs >= SUB_KEYWORD) {
                 stmtstart = ip;
                 is_special = block = keyword_parse(prog);
-                if (subs == SUB_KEYWORD)
-                    subs += (block != 0);
             }
 
         } else if ((subs > SUB_LITERAL) &&
@@ -1349,14 +1362,14 @@ static int list(Program *prog, int subs)
 		++ip; /* skip ')' */
 		eat_space(prog);
 		if (is_end_of_statement(ip)) {
-		    eprintf("warning: \"%2.2s\" following \"/%s (...)\" "
+		    wprintf("\"%2.2s\" following \"/%s (...)\" "
 			"sends blank line to server, "
 			"which is probably not what was intended.",
 			ip, keyword_label(block));
 		}
                 block = (block == WHILE) ? DO : THEN;
             } else if (*ip) {
-                eprintf("warning: statement starting with %s in /%s "
+                wprintf("statement starting with %s in /%s "
                     "condition sends text to server, "
                     "which is probably not what was intended.",
                     error_text(prog), keyword_label(block));
@@ -1366,6 +1379,8 @@ static int list(Program *prog, int subs)
         if (is_a_command || is_a_condition) {
             switch(block) {
             case WHILE:
+                if (subs == SUB_KEYWORD)
+		    subs = SUB_NEWLINE;
                 if (!list(prog, subs)) failed = 1;
                 else if (block == WHILE) {
                     parse_error(prog, "macro", "/do");
@@ -1395,7 +1410,8 @@ static int list(Program *prog, int subs)
 
             case BREAK:
 	    {
-		int levels = (is_end_of_statement(ip) || is_end_of_cmdsub(ip)) ?
+		int levels =
+		    (!*ip || is_end_of_statement(ip) || is_end_of_cmdsub(ip)) ?
 		    1 : strtoint(ip, &ip);
                 if (levels <= 0) {
 		    parse_error(prog, "/BREAK", "positive integer");
@@ -1403,8 +1419,12 @@ static int list(Program *prog, int subs)
                     goto list_exit;
                 }
 		code_add_nomecho(prog, OP_JUMP, -levels);
-		code_mark(prog, ip); /* XXX ??? */
 		block = oldblock;
+		if (is_end_of_statement(ip)) {
+		    ip += 2;
+		    eat_space(prog);
+		}
+		code_mark(prog, ip); /* XXX ??? */
                 continue;
 	    }
 
@@ -1437,6 +1457,8 @@ static int list(Program *prog, int subs)
 		result = 1;  goto list_exit;
 
             case IF:
+                if (subs == SUB_KEYWORD)
+		    subs = SUB_NEWLINE;
                 if (!list(prog, subs)) {
                     failed = 1;
                 } else if (block == IF || block == ELSEIF) {
@@ -1480,7 +1502,7 @@ static int list(Program *prog, int subs)
 		comefrom(prog, jump_point, prog->len);
 		eat_space(prog);
 		if (block == ELSE && is_end_of_statement(ip)) {
-		    eprintf("warning: \"%2.2s\" following \"/%s\" "
+		    wprintf("\"%2.2s\" following \"/%s\" "
 			"sends blank line to server, "
 			"which is probably not what was intended.",
 			ip, keyword_label(block));
@@ -1517,11 +1539,11 @@ static int list(Program *prog, int subs)
 		const char *start = ip, *end;
 		while (is_space(*start)) start++;
 		end = spanvar(start);
-		if (!end || (*end != '=' && !is_space(*end)))
+		ip = end;
+		if (setdelim(&ip) < 1) {
+		    /* "invalid" name may expand to valid name at runtime */
 		    goto noncontrol;
-		ip = end + 1;
-		if (*end != '=')
-		    ip = spansetspace(ip);
+		}
 		(dest = Stringnew(NULL, 1, 0))->links++;
 		if (!(result = expand(prog, dest, subs, NULL)))
 		    goto list_exit;
@@ -1547,7 +1569,7 @@ static int list(Program *prog, int subs)
 		}
 		/* FALL THROUGH */
 	    case TEST:
-	    {
+	      {
 		Value *val = NULL;
 		String *dest;
 		/* len=1 forces data allocation (expected by prog_interpret) */
@@ -1587,7 +1609,7 @@ static int list(Program *prog, int subs)
 		}
 		block = oldblock;
                 break;
-	    }
+	      }
 
             default:
             noncontrol:
@@ -2050,7 +2072,7 @@ int varsub(Program *prog, int sub_warn, int in_expr)
                 ++ip;
             }
             start = ip;
-            if ((ell = (ucase(*ip) == 'L')) || (pee = (ucase(*ip) == 'P')) ||
+            if ((ell = (*ip == 'L')) || (pee = (*ip == 'P')) ||
                 (star = (*ip == '*')))
             {
                 ++ip;
@@ -2094,18 +2116,20 @@ int varsub(Program *prog, int sub_warn, int in_expr)
 		code_add(prog, in_expr ? OP_PLXPARM : OP_ALXPARM, n);
 	    else
 		code_add(prog, in_expr ? OP_PLPARM : OP_ALPARM, n);
+	    except = 0; /* handled */
 	} else if (n > 0) {
 	    if (except)
 		code_add(prog, in_expr ? OP_PXPARM : OP_AXPARM, n);
 	    else
 		code_add(prog, in_expr ? OP_PPARM : OP_APARM, n);
+	    except = 0; /* handled */
 	} else if (n == 0) {
 	    code_add(prog, in_expr ? OP_PCMDNAME : OP_ACMDNAME);
-	} else if (cstrcmp(selector->data, "R") == 0) {
+	} else if (strcmp(selector->data, "R") == 0) {
 	    code_add(prog, in_expr ? OP_PPARM_RND : OP_APARM_RND);
-	} else if (cstrcmp(selector->data, "PL") == 0) {
+	} else if (strcmp(selector->data, "PL") == 0) {
 	    code_add(prog, in_expr ? OP_PREG : OP_AREG, -1);
-	} else if (cstrcmp(selector->data, "PR") == 0) {
+	} else if (strcmp(selector->data, "PR") == 0) {
 	    code_add(prog, in_expr ? OP_PREG : OP_AREG, -2);
 	} else {
 	    Value *val = newid(selector->data, selector->len);
@@ -2114,6 +2138,10 @@ int varsub(Program *prog, int sub_warn, int in_expr)
 	    } else {
 		code_add(prog, OP_AVAR, val);
 	    }
+	}
+	if (except) { /* unhandled leading '-' */
+            eprintf("illegal character '-' in substitution");
+            goto varsub_exit;
 	}
     }
 
@@ -2168,8 +2196,8 @@ int varsub(Program *prog, int sub_warn, int in_expr)
 
     if (bracket) {
         if (*ip != '}') {
-            if (!*ip) eprintf("unmatched %%{ or bad substitution");
-            else eprintf("unmatched %%{ or illegal character '%c'", *ip);
+            if (!*ip) eprintf("unmatched { or bad substitution");
+            else eprintf("unmatched { or illegal character '%c'", *ip);
             goto varsub_exit;
         } else ip++;
     }
@@ -2177,7 +2205,7 @@ int varsub(Program *prog, int sub_warn, int in_expr)
     result = 1;
     if (sub_warn & (!sub_warned || pedantic)) {
         sub_warned = 1;
-        eprintf("warning: \"%%%.*s\" substitution in expression is legal, "
+        wprintf("\"%%%.*s\" substitution in expression is legal, "
 	    "but can be confusing.  Try using \"{%.*s}\" instead.",
             ip-contents, contents,
             (ip-bracket)-(contents+bracket), contents+bracket);

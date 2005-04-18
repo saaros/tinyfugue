@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: keyboard.h,v 35004.20 2004/02/17 06:44:38 hawkeye Exp $ */
+/* $Id: keyboard.h,v 35004.22 2005/04/18 03:15:35 kkeys Exp $ */
 
 #ifndef KEYBOARD_H
 #define KEYBOARD_H
@@ -16,8 +16,8 @@ extern Stringp keybuf;
 extern int pending_line, pending_input;
 
 extern void          init_keyboard(void);
-extern int           bind_key(struct Macro *macro);
-extern void          unbind_key(struct Macro *macro);
+extern int           bind_key(Macro *spec, const char *key);
+extern void          unbind_key(const char *key);
 extern struct Macro *find_key(const char *key);
 extern int           do_kbdel(int place);
 extern int           do_kbword(int start, int dir);

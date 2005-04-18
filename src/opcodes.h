@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 2000-2003, 2004 Ken Keys
+ *  Copyright (C) 2000-2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: opcodes.h,v 35004.27 2004/07/06 23:17:41 hawkeye Exp $ */
+/* $Id: opcodes.h,v 35004.28 2005/04/18 03:15:36 kkeys Exp $ */
 
 /*
  * Expression operators use the ASCII character as their opcode to be

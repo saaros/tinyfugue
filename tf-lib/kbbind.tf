@@ -89,44 +89,122 @@
 /~keyseq shift_pgup	^[[5;2~
 /~keyseq shift_pgdn	^[[6;2~
 
-;; Numeric Keypad for xterm
+;; Several common configurations of numeric keypad:
 ;
-;              numlock on           numlock off
+;       config 1 (PC)                 config 2 (PC)
+;      +-----+-----+-----+-----+     +-----+-----+-----+-----+
+;      |     |^[Oo |^[Oj |^[Om |     |     |^[Oo |^[Oj |^[Om |
+;      +-----+-----+-----+-----+     +-----+-----+-----+-----+
+;      |^[Ow |^[Ox |^[Oy |^[Ok |     |^[OH |^[OA |^[[5~|^[Ok |
+;      +-----+-----+-----+     +     +-----+-----+-----+     +
+;      |^[Ot |^[Ou |^[Ov |     |     |^[OD |^[OE |^[OC |     |
+;      +-----+-----+-----+-----+     +-----+-----+-----+-----+
+;      |^[Oq |^[Or |^[Os |^[OM |     |^[OF |^[OB |^[[6~|^[OM |
+;      +-----+-----+-----+     +     +-----+-----+-----+     +
+;      |^[Op       |^[On |     |     |^[Op       |^[On |     |
+;      +-----+-----+-----+-----+     +-----+-----+-----+-----+
 ;
-;  %keypad     7    8    9          ^[[H ^[[A ^[[5~
-;     off      4    5    6          ^[[D ^[[E ^[[C
-;              1    2    3          ^[[F ^[[B ^[[6~
+;       config 3 (PC)                 config 4 (PC)
+;      +-----+-----+-----+-----+     +-----+-----+-----+-----+
+;      |     |/    |*    |-    |     |     |/    |*    |-    |
+;      +-----+-----+-----+-----+     +-----+-----+-----+-----+
+;      |7    |8    |9    |+    |     |^[[H |^[[A |^[[5~|+    |
+;      +-----+-----+-----+     +     +-----+-----+-----+     +
+;      |4    |5    |6    |     |     |^[[D |^[[E |^[[C |     |
+;      +-----+-----+-----+-----+     +-----+-----+-----+-----+
+;      |1    |2    |3    |^M   |     |^[[F |^[[B |^[[6~|^M   |
+;      +-----+-----+-----+     +     +-----+-----+-----+     +
+;      |0          |.    |     |     |^[[2~      |^[[3~|     |
+;      +-----+-----+-----+-----+     +-----+-----+-----+-----+
 ;
-;  %keypad     ^[Ow ^[Ox ^[Oy       ^[OH ^[OA ^[[5~
-;     on       ^[Ot ^[Ou ^[Ov       ^[OD ^[OE ^[OC
-;              ^[Oq ^[Or ^[Os       ^[OF ^[OB ^[[6~
+;       config 5 (Mac)                config 6 (Mac)
+;      +-----+-----+-----+-----+     +-----+-----+-----+-----+
+;      |     |=    |/    |*    |     |     |     |     |     |
+;      +-----+-----+-----+-----+     +-----+-----+-----+-----+
+;      |7    |8    |9    |-    |     |^[Ow |^[Ox |^[Oy |^[Om |
+;      +-----+-----+-----+-----+     +-----+-----+-----+-----+
+;      |4    |5    |6    |+    |     |^[Ot |^[Ou |^[Ov |^[Ol |
+;      +-----+-----+-----+-----+     +-----+-----+-----+-----+
+;      |1    |2    |3    |^M   |     |^[Oq |^[Or |^[Os |^[OM |
+;      +-----+-----+-----+     +     +-----+-----+-----+     +
+;      |0          |.    |     |     |^[Op       |^[On |     |
+;      +-----+-----+-----+-----+     +-----+-----+-----+-----+
+;
+;; XFree86/XOrg xterm with "alt/numlock modifiers" off, and X Consortium xterm
+; %keypad on,  numlock on:   config 1
+; %keypad on,  numlock off:  config 2
+; %keypad off, numlock on:   config 3
+; %keypad off, numlock off:  config 4
+;
+;; XFree86/XOrg xterm with "alt/numlock modifiers" on (the default):
+; %keypad on,  numlock on:   config 3
+; %keypad on,  numlock off:  config 2
+; %keypad off, numlock on:   config 3
+; %keypad off, numlock off:  config 4
+;
+;; XFree86/XOrg xterm with "VT220 keyboard" on:
+; %keypad on,  numlock on:   config 3
+; %keypad on,  numlock off:  config 1
+; %keypad off, numlock on:   config 3
+; %keypad off, numlock off:  config 3
+;
+;; PuTTY 0.56:
+; %keypad on,  numlock on:   config 1
+; %keypad on,  numlock off:  similar to config 4
+; %keypad off, numlock on:   config 3
+; %keypad off, numlock off:  similar to config 4
+;
+;; Mac OSX Terminal, "strict vt100 keypad behavior" off (the default):
+; %keypad on:   config 5
+; %keypad off:  config 5
+;; Mac OSX Terminal, "strict vt100 keypad behavior" on:
+; %keypad on:   config 6
+; %keypad off:  config 5
 
-; Numeric Keypad (xterm with %keypad=on and numlock on)
-/~keyseq nkp1		^[Oq	# termcap K4
+; Numeric Keypad
+/~keyseq nkpTab		^[OI
+/~keyseq nkpEnt		^[OM
+/~keyseq nkp*		^[Oj
+/~keyseq nkp+		^[Ok
+/~keyseq nkp,		^[Ol
+/~keyseq nkp-		^[Om
+/~keyseq nkp.		^[On
+/~keyseq nkp/		^[Oo
+/~keyseq nkp0		^[Op
+/~keyseq nkp1		^[Oq
 /~keyseq nkp2		^[Or
-/~keyseq nkp3		^[Os	# termcap K5
+/~keyseq nkp3		^[Os
 /~keyseq nkp4		^[Ot
-/~keyseq nkp5		^[Ou	# termcap K2
+/~keyseq nkp5		^[Ou
 /~keyseq nkp6		^[Ov
-/~keyseq nkp7		^[Ow	# termcap K1
+/~keyseq nkp7		^[Ow
 /~keyseq nkp8		^[Ox
-/~keyseq nkp9		^[Oy	# termcap K3
+/~keyseq nkp9		^[Oy
+/~keyseq nkp=		^[OX
 
-; Function Keys
-/~keyseq f1		^[[11~	^[OP
-/~keyseq f2		^[[12~	^[OQ
-/~keyseq f3		^[[13~	^[OR
-/~keyseq f4		^[[14~	^[OS
-/~keyseq f5		^[[15~
-/~keyseq f6		^[[17~
-/~keyseq f7		^[[18~
-/~keyseq f8		^[[19~
-/~keyseq f9		^[[20~
-/~keyseq f10		^[[21~
-/~keyseq f11		^[[23~
-/~keyseq f12		^[[24~
+; Function Keys		vt100/vt220/xterm	sun
+/~keyseq f1		^[[11~	^[OP		^[[224z
+/~keyseq f2		^[[12~	^[OQ		^[[225z
+/~keyseq f3		^[[13~	^[OR		^[[226z
+/~keyseq f4		^[[14~	^[OS		^[[227z
+/~keyseq f5		^[[15~			^[[228z
+/~keyseq f6		^[[17~			^[[229z
+/~keyseq f7		^[[18~			^[[230z
+/~keyseq f8		^[[19~			^[[231z
+/~keyseq f9		^[[20~			^[[232z
+/~keyseq f10		^[[21~			^[[233z
+/~keyseq f11		^[[23~			^[[192z
+/~keyseq f12		^[[24~			^[[193z
+/~keyseq f13		^[[25~
+/~keyseq f14		^[[26~
+/~keyseq f15		^[[28~
+/~keyseq f16		^[[29~
+/~keyseq f17		^[[31~
+/~keyseq f18		^[[32~
+/~keyseq f19		^[[33~
+/~keyseq f20		^[[34~
 
-; Function with Ctrl, for versions of xterm with modifyCursorKeys
+; Function with Ctrl, for some versions of xterm
 /~keyseq ctrl_f1	^[[11;5~	^[O5P
 /~keyseq ctrl_f2	^[[12;5~	^[O5Q
 /~keyseq ctrl_f3	^[[13;5~	^[O5R
@@ -139,8 +217,16 @@
 /~keyseq ctrl_f10	^[[21;5~
 /~keyseq ctrl_f11	^[[23;5~
 /~keyseq ctrl_f12	^[[24;5~
+/~keyseq ctrl_f13	^[[25;5~
+/~keyseq ctrl_f14	^[[26;5~
+/~keyseq ctrl_f15	^[[28;5~
+/~keyseq ctrl_f16	^[[29;5~
+/~keyseq ctrl_f17	^[[31;5~
+/~keyseq ctrl_f18	^[[32;5~
+/~keyseq ctrl_f19	^[[33;5~
+/~keyseq ctrl_f20	^[[34;5~
 
-; Function with Meta, for versions of xterm with modifyCursorKeys
+; Function with Meta, for some versions of xterm
 /~keyseq meta_f1	^[[11;3~	^[O3P
 /~keyseq meta_f2	^[[12;3~	^[O3Q
 /~keyseq meta_f3	^[[13;3~	^[O3R
@@ -153,8 +239,16 @@
 /~keyseq meta_f10	^[[21;3~
 /~keyseq meta_f11	^[[23;3~
 /~keyseq meta_f12	^[[24;3~
+/~keyseq meta_f13	^[[25;3~
+/~keyseq meta_f14	^[[26;3~
+/~keyseq meta_f15	^[[28;3~
+/~keyseq meta_f16	^[[29;3~
+/~keyseq meta_f17	^[[31;3~
+/~keyseq meta_f18	^[[32;3~
+/~keyseq meta_f19	^[[33;3~
+/~keyseq meta_f20	^[[34;3~
 
-; Function with Shift, for versions of xterm with modifyCursorKeys
+; Function with Shift, for some versions of xterm
 /~keyseq shift_f1	^[[11;2~	^[O2P
 /~keyseq shift_f2	^[[12;2~	^[O2Q
 /~keyseq shift_f3	^[[13;2~	^[O2R
@@ -167,9 +261,18 @@
 /~keyseq shift_f10	^[[21;2~
 /~keyseq shift_f11	^[[23;2~
 /~keyseq shift_f12	^[[24;2~
+/~keyseq shift_f13	^[[25;2~
+/~keyseq shift_f14	^[[26;2~
+/~keyseq shift_f15	^[[28;2~
+/~keyseq shift_f16	^[[29;2~
+/~keyseq shift_f17	^[[31;2~
+/~keyseq shift_f18	^[[32;2~
+/~keyseq shift_f19	^[[33;2~
+/~keyseq shift_f20	^[[34;2~
 
 ; other
 /~keyseq tab		^I
+/~keyseq shift_tab	^[[Z		# on some terminals
 
 ;;; Named keys with character sequences defined in termcap/terminfo.
 ; Many of these will redefine hardcoded sequences above
@@ -210,11 +313,13 @@
 /~keyname F18		f18
 /~keyname F19		f19
 
-/~keyname KP1		nkp7
-/~keyname KP2		nkp5
-/~keyname KP3		nkp9
-/~keyname KP4		nkp1
-/~keyname KP5		nkp3
+;; Termcap definitions of these keys are questionable.  The hardcoded defaults
+;; defined elsewhere are correct for vt100/xterm, so it's best to omit these.
+; /~keyname KP1		nkp1
+; /~keyname KP2		nkp2
+; /~keyname KP3		nkp3
+; /~keyname KP4		nkp0
+; /~keyname KP5		nkp.
 
 /set warn_def_B=1
 /undef ~gag_redef
@@ -301,9 +406,9 @@
 
 /def -i kbwarn = \
     /if /test warn_5keys & !kbwarned_%1%; /then \
-	/echo %% Note: keys have changed in version 5.0 to be more like emacs \
-	    and many other unix apps.  %-1  This warning can be disabled with \
-	    "/set warn_5keys=off".%; \
+	/echo -aW %% Warning: keys have changed in version 5.0 to be more like \
+	    emacs and many other unix apps.  %-1  This warning can be disabled \
+	    with "/set warn_5keys=off".%; \
 	/set kbwarned_%1=1%; \
     /endif
 

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: help.c,v 35004.31 2004/07/08 06:19:16 hawkeye Exp $";
+static const char RCSid[] = "$Id: help.c,v 35004.34 2005/04/18 03:15:35 kkeys Exp $";
 
 /*
  * Fugue help handling
@@ -16,12 +16,12 @@ static const char RCSid[] = "$Id: help.c,v 35004.31 2004/07/08 06:19:16 hawkeye 
  * topic aliasing, and subtopics.
  */
 
-#include "config.h"
+#include "tfconfig.h"
 #include <stdio.h>
 #include "port.h"
 #include "tf.h"
 #include "search.h"	/* for tfio.h */
-#include "util.h"	/* for tfio.h */
+#include "pattern.h"	/* for tfio.h */
 #include "tfio.h"
 #include "cmdlist.h"
 #include "variable.h"
