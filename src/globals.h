@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: globals.h,v 35000.73 2005/04/18 03:15:35 kkeys Exp $ */
+/* $Id: globals.h,v 35000.78 2007/01/13 23:12:39 kkeys Exp $ */
 
 #ifndef GLOBALS_H
 #define GLOBALS_H
@@ -16,34 +16,48 @@
 
 /* Note: order of arithmetic types defines how they are promoted */
 typedef enum {
-    TYPE_ID       = 0x0001,	/* identifier */
-    TYPE_STR      = 0x0002,	/* String */
-    TYPE_ENUM     = 0x0004,	/* enumerated */
-    TYPE_POS      = 0x0008,	/* positive integer */
-    TYPE_INT      = 0x0010,	/* integer */
-    TYPE_DTIME    = 0x0020,	/* duration time (seconds and microseconds) */
-    TYPE_ATIME    = 0x0040,	/* absolute time (seconds and microseconds) */
-    TYPE_FLOAT    = 0x0080,	/* double */
-    TYPE_FILE     = 0x0100,	/* tfile (internal use only) */
-    TYPE_FUNC     = 0x0200,	/* resolved ExprFunc (internal only) */
-    TYPE_CMD      = 0x0400,	/* resolved BuiltinCmd (internal only) */
-    TYPE_REGEX    = 0x0800,	/* STR: regular expression (internal only) */
-    TYPE_EXPR     = 0x1000,	/* STR: tf expression (internal only) */
-    TYPE_ATTR     = 0x2000,	/* STR: attributes (internal only) */
-    TYPE_REGMATCH = 0x4000,	/* INT: result of regmatch() (internal only) */
-    TYPE_HMS      = 0x8000	/* TIME: was in H:M:S form (internal only) */
+    TYPE_ID       = 0x00001,	/* identifier */
+    TYPE_STR      = 0x00002,	/* String */
+    TYPE_ENUM     = 0x00004,	/* enumerated */
+    TYPE_POS      = 0x00008,	/* positive integer */
+    TYPE_INT      = 0x00010,	/* integer */
+    TYPE_DECIMAL  = 0x00020,	/* 32-bit integer + 6 decimal places */
+    TYPE_DTIME    = 0x00040,	/* duration time (seconds and microseconds) */
+    TYPE_ATIME    = 0x00080,	/* absolute time (seconds and microseconds) */
+    TYPE_FLOAT    = 0x00100,	/* double */
+    TYPE_FILE     = 0x00200,	/* tfile (internal use only) */
+    TYPE_FUNC     = 0x00400,	/* resolved ExprFunc (internal only) */
+    TYPE_CMD      = 0x00800,	/* resolved BuiltinCmd (internal only) */
+    TYPE_REGEX    = 0x01000,	/* STR: regular expression (internal only) */
+    TYPE_EXPR     = 0x02000,	/* STR: tf expression (internal only) */
+    TYPE_ATTR     = 0x04000,	/* STR: attributes (internal only) */
+    TYPE_REGMATCH = 0x08000,	/* INT: result of regmatch() (internal only) */
+    TYPE_HMS      = 0x10000	/* TIME: was in H:M:S form (internal only) */
 } type_t;
 
-#define TYPES_BASIC \
-    ( TYPE_ID | TYPE_STR | TYPE_ENUM | TYPE_POS | TYPE_INT | TYPE_DTIME | \
-    TYPE_ATIME | TYPE_FLOAT | TYPE_FILE | TYPE_FUNC | TYPE_CMD )
-
 /* numeric types */
+#define TYPE_EXACTNUM	(TYPE_INT | TYPE_DECIMAL | TYPE_DTIME | TYPE_ATIME)
 #if NO_FLOAT
-# define TYPE_NUM	(TYPE_INT | TYPE_DTIME | TYPE_ATIME)
+# define TYPE_NUM	(TYPE_EXACTNUM)
 #else
-# define TYPE_NUM	(TYPE_INT | TYPE_DTIME | TYPE_ATIME | TYPE_FLOAT)
+# define TYPE_NUM	(TYPE_EXACTNUM | TYPE_FLOAT)
 #endif
+
+#define TYPES_BASIC \
+    ( TYPE_ID | TYPE_STR | TYPE_ENUM | TYPE_POS | TYPE_NUM \
+    | TYPE_FILE | TYPE_FUNC | TYPE_CMD )
+
+typedef union ValueUnion {
+    long ival;			/* integer value (ENUM, POS, INT) */
+    double fval;		/* float value (FLOAT) */
+    struct timeval tval;	/* time value (DTIME, ATIME, DECIMAL) */
+    struct RegInfo *ri;		/* compiled regexp (STR|REGEX) */
+    struct Program *prog;	/* compiled expression (STR|EXPR) */
+    void *p;			/* other pointer type (FILE, FUNC, CMD) */
+    unsigned int hash;		/* hash value (ID) */
+    attr_t attr;		/* attributes (STR|ATTR) */
+    struct Value *next;		/* valpool pointer */
+} ValueUnion;
 
 /* Most types use the union for their value, and cache a string value in sval.
  * A pure TYPE_STR does not use the union, but it does if type is or'd with
@@ -54,17 +68,7 @@ typedef struct Value {
     type_t type;
     int count;			/* reference count */
     conString *sval;		/* string value (any type, not just STR) */
-    union {
-        long ival;		/* integer value (ENUM, POS, INT) */
-        double fval;		/* float value (FLOAT) */
-        struct timeval tval;	/* time value (DTIME, ATIME) */
-	struct RegInfo *ri;	/* compiled regexp (STR|REGEX) */
-	struct Program *prog;	/* compiled expression (STR|EXPR) */
-	void *p;		/* other pointer type (FILE, FUNC, CMD) */
-	unsigned int hash;	/* hash value (ID) */
-	attr_t attr;		/* attributes (STR|ATTR) */
-        struct Value *next;	/* valpool pointer */
-    } u;
+    ValueUnion u;
 } Value;
 
 extern Value *val_zero, *val_one, *val_blank;
@@ -74,6 +78,7 @@ static inline Value *shareval(Value *v)	{ v->count++; return v;}
 #define newval()	newval_fl(__FILE__, __LINE__)
 #define newint(i)	newint_fl(i, __FILE__, __LINE__)
 #define newtime(s, u, type)	newtime_fl(s, u, type, __FILE__, __LINE__)
+#define newdecimal(s,u)	newtime_fl(s, u, TYPE_DECIMAL, __FILE__, __LINE__)
 #define newdtime(s, u)	newtime_fl(s, u, TYPE_DTIME, __FILE__, __LINE__)
 #define newatime(s, u)	newtime_fl(s, u, TYPE_ATIME, __FILE__, __LINE__)
 #define newfloat(f)	newfloat_fl(f, __FILE__, __LINE__)
@@ -122,8 +127,8 @@ enum Vars {
 
 
 /* Convenient variable access.
- * The get* macros are READONLY.  Use setvar() to change a value.  The cast
- * enforces the readonly-ness in standard C (gcc needs -pedantic to warn).
+ * The get* macros are READONLY; use set* functions to change a value.  The
+ * cast enforces readonly-ness in standard C (gcc needs -pedantic to warn).
  */
 
 #ifdef WORLD_VARS
@@ -195,6 +200,7 @@ enum Vars {
 #define lpquote		getintvar(VAR_lpquote)
 #define maildelay	gettimevar(VAR_maildelay)
 #define matching	getintvar(VAR_matching)
+#define max_hook	getintvar(VAR_max_hook)
 #define max_instr	getintvar(VAR_max_instr)
 #define max_kbnum	getintvar(VAR_max_kbnum)
 #define max_recur	getintvar(VAR_max_recur)

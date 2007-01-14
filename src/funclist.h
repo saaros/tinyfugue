@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: funclist.h,v 35000.62 2005/04/18 03:15:35 kkeys Exp $ */
+/* $Id: funclist.h,v 35000.66 2007/01/13 23:12:39 kkeys Exp $ */
 
 /* sorted by name */
 /*	 Name		Pure	Arguments */
@@ -22,7 +22,7 @@ funccode(columns,	0,	0,  0),
 funccode(cos,		1,	1,  1),
 funccode(cputime,	0,	0,  0),
 funccode(decode_ansi,	1,	1,  1),
-funccode(decode_attr,	1,	1,  2),
+funccode(decode_attr,	1,	1,  3),
 funccode(echo,		0,	1,  4),
 funccode(encode_ansi,	1,	1,  1),
 funccode(encode_attr,	1,	1,  1),
@@ -33,6 +33,7 @@ funccode(fg_world,	0,	0,  0),
 funccode(filename,	0,	1,  1),
 funccode(ftime,		0,	0,  2),
 funccode(fwrite,	0,	2,  2),
+funccode(gethostname,	0,	0,  0),
 funccode(getopts,	0,	1,  2),
 funccode(getpid,	1,	0,  0),
 funccode(idle,		0,	0,  1),
@@ -63,6 +64,7 @@ funccode(nmail,		0,	0,  0),
 funccode(nread,		0,	0,  0),
 funccode(pad,		1,	1,  (unsigned)-1),
 funccode(pow,		1,	2,  2),
+funccode(prompt,	0,	1,  1),
 funccode(rand,		0,	0,  2),
 funccode(read,		0,	0,  0),
 funccode(regmatch,	0,	2,  2), /* !pure: sets Pn */
@@ -92,6 +94,7 @@ funccode(tfclose,	0,	1,  1),
 funccode(tfflush,	0,	1,  2),
 funccode(tfopen,	0,	0,  2),
 funccode(tfread,	0,	1,  2),
+funccode(tfreadable,	0,	1,  1),
 funccode(tfwrite,	0,	1,  2),
 funccode(time,		0,	0,  0),
 funccode(tolower,	1,	1,  2),

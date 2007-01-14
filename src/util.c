@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: util.c,v 35004.145 2005/04/18 03:15:36 kkeys Exp $";
+static const char RCSid[] = "$Id: util.c,v 35004.150 2007/01/13 23:12:39 kkeys Exp $";
 
 
 /*
@@ -430,7 +430,7 @@ void startopt(const conString *args, const char *opts)
     inword = 0;
 }
 
-char nextopt(const char **arg, void *uval, int *type, int *offp)
+char nextopt(const char **arg, ValueUnion *uval, int *type, int *offp)
 {
     char *q, opt;
     const char *end;
@@ -516,7 +516,7 @@ char nextopt(const char **arg, void *uval, int *type, int *offp)
 	    if (!val) {
 		goto nextopt_error;
 	    }
-	    *(int*)uval = valint(val);
+	    uval->ival = valint(val);
 	    freeval(val);
 	    if (type) *type = TYPE_INT;
 	}
@@ -528,7 +528,7 @@ char nextopt(const char **arg, void *uval, int *type, int *offp)
             eprintf("%s", strerror(errno));
 	    goto nextopt_error;
         }
-	*(struct timeval*)uval = val->u.tval;
+	uval->tval = val->u.tval;
         *offp = end - optstr->data;
 	if (type) *type = TYPE_DTIME;
 
@@ -669,7 +669,7 @@ void init_util2(void)
     } else if ((name = getvar("LOGNAME")) || (name = getvar("USER"))) {
         (path = Stringnew(NULL, -1, 0))->links++;
         Sprintf(path, "%s/%s", MAILDIR, name);
-        set_var_by_name("MAIL", path);
+        set_str_var_by_name("MAIL", path);
         Stringfree(path);
 #endif
     } else {
@@ -796,7 +796,7 @@ void check_mail(void)
  * ------	----
  * h:m[:s[.f]]	DTIME
  * i[.f]Ee	FLOAT
- * i[.f]	DTIME or FLOAT (depending on what's allowed and length of <f>).
+ * i[.f]	DTIME, DECIMAL, or FLOAT (depending typeset and length of <f>).
  * i		INT
  */
 Value *parsenumber(const char *str, const char **caller_endp, int typeset,
@@ -820,7 +820,7 @@ Value *parsenumber(const char *str, const char **caller_endp, int typeset,
 	val->type = TYPE_INT;
 	errno = 0;
         val->u.ival = strtolong(str, &endp);
-	if ((typeset & TYPE_DTIME) && (*endp == '.' || *endp == ':'))
+	if ((typeset & (TYPE_DTIME | TYPE_DECIMAL)) && (*endp == '.' || *endp == ':'))
 	    goto parse_time;
 	if (typeset & TYPE_FLOAT && (*endp == '.' || lcase(*endp) == 'e'))
 	    goto parse_float;
@@ -834,8 +834,8 @@ Value *parsenumber(const char *str, const char **caller_endp, int typeset,
     }
 
 parse_time:
-    if (typeset & TYPE_DTIME) {
-	val->type = TYPE_DTIME;
+    if (typeset & (TYPE_DTIME | TYPE_DECIMAL)) {
+	val->type = (typeset & TYPE_DECIMAL) ? TYPE_DECIMAL : TYPE_DTIME;
 	errno = 0;
         val->u.tval.tv_usec = 0;
         val->u.tval.tv_sec = strtolong(str, &endp);
@@ -1003,11 +1003,11 @@ void tvadd(struct timeval *a, const struct timeval *b, const struct timeval *c)
     normalize_time(a);
 }
 
-void append_usec(String *buf, long usec, int trunc)
+void append_usec(String *buf, long usec, int truncflag)
 {
 #if HAVE_GETTIMEOFDAY
         Sappendf(buf, ".%06ld", usec);
-        if (trunc) {
+        if (truncflag) {
             int i;
             for (i = 1; i < 6; i++)
                 if (buf->data[buf->len - i] != '0') break;

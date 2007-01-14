@@ -1,17 +1,17 @@
 ;;; Commands that are useful when bound to keys.
 
-;;; /kb_backward_kill_line	delete from cursor to beginning of line
-;;; /kb_kill_word		delete from cursor to end of punctuated word
-;;; /kb_backward_kill_word	delete from cursor to start of punctuated word
-;;; /kb_capitalize_word		capitialize current word
-;;; /kb_downcase_word		convert current word to lowercase
-;;; /kb_upcase_word		convert current word to uppercase
-;;; /kb_transpose_chars		swap current character with previous character
-;;; /kb_last_argument		insert last word of previous line
-;;; /kb_expand_line		/eval and replace current line
-;;; /kb_goto_match		move cursor to matching parenthesis or bracket
-;;; /kb_up_or_recallb		recallb if at beginning of line, otherwise up
-;;; /kb_down_or_recallf		recallf if at end of line, otherwise down
+;;; /kb_backward_kill_line    delete from cursor to beginning of line
+;;; /kb_kill_word	      delete from cursor to end of punctuated word
+;;; /kb_backward_kill_word    delete from cursor to start of punctuated word
+;;; /kb_capitalize_word	      capitialize current word
+;;; /kb_downcase_word	      convert current word to lowercase
+;;; /kb_upcase_word	      convert current word to uppercase
+;;; /kb_transpose_chars	      swap current character with previous character
+;;; /kb_last_argument	      insert last word of previous line
+;;; /kb_expand_line	      /eval and replace current line
+;;; /kb_goto_match	      move cursor to matching parenthesis or bracket
+;;; /kb_up_or_recallb	      up within logical line or recallb to previous line
+;;; /kb_down_or_recallf	      down within logical line or recallf to next line
 
 /loaded __TFLIB__/kbfunc.tf
 
@@ -133,15 +133,18 @@
     /if /limit%; /then /unlimit%; /else /relimit%; /endif
 
 /def -i kb_up_or_recallb = \
-    /if (kbpoint() == 0) \
+    /if (kbpoint() < wrapsize) \
 	/dokey_recallb%; \
-	/test (kbpoint() > 0) & kbgoto(0)%; \
     /else \
 	/dokey_up%; \
     /endif
 
 /def -i kb_down_or_recallf = \
-    /if (kbpoint() == kblen()) /dokey_recallf%; /else /dokey_down%; /endif
+    /if (mod(kbpoint(), wrapsize) == mod(kblen(), wrapsize)) \
+	/dokey_recallf%; \
+    /else \
+	/dokey_down%; \
+    /endif
 
 /eval /def -ip%maxpri -mregexp -h'REDEF macro (dokey|kb)_' ~hook_redef_dokey = \
     /echo -e %%% Warning: redefining the %%2 macro is not recommended; \

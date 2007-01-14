@@ -15,7 +15,7 @@
 /def -i kb_push = \
     /let n=$[+kbnum]%; \
     /if (n < 0) \
-	/echo -e %% %0: illegal stack number %n.%; \
+	/echo -A %% %0: illegal stack number %n.%; \
 	/return 0%; \
     /endif%; \
     /let _line=$(/recall -i 1)%;\
@@ -35,6 +35,6 @@
 	    /unset _kb_stack_%{n}_%%{_kb_stack_%{n}_top}%%;\
 	    /set _kb_stack_%{n}_top=$$[_kb_stack_%{n}_top - 1]%;\
     /else \
-        /echo -e %% %0: Keyboard stack %n is empty.%;\
+        /echo -A %% %0: Keyboard stack %n is empty.%;\
     /endif
 

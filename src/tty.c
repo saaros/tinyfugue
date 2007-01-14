@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: tty.c,v 35004.36 2005/04/18 03:15:36 kkeys Exp $";
+static const char RCSid[] = "$Id: tty.c,v 35004.38 2007/01/13 23:12:39 kkeys Exp $";
 
 /*
  * TTY driver routines.
@@ -195,8 +195,8 @@ retry:
     new_wrapsize = columns - (ocol - wrapsize);
     if (new_wrapsize < 1)
 	new_wrapsize = columns > 1 ? columns - 1 : 1;
-    /* set_var_direct avoids ch_wrap() */
-    set_var_direct(&special_var[VAR_wrapsize], TYPE_INT, &new_wrapsize);
+    /* set_int_var_direct avoids ch_wrap() */
+    set_int_var_direct(&special_var[VAR_wrapsize], TYPE_INT, new_wrapsize);
     ch_visual(NULL);
     do_hook(H_RESIZE, NULL, "%d %d", columns, lines);
     return 1;

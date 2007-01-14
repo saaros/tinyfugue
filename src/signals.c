@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: signals.c,v 35004.62 2005/04/18 03:15:36 kkeys Exp $";
+static const char RCSid[] = "$Id: signals.c,v 35004.70 2007/01/14 19:28:36 kkeys Exp $";
 
 /* Signal handling, core dumps, job control, and interactive shells */
 
@@ -17,6 +17,7 @@ static const char RCSid[] = "$Id: signals.c,v 35004.62 2005/04/18 03:15:36 kkeys
 # include <sys/time.h>
 # include <sys/resource.h>
 #endif
+#include <sys/stat.h>   /* for debugger_dump() */
 #include "tf.h"
 #include "util.h"
 #include "pattern.h"	/* for tfio.h */
@@ -126,13 +127,16 @@ typedef RETSIGTYPE (SigHandler)(int sig);
 VEC_TYPEDEF(sig_set, (NSIG-1));
 const int feature_core = 1 - DISABLE_CORE;
 
+static const char *argv0 = NULL;
 static int have_pending_signals = 0;
 static sig_set pending_signals;
 static RETSIGTYPE (*parent_tstp_handler)(int sig);
 
 static void   handle_interrupt(void);
 static void   terminate(int sig);
-static void   coremsg(void);
+static void   coremsg(FILE *dumpfile);
+static int    debugger_dump(void);
+static FILE  *get_dumpfile(void);
 static RETSIGTYPE core_handler(int sig);
 static RETSIGTYPE signal_scheduler(int sig);
 static RETSIGTYPE signal_jumper(int sig);
@@ -287,7 +291,9 @@ static void handle_interrupt(void)
 int suspend(void)
 {
 #if SIGTSTP
-    if (parent_tstp_handler == SIG_DFL) {      /* true for job-control shells */
+    if (argv0[0] != '-' &&              /* not a login shell */
+	parent_tstp_handler == SIG_DFL) /* parent process does job-control */
+    {
         check_mail();
         fix_screen();
         reset_tty();
@@ -299,13 +305,14 @@ int suspend(void)
         return 1;
     }
 #endif
-    oputs("% Job control not supported.");
+    oputs("% Job control not available.");
     return 0;
 }
 
 
 static RETSIGTYPE core_handler(int sig)
 {
+    FILE *dumpfile;
     setsighandler(sig, core_handler);  /* restore handler (POSIX) */
 
     if (sig == SIGQUIT) {
@@ -327,32 +334,42 @@ static RETSIGTYPE core_handler(int sig)
     setsighandler(sig, SIG_DFL);
     if (sig != SIGQUIT) {
         minimal_fix_screen();
-        coremsg();
+	dumpfile = get_dumpfile();
+        coremsg(dumpfile);
         fprintf(stderr, "> Abnormal termination - signal %d\r\n\n", sig);
-        fputs("Please email the author with the error messages above, and describe\r\n", stderr);
-	fputs("what you were doing at the time.\r\n", stderr);
+	if (dumpfile != stderr)
+	    fprintf(dumpfile, "> Abnormal termination - signal %d\r\n\n", sig);
+	if (dumpfile != stderr)
+	    fclose(dumpfile);
+
+	if (!debugger_dump()) {
 #if DISABLE_CORE
-        fputs("Also, if you can, reinstall tf with --enable-core, attempt to reproduce the\r\n", stderr);
-	fputs("error, get a stack trace and send it to the author.\r\n", stderr);
+	    fputs("Also, if you can, reinstall tf with --enable-core, "
+		"attempt to reproduce the\r\n", stderr);
+	    fputs("error, get a stack trace and send it to the author.\r\n",
+		stderr);
 #else /* cores are enabled */
-        fputs("Also, if you can, include a stack trace in your email.\r\n",
-            stderr);
+	    fputs("Also, if you can, include a stack trace in your email.\r\n",
+		stderr);
 # ifdef PLATFORM_UNIX
-        fputs("To get a stack trace, do this:\r\n", stderr);
-        fputs("cd src\r\n", stderr);
-        fputs("script\r\n", stderr);
-        fputs("gdb -q tf   ;# if gdb is unavailable, use 'dbx tf' instead.\r\n",
-            stderr);
-        fputs("run\r\n", stderr);
-        fputs("(do whatever is needed to reproduce the core dump)\r\n", stderr);
-        fputs("where\r\n", stderr);
-        fputs("quit\r\n", stderr);
-        fputs("exit\r\n", stderr);
-        fputs("\r\n", stderr);
-        fputs("Then include the \"typescript\" file in your email.\r\n", stderr);
-        fputs("\n", stderr);
+	    fputs("To get a stack trace, do this:\r\n", stderr);
+	    fputs("cd src\r\n", stderr);
+	    fputs("script\r\n", stderr);
+	    fputs("gdb -q tf   ;# if gdb is unavailable, use 'dbx tf' "
+		"instead.\r\n", stderr);
+	    fputs("run\r\n", stderr);
+	    fputs("(do whatever is needed to reproduce the core dump)\r\n",
+		stderr);
+	    fputs("where\r\n", stderr);
+	    fputs("quit\r\n", stderr);
+	    fputs("exit\r\n", stderr);
+	    fputs("\r\n", stderr);
+	    fputs("Then include the \"typescript\" file in your email.\r\n",
+		stderr);
+	    fputs("\n", stderr);
 # endif /* PLATFORM_UNIX */
 #endif /* DISABLE_CORE */
+	}
     }
 
     if (interactive) {
@@ -368,41 +385,178 @@ static RETSIGTYPE core_handler(int sig)
 
 void crash(int internal, const char *fmt, const char *file, int line, long n)
 {
+    FILE *dumpfile;
     setsighandler(SIGQUIT, SIG_DFL);
     minimal_fix_screen();
     reset_tty();
-    if (internal) coremsg();
-    fprintf(stderr, "> %s:  %s, line %d\r\n",
+    dumpfile = get_dumpfile();
+    if (internal) coremsg(dumpfile);
+    fprintf(dumpfile, "> %s:  %s, line %d\r\n",
         internal ? "Internal error" : "Aborting", file, line);
-    fputs("> ", stderr);
-    fprintf(stderr, fmt, n);
-    fputs("\r\n\n", stderr);
+    fputs("> ", dumpfile);
+    fprintf(dumpfile, fmt, n);
+    fputs("\r\n\n", dumpfile);
+    if (dumpfile != stderr)
+	fclose(dumpfile);
+    debugger_dump();
     raise(SIGQUIT);
 }
 
-static void coremsg(void)
+static char dumpname[32] = "................................";
+static char exebuf[PATH_MAX+1];
+static const char *initial_path = NULL;
+static char initial_dir[PATH_MAX+1] = "."; /* default: many users never chdir */
+
+static void coremsg(FILE *dumpfile)
 {
-    fputs("\r\n\nPlease report the following message verbatim to hawkeye@tcp.com.\n", stderr);
     fputs("Also describe what you were doing in tf when this\r\n", stderr);
     fputs("occured, and whether you can repeat it.\r\n\n", stderr);
-    fprintf(stderr, "> %s\r\n", version);
-    if (*sysname) fprintf(stderr, "> %s\r\n", sysname);
-    fprintf(stderr, "> %s\r\n", featurestr->data);
-    fprintf(stderr,"> virtscreen=%ld, visual=%ld, expnonvis=%ld, "
+    fprintf(dumpfile, "> %.512s\r\n", version);
+    if (*sysname) fprintf(dumpfile, "> %.256s\r\n", sysname);
+    fprintf(dumpfile, "> %.256s\r\n", featurestr->data);
+    fprintf(dumpfile,"> virtscreen=%ld, visual=%ld, expnonvis=%ld, "
 	"emulation=%ld, lp=%ld, sub=%ld\r\n",
         virtscreen, visual, expnonvis, emulation, lpflag, sub);
 #if SOCKS
-    fprintf(stderr,"> SOCKS %d\r\n", SOCKS);
+    fprintf(dumpfile,"> SOCKS %d\r\n", SOCKS);
 #endif
-    fprintf(stderr,"> TERM=\"%.32s\"\r\n", TERM ? TERM : "(NULL)");
-    fprintf(stderr,"> cmd=\"%.32s\"\r\n",
+    fprintf(dumpfile,"> TERM=\"%.32s\"\r\n", TERM ? TERM : "(NULL)");
+    fprintf(dumpfile,"> cmd=\"%.32s\"\r\n",
 	current_command ? current_command : "(NULL)");
     if (loadfile) {
-	fprintf(stderr,"> line %d-%d of file \"%.32s\"\r\n",
+	fprintf(dumpfile,"> line %d-%d of file \"%.32s\"\r\n",
 	    loadstart, loadline,
 	    loadfile->name ? loadfile->name : "(NULL)");
     }
 }
+
+void init_exename(char *name)
+{
+    argv0 = name;
+#if HAVE_GETCWD
+    getcwd(initial_dir, PATH_MAX);
+#elif HAVE_GETWD
+    getwd(initial_dir);
+#endif
+    initial_path = getenv("PATH");
+}
+
+static FILE *get_dumpfile(void)
+{
+    FILE *file;
+    sprintf(dumpname, "tf.dump.%d.txt", getpid());
+    file = fopen(dumpname, "w");
+    if (!file) {
+	fputs("\r\n\nPlease report the following message to the bug reporting "
+	    "system at http://tinyfugue.sourceforge.net/\r\n"
+	    "or by email to kenkeys@users.sourceforge.net.\r\n", stderr);
+	return stderr;
+    } else {
+	fprintf(stderr, "\r\n\nDumped debugging information to file '%s'.\r\n"
+	    "Please submit this file to the bug reporting system at\r\n"
+	    "http://tinyfugue.sourceforge.net/ or by email to kenkeys@users.sourceforge.net.\r\n",
+	    dumpname);
+	fputs("# TinyFugue debugging information\n\n", file);
+	return file;
+    }
+}
+
+#if defined(PLATFORM_UNIX) && HAVE_WAITPID
+static const char *test_exename(const char *template, pid_t pid)
+{
+    struct stat statbuf;
+    sprintf(exebuf, template, pid);
+    return (stat(exebuf, &statbuf) == 0) ? exebuf : NULL;
+}
+
+static const char *get_exename(pid_t pid)
+{
+    const char *exename;
+    const char *dir;
+    size_t len;
+    struct stat statbuf;
+    /* a /proc entry is most reliable, if one exists */
+    if ((exename = test_exename("/proc/%d/file", pid)) ||       /* *BSD */
+	(exename = test_exename("/proc/%d/exe", pid)) ||        /* Linux */
+	(exename = test_exename("/proc/%d/object/a.out", pid))) /* Solaris */
+    {
+	return exename;
+    }
+    /* else use argv[0]:
+	if it starts with "/", use it directly;
+	else if it contains "/", it's relative to initial working dir;
+	else, search for it in initial $PATH
+    */
+    if (!argv0) {
+	return NULL;
+    }
+    if (argv0[0] == '/') {
+	return argv0;
+    }
+    if (strchr(argv0, '/')) {
+	sprintf(exebuf, "%s/%s", initial_dir, argv0);
+	return exebuf;
+    }
+    if (!initial_path || !*initial_path)
+	return NULL;
+    dir = initial_path;
+    while (1) {
+	len = strcspn(dir, ":\0");
+	if (*dir == '/')
+	    sprintf(exebuf, "%.*s/%s", len, dir, argv0);
+	else
+	    sprintf(exebuf, "%s/%.*s/%s", initial_dir, len, dir, argv0);
+	if (stat(exebuf, &statbuf) == 0)
+	    return exebuf;
+	if (!dir[len])
+	    break;
+	dir += len + 1;
+    }
+
+    return NULL;
+}
+
+/* Inspired by Jeff Brown */
+static int debugger_dump(void)
+{
+    pid_t tf_pid = getpid();
+
+    const char *exename;
+
+    if ((exename = get_exename(tf_pid))) {
+	pid_t child_pid;
+	child_pid = fork();
+	if (child_pid < 0) {
+	    /* error */
+	    fprintf(stderr, "fork: %s\r\n", strerror(errno));
+	} else if (child_pid > 0) {
+	    /* parent */
+	    pid_t wait_pid = 0;
+	    int status = 0;
+	    wait_pid = waitpid(child_pid, &status, 0);
+	    if (shell_status(status) == 0) {
+		return 1;
+	    } else {
+		unlink(dumpname);
+	    }
+	} else {
+	    /* child */
+	    char inname[1024];
+	    char cmd[2048];
+	    int retval;
+	    sprintf(inname, "%.1000s/tf.gdb", TFLIBDIR);
+	    sprintf(cmd, "chmod go-rwx %s; gdb -n -batch -x %s '%s' %d "
+		">>%s 2>&1", dumpname, inname, exename, tf_pid, dumpname);
+	    retval = system(cmd);
+	    exit(shell_status(retval) == 0 ? 0 : 1);
+	}
+    }
+    return 0;
+}
+
+#else /* !PLATFORM_UNIX */
+static int debugger_dump(void) { return 0; }
+#endif /* PLATFORM_UNIX */
 
 static void terminate(int sig)
 {

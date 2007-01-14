@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: keyboard.c,v 35004.86 2005/04/18 03:15:35 kkeys Exp $";
+static const char RCSid[] = "$Id: keyboard.c,v 35004.88 2007/01/13 23:12:39 kkeys Exp $";
 
 /**************************************************
  * Fugue keyboard handling.
@@ -191,8 +191,7 @@ int handle_keyboard_input(int read_flag)
 		n = kbnumval < 0 ? -kbnumval : kbnumval;
 		if (max_kbnum > 0 && n > max_kbnum)
 		    Sprintf(scratch, "%c%d", kbnumval<0 ? '-' : '+', max_kbnum);
-		setexistingvar(&special_var[VAR_kbnum], TYPE_STR, &scratch,
-		    FALSE);
+		setstrvar(&special_var[VAR_kbnum], CS(scratch), FALSE);
             } else {
                 /* No builtin; try a suffix. */
                 place = ++key_start;

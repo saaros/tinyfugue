@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: main.c,v 35004.110 2005/04/18 03:15:36 kkeys Exp $";
+static const char RCSid[] = "$Id: main.c,v 35004.115 2007/01/13 23:12:39 kkeys Exp $";
 
 
 /***********************************************
@@ -49,12 +49,12 @@ const char version[] =
 #if DEVELOPMENT
     "DEVELOPMENT VERSION: "
 #endif
-    "TinyFugue version 5.0 beta 7";
+    "TinyFugue version 5.0 beta 8";
 
 const char mods[] = "";
 
 const char copyright[] =
-    "Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys (hawkeye@tcp.com)";
+    "Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys (kenkeys@users.sourceforge.net)";
 
 const char contrib[] =
 #ifdef PLATFORM_OS2
@@ -140,6 +140,7 @@ int main(int argc, char *argv[])
 #if SOCKS
     SOCKSinit(argv0);  /* writes message to stdout */
 #endif
+    init_exename(argv0);
 
     SRAND(getpid() + time(NULL));	/* seed random generator */
     init_malloc();			/* malloc.c   */
@@ -168,17 +169,17 @@ int main(int argc, char *argv[])
     init_util2();			/* util.c     */
 
     if (libdir) {
-        set_var_by_name("TFLIBDIR", Stringnew(libdir, -1, 0));
+        set_str_var_by_name("TFLIBDIR", Stringnew(libdir, -1, 0));
     }
     if (!ffindglobalvar("TFLIBRARY")) {
         scratch = Stringnew(NULL, 0, 0);
         Sprintf(scratch, "%s/stdlib.tf", TFLIBDIR);
-        set_var_by_name("TFLIBRARY", scratch);
+        set_str_var_by_name("TFLIBRARY", scratch);
     }
     if (!ffindglobalvar("TFHELP")) {
         scratch = Stringnew(NULL, 0, 0);
         Sprintf(scratch, "%s/tf-help", TFLIBDIR);
-        set_var_by_name("TFHELP", scratch);
+        set_str_var_by_name("TFHELP", scratch);
     }
 
     read_configuration(configfile);

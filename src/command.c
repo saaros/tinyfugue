@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: command.c,v 35004.139 2005/04/18 03:15:35 kkeys Exp $";
+static const char RCSid[] = "$Id: command.c,v 35004.141 2007/01/13 23:12:39 kkeys Exp $";
 
 
 /*****************************************************************
@@ -448,7 +448,6 @@ struct Value *handle_limit_command(String *args, int offset)
 
     if (!(result = redraw_window(screen, 0))) {
 	alert(limit_no_match);
-	redraw_window(screen, 0); /* XXX ? */
     }
     update_status_field(NULL, STAT_MORE);
 
@@ -466,7 +465,6 @@ struct Value *handle_relimit_command(String *args, int offset)
 	result = val_zero;
     } else if (!redraw_window(screen, 0)) {
 	alert(limit_no_match);
-	redraw_window(screen, 0); /* XXX ? */
 	result = val_zero;
     }
     update_status_field(NULL, STAT_MORE);

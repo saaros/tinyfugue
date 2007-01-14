@@ -30,9 +30,8 @@ TF(1)                                                                    TF(1)
        sometimes becomes less  stable  in  a  new  release.   Versions  labled
        "alpha"  are  generally  not as well tested as "beta" versions, so they
        have the potential for more bugs.  For this reason, I leave some  older
-       versions  at the ftp site where I distribute [4mTF[24m (ftp.tcp.com), which do
-       not have all the current features but may have fewer bugs than the most
-       recent release.
+       versions  at  the site where I distribute [4mTF[24m, which do not have all the
+       current features but may have fewer bugs than the most recent  release.
 
 
 [1mCOMMAND LINE ARGUMENTS[0m
@@ -179,13 +178,14 @@ TF(1)                                                                    TF(1)
 
 
 [1mCOPYRIGHT[0m
-       Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002 Ken Keys
+       Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2006-2007
+       Ken Keys
 
-       [4mTinyFugue[24m (aka "[4mtf[24m") is protected under the terms of  the  GNU  General
+       [4mTinyFugue[24m  (aka  "[4mtf[24m")  is protected under the terms of the GNU General
        Public License.  See the file "COPYING" for details.
 
-       [4mTF[24m  is  currently supported by Ken Keys, who may be contacted by e-mail
-       at kkeys@ucsd.edu or hawkeye@tcp.com.
+       [4mTF[24m is currently supported by Ken Keys, who may be contacted  by  e-mail
+       at kenkeys@users.sourceforge.net or kkeys@ucsd.edu.
 
 
 [1mBACKWARD INCOMPATIBILTIES[0m
@@ -202,43 +202,43 @@ TF(1)                                                                    TF(1)
        VERSION 3.0
 
        Backslashes in macros are interpreted slightly differently than in pre-
-       vious  versions.   Turning  on the "backslash" flag will enable the old
+       vious versions.  Turning on the "backslash" flag will  enable  the  old
        behavior.
 
        VERSION 2.1
 
-       The CONNECT hook is now called before the LOGIN hook.  In 2.0,  CONNECT
+       The  CONNECT hook is now called before the LOGIN hook.  In 2.0, CONNECT
        was called after autologin.
 
        VERSION 2.0
 
-       In  versions  prior  to  2.0, <space> was used to scroll the pager; 2.0
+       In versions prior to 2.0, <space> was used to  scroll  the  pager;  2.0
        uses <tab> as the default, to allow the pager to be nonblocking.
 
        [4mTinytalk[24m style name gags and hilites are no longer supported.  You must
        use the '*' wildcard explicitly, as in '/hilite hawkeye*'.
 
-       [4mTinytalk[24m  style page and whisper hilites are no longer supported.  How-
-       ever, /hilite_page and  /hilite_whisper  macros  are  provided  in  the
+       [4mTinytalk[24m style page and whisper hilites are no longer supported.   How-
+       ever,  /hilite_page  and  /hilite_whisper  macros  are  provided in the
        default macro library.
 
-       The  .tinytalk  file  may  not  be  supported  in the future; use .tfrc
+       The .tinytalk file may not  be  supported  in  the  future;  use  .tfrc
        instead.
 
-       The '-' command line option in versions prior to 2.0 is no longer  sup-
+       The  '-' command line option in versions prior to 2.0 is no longer sup-
        ported, and has been replaced with '-l'.
 
 
 [1mBUGS[0m
-       When  unterbamfing,  the  old connection should not be closed until the
+       When unterbamfing, the old connection should not be  closed  until  the
        new connection succeeds.
 
-       If a shell quote (/quote !) reads a partial line  from  the  pipe,  the
+       If  a  shell  quote  (/quote !) reads a partial line from the pipe, the
        read will block until the rest of the line is read.
 
 
 [1mWARNINGS[0m
-       The  Surgeon  General has determined that MUDding can be detrimental to
+       The Surgeon General has determined that MUDding can be  detrimental  to
        your GPA.
 
 

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: varlist.h,v 35000.76 2005/04/18 03:15:36 kkeys Exp $ */
+/* $Id: varlist.h,v 35000.78 2007/01/13 23:12:39 kkeys Exp $ */
 
 /* This keeps the constants and the array in the same place, so they can't
  * get out of sync.
@@ -89,6 +89,7 @@ varflag(VAR_lp,		"lp",		FALSE,		tog_lp)
 varflag(VAR_lpquote,	"lpquote",	FALSE,		ch_lpquote)
 vartime(VAR_maildelay,	"maildelay",	60,0,		ch_maildelay)
 varenum(VAR_matching,	"matching",	1,		NULL,	enum_match)
+varint (VAR_max_hook,	"max_hook",	1000,		NULL)
 varint (VAR_max_instr,	"max_instr",	1000000,	NULL)
 varint (VAR_max_kbnum,	"max_kbnum",	999,		NULL)
 varint (VAR_max_recur,	"max_recur",	100,		NULL)

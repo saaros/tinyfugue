@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: macro.c,v 35004.184 2005/04/18 03:15:35 kkeys Exp $";
+static const char RCSid[] = "$Id: macro.c,v 35004.188 2007/01/13 23:12:39 kkeys Exp $";
 
 
 /**********************************************
@@ -205,7 +205,7 @@ static Macro *macro_spec(String *args, int offset, int *xmflag, ListOpts *listop
     char opt;
     const char *ptr, *s, *name = NULL, *body = NULL, *nameend, *bodyend;
     int i, n, mflag = -1, error = 0;
-    long num;
+    ValueUnion uval;
     attr_t attrs;
 
     if (!(spec = (Macro *)MALLOC(sizeof(struct Macro)))) {
@@ -234,7 +234,7 @@ static Macro *macro_spec(String *args, int offset, int *xmflag, ListOpts *listop
 
     startopt(CS(args), "usSp#c#b:B:E:t:w:h:a:f:P:T:FiIn#1m:q" +
 	(listopts ? 0 : 3));
-    while (!error && (opt = nextopt(&ptr, &num, NULL, &offset))) {
+    while (!error && (opt = nextopt(&ptr, &uval, NULL, &offset))) {
         switch (opt) {
         case 'u':
             listopts->usedflag = 1;
@@ -253,10 +253,10 @@ static Macro *macro_spec(String *args, int offset, int *xmflag, ListOpts *listop
 	    }
             break;
         case 'p':
-            spec->pri = num;
+            spec->pri = uval.ival;
             break;
         case 'c':
-            spec->prob = num;
+            spec->prob = uval.ival;
             break;
         case 'F':
             spec->fallthru = 1;
@@ -371,7 +371,7 @@ static Macro *macro_spec(String *args, int offset, int *xmflag, ListOpts *listop
 	    mflag = MATCH_REGEXP;
             break;
         case 'n':
-            spec->shots = num;
+            spec->shots = uval.ival;
             break;
         case 'q':
             spec->quiet = TRUE;
@@ -1804,7 +1804,7 @@ static void apply_attrs_of_match(
 	&& macro->nsubattr)
     {
 	int i, x, offset = 0;
-	short start, end;
+	int start, end;
 	int *saved_ovector = NULL;
 
 	if (text)
@@ -1847,6 +1847,37 @@ static void apply_attrs_of_match(
     }
 }
 
+typedef struct max_ctr {
+    int bucket[2];
+    int count[2];
+    const int maxid, flagid;
+    const char *label;
+} max_ctr_t;
+
+static max_ctr_t trig_ctr = {{0,0}, {0,0}, VAR_max_trig, VAR_borg, "Trigger"};
+static max_ctr_t hook_ctr = {{0,0}, {0,0}, VAR_max_hook, VAR_hook, "Hook"};
+
+static int test_max_counter(max_ctr_t *c)
+{
+    static int bucketsize = 5;
+    int now = time(NULL) / bucketsize;
+    if (now != c->bucket[1]) {
+	c->bucket[0] = now - 1;
+	c->bucket[1] = now;
+	c->count[0] = (now == c->bucket[1] + 1) ? c->count[1] : 1;
+	c->count[1] = 0;
+    }
+    if (c->count[0] + ++c->count[1] > special_var[c->maxid].val.u.ival) {
+	set_var_by_id(c->flagid, 0);
+	eprintf("%s rate exceeded %%%s (%d) in less than %ds.  "
+	    "Setting %%%s off.", c->label,
+	    special_var[c->maxid].val.name, special_var[c->maxid].val.u.ival,
+	    2*bucketsize, special_var[c->flagid].val.name);
+	return 0;
+    }
+    return 1;
+}
+
 /* run a macro that has been selected by a trigger or hook */
 static int run_match(
     Macro *macro,	/* macro to run */
@@ -1857,26 +1888,11 @@ static int run_match(
     struct Sock *callingsock = xsock;
     RegInfo *old;
 
-    if (hooknum<0 && !borg)
-	return 0;
-
-    if (hooknum<0 && text && max_trig > 0) {
-	static int bucket[2] = {0,0};
-	static int count[2] = {0,0};
-	static const int bucketsize = 5;
-	int now = time(NULL) / bucketsize;
-	if (now != bucket[1]) {
-	    bucket[0] = now - 1;
-	    bucket[1] = now;
-	    count[0] = (now == bucket[1] + 1) ? count[1] : 1;
-	    count[1] = 0;
-	}
-	if (count[0] + ++count[1] > max_trig) {
-	    set_var_by_id(VAR_borg, 0);
-	    eprintf("Trigger rate exceeded max_trig (%d) in less than %ds.  "
-		"Setting borg=off.", max_trig, 2*bucketsize);
-	    return 0;
-	}
+    if (hooknum < 0) { /* trigger */
+	if (!borg) return 0;
+	if (text && max_trig > 0 && !test_max_counter(&trig_ctr)) return 0;
+    } else { /* hook */
+	if (max_hook > 0 && !test_max_counter(&hook_ctr)) return 0;
     }
 
     if (text)

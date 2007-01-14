@@ -11,6 +11,52 @@ If you have custom code to do any of the following in older versions,
   switch, or resuming from sh or suspend); scrollback; status line
   customizations; ...
 
+5.0 beta 8 (2007-01-14)
+----------
+Added %max_hook to prevent infinite hook loops.
+Added gethostname().
+Added missing documentation for new "E" and "W" attributes. (50b7)
+Added "inline" flag to decode_attr().
+Added -a<attr> and -p options to /prompt.
+Output of "/load testcolor.tf" now includes labels with r,g,b values.
+May create a debugging log if tf crashes.
+When invoked as a login shell, suspend is ignored, instead of hanging parent
+    (workaround for sshd, which does not correctly set TSTP signal handler).
+Fixed: after a resize with visual=off, the screen was not redrawn. (50b7)
+Fixed: after a resize with visual=off, an immediate backspace or other input
+    deletion would crash tf: "Internal error: output.c, line 2501". (50b7)
+Fixed: server display attributes could be lost if they had wrapped from a
+    previous line and were followed by more attributes.
+Fixed: /filter changed the idea of the virtual bottom line, so a subsequent
+    /unfilter redrew from the new incorrect bottom, and a subsequent
+    /filter used the new incorrect bottom as a starting point for applying
+    a new filter (resulting in a spurious "no lines match criteria" if the
+    only matching lines are between the correct and incorrect bottoms).
+Fixed potential crashes in calling functions with invalid arguments:
+    strrep(), status_fields().
+Fixed: on servers with terminated (GOAHEAD or EOR) prompts, tf could lose
+    the first part of a server line in the rare condition of tf sending a
+    line between receiving the first and second parts of the server line.
+Fixed: non-time decimal values greater than 60 were sometimes formatted as
+    time values. (50b7)
+Fixed fatal bug in moresize() on a world that has never been /connect'ed.
+Fixed infinite loop when replace() is called with empty first argument.
+Fixed: with visual=off, /dokey flush (^[j) did not clear the more prompt.
+Fixed: /recordline ignored -a option if -p was not also given.
+Fixed fatal bug on some systems in /listsockets when there are connectionless
+    sockets open.
+Fixed: various bad things could happen if a trigger attempted to apply a
+    partial hilite to a line longer than 32767 characters.
+Fixed bugs on 64-bit platforms: /fg -c (Debian bug #327448), some variable
+    assignments
+Fixed: some cases of hostname resolution failure could cause a crash
+More robust TELNET protocol handling reduces problems on noncompliant servers:
+    Ignores option subnegotiation if option has not been agreed on.
+    If IAC SB (0xff 0xfa) is received before any other telnet command, the
+	server is treated as a non-telnet server.
+Upgraded configure.in to autoconf 2.59 (should affect developers only)
+
+
 5.0 beta 7 (2005-04-17)
 ----------
 Colors:

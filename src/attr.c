@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: attr.c,v 35004.7 2005/04/18 03:15:35 kkeys Exp $";
+static const char RCSid[] = "$Id: attr.c,v 35004.10 2007/01/13 23:12:39 kkeys Exp $";
 
 #include "tfconfig.h"
 #include "port.h"
@@ -459,7 +459,6 @@ String *decode_ansi(const char *s, attr_t attrs, int emul, attr_t *final_attrs)
 {
     String *dst;
     int i, colorstate = 0;
-    attr_t new = 0;
     attr_t starting_attrs = attrs;
 
     if (emul == EMUL_RAW || emul == EMUL_DEBUG) {
@@ -473,6 +472,10 @@ String *decode_ansi(const char *s, attr_t attrs, int emul, attr_t *final_attrs)
         if ((emul >= EMUL_ANSI_STRIP) &&
             (*s == ANSI_CSI || (s[0] == '\033' && s[1] == '[' && s++)))
         {
+	    /* Start with current value of attrs, and collect attributes from
+	     * ANSI codes.  But we don't write to attrs directly, in case this
+	     * turns out to not be an "m" command. */
+	    attr_t new = attrs;
             if (!*s) break;            /* in case code got truncated */
             do {
                 s++;

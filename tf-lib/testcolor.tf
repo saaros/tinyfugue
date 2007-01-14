@@ -1,8 +1,9 @@
 ;;;; testcolor.tf
 
+/test echo("               01234567 01234567")
 /set _line=@
 /for _i 0 7 \
-    /set _line=%{_line}{C%_i}X@
+    /set _line=%{_line}{C%_i}#@
 /eval /set _line=%{_line}{n} @
 /for _i 0 7 \
     /set _line=%{_line}{Cbg%_i} @
@@ -10,7 +11,7 @@
 
 /set _line=@
 /for _i 8 15 \
-    /set _line=%{_line}{C%_i}X@
+    /set _line=%{_line}{C%_i}#@
 /eval /set _line=%{_line}{n} @
 /for _i 8 15 \
     /set _line=%{_line}{Cbg%_i} @
@@ -24,23 +25,29 @@
 /endif
 
 /_echo 6x6x6 color cubes:
-/for _green 0 5 \
-    /set _line=@%; \
+
+/echo r=  000000111111222222333333444444555555 000000111111222222333333444444555555
+/echo g=  012345012345012345012345012345012345 012345012345012345012345012345012345
+
+/for _blue 0 5 \
+    /set _line=b=%_blue @%; \
     /for _red 0 5 \
-	/for _blue 0 5 \
-	    /set _line=%%%_line{Crgb%%%_red%%%_green%%%_blue}X@%%; \
+	/for _green 0 5 \
+	    /set _line=%%%_line{Crgb%%%_red%%%_green%%%_blue}#@%%; \
 	/set _line=%%{_line}{n}@%; \
     /set _line=%{_line}{} @%; \
     /for _red 0 5 \
-	/for _blue 0 5 \
+	/for _green 0 5 \
 	    /set _line=%%%_line{Cbgrgb%%%_red%%%_green%%%_blue} @%%; \
 	/set _line=%%{_line}{n}@%; \
     /echo -p - %{_line}{}
 /_echo
 
+/test echo("                      1         2              1         2   ")
+/test echo("            012345678901234567890123 012345678901234567890123")
 /set _line=@
 /for _i 0 23 \
-    /set _line=%{_line}{Cgray%_i}X@
+    /set _line=%{_line}{Cgray%_i}#@
 /eval /set _line=%{_line}{n} @
 /for _i 0 23 \
     /set _line=%{_line}{Cbggray%_i} @

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: expr.c,v 35004.169 2005/04/18 03:15:35 kkeys Exp $";
+static const char RCSid[] = "$Id: expr.c,v 35004.179 2007/01/13 23:12:39 kkeys Exp $";
 
 
 /********************************************************************
@@ -225,6 +225,7 @@ Value *valval_fl(Value *val, const char *file, int line)
 	case TYPE_POS:
 	case TYPE_INT:
 	    result = newint_fl(result->u.ival, file, line); break;
+	case TYPE_DECIMAL:
 	case TYPE_DTIME:
 	case TYPE_ATIME:
 	    if (valtime(&tv, result))
@@ -308,7 +309,7 @@ int valbool(const Value *val)
 
     if (val->type & (TYPE_INT | TYPE_POS | TYPE_ENUM))
         return !!val->u.ival;
-    if (val->type & (TYPE_DTIME|TYPE_ATIME))
+    if (val->type & (TYPE_DECIMAL|TYPE_DTIME|TYPE_ATIME))
         return (val->u.tval.tv_sec || val->u.tval.tv_usec);
 #if !NO_FLOAT
     else if (val->type & TYPE_FLOAT)
@@ -325,7 +326,7 @@ long valint(const Value *val)
 
     if (val->type & (TYPE_INT | TYPE_POS | TYPE_ENUM))
         return val->u.ival;
-    if (val->type & (TYPE_DTIME|TYPE_ATIME))
+    if (val->type & (TYPE_DECIMAL|TYPE_DTIME|TYPE_ATIME))
         return (long)val->u.tval.tv_sec;
 #if !NO_FLOAT
     else if (val->type & TYPE_FLOAT) {
@@ -351,7 +352,7 @@ int valtime(struct timeval *tvp, const Value *val)
     if (val->type & (TYPE_INT | TYPE_POS | TYPE_ENUM)) {
         tvp->tv_sec = val->u.ival;
         tvp->tv_usec = 0;
-    } else if (val->type & (TYPE_DTIME|TYPE_ATIME)) {
+    } else if (val->type & (TYPE_DECIMAL|TYPE_DTIME|TYPE_ATIME)) {
         *tvp = val->u.tval;
 #if !NO_FLOAT
     } else if (val->type & TYPE_FLOAT) {
@@ -386,7 +387,7 @@ double valfloat(const Value *val)
         return val->u.fval;
     if (val->type & (TYPE_INT | TYPE_POS | TYPE_ENUM))
         return (double)val->u.ival;
-    if (val->type & (TYPE_DTIME|TYPE_ATIME))
+    if (val->type & (TYPE_DECIMAL|TYPE_DTIME|TYPE_ATIME))
         return (double)val->u.tval.tv_sec + val->u.tval.tv_usec / 1000000.0;
     return val->sval ? strtod(val->sval->data, NULL) : 0.0;
 }
@@ -422,6 +423,13 @@ conString *valstr(Value *val)
             Sprintf(sval, "%ld", val->u.ival);
             val->sval = CS(sval);
             break;
+        case TYPE_DECIMAL:
+        case TYPE_ATIME:
+	    /* s.u format */
+            sval = Stringnew(NULL, 0, 0);
+	    tftime(sval, NULL, &val->u.tval);
+            val->sval = CS(sval);
+            break;
         case TYPE_DTIME:
             sval = Stringnew(NULL, 0, 0);
             sec = val->u.tval.tv_sec;
@@ -442,12 +450,6 @@ conString *valstr(Value *val)
 		/* s.u format */
 		tftime(sval, NULL, &val->u.tval);
 	    }
-            val->sval = CS(sval);
-            break;
-        case TYPE_ATIME:
-	    /* s.u format */
-            sval = Stringnew(NULL, 0, 0);
-	    tftime(sval, NULL, &val->u.tval);
             val->sval = CS(sval);
             break;
 #if !NO_FLOAT
@@ -498,35 +500,25 @@ int pushval(Value *val)
  * not exist, and assign() creates a new variable with name */
 static Value *assign(Var *var, const Value *idval, Value *val)
 {
-    Value *result;
-    void *value;
-    type_t type, basic_type;
+    Value tmpvalue, *result;
 
+    if (!var)
+	var = newglobalvar(idval->name);
     if (!val) {
-	basic_type = type = TYPE_STR;
-	value = blankline;
-    } else {
-	switch ((basic_type = (type = val->type) & TYPES_BASIC)) {
-	case TYPE_STR:   value = Stringdup(val->sval); break;
-	case TYPE_FLOAT: value = &val->u.fval; break;
-	case TYPE_ATIME: /* fall through */
-	case TYPE_DTIME: value = &val->u.tval; break;
-	case TYPE_ENUM:  /* fall through */
-	case TYPE_POS:   basic_type=TYPE_INT; /* fall through */
-	case TYPE_INT:   value = &val->u.ival; break;
-	default:
-	    internal_error(__FILE__, __LINE__,
-		"OP_ASSIGN: impossible type %d", basic_type);
-	    return NULL;
-	}
+	tmpvalue.type = TYPE_STR;
+	tmpvalue.sval = blankline;
+	val = &tmpvalue;
+    } else if (val->type & TYPE_STR) { /* must copy the String, not share it */
+	tmpvalue.type = TYPE_STR;
+	tmpvalue.sval = CS(Stringdup(val->sval));
+	val = &tmpvalue;
     }
-    var = var ? setexistingvar(var, basic_type, value, 0) :
-	setnewvar(idval->name, idval->u.hash, basic_type, value, 0);
+    setvar(var, val, 0);
     palloc(result, Value, valpool, u.next, __FILE__, __LINE__);
     result->name = NULL;
     result->count = 1;
     if (var) {
-	if (type & TYPE_REGMATCH)
+	if (val->type & TYPE_REGMATCH)
 	    var->val.type |= TYPE_REGMATCH;
 	result->type = var->val.type;
 	if ((result->sval = var->val.sval))
@@ -580,6 +572,7 @@ int reduce(opcode_t op, int n)
 		val = newfloat(res.u.fval);
 	    }
 	    break;
+	case TYPE_DECIMAL:
 	case TYPE_ATIME:
 	case TYPE_DTIME:
 	    val = newtime(res.u.tval.tv_sec, res.u.tval.tv_usec, res.type);
@@ -623,16 +616,16 @@ int reduce(opcode_t op, int n)
 		    i = valint(getvarval(var = hfindnearestvar(opd(1)))) - 1;
 		    if (i == LONG_MAX)
 			eprintf("integer overflow in --%s", opd(1)->name);
-		    var = var ? setexistingvar(var, TYPE_INT, &i, 0) :
-			setnewvar(opd(1)->name, opd(1)->u.hash, TYPE_INT,&i, 0);
+		    var = setintvar(var ? var : newglobalvar(opd(1)->name),
+			i, 0);
                     val = newint(var ? i : 0);
                     break;
     case OP_PREINC: if (opd(n)->type != TYPE_ID) goto reduce_bad_assignment;
 		    i = valint(getvarval(var = hfindnearestvar(opd(1)))) + 1;
 		    if (i == LONG_MIN)
 			eprintf("integer overflow in ++%s", opd(1)->name);
-		    var = var ? setexistingvar(var, TYPE_INT, &i, 0) :
-			setnewvar(opd(1)->name, opd(1)->u.hash, TYPE_INT,&i, 0);
+		    var = setintvar(var ? var : newglobalvar(opd(1)->name),
+			i, 0);
                     val = newint(var ? i : 0);
                     break;
     case OP_STREQ:  val = newint(strcmp(opdstd(2), opdstd(1)) == 0); break;
@@ -666,7 +659,8 @@ reduce_exit:
     return val ? pushval(val) : 0;
 }
 
-/* Fills in *res with a TYPE_INT, TYPE_DTIME, TYPE_ATIME, or TYPE_FLOAT value */
+/* Fills in *res with a TYPE_INT, TYPE_DECIMAL, TYPE_DTIME, TYPE_ATIME,
+ * or TYPE_FLOAT value */
 static int reduce_arithmetic(opcode_t op, const Value *val0, int n, Value *res)
 {
     int i;
@@ -727,7 +721,7 @@ static int reduce_arithmetic(opcode_t op, const Value *val0, int n, Value *res)
 	}
     }
 
-    if ((promoted_type & (TYPE_INT | TYPE_ATIME | TYPE_DTIME)) &&
+    if ((promoted_type & (TYPE_INT | TYPE_DECIMAL | TYPE_ATIME | TYPE_DTIME)) &&
 	is_additive(op & ~OPF_SIDE))
     {
 	/* additive overflow causes promotion to float */
@@ -768,6 +762,7 @@ static int reduce_arithmetic(opcode_t op, const Value *val0, int n, Value *res)
         default:        return 0;
         }
 
+    case TYPE_DECIMAL:
     case TYPE_ATIME:
     case TYPE_DTIME:
         if (!valtime(&t1, val[n-1])) return 0;
@@ -836,7 +831,7 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
     TFILE *tfile;
     struct timeval tv;
     const struct timeval *then;
-    union { struct timeval tv; long i; } u;
+    ValueUnion uval;
     int type;
 
     int symbol = func - functab;
@@ -927,7 +922,11 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
 		    if (!parse_attrs(opdstd(n-1), &attr, 0))
 			return shareval(val_blank);
 		}
-		constr = CS(decode_attr(opdstr(n), attr, 0));
+		i = (n>2) ?
+		    enum2int(opdstd(n-2), 0, enum_flag, "arg 3 (inline)") : 1;
+		constr = CS(i ? decode_attr(opdstr(n), 0, 0) :
+		    Stringdup(opdstr(n)));
+		constr->attrs = adj_attr(constr->attrs, attr);
 		return constr ? newSstr(constr) : shareval(val_blank);
             }
 
@@ -955,6 +954,9 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
             if (i < 0) return shareval(val_zero);
             return newint(handle_substitute_func(opdstr(n),
                 (n >= 2) ? opdstd(n-1) : "",  i));
+
+        case FN_prompt:
+            return newint(handle_prompt_func(opdstr(n)));
 
         case FN_eval:
 	    i = SUB_MACRO;
@@ -1012,6 +1014,10 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
             tfputline(CS(Sstr), tfile);
             return shareval(val_one);
 
+        case FN_tfreadable:
+            tfile = find_usable_tfile(opdstd(1), S_IRUSR);
+	    return newint(tfreadable(tfile));
+
         case FN_tfread:
             tfile = (n > 1) ? find_usable_tfile(opdstd(2), S_IRUSR) : tfin;
             if (!tfile) return newint(-1);
@@ -1024,7 +1030,7 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
             j = -1;
             (Sstr = Stringnew(NULL, -1, 0))->links++;
             if (tfgetS(Sstr, tfile)) {
-                if (hsetnearestvar(opd(1), TYPE_STR, Sstr))
+                if (hsetnearestvar(opd(1), CS(Sstr)))
                     j = Sstr->len;
             }
             Stringfree(Sstr);
@@ -1092,6 +1098,8 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
 	    }
             world = (n>=2 && *opdstd(n-1)) ? find_world(opdstd(n-1)) : xworld();
 	    screen = (virtscreen && world) ? world->screen : display_screen;
+	    if (!screen) /* screen hasn't been created yet */
+		return newint(0);
 	    nnew = lim_only ? screen->nnew_filtered : screen->nnew;
 	    nback = lim_only ? screen->nback_filtered : screen->nback;
 	    if (screen == display_screen || screen->active || include_A ||
@@ -1274,6 +1282,7 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
         case FN_strrep:
             constr = opdstr(2);
             i = opdint(1);
+	    if (i < 0) i = 0;
             for (Sstr2 = Stringnew(NULL, constr->len * i, 0); i > 0; i--)
                 SStringcat(Sstr2, constr);
             return newSstr(CS(Sstr2));
@@ -1359,7 +1368,7 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
 	    constr = opdstr(1);
 	    Sstr2 = Stringnew(NULL, -1, constr->attrs);
 	    start = constr->data;
-	    while ((next = strstr(start, old->data))) {
+	    while (old->len > 0 && (next = strstr(start, old->data))) {
 		SStringoncat(Sstr2, constr, start - constr->data, next - start);
 		SStringcat(Sstr2, new);
 		start = next + old->len;
@@ -1409,6 +1418,16 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
         case FN_kblen:
             return newint(keybuf->len);
 
+        case FN_gethostname:
+	{
+	    char buf[1024] = "";
+#ifdef HAVE_GETHOSTNAME
+	    gethostname(buf, sizeof(buf) - 1);
+#endif
+	    buf[sizeof(buf)-1] = '\0'; /* gethostname() might not terminate */
+	    return newstr(buf, -1);
+	}
+
         case FN_getopts: {
             char name[] = "opt_?";
             int offset;
@@ -1428,7 +1447,7 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
                         return shareval(val_zero);
                     }
                     name[4] = *ptr;
-                    setlocalvar(name, TYPE_STR, Stringdup(init));
+                    setlocalstrvar(name, CS(Stringdup(init)));
                     if (ptr[1] == ':' || ptr[1] == '#' || ptr[1] == '@')
 			ptr++;
                 }
@@ -1437,20 +1456,24 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
             if (!tf_argc) return shareval(val_one);
             offset = tf_argv[0].start;
             startopt(argstring, str);
-            while ((c = nextopt(&ptr, &u, &type, &offset))) {
-                if (is_alpha(c)) {
-                    name[4] = c;
-		    if (type == TYPE_STR) {
-                        setlocalvar(name, TYPE_STR, Stringnew(ptr, -1, 0));
-		    } else if (type == 0) {
-			i = 1;
-                        setlocalvar(name, TYPE_INT, &i);
-                    } else {
-                        setlocalvar(name, type, &u);
-		    }
-                } else {
-                    return shareval(val_zero);
-                }
+            while ((c = nextopt(&ptr, &uval, &type, &offset))) {
+                if (!is_alpha(c))
+		    return shareval(val_zero);
+		name[4] = c;
+		switch (type) {
+		case TYPE_STR:
+		    setlocalstrvar(name, CS(Stringnew(ptr, -1, 0)));
+		    break;
+		case TYPE_INT:
+		    setlocalintvar(name, uval.ival);
+		    break;
+		case TYPE_DTIME:
+		    setlocaldtimevar(name, &uval.tval);
+		    break;
+		default:
+		    setlocalintvar(name, 1);
+		    break;
+		}
             }
             while (tf_argc > 0 && offset >= tf_argv[0].end) {
                 tf_argv++;
@@ -1496,14 +1519,15 @@ static Value *function_switch(const ExprFunc *func, int n, const char *parent)
 	    }
 	    if (val) {
 		switch (val->type & TYPES_BASIC) {
-		case TYPE_STR:	  Stringcat(Sstr, "string");	break;
-		case TYPE_ENUM:	  Stringcat(Sstr, "enum");	break;
-		case TYPE_INT:	  Stringcat(Sstr, "int");	break;
-		case TYPE_POS:	  Stringcat(Sstr, "pos");	break;
-		case TYPE_ATIME:  Stringcat(Sstr, "atime");	break;
-		case TYPE_DTIME:  Stringcat(Sstr, "dtime");	break;
-		case TYPE_FLOAT:  Stringcat(Sstr, "float");	break;
-		default:	  Sappendf(Sstr, "%d", opd(1)->type);
+		case TYPE_STR:	   Stringcat(Sstr, "string");	break;
+		case TYPE_ENUM:	   Stringcat(Sstr, "enum");	break;
+		case TYPE_INT:	   Stringcat(Sstr, "int");	break;
+		case TYPE_POS:	   Stringcat(Sstr, "pos");	break;
+		case TYPE_DECIMAL: Stringcat(Sstr, "decimal");	break;
+		case TYPE_ATIME:   Stringcat(Sstr, "atime");	break;
+		case TYPE_DTIME:   Stringcat(Sstr, "dtime");	break;
+		case TYPE_FLOAT:   Stringcat(Sstr, "float");	break;
+		default:	   Sappendf(Sstr, "%d", opd(1)->type);
 		}
 	    }
             return newSstr(CS(Sstr));

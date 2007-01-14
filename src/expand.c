@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: expand.c,v 35004.229 2005/04/18 03:15:35 kkeys Exp $";
+static const char RCSid[] = "$Id: expand.c,v 35004.232 2007/01/13 23:12:39 kkeys Exp $";
 
 
 /********************************************************************
@@ -168,24 +168,25 @@ static void inst_dump(const Program *prog, int i, char prefix)
 	    break;
 	}
 	switch (val->type & TYPES_BASIC) {
-	case TYPE_ID:    Sappendf(buf, "ID %s", val->name); break;
-	case TYPE_FUNC:  Sappendf(buf, "FUNC %s", val->name); break;
-	case TYPE_CMD:   Sappendf(buf, "CMD %s", val->name); break;
-	case TYPE_STR:   Sappendf(buf, "STR \"%S\"", valstr(val));
-			 if (val->type & TYPE_REGEX)
-			     Stringcat(buf, " (RE)");
-			 if (val->type & TYPE_EXPR)
-			     Stringcat(buf, " (EXPR)");
-			 if (val->type & TYPE_ATTR)
-			     Stringcat(buf, " (ATTR)");
-			 break;
-	case TYPE_ENUM:  Sappendf(buf, "ENUM \"%S\"", valstr(val)); break;
-	case TYPE_POS:   Sappendf(buf, "POS %S", valstr(val)); break;
-	case TYPE_INT:   Sappendf(buf, "INT %S", valstr(val)); break;
-	case TYPE_DTIME: Sappendf(buf, "DTIME %S", valstr(val)); break;
-	case TYPE_ATIME: Sappendf(buf, "ATIME %S", valstr(val)); break;
-	case TYPE_FLOAT: Sappendf(buf, "FLOAT %S", valstr(val)); break;
-	default:         Sappendf(buf, "? %S", valstr(val)); break;
+	case TYPE_ID:      Sappendf(buf, "ID %s", val->name); break;
+	case TYPE_FUNC:    Sappendf(buf, "FUNC %s", val->name); break;
+	case TYPE_CMD:     Sappendf(buf, "CMD %s", val->name); break;
+	case TYPE_STR:     Sappendf(buf, "STR \"%S\"", valstr(val));
+			   if (val->type & TYPE_REGEX)
+			       Stringcat(buf, " (RE)");
+			   if (val->type & TYPE_EXPR)
+			       Stringcat(buf, " (EXPR)");
+			   if (val->type & TYPE_ATTR)
+			       Stringcat(buf, " (ATTR)");
+			   break;
+	case TYPE_ENUM:    Sappendf(buf, "ENUM \"%S\"", valstr(val)); break;
+	case TYPE_POS:     Sappendf(buf, "POS %S", valstr(val)); break;
+	case TYPE_INT:     Sappendf(buf, "INT %S", valstr(val)); break;
+	case TYPE_DECIMAL: Sappendf(buf, "DECIMAL %S", valstr(val)); break;
+	case TYPE_DTIME:   Sappendf(buf, "DTIME %S", valstr(val)); break;
+	case TYPE_ATIME:   Sappendf(buf, "ATIME %S", valstr(val)); break;
+	case TYPE_FLOAT:   Sappendf(buf, "FLOAT %S", valstr(val)); break;
+	default:           Sappendf(buf, "? %S", valstr(val)); break;
 	}
 	break;
     }
@@ -971,7 +972,7 @@ int prog_run(const Program *prog, const String *args, int offset,
     pushvarscope(scope);
     if (kbnumlocal) {
 	/* TODO: make this local %kbnum const */
-	setlocalvar("kbnum", TYPE_INT, &kbnumlocal);
+	setlocalintvar("kbnum", kbnumlocal);
     }
 
     if (args) {

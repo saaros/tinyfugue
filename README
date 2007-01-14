@@ -1,5 +1,5 @@
 
-  TinyFugue is Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 by Ken Keys.
+  TinyFugue is Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys.
 
   PCRE regexp package is Copyright 1997-1999 University of Cambridge.
   See src/pcre-2.08/LICENCE for details.
@@ -28,7 +28,7 @@
 TinyFugue can be installed and run on UNIX-like systems, Mac OS X, OS/2,
 and Win32.  For instructions, see the README file in the appropriate
 directory.  For information on unofficial versions of TF for other
-operating systems, see the TF web page at http://tf.tcp.com/.
+operating systems, see the TF web page at http://tinyfugue.sourceforge.net/.
 
 Note that the .tar.gz and .tar.Z distributions contain LF line delimiters,
 intended for UNIX, and the .zip distribution contains CR LF delimiters,
@@ -107,12 +107,14 @@ Last Resort
 If you have an installation problem or other system-specific problem
 that is not described in this README or the README in the subdirectory
 for your system, contact the person who supports TF on your system.  If
-you have a problem that is not system-related, contact the author by
-email at hawkeye@tcp.com.  Please provide the following information:
+you have a problem that is not system-related, ask for support on
+http://tinyfugue.sourceforge.net/ or contact the author by email at
+kenkeys@users.sourceforge.net.  Please provide the following information:
 
     The version of TF (type "/version" in tf).
     The operating system version (on unix, type "uname -a" in the shell).
-    If tf won't compile, send the Build.log file (in plaintext form, please).
+    If tf won't compile, send the output of configure and make (in plaintext
+        form, please).
     If you have a bug or core, give ALL error messages from tf.
     If you have a bug or core, describe what you did or what happened
         before the problem, and if the problem is repeatable.

@@ -37,25 +37,31 @@ addworld()
   "f" or "0" in <[4mflags[24m> has the same effect as "p", and an "n" or "1" in 
   <[4mflags[24m> has no effect.  
 
-  If <[4mflags[24m> contains "p" (in function form) or -p is given (in command form), 
-  [1m%{proxy_host}[22;0m will be ignored, and all connections to the world will be 
-  direct.  By default, worlds use [1m%{proxy_host}[22;0m if it is set.  
+  [1mOptions[22;0m: 
+  command: -p 
+  function: <[4mflags[24m> contains "p" 
+          [1m%{proxy_host}[22;0m will be ignored, and all connections to the world will 
+          be direct.  By default, worlds use [1m%{proxy_host}[22;0m if it is set.  
+  command: -x 
+  function: <[4mflags[24m> contains "x" 
+          TF will use the SSL protocol to make connections to this world.  
+  command: -e 
+  function: <[4mflags[24m> contains "e" 
+          all text sent to the world will be echoed right back as if it were 
+          received from the world (in addition to being sent to the server).  
+          This is most useful with connectionless sockets.  
+  command: -s<[4msrchost[24m> 
+  function: <[4msrchost[24m> 
+          defines the host name or IP address to use for the local (tf) side 
+          of the connection.  This is useful if the host has multiple network 
+          interfaces and you need to override the default choice of the OS.  
+  command: -T<[4mtype[24m> 
+  function: <[4mtype[24m> 
+          The optional <[4mtype[24m> is used in hooks and triggers, and for automatic 
+          [1mlogin[22;0m and flag setting.  (See below.) 
 
-  If <[4mflags[24m> contains "x" (in function form) or -x is given (in command form), 
-  TF will use the SSL protocol to make connections to this world.  
-
-  If <[4mflags[24m> contains "e" (in function form) or -e is given (in command form), 
-  all text sent to the world will be echoed right back as if it were received 
-  from the world (in addition to being sent to the server).  This is most 
-  useful with connectionless sockets.  
-
-  The optional <[4msrchost[24m> defines the host name or IP address to use for the 
-  local (tf) side of the connection.  This is useful if the host has multiple 
-  network interfaces and you need to override the default choice of the OS.  
-
-  The optional <[4mtype[24m> is used in hooks and triggers, and for automatic [1mlogin[22;0m 
-  and flag setting.  The library pre-defines WORLD and LOGIN hooks for types 
-  that match these [1mglob patterns[22;0m: 
+  The library pre-defines WORLD and LOGIN hooks for types that match these 
+  [1mglob patterns[22;0m: 
 
   (none)  TinyMud [1mlogin[22;0m format ("connect <[4mchar[24m> <[4mpass[24m>"), the value of [1mlp[22;0m is 
           not changed.  
@@ -214,6 +220,9 @@ addworld()
   password in an [1m/addworld[22;0m command, Fugue will attempt to log in 
   automatically.  
 
+  Note that on many servers, arbitrary users can spoof the portal text, 
+  redirecting your tf against your will if you have bamfing enabled.  
+
   The flag [1m%{bamf}[22;0m defaults to 0 (off).  
 
   See: [1mworlds[22;0m, [1msockets[22;0m, [1m%bamf[22;0m, [1m%login[22;0m 
@@ -339,12 +348,12 @@ addworld()
   ____________________________________________________________________________
 
   List the changes in a <[4mversion[24m> of TinyFugue; if omitted, <[4mversion[24m> defaults 
-  to the current version.  <[4mVersion[24m> can be a full version name (e.g., "3.5 
-  beta 1") or just the major and minor numbers (e.g., "3.5").  The information 
-  is kept in the file [1m%TFLIBDIR[22;0m/CHANGES.  
+  to the current version.  <[4mVersion[24m> can be a full version name (e.g., "5.0 
+  beta 7") or just the major and minor numbers (e.g., "5.0").  The information 
+  is kept in the file [1m%TFLIBDIR/CHANGES[22;0m.  
 
   A list of changes in the latest version of tf can be found at 
-  [1mhttp://tf.tcp.com/CHANGES[22;0m.  
+  [1mhttp://tinyfugue.sourceforge.net/CHANGES[22;0m.  
 
   See: [1m/version[22;0m 
 
@@ -641,7 +650,7 @@ addworld()
 
 #/def -P
 #-P
-  -P[<[4mpart[24m>][<[4mattr[24m>][;[<[4mpart[24m>][<[4mattr[24m>]]...  
+  -P[<[4mpart[24m>]<[4mattr[24m>[;[<[4mpart[24m>]<[4mattr[24m>]...  
           Define a "partial [1mhilite[22;0m".  The argument consists of a list of pairs 
           of parts (<[4mpart[24m>) and attributes (<[4mattr[24m>), separated by ';'.  When a 
           line matches the [1mregexp[22;0m [1mtrigger[22;0m of this macro, each <[4mattr[24m> is 
@@ -916,6 +925,9 @@ echo()
 
   [1m/_echo[22;0m is more efficient than [1m/echo[22;0m, so it is better for use in heavily used 
   macros that don't need all the options of [1m/echo[22;0m.  
+
+  When echoing to the [1mtferr stream[22;0m, if no <[4mattrs[24m> are specified, text will be 
+  echoed with the "E" [1mattribute[22;0m.  
 
   Example: Both of these commands 
 
@@ -1454,11 +1466,9 @@ ftime()
   Displays help on the topic specified, or displays a quick summary of 
   available topics if no topic is given.  
 
-  The [1mvariable[22;0m [1m%TFHELP[22;0m must contain the name of the helpfile.  It is set when 
-  TF is installed, and should not normally be changed.  If the helpfile or the 
-  help index is not found, [1m/help[22;0m will not function.  The help file is in ASCII 
-  with embedded ANSI display codes, so can be read or printed by any program 
-  that can handle ANSI codes.  
+  In the documentation, words or phrases in [1mthis format[22;0m are references to 
+  other topics.  That is, a hyperlink in HTML, or something that can be used 
+  as an argument to [1m/help[22;0m in [1mtf[22m.  
 
   Commands are described with the format "/COMMAND arguments".  Words in all 
   caps must be spelled exactly as shown (but do not need to be capitalized).  
@@ -1475,12 +1485,15 @@ ftime()
   hook topic).  There are also (sub)topics for various tf syntax constructions 
   such as "[1m%{}[22;0m" and "[1m$()[22;0m".  
 
-  Words or phrases in [1mthis format[22;0m are references to other topics.  That is, a 
-  hyperlink in HTML, or something that can be used as an argument to [1m/help[22;0m in 
-  [1mtf[22m.  
+  For [1m/help[22;0m to work, the [1mvariable[22;0m [1m%TFHELP[22;0m must contain the name of the 
+  helpfile.  It is set when TF is installed, and should not normally be 
+  changed.  If the helpfile or the help index is not found, [1m/help[22;0m will not 
+  function.  The help file is in ASCII with embedded ANSI display codes, so 
+  can be read or printed by any program that can handle ANSI codes.  
 
 #html
-  The help document is available in HTML form at [1mhttp://tf.tcp.com/help/[22;0m.  
+  The help documents are also available on the web at 
+  [1mhttp://tinyfugue.sourceforge.net/help/[22;0m.  
 #
 
   See: [1mindex[22;0m, [1mintro[22;0m, [1moptions[22;0m 
@@ -2109,8 +2122,8 @@ list commands
   -v      List values only.  
 
   [1m/Listvar[22;0m lists values of [1mvariables[22;0m whose name and value match <[4mname[24m> and 
-  <[4mvalue[24m> according to <[4mmatching[24m>.  If neither -g nor -x is given, global and 
-  environment variables are listed.  
+  <[4mvalue[24m> according to <[4mmatching[24m>, sorted by name.  If neither -g nor -x is 
+  given, global and environment variables are listed.  
 
   The return value of [1m/listvar[22;0m is the number of variables listed.  
 
@@ -2578,13 +2591,25 @@ mapping
 
 /prompt
 
-  Usage: 
+  [1mFunction[22;0m usage: 
 
-  [1m/PROMPT[22;0m <[4mtext[24m>
+  [1mPROMPT[22;0m(<[4mtext[24m>)
+
+  Command usage: 
+
+  [1m/PROMPT[22;0m [-a<[4mattrs[24m>] [-p] <[4mtext[24m>
   ____________________________________________________________________________
 
   Sets the [1mprompt[22;0m for the [1mcurrent[22;0m [1msocket[22;0m to <[4mtext[24m>, replacing any existing 
-  [1mprompt[22;0m.  [1m/prompt[22;0m is most useful when called from a PROMPT [1mhook[22;0m, like this: 
+  [1mprompt[22;0m.  
+
+  Command [1moptions[22;0m: 
+  -a<[4mattrs[24m> 
+          Apply the [1mattributes[22;0m given by <[4mattrs[24m> to <[4mtext[24m>.  
+  -p      Interpet "@{<[4mattr[24m>}" strings within <[4mtext[24m> as commands to set 
+          [1mattributes[22;0m inline.  See [1mdecode_attr()[22;0m.  
+
+  [1m/prompt[22;0m is most useful when called from a PROMPT [1mhook[22;0m, like this: 
 
       [1m/def[22;0m [1m-h[22;0m"PROMPT *> " catch_prompt = [1m/test[22;0m [1mprompt[22;0m([1m{*}[22;0m)
 
@@ -2792,10 +2817,10 @@ mapping
   <[4msuf[24m>   Append <[4msuf[24m> to each generated line.  If omitted, the double quotes 
           around the <[4mfile[24m> or <[4mcommand[24m> may also be omitted.  
 
-  An asynchronous [1m/quote[22;0m (i.e., a [1m/quote[22;0m without -S) returns the pid of the 
-  new [1mprocess[22;0m, or 0 if an error occurred.  A synchronous (-S) shell (!) or 
-  command (`) quote returns the return value of the command.  A synchronous 
-  file (') quote returns 0 on error, nonzero otherwise.  
+  An asynchronous (background) [1m/quote[22;0m (i.e., a [1m/quote[22;0m without -S) returns the 
+  pid of the new [1mprocess[22;0m, or 0 if an error occurred.  A synchronous (-S) shell 
+  (!) or command (`) quote returns the return value of the command.  A 
+  synchronous file (') quote returns 0 on error, nonzero otherwise.  
 
   The [1mlibrary[22;0m file [1mquoter.tf[22;0m defines some useful [1mquoter commands[22;0m that are 
   shortcuts for some common uses of [1mquote[22;0m.  
@@ -3013,6 +3038,8 @@ Quoter Commands
           [1m/recall[22;0m 11:00-13:00 
   Recall the last 5 lines containing "spam": 
           [1m/recall[22;0m /5 *spam* 
+  Recall the last 4th most recent line: 
+          [1m/recall[22;0m - -4 
 
   See: [1mhistory[22;0m, [1mattributes[22;0m, [1m/limit[22;0m, [1m/quote[22;0m, [1m%time_format[22;0m 
 
@@ -3151,7 +3178,7 @@ Quoter Commands
   [1mmacros[22;0m that interact with a server.  
 #
 
-  See: [1mprocesses[22;0m, [1m%ptime[22;0m, [1m/at[22;0m [1mkbnum[22;0m 
+  See: [1mprocesses[22;0m, [1m%ptime[22;0m, [1m/at[22;0m, [1mkbnum[22;0m 
 
 &/replace
 
@@ -3706,6 +3733,9 @@ spelling checker
   normally, -1 otherwise.  Note that UNIX shell commands usually return 0 for 
   success and nonzero for failure, which is the opposite of the TF convention. 
 
+  [1m/sys[22;0m executes synchronously.  To execute a command asynchronously (in the 
+  background), use [1m/quote[22;0m without the -S option.  
+
   See: [1m/sh[22;0m, [1m/quote[22;0m 
 
 &/telnet
@@ -4201,10 +4231,7 @@ Text Utilities
 
   [1m/Ver[22;0m displays an abbreviated version number.  
 
-  The latest version of TF should be available for anonymous ftp from [1m 
-  ftp.tcp.com in pub/mud/Clients/tf[22;0m.  
-
-  Also see [1mhttp://tf.tcp.com/[22;0m for the latest info on TF.  
+  The latest version of TF can be found at [1mhttp://tinyfugue.sourceforge.net/[22;0m.  
 
   See: [1m/changes[22;0m 
 
@@ -4376,10 +4403,12 @@ display attributes
   how tf was compiled, there may be 8, 16, or 256 colors available.  See: 
   [1mcolor[22;0m.  
 
-  The "h" ([1mhilite[22;0m), "E" (error), and "W" (warning) [1mattributes[22;0m is special.  If 
-  specified, the [1mattributes[22;0m listed in the [1m%{hiliteattr}[22;0m, [1m%{error_attr}[22;0m, or 
-  [1m%{warning_attr}[22;0m [1mvariable[22;0m, respectively, will be combined with the other 
-  [1mattributes[22;0m listed.  For example, the commands 
+  The "h" ([1mhilite[22;0m), "E" (error), and "W" (warning) [1mattributes[22;0m are special.  
+  When "h", "E", or "W" is specified, it is replaced with the [1mattributes[22;0m 
+  listed in the [1m%{hiliteattr}[22;0m, [1m%{error_attr}[22;0m, or [1m%{warning_attr}[22;0m [1mvariable[22;0m, 
+  respectively.  Additionally, error and warning messages generated by tf 
+  automatically have the "E" and "W" [1mattributes[22;0m, so you can alter their 
+  appearance by setting the corresponding variable.  For example, the commands 
 
         [1m/set[22;0m [1mhiliteattr[22;0m=r
         [1m/echo[22;0m -ahu foobar
@@ -4461,7 +4490,8 @@ colors
   and "gray*" colors with xterm 256 color extension control codes.  
 
   To test the functionality and appearance of colors in tf, you can "[1m/load[22;0m 
-  testcolor.tf".  
+  testcolor.tf".  This will also show the <[4mR[24m>, <[4mG[24m> and <[4mB[24m> values of each 
+  color.  
 
   You can use a defined color in any [1mattribute[22;0m string.  For example, to make 
   [1m/hilite[22;0m'd text appear blue, you can [1m/set[22;0m [1mhiliteattr[22;0m=Cblue.  
@@ -4523,14 +4553,11 @@ copyright
 
   TinyFugue - programmable mud client
   Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 
-  2005 Ken Keys 
+  2005, 2006-2007 [1mKen Keys[22;0m 
 
   PCRE regexp package is Copyright (C) 1997-1999 University of Cambridge 
 
-  For bug reports, questions, suggestions, etc., I can be reached by email at 
-  hawkeye@tcp.com.  For problems specific to the OS/2 version, contact Andreas 
-  Sahlbach at asa@stardiv.de.  Please see "[1mproblems[22;0m" before sending a bug 
-  report.  
+  For bug reports, questions, suggestions, etc., see "[1mproblems[22;0m".  
 
   This program is free software; you can redistribute it and/or modify it 
   under the terms of the [1mGNU General Public License[22;0m as published by the Free 
@@ -4551,15 +4578,9 @@ copyright
 #where
 #www
 #ftp
-  The latest version of TinyFugue can be found at: 
-
-    * [1m ftp://tf.tcp.com/pub/tinyfugue/[22;0m 
-    * [1m http://ftp.tcp.com/pub/mud/Clients/tinyfugue/[22;0m 
-    * Australia: [1m ftp://ftp.progsoc.uts.edu.au/pub/tinyfugue/[22;0m 
-
-  Other ftp sites may not have the latest version.  
-
-  Also see [1mhttp://tf.tcp.com/[22;0m for the latest info on TF.  
+  The latest information and latest version of TinyFugue can be found at 
+  [1mhttp://tinyfugue.sourceforge.net/[22;0m.  Other sites may or may not have the 
+  latest version.  
 
 &debug
 &debugger
@@ -4574,10 +4595,12 @@ Debugging
     * [1m%qecho[22;0m - echo generated [1m/quote[22;0m text 
     * [1m%secho[22;0m - echo text sent to server 
     * [1m%pedantic[22;0m - enable extra warnings 
+    * [1m%defcompile[22;0m - display syntax errors when macros are defined instead 
+      of the first time they are used 
     * [1m%emulation[22;0m=debug - display nonprintable characters 
     * [1m%telopt[22;0m - echo telnet negotiation 
     * [1m/trigger[22;0m -n - see what [1mmacros[22;0m would be triggered 
-    * [1m/addworld[22;0m -e - fake "loopback" server 
+    * [1m/addworld[22;0m -e - simulated "loopback" server 
     * [1m/runtime[22;0m - measure running time of commands 
 
   See also: [1mhints[22;0m 
@@ -5046,6 +5069,9 @@ Input/output functions
 #
   [1msend[22m([4ms1[24m[, [4mworld[24m[, [4mflags[24m]]) 
           (int) Sends string <[4ms1[24m> to <[4mworld [24m>.  See [1msend()[22;0m.  
+#
+  [1mprompt[22m([4ms1[24m) 
+          (int) Sets the prompt of the [1mcurrent socket[22;0m to <[4ms1[24m>.  See [1m/prompt[22;0m.  
 #fwrite
 #fwrite()
   [1mfwrite[22m([4ms1[24m,[4ms2[24m) 
@@ -5210,11 +5236,13 @@ String functions
 #inline_attr()
 #decode_attr
 #decode_attr()
-  [1mdecode_attr[22m([4ms1[24m [, [4ms2[24m]) 
+  [1mdecode_attr[22m([4ms1[24m [, [4ms2[24m [, f]]) 
           (str) Returns <[4ms1[24m> with "@{<[4mattr[24m>}" codes interpeted as display 
           [1mattributes[22;0m, as in [1m/echo[22;0m -p.  If present, <[4ms2[24m> is a string of 
           [1mattributes[22;0m that will be applied to the entire string (as in [1m/echo[22;0m 
-          -a<[4ms2[24m>).  
+          -a<[4ms2[24m>).  If <[4mf[24m> is present and equal to 0 or "off", then 
+          "@{<[4mattr[24m>}" codes are [4mnot[24m interpeted; this is useful for applying 
+          <[4ms2[24m> attributes with no other effects.  
 #encode_attr
 #encode_attr()
   [1mencode_attr[22m([4ms[24m) 
@@ -5435,6 +5463,11 @@ Information functions
 #getpid()
   [1mgetpid[22m() 
           (int) The operating system's process id for tf.  
+#gethostname
+#gethostname()
+  [1mgethostname[22m() 
+          (str) Returns the host's name, or an empty string if the host name 
+          is not available.  
 #systype
 #systype()
   [1msystype[22m() 
@@ -5718,13 +5751,16 @@ history
 
 hooks
 
-  Associated commands: 
+  Associated topics: 
   [1m/def[22;0m    define a [1mmacro[22;0m with any fields 
   [1m/hook[22;0m   define a [1mhook[22;0m [1mmacro[22;0m 
   [1m/unhook[22;0m 
           undefine a [1mhook[22;0m [1mmacro[22;0m 
   [1m/trigger -h[22;0m 
           call a [1mhook[22;0m [1mmacro[22;0m 
+  [1m%hook[22;0m   enable [1mhooks[22;0m 
+  [1m%max_hook[22;0m 
+          maximum [1mhook[22;0m rate 
 
   [1mHooks[22;0m are a method of calling a [1mmacro[22;0m based on special events within TF, in 
   much the same way as [1mtriggers[22;0m call [1mmacros[22;0m based on text received from a 
@@ -5768,7 +5804,7 @@ hooks
 #BGTRIG
     BGTRIG      world           A '% [1mTrigger[22;0m in world <[4mworld[24m>'
 #CONFAIL
-    CONFAIL  world, reason      W '% [1mConnection[22;0m to <[4mworld[24m> failed: <[4mreason[24m>'
+    CONFAIL     world, reason   W '% [1mConnection[22;0m to <[4mworld[24m> failed: <[4mreason[24m>'
 #CONFAIL
     CONFAIL     world, reason   W '% Unable to [1mconnect[22;0m to <[4mworld[24m>: <[4mreason[24m>'
 #CONFLICT
@@ -5776,7 +5812,8 @@ hooks
 #CONNECT
     CONNECT     world, cipher   W '% [1mConnected[22;0m to <[4mworld[24m>[ using <[4mcipher[24m>].'
 #ICONFAIL
-    ICONFAIL  world, reason     W '% [1mIntermediate connection[22;0m to <[4mworld[24m> failed: <[4mreason[24m>'
+    ICONFAIL    world, reason   W '% [1mIntermediate connection[22;0m to <[4mworld[24m>
+                                  failed: <[4mreason[24m>'
 #DISCONNECT
     DISCONNECT  world, reason   W '% [1mConnection[22;0m to <[4mworld[24m> closed: <[4mreason[24m>.'
                                   (Called if you send the server's disconnect
@@ -6422,6 +6459,18 @@ Mapping character sequences to Named Keys
   terminals.  To tell TF about PgUp on your terminal, you should do "[1m/def 
   -b[22;0m'^[[3~' = /key_pgup".  
 
+#Terminal
+#terminal.app
+#osx
+#os x
+#OS X Terminal
+  Note for Mac OS X Terminal.app users: by default, Terminal.app traps PageUp 
+  and PageDown keys itself and does not send them to the application (tf).  It 
+  does however send Shift-PageUp and Shift-PageDown to the application, so you 
+  can use these to scroll in tf running inside Terminal.  You can also tell 
+  Terminal to send the unshifted keys to tf by redefining them in Terminal | 
+  Window Settings | Keyboard.  
+
 #teraterm
 #niftytelnet
 #broken emulators
@@ -6902,10 +6951,8 @@ mail checking
 mailing list
 
   The TinyFugue mailing list is an email forum for discussion of topics 
-  related to TinyFugue.  To subscribe, send email to [1mmajordomo@tcp.com[22;0m with a 
-  body of "subscribe tinyfugue".  
-
-  Also see [1mhttp://tf.tcp.com/[22;0m for the latest info on TF.  
+  related to TinyFugue.  To subscribe, follow the instructions at 
+  [1mhttp://tinyfugue.sourceforge.net/[22;0m 
 
 &mccpv1
 &mccpv2
@@ -7164,13 +7211,15 @@ Comparison of glob and regexps.
 
 Notes. 
 
-    * For best speed, make the beginning of your patterns as specific as 
-      possible.  
+    * For best performance, make the beginning of your patterns as 
+      specific as possible.  
     * Do not use ".*" or "^.*" at the beginning of a regexp.  It is [4mvery[24m 
       inefficient, and not needed.  Use [1m%PL[22;0m instead if you need to retrieve 
-      the value of the left side.  
-    * If a glob and regexp can do the same job, use the glob, it's usually 
-      slightly faster.  But if only a regexp can do what you need, don't 
+      the substring to the left of the match.  
+    * If a glob and regexp can do the same job, the glob is usually 
+      [4mslightly[24m faster.  But if using a glob instead of a regexp would mean you 
+      need some extra code, then that extra code will cost much more than the 
+      regexp would have.  So if only a regexp can do what you need, don't 
       hesitate to use it.  
 
 &pcre
@@ -8155,6 +8204,8 @@ priority
 &error
 &report
 &hawkeye
+&kkeys
+&kenkeys
 &author
 &support
 &problems
@@ -8162,31 +8213,32 @@ priority
 problems
 
   If you have an old version of TF, chances are your bug has already been 
-  fixed.  The latest version of TF should be available for anonymous ftp from 
-  tf.tcp.com in pub/tinyfugue.  
+  fixed.  Current information and the latest version of TF can be found at 
+  [1mhttp://tinyfugue.sourceforge.net/[22;0m.  
 
-  Also see [1mhttp://tf.tcp.com/[22;0m for the latest info on TF.  See "/help mailing 
-  list" for information on how to subscribe to the tinyfugue mailing list.  
-
-  Send general bug reports, questions, etc, to hawkeye@tcp.com.  For problems 
-  specific to the OS/2 version, contact Andreas Sahlbach at asa@stardiv.de.  
-  When reporting a problem or bug, please provide this information: 
+  For general bug reports, questions, etc, visit the website above 
+  (preferred), or email kenkeys@users.sourceforge.net.  For problems specific 
+  to the OS/2 version, contact Andreas Sahlbach at asa@stardiv.de.  When 
+  reporting a problem or bug, please provide this information: 
 
     * The full version number of TF (type "[1m/version[22;0m" in tf).  Please give 
       the [4mfull[24m number, don't just say something like "beta 4" or "the latest 
       version".  
     * The operating system name and version.  (On unix systems, type 
       "uname -a" in the shell to get the exact version information.) 
-    * If tf won't install, send the Build.log file (UNIX only) if there is 
-      one, or send a log of the installation errors (don't leave out parts 
-      just because you don't know what they mean or think they're irrelevant). 
-    * If you have a bug or core, give me ALL messages from tf, not just 
-      the last line.  Also tell me what you did or what happened before the 
-      problem, and whether the problem is repeatable.  
-    * If you have a core, do NOT send the core file.  But if you know how, 
-      and tf was compiled with debugging option (usually '-g'), a stack trace 
-      would be useful (use the 'where' command in gdb or dbx).  If you don't 
-      know how, at least provide the other information described above.  
+    * If tf won't install, send the output of the installation process (on 
+      UNIX, that's the output of configure and make).  Don't leave out parts 
+      just because you don't know what they mean or think they're irrelevant.  
+    * If you have a bug or core: do NOT send the core file, but do send 
+      the debugging dump file (tf.<[4mNNNNN[24m>.dump) if tf generated one.  If not, 
+      give me ALL messages from tf (not just the last line).  In either case, 
+      tell me what you did or what happened before the problem, and whether 
+      the problem is repeatable.  
+    * Optional: If you have a core, you know how to use a debugger, tf was 
+      compiled with core dumps enabled, and tf did not generate a debugging 
+      dump file, a manual stack trace would be useful (use the 'bt full' 
+      command in gdb or 'where' in dbx).  If you don't know how, at least 
+      provide the other information described above.  
 
 #
   The following bugs are known.  Don't bother reporting them.  
@@ -8968,11 +9020,11 @@ Special global variables
 #defcompile
 #%defcompile
   [1mdefcompile[22m=off 
-          (flag) If off, [1mmacros[22;0m are compiled the first time they are executed; 
-          if on, [1mmacros[22;0m are compiled immediately when they are defined.  Since 
-          syntax checking is performed during compilation, setting 
-          [1mdefcompile[22;0m=on will allow you to see the syntax errors in a macro 
-          when you define it instead of waiting until execution.  
+          (flag) If off, [1mmacro[22;0m bodies are compiled the first time they are 
+          executed; if on, [1mmacro[22;0m bodies are compiled immediately when they are 
+          defined.  Since syntax checking is performed during compilation, 
+          setting [1mdefcompile[22;0m=on will allow you to see the syntax errors in a 
+          macro when you define it instead of waiting until execution.  
 
 #%e
   [1me[22m=2.718281828...  
@@ -9030,6 +9082,12 @@ Special global variables
           The code that should be sent to your terminal to return to normal 
           [1mcolor[22;0m after a [1m%{start_color_*}[22;0m code.  See: [1mcolor[22;0m.  
 
+#error_attr
+#%error_attr
+  [1merror_attr[22m 
+          Defines the [1mattributes[22;0m used by the "E" [1mattribute[22;0m.  Can be any 
+          combination of [1mattributes[22;0m, including color names.  See: [1mattributes[22;0m.  
+
 #gag
 #%gag
   [1mgag[22m=on  (flag) Enable the [1mgag[22;0m [1mattribute[22;0m.  (See: [1m/gag[22;0m, [1m/nogag[22;0m) 
@@ -9047,8 +9105,8 @@ Special global variables
 #hook
 #%hook
   [1mhook[22m=on 
-          (flag) Enable [1mhooks[22;0m.  (See: [1mhooks[22;0m, [1m/hook[22;0m) Note that [1mautologin[22;0m and 
-          automatic [1m%{lp}[22;0m setting will not work if [1m%{hook}[22;0m is 0.  
+          (flag) Enable [1mhooks[22;0m.  (See: [1mhooks[22;0m, [1m/hook[22;0m, [1m%max_hook[22;0m.) Note that 
+          [1mautologin[22;0m and automatic [1m%{lp}[22;0m setting will not work if [1m%{hook}[22;0m is 0. 
 
 #hilite
 #%hilite
@@ -9172,6 +9230,14 @@ Special global variables
           "[1mregexp[22;0m": 
                   regular expression.  
           See also: [1mpatterns[22;0m, [1mregmatch()[22;0m, [1m%Pn[22;0m.  
+
+#max_hook
+#%max_hook
+  [1mmax_hook[22m=1000 
+          Maximum number of [1mhooks[22;0m allowed in a 10 second period.  When this 
+          value is exceeded, a message is printed and [1m%hook[22;0m is automatically 
+          turned off to disable hooks.  This helps prevent infinite hook 
+          loops.  A value of 0 will allow unlimited hooks.  
 
 #max_instr
 #iteration
@@ -9539,6 +9605,12 @@ Special global variables
           have new default values and new ways to set them in version 5.0.  
           See [1mstatus line[22;0m.  
 
+#warning_attr
+#%warning_attr
+  [1merror_attr[22m 
+          Defines the [1mattributes[22;0m used by the "W" [1mattribute[22;0m.  Can be any 
+          combination of [1mattributes[22;0m, including color names.  See: [1mattributes[22;0m.  
+
 #watchdog
 #%watchdog
   [1mwatchdog[22m=off 
@@ -9741,33 +9813,31 @@ Configuring the status area
                   /status_add -Aclock foo:4 :1 bar:4 :2 baz:4 
           is equivalent to 
                   /status_add -Aclock foo:4 
-                          /status_add -Afoo bar:4 
-                                  /status_add -Abar -s2 baz:4 
+                  /status_add -Afoo bar:4 
+                  /status_add -Abar -s2 baz:4 
 
-                  /status_edit [-r<[4mN[24m>] <[4mname[24m>[:<[4mwidth[24m>[:<[4mattributes[24m>]] 
-                          If field <[4mname[24m> currently exists in any status row, 
-                          replace it with <[4mname[24m>[:<[4mwidth[24m>[:<[4mattributes[24m>]].  
-                          Neighboring padding is unchanged.  If -r is given, 
-                          only row <[4mN[24m> is searched.  Only the first matching 
-                          field is edited.  
+  /status_edit [-r<[4mN[24m>] <[4mname[24m>[:<[4mwidth[24m>[:<[4mattributes[24m>]] 
+          If field <[4mname[24m> currently exists in any status row, replace it with 
+          <[4mname[24m>[:<[4mwidth[24m>[:<[4mattributes[24m>]].  Neighboring padding is unchanged.  
+          If -r is given, only row <[4mN[24m> is searched.  Only the first matching 
+          field is edited.  
 
-                          Example: Change the @log field to say "L" instead of 
-                          "(Log)", and change the field's width to match: 
-                                  /set status_int_log=nlog() ? "L" : "" 
-                                          /status_edit @log:1 
+          Example: Change the @log field to say "L" instead of "(Log)", and 
+          change the field's width to match: 
+                  /set status_int_log=nlog() ? "L" : "" 
+                  /status_edit @log:1 
 
 #
 
-                          For backward compatiblity, you can get and set the 
-                          status fields for row 0 via the %status_fields 
-                          [1mvariable[22;0m, but doing so is deprecated.  
+  For backward compatiblity, you can get and set the status fields for row 0 
+  via the %status_fields [1mvariable[22;0m, but doing so is deprecated.  
 
-                          The default list of status fields is: 
+  The default list of status fields is: 
 
-                              @more:8:Br :1 @world :1 @read:6 :1 @active:11 :1 @log:5 :1 @mail:6 :1 insert:6 :1 kbnum:4 :1 @clock:5
-                            
+      @more:8:Br :1 @world :1 @read:6 :1 @active:11 :1 @log:5 :1 @mail:6 :1 insert:6 :1 kbnum:4 :1 @clock:5
+    
 
-                          There are several types of fields: 
+  There are several types of fields: 
 
     * Unnamed fields create padding between the fields on either side of 
       it.  Each of the ":1" fields in the default [1mstatus_fields[22;0m puts a space 
@@ -10167,16 +10237,18 @@ Examples
 
 summary
 
-  See "[1mintro[22;0m" for basic information on using TF.  See "[1mtopics[22;0m" for a list of 
-  other help topics.  See "[1mcommands[22;0m" for a complete list of TF builtin 
-  commands.  See "[1m/help[22;0m" for instructions on using [1m/help[22;0m.  
+  Type "[1m/help[22;0m [1mintro[22;0m" for basic information on using TF. 
+  Type "[1m/help[22;0m [1mtopics[22;0m" for a list of other help topics. 
+  Type "[1m/help[22;0m [1mcommands[22;0m" for a complete list of TF builtin commands. 
+  Type "[1m/help[22;0m [1m/help[22;0m" for instructions on using [1m/help[22;0m. 
 
   If you are having problems with TF and wish to contact the author, see 
   "[1mproblems[22;0m".  
 
   If you are having trouble reading the help sections because text is 
-  scrolling off the screen, try typing "[1m/more[22;0m on" before [1m/help[22;0m, and then press 
-  [1mTAB[22;0m at a "[1m--More--[22;0m" prompt when you're ready to continue.  
+  scrolling off the screen, try typing "[1m/more[22;0m on" before [1m/help[22;0m, and then when 
+  you get a "[1m--More--[22;0m" prompt, press [1mTAB[22;0m or [1mPageDown[22;0m when you're ready to 
+  continue.  
 
 &command line
 &commandline
@@ -10235,7 +10307,7 @@ tf
   TF honors several [1mlocale[22;0m categories, which can be set to make TF work better 
   with languages other than English.  See [1mlocale[22;0m.  
 
-  See [1mhttp://tf.tcp.com/[22;0m for the latest info on TF.  
+  See [1mhttp://tinyfugue.sourceforge.net/[22;0m for the latest info on TF.  
 
   See also: [1mintro[22;0m, [1mtfrc[22;0m, [1mlibrary[22;0m, [1mworlds[22;0m, [1m/addworld[22;0m 
 

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: tfio.c,v 35004.112 2005/04/18 03:15:36 kkeys Exp $";
+static const char RCSid[] = "$Id: tfio.c,v 35004.114 2007/01/13 23:12:39 kkeys Exp $";
 
 
 /***********************************
@@ -771,6 +771,36 @@ char igetchar(void)
     return c;
 }
 
+int tfreadable(TFILE *file)
+{
+    if (!file) {
+        return 1; /* tfread will imeediately return error */
+
+    } else if (file == tfkeyboard) {
+	return 0; /* tfread will not return immediately */
+
+    } else if (file->type == TF_QUEUE) {
+	return 1; /* tfread will immediately return line or EOF */
+
+    } else {
+	struct timeval timeout = tvzero;
+	fd_set readers;
+	int count;
+
+        if (file->len < 0) return 1;  /* tfread will return eof or error */
+
+	FD_ZERO(&readers);
+	FD_SET(fileno(file->u.fp), &readers);
+
+	count = select(fileno(file->u.fp) + 1, &readers, NULL, NULL, &timeout);
+	if (count < 0) {
+	    return -1;
+	} else if (count == 0) {
+	    return 0;
+	}
+	return 1;
+    }
+}
 
 /* Unlike fgets, tfgetS() does not retain terminating newline. */
 String *tfgetS(String *str, TFILE *file)

@@ -6,8 +6,8 @@ To compile it, you will need the Cygwin Development Kit (cdk.exe),
 available at http://www.cygnus.com/misc/gnu-win32/.  Once you have the
 CDK installed, follow the instructions for compiling TF under UNIX.
 
-Unofficial binary releases may be available.  Check http://tf.tcp.com/
-for more information.
+Unofficial binary releases may be available.  Check
+http://tinyfugue.sourceforge.net/ for more information.
 
 There are several known problems with the win32 version of tf, mostly due
 to shortcomings of cygwin:

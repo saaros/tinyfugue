@@ -1,12 +1,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; TinyFugue - programmable mud client
-;;;; Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+;;;; Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
 ;;;;
 ;;;; TinyFugue (aka "tf") is protected under the terms of the GNU
 ;;;; General Public License.  See the file "COPYING" for details.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-/set tf_stdlib_id=$Id: stdlib.tf,v 35000.90 2005/04/18 03:15:48 kkeys Exp $
+/set tf_stdlib_id=$Id: stdlib.tf,v 35000.92 2007/01/13 23:12:39 kkeys Exp $
 
 ;;; TF macro library
 
@@ -80,6 +80,13 @@
         (opt_w !~ "()") ? strcat("w",opt_w) : opt_e ? "e" : opt_A ? "a" : opt_r ? "r" : "o")
 
 /def -i _echo = /test echo({*})
+
+;;; /prompt [-a<attr>] [-p] <text>
+/def -i prompt = \
+    /let opt_a=%; \
+    /let opt_p=0%; \
+    /if (!getopts("a:p")) /return 0%; /endif%; \
+    /return prompt(decode_attr({*}, opt_a, !!opt_p))
 
 ;;; /substitute [-a<attr>] [-p] <text>
 /def -i substitute = \

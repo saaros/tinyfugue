@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: socket.c,v 35004.279 2005/04/18 03:15:36 kkeys Exp $";
+static const char RCSid[] = "$Id: socket.c,v 35004.288 2007/01/13 23:12:39 kkeys Exp $";
 
 
 /***************************************************************
@@ -365,6 +365,7 @@ static void  killsock(Sock *sock);
     do { if (xsock->queue.list.head) handle_socket_lines(); } while (0)
 
 #define telnet_recv(cmd, opt)	f_telnet_recv((UCHAR)cmd, (UCHAR)opt);
+#define no_reply(str) telnet_debug("sent", "[no reply (" str ")", 0)
 
 #ifndef CONN_WAIT
 #define CONN_WAIT 400000
@@ -389,7 +390,6 @@ static int socks_with_lines = 0;/* Number of socks with queued received lines */
 static struct timeval prompt_timeout = {0,0};
 static const char *telnet_label[0x100];
 STATIC_BUFFER(telbuf);
-STATIC_STRING(no_tn_reply, " [no reply (option was already agreed on)]", 0);
 
 #define MAXQUIET        25	/* max # of lines to suppress during login */
 
@@ -1107,11 +1107,12 @@ static int fg_sock(Sock *sock, int quiet)
 struct Value *handle_fg_command(String *args, int offset)
 {
     int opt, nosock = FALSE, noerr = FALSE, quiet = FALSE;
-    long num = 0;
+    int num = 0;
+    ValueUnion uval;
     Sock *sock;
 
     startopt(CS(args), "nlqs<>c#");
-    while ((opt = nextopt(NULL, &num, NULL, &offset))) {
+    while ((opt = nextopt(NULL, &uval, NULL, &offset))) {
         switch (opt) {
         case 'n':  nosock = TRUE;  break;
         case 's':  noerr = TRUE;  break;
@@ -1119,7 +1120,7 @@ struct Value *handle_fg_command(String *args, int offset)
         case 'q':  quiet = TRUE; break;
         case '<':  num = -1;  break;
         case '>':  num =  1;  break;
-        case 'c':  break;
+        case 'c':  num = uval.ival; break;
         default:   return shareval(val_zero);
         }
     }
@@ -2043,8 +2044,12 @@ static void killsock(Sock *sock)
 	    tffreeaddrinfo(sock->addrs);
 	else
 	    freeaddrinfo(sock->addrs);
+	sock->addrs = NULL;
     }
-    if (sock->myaddr) freeaddrinfo(sock->myaddr);
+    if (sock->myaddr) {
+	freeaddrinfo(sock->myaddr);
+	sock->myaddr = NULL;
+    }
 #if HAVE_SSL
     if (sock->ssl) {
 	SSL_shutdown(sock->ssl);
@@ -2381,7 +2386,7 @@ struct Value *handle_listsockets_command(String *args, int offset)
 	    '#' /* shouldn't happen */;
 	if (sock->flags & SOCKCOMPRESS)
 	    state = lcase(state);
-	if (!numeric)
+	if (!numeric && sock->addr)
 	    sprintf(addrbuf, "%-*.*s %.6s",
 		hostwidth, hostwidth, sock->host, sock->port);
         oprintf("%c%c%c"
@@ -2392,7 +2397,8 @@ struct Value *handle_listsockets_command(String *args, int offset)
             linebuf, idlebuf,
             typewidth, typewidth, sock->world->type,
 	    namewidth, namewidth, sock->world->name,
-	    numeric ? printai(sock->addr, "%-20.20s %d") : addrbuf);
+	    !sock->addr ? "" : numeric ? printai(sock->addr, "%-20.20s %d") :
+		addrbuf);
     }
 
 listsocket_error:
@@ -2532,7 +2538,13 @@ int send_line(const char *src, unsigned int len, int eol_flag)
 
     if (xsock && xsock->prompt) {
         /* Not the same as unprompt(): we keep attrs, and delete buffer. */
-        Stringtrunc(xsock->buffer, 0);
+	if (!(xsock->flags & SOCKPROMPT)) {
+	    /* Prompt was implicit, so there's still a copy in xsock->buffer */
+	    Stringtrunc(xsock->buffer, 0);
+	} else {
+	    /* Prompt was explicit, so anything in xsock->buffer is an
+	     * unrelated partial line that we must keep. */
+	}
         conStringfree(xsock->prompt);
         xsock->prompt = NULL;
         xsock->prepromptattrs = 0;
@@ -2699,12 +2711,11 @@ int tog_lp(Var *var)
     return 1;
 }
 
-struct Value *handle_prompt_command(String *args, int offset)
+int handle_prompt_func(conString *str)
 {
-    if (xsock) {
-	queue_socket_line(xsock, CS(args), offset, F_TFPROMPT);
-    }
-    return newint(!!xsock);
+    if (xsock)
+	queue_socket_line(xsock, str, 0, F_TFPROMPT);
+    return !!xsock;
 }
 
 static void handle_prompt(String *str, int offset, int confirmed)
@@ -2742,7 +2753,7 @@ static void handle_implicit_prompt(void)
 /* undo the effects of a false prompt */
 static void unprompt(Sock *sock, int update)
 {
-    if (!sock || !sock->prompt) return;
+    if (!sock || !sock->prompt || !(sock->flags & SOCKPROMPT)) return;
     sock->attrs = sock->prepromptattrs;  /* restore original attrs */
     conStringfree(sock->prompt);
     sock->prompt = NULL;
@@ -2791,8 +2802,14 @@ static void telnet_subnegotiation(void)
     p = xsock->subbuffer->data + 2;
     switch (*p) {
     case TN_TTYPE:
-        if (*++p != '\01') break;
-        if (xsock->subbuffer->len != 4) break;
+	if (!TELOPT(xsock, us, *p)) {
+	    no_reply("option was not agreed on");
+	    break;
+	}
+        if (*++p != '\01' || xsock->subbuffer->len != 4) {
+	    no_reply("invalid syntax");
+	    break;
+	}
         Sprintf(telbuf, "%c%c%c%c", TN_IAC, TN_SB, TN_TTYPE, '\0');
         ttype = ++xsock->ttype;
         if (!enum_ttype[ttype].data) { ttype--; xsock->ttype = -1; }
@@ -2802,9 +2819,14 @@ static void telnet_subnegotiation(void)
         break;
     case TN_COMPRESS:
     case TN_COMPRESS2:
+	if (!TELOPT(xsock, them, *p)) {
+	    no_reply("option was not agreed on");
+	    break;
+	}
 	xsock->flags |= SOCKCOMPRESS;
 	break;
     default:
+	no_reply("unknown option");
         break;
     }
     Stringtrunc(xsock->subbuffer, 0);
@@ -2861,10 +2883,9 @@ static int handle_socket_input(const char *simbuffer, int simlen)
          * we're wrong, the previous prompt appears as output.  But if we did
          * the opposite, a real begining of a line would never appear in the
          * output window; that would be a worse mistake.)
-	 * XXX The SOCKPROMPT test has been here since at least version 3.1,
-	 * but I'm not sure it's right.  It means that terminated (EOR or
-	 * GOAHEAD) prompts will NOT be cleared when new text arrives (it
-	 * will only be cleared when there is a new prompt).
+	 * Note that a terminated (EOR or GOAHEAD) prompt will NOT be cleared
+	 * when new text arrives (it will only be cleared when there is a new
+	 * prompt).
          */
         unprompt(xsock, xsock==fsock);
     }
@@ -2994,6 +3015,15 @@ static int handle_socket_input(const char *simbuffer, int simlen)
 		    Stringtrunc(xsock->buffer, 0);
                     break;
                 case TN_SB:
+		    if (!(xsock->flags & SOCKTELNET)) {
+			/* Telnet subnegotiation can't happen without a
+			 * previous telnet option negotation, so treat the
+			 * IAC SB as non-telnet, and disable telnet. */
+			xsock->flags &= ~SOCKMAYTELNET;
+			place--;
+			rawchar = xsock->fsastate;
+			goto non_telnet;
+		    }
                     Sprintf(xsock->subbuffer, "%c%c", TN_IAC, TN_SB);
                     xsock->substate = '\0';
                     break;
@@ -3088,7 +3118,7 @@ static int handle_socket_input(const char *simbuffer, int simlen)
                 xsock->fsastate = '\0';
                 telnet_recv(TN_WILL, rawchar);
                 if (TELOPT(xsock, them, rawchar)) { /* already there, ignore */
-		    telnet_debug("sent", no_tn_reply->data, no_tn_reply->len);
+		    no_reply("option was already agreed on");
                     CLR_TELOPT(xsock, them_tog, rawchar);
                 } else if (
 #if 0  /* many servers think DO SGA means character-at-a-time mode */
@@ -3117,7 +3147,7 @@ static int handle_socket_input(const char *simbuffer, int simlen)
                 xsock->fsastate = '\0';
                 telnet_recv(TN_WONT, rawchar);
                 if (!TELOPT(xsock, them, rawchar)) { /* already there, ignore */
-		    telnet_debug("sent", no_tn_reply->data, no_tn_reply->len);
+		    no_reply("option was already agreed on");
                     CLR_TELOPT(xsock, them_tog, rawchar);
                 } else {
                     CLR_TELOPT(xsock, them, rawchar);  /* set state */
@@ -3133,7 +3163,7 @@ static int handle_socket_input(const char *simbuffer, int simlen)
                 xsock->fsastate = '\0';
                 telnet_recv(TN_DO, rawchar);
                 if (TELOPT(xsock, us, rawchar)) { /* already there, ignore */
-		    telnet_debug("sent", no_tn_reply->data, no_tn_reply->len);
+		    no_reply("option was already agreed on");
                     CLR_TELOPT(xsock, them_tog, rawchar);
                 } else if (
                     rawchar == TN_NAWS ||
@@ -3156,7 +3186,7 @@ static int handle_socket_input(const char *simbuffer, int simlen)
                 xsock->fsastate = '\0';
                 telnet_recv(TN_DONT, rawchar);
                 if (!TELOPT(xsock, us, rawchar)) { /* already there, ignore */
-		    telnet_debug("sent", no_tn_reply->data, no_tn_reply->len);
+		    no_reply("option was already agreed on");
                     CLR_TELOPT(xsock, us_tog, rawchar);
                 } else {
                     CLR_TELOPT(xsock, us, rawchar);  /* set state */
@@ -3337,34 +3367,36 @@ static void telnet_debug(const char *dir, const char *str, int len)
     if (telopt) {
         buffer = Stringnew(NULL, 0, 0);
         Sprintf(buffer, "%% %s:", dir);
-        for (state = 0x100; len; len--, str++) {
-            if (*str == TN_IAC || state == TN_IAC || state == TN_SB ||
-                state == TN_WILL || state == TN_WONT ||
-                state == TN_DO || state == TN_DONT)
-            {
-                if (telnet_label[(UCHAR)*str])
-                    Sappendf(buffer, " %s", telnet_label[(UCHAR)*str]);
-                else
-                    Sappendf(buffer, " %d", (unsigned int)*str);
-                state = *str;
-            } else if (state == TN_TTYPE) {
-                if (*str == (char)0) {
-                    Stringcat(buffer, " IS \"");
-                    while (len--, str++, is_print(*str) && !(*str & 0x80))
-                        Stringadd(buffer, *str);
-                    Stringadd(buffer, '\"');
-                    len++, str--;
-                } else if (*str == (char)1) {
-                    Stringcat(buffer, " SEND");
-                }
-                state = 0;
-            } else if (state == 0x100) {
-                Stringadd(buffer, *str);
-            } else {
-                Sappendf(buffer, " %u", (unsigned char)*str);
-                state = 0;
-            }
-        }
+	if (len == 0)
+	    Stringcat(buffer, str);
+	else {
+	    for (state = 0; len; len--, str++) {
+		if (*str == TN_IAC || state == TN_IAC || state == TN_SB ||
+		    state == TN_WILL || state == TN_WONT ||
+		    state == TN_DO || state == TN_DONT)
+		{
+		    if (telnet_label[(UCHAR)*str])
+			Sappendf(buffer, " %s", telnet_label[(UCHAR)*str]);
+		    else
+			Sappendf(buffer, " %d", (unsigned int)*str);
+		    state = *str;
+		} else if (state == TN_TTYPE) {
+		    if (*str == (char)0) {
+			Stringcat(buffer, " IS \"");
+			while (len--, str++, is_print(*str) && !(*str & 0x80))
+			    Stringadd(buffer, *str);
+			Stringadd(buffer, '\"');
+			len++, str--;
+		    } else if (*str == (char)1) {
+			Stringcat(buffer, " SEND");
+		    }
+		    state = 0;
+		} else {
+		    Sappendf(buffer, " %u", (unsigned char)*str);
+		    state = 0;
+		}
+	    }
+	}
         nolog++;
         /* norecord++; */
         world_output(xsock->world, CS(buffer));

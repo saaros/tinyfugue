@@ -1,25 +1,26 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfconfig.h.in,v 35004.33 2005/04/18 03:15:36 kkeys Exp $ */
+/* $Id: tfconfig.h.in,v 35004.36 2007/01/13 23:12:39 kkeys Exp $ */
 
-/* If tfconfig.h.in is incorrectly unpacked with trailing carriage returns,
- * ./configure (at least with autoconf 2.13) will not substitute as intended
- * in lines like "#undef RETSIGTYPE^M".  A trailing space and comment on
- * these lines lets them work as intended even if a ^M is appended. */
+/* This file must not have trailing carriage returns on lines:  they will
+ * confuse configure.  (With autoconf 2.13, a trailing space and comment
+ * on these lines let them work as intended.  But in 2.59, the trailing
+ * comment causes problems too.)
+ */
 
 #define PLATFORM_UNIX 1
 
-#undef MAILDIR /**/
-#undef RETSIGTYPE /**/
-#undef pid_t /**/
-#undef size_t /**/
-#undef time_t /**/
-#undef socklen_t /**/
+#undef MAILDIR
+#undef RETSIGTYPE
+#undef pid_t
+#undef size_t
+#undef time_t
+#undef socklen_t
 
 #define HAVE_UNISTD_H 0
 #define HAVE_SYS_WAIT_H 0
@@ -43,6 +44,7 @@
 #define HAVE_FILENO 0
 #define HAVE_GETCWD 0
 #define HAVE_GETHOSTBYNAME 0
+#define HAVE_GETHOSTNAME 0
 #define HAVE_GETIPNODEBYNAME 0
 #define HAVE_GETPWNAM 0
 #define HAVE_GETTIMEOFDAY 0
@@ -87,7 +89,7 @@
 #define HAVE_GAI_STRERROR 0
 #define ENABLE_INET6 0
 #define DISABLE_CORE 0
-#undef IN6_ADDR /**/
+#undef IN6_ADDR
 #define NO_HISTORY 0
 #define NO_PROCESS 0
 #define NO_FLOAT 0
@@ -95,10 +97,10 @@
 
 #define HAVE_MCCP (HAVE_ZLIB_H && HAVE_LIBZ)
 
-#undef inline /**/
+#undef inline
 
 #include "tfdefs.h"
 
-#undef NDEBUG /**/
+#undef NDEBUG
 #include <assert.h>
 

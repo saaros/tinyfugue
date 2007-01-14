@@ -205,8 +205,9 @@ Last Resort XXX
 -----------
 
 If you think TF won't compile because of a bug or incompatibility with
-your system (you followed all the instructions, and it still won't
-work), email the author at hawkeye@tcp.com.  Please include the version
+your system (you followed all the instructions, and it still won't work),
+visit http://tinyfugue.sourceforge.net or email the author at
+kenkeys@users.sourceforge.net.  Please include the version
 number of TF, and describe the type of system on which you are trying
 to compile, or at the very least, the address of the system.  Use
 "uname -a", if available, to get the system type; if not, look at the
@@ -214,9 +215,8 @@ message you see when you log in.  Also include the output of configure
 and make.  If TF does compile, but has other problems, read "/help bugs"
 before mailing a report.
 
-
-  For bug reports, questions, suggestions, etc., I can be reached by
-  email at hawkeye@tcp.com.  Please provide the following information:
+For bug reports, questions, suggestions, etc., use the contacts above,
+and please provide the following information:
 
     The version of TF and the operating system (type "/version" in tf).
     If tf won't compile, send the output of "./configure" and "make".

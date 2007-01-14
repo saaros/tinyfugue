@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: process.c,v 35004.69 2005/04/18 03:15:36 kkeys Exp $";
+static const char RCSid[] = "$Id: process.c,v 35004.71 2007/01/13 23:12:39 kkeys Exp $";
 
 /************************
  * Fugue processes.     *
@@ -497,12 +497,12 @@ static int procopt(const char *opts, String *args, int *offsetp,
 {
     char opt;
     const char *ptr;
-    struct timeval tv;
+    ValueUnion uval;
 
     *world = NULL;
     ptime->tv_sec = PTIME_VAR;
     startopt(CS(args), opts);
-    while ((opt = nextopt(&ptr, &tv, NULL, offsetp))) {
+    while ((opt = nextopt(&ptr, &uval, NULL, offsetp))) {
         switch(opt) {
         case 'w':
             if (!(*world = named_or_current_world(ptr)))
@@ -526,7 +526,7 @@ static int procopt(const char *opts, String *args, int *offsetp,
             *delay = FALSE;
             break;
         case '-':
-            *ptime = tv;
+            *ptime = uval.tval;
             break;
         default:  return FALSE;
         }

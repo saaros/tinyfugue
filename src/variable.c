@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: variable.c,v 35004.106 2005/04/18 03:15:36 kkeys Exp $";
+static const char RCSid[] = "$Id: variable.c,v 35004.110 2007/01/13 23:12:39 kkeys Exp $";
 
 
 /**************************************
@@ -31,10 +31,10 @@ static const char RCSid[] = "$Id: variable.c,v 35004.106 2005/04/18 03:15:36 kke
 static const char *varchar(Var *var);
 static Var   *findlevelvar(const char *name, List *level);
 static Var   *findlocalvar(const char *name);
-static int    set_special_var(Var *var, int type, void *value,
+static int    set_special_var(Var *var, Value *value,
                        int funcflag, int exportflag);
 static void   set_env_var(Var *var, int exportflag);
-static Var   *newvar(const char *name, int type, void *value);
+static Var   *newvar(const char *name);
 static char  *new_env(Var *var);
 static void   replace_env(char *str);
 static void   append_env(char *str);
@@ -106,11 +106,15 @@ Var special_var[] = {
 Pattern looks_like_special_sub;    /* looks like a special substitution */
 Pattern looks_like_special_sub_ic; /* same, ignoring case */
 
-static inline Var *newglobalvar(const char *name, int type, void *value)
+inline Var *newglobalvar(const char *name)
 {
     Var *var;
-    var = newvar(name, type, value);
+    var = newvar(name);
     var->node = hash_insert((void*)var, var_table);
+    if (setting_nearest && pedantic) {
+	wprintf("variable '%s' was not previously defined in any "
+	    "scope, so it has been created in the global scope.", name);
+    }
     return var;
 }
 
@@ -134,6 +138,7 @@ static void init_special_variable(Var *var,
     case TYPE_POS:
         var->val.u.ival = ival;
         break;
+    case TYPE_DECIMAL:
     case TYPE_DTIME:
     case TYPE_ATIME:
         var->val.u.tval.tv_sec = ival;
@@ -187,17 +192,21 @@ void init_variables(void)
         svalue->links++;
         if (!var) {
             /* new global variable */
-            var = newglobalvar(str, TYPE_STR, svalue);
+            var = newglobalvar(str);
+	    set_str_var_direct(var, TYPE_STR, svalue);
         } else if (var->flags & VARSPECIAL) {
             /* overwrite a pre-defined special variable */
-            set_special_var(var, TYPE_STR, svalue, 0, 0);
+	    Value value;
+	    value.type = TYPE_STR;
+	    value.sval = svalue;
+            set_special_var(var, &value, 0, 0);
             /* We do NOT call the var->func here, because the modules they
              * reference have not been initialized yet.  The init_*() calls
              * in main.c should call the funcs in the appropraite order.
              */
 	} else {
 	    /* Shouldn't happen unless environment contained same name twice */
-	    set_var_direct(var, TYPE_STR, svalue);
+	    set_str_var_direct(var, TYPE_STR, svalue);
 	    if (!var->node) var->node = hash_insert((void *)var, var_table);
         }
         if (cvalue) *--cvalue = '=';  /* restore '=' */
@@ -272,6 +281,12 @@ Var *ffindglobalvar(const char *name)
     return findglobalvar(name);
 }
 
+Var *findorcreateglobalvar(const char *name)
+{
+    Var *var = findglobalvar(name);
+    return var ? var : newglobalvar(name);
+}
+
 Var *hfindnearestvar(const Value *idval)
 {
     const char *name = idval->name;
@@ -304,23 +319,23 @@ Value *hgetnearestvarval(const Value *idval)
     return (var && (var->flags & VARSET)) ? &var->val : NULL;
 }
 
-Var *hsetnearestvar(const Value *idval, int type, void *value)
+Var *hsetnearestvar(const Value *idval, conString *value)
 {
     Var *var;
     const char *name = idval->name;
     unsigned int hash = idval->u.hash;
 
     if ((var = findlocalvar(name))) {
-        set_var_direct(var, type, value);
+        set_str_var_direct(var, TYPE_STR, value);
     } else {
         setting_nearest++;
-        var = setvar(NULL, name, hash, type, value, FALSE);
+        var = set_str_var_by_namehash(name, hash, value, FALSE);
         setting_nearest--;
     }
     return var;
 }
 
-static Var *newvar(const char *name, int type, void *value)
+static Var *newvar(const char *name)
 {
     Var *var;
 
@@ -328,15 +343,14 @@ static Var *newvar(const char *name, int type, void *value)
     var->node = NULL;
     var->val.type = 0;
     var->val.count = 1;
-    var->val.name = NULL;
     var->val.sval = NULL;
+    var->val.u.p = NULL;
     var->flags = 0;
     var->enumvec = NULL; /* never used */
     var->func = NULL;
     var->statuses = 0;
     var->statusfmts = 0;
     var->statusattrs = 0;
-    set_var_direct(var, type, value);
     var->val.name = STRDUP(name);
 
     if (patmatch(&looks_like_special_sub, NULL, name)) {
@@ -348,20 +362,38 @@ static Var *newvar(const char *name, int type, void *value)
     return var;
 }
 
-/* Sets a variable in the current level, creating the variable if necessary. */
-Var *setlocalvar(const char *name, int type, void *value)
+static Var *findorcreatelocalvar(const char *name)
 {
     Var *var, *global;
-
-    if ((var = findlevelvar(name, (List *)localvar->head->datum))) {
-        set_var_direct(var, type, value);
-    } else {
-        var = newvar(name, type, value);
+    if (!(var = findlevelvar(name, (List *)localvar->head->datum))) {
+	var = newvar(name);
         inlist((void *)var, (List*)(localvar->head->datum), NULL);
         if ((global = findglobalvar(name)) && (global->flags & VARSET)) {
             do_hook(H_SHADOW, "!Warning:  Local variable \"%s\" overshadows global variable of same name.", "%s", name);
         }
     }
+    return var;
+}
+
+/* Set a variable in the current level, creating the variable if necessary. */
+Var *setlocalstrvar(const char *name, conString *value)
+{
+    Var *var = findorcreatelocalvar(name);
+    set_str_var_direct(var, TYPE_STR, value);
+    return var;
+}
+
+Var *setlocalintvar(const char *name, int value)
+{
+    Var *var = findorcreatelocalvar(name);
+    set_int_var_direct(var, TYPE_INT, value);
+    return var;
+}
+
+Var *setlocaldtimevar(const char *name, struct timeval *value)
+{
+    Var *var = findorcreatelocalvar(name);
+    set_time_var_direct(var, TYPE_DTIME, value);
     return var;
 }
 
@@ -431,48 +463,51 @@ static void remove_env(const char *str)
 }
 
 
+#define set_var_direct_start(var, allowed) \
+    do { \
+	assert(var->val.count == 1); \
+	clearval(&var->val); \
+	var->flags |= VARSET; \
+	var->val.type = type & TYPES_BASIC; \
+	if (!(type & (allowed))) \
+	    internal_error(__FILE__, __LINE__, "impossible type %d", type); \
+    } while (0)
+
 /* set type and value directly into variable */
-void set_var_direct(Var *var, int type, void *value)
+void set_str_var_direct(Var *var, int type, conString *value)
 {
+    if (value == var->val.sval) return; /* assignment to self */
+    set_var_direct_start(var, TYPE_STR);
+    if (value)
+	(var->val.sval = value)->links++;
+    else
+	var->flags &= ~VARSET;
+    var->val.u.p = NULL;
+}
 
-    if (value == &var->val.u) {
-	/* self assignment:  if we didn't catch this, the clearval of the
-	 * lhs would clobber the rhs */
-	return;
-    }
+/* set type and value directly into variable */
+void set_int_var_direct(Var *var, int type, int value)
+{
+    set_var_direct_start(var, TYPE_INT|TYPE_POS);
+    var->val.u.ival = value;
+    var->val.sval = NULL;
+}
 
-    assert(var->val.count == 1);
-    clearval(&var->val);
+/* set type and value directly into variable */
+void set_time_var_direct(Var *var, int type, struct timeval *value)
+{
+    if (value == &var->val.u.tval) return; /* assignment to self */
+    set_var_direct_start(var, TYPE_DECIMAL|TYPE_DTIME|TYPE_ATIME);
+    var->val.u.tval = *value;
+    var->val.sval = NULL;
+}
 
-    var->flags |= VARSET;
-    type &= TYPES_BASIC;
-    switch (type) {
-    case TYPE_STR:
-	if (value)
-	    (var->val.sval = (conString*)value)->links++;
-	else
-	    var->flags &= ~VARSET;
-	var->val.u.p = NULL;
-        break;
-    case TYPE_INT:
-    case TYPE_POS:
-        var->val.u.ival = *(int*)value;
-        var->val.sval = NULL;
-        break;
-    case TYPE_DTIME:
-    case TYPE_ATIME:
-        var->val.u.tval = (*(struct timeval*)value);
-        var->val.sval = NULL;
-        break;
-    case TYPE_FLOAT:
-        var->val.u.fval = *(double*)value;
-        var->val.sval = NULL;
-        break;
-    default:
-        internal_error(__FILE__, __LINE__, "impossible type %d", type);
-        break;
-    }
-    var->val.type = type;
+/* set type and value directly into variable */
+void set_float_var_direct(Var *var, int type, double value)
+{
+    set_var_direct_start(var, TYPE_FLOAT);
+    var->val.u.fval = value;
+    var->val.sval = NULL;
 }
 
 static void set_env_var(Var *var, int exportflag)
@@ -489,46 +524,54 @@ static void set_env_var(Var *var, int exportflag)
  * Interfaces with rest of program.
  */
 
-Var *setvar(Var *var, const char *name, unsigned int hash, int type,
-    void *value, int exportflag)
+Var *set_str_var_by_namehash(const char *name, unsigned int hash,
+    conString *value, int exportflag)
 {
-    return (var || (var = hfindglobalvar(name, hash))) ?
-	setexistingvar(var, type, value, exportflag) :
-	setnewvar(name, hash, type, value, exportflag);
+    Var *var = hfindglobalvar(name, hash);
+    return setstrvar(var ? var : newglobalvar(name), value,
+	exportflag);
 }
 
-Var *setnewvar(const char *name, unsigned int hash, int type,
-    void *value, int exportflag)
+/* For type safety, we use a typed value, not a void*. */
+Var *setvar(Var *var, Value *value, int exportflag)
 {
-    Var *var;
-    var = newglobalvar(name, type, value);
-    if (setting_nearest && pedantic) {
-	wprintf("variable '%s' was not previously defined in any "
-	    "scope, so it has been created in the global scope.", name);
-    }
-    set_env_var(var, exportflag);
-
-    if (var->statuses || var->statusfmts || var->statusattrs)
-        update_status_field(var, -1);
-
-    return var;
-}
-
-/* var already exists, and may be global or local */
-Var *setexistingvar(Var *var, int type, void *value, int exportflag)
-{
-    if (var->flags & VARSPECIAL) {
-        if (!set_special_var(var, type, value, 1, exportflag))
-            return NULL;
+    if (var->flags & VARSPECIAL) { /* can't happen if var is new */
+	if (!set_special_var(var, value, 1, exportflag))
+	    return NULL;
     } else {
-	set_var_direct(var, type, value);
+	type_t type = value->type & TYPES_BASIC;
+	if (type & (TYPE_STR))
+	    set_str_var_direct(var, type, value->sval);
+	else if (type & (TYPE_INT|TYPE_POS))
+	    set_int_var_direct(var, type, value->u.ival);
+	else if (type & (TYPE_DECIMAL|TYPE_DTIME|TYPE_ATIME))
+	    set_time_var_direct(var, type, &value->u.tval);
+	else if (type & (TYPE_FLOAT))
+	    set_float_var_direct(var, type, value->u.fval);
+	else
+	    internal_error(__FILE__, __LINE__, "impossible type %d", type);
 	set_env_var(var, exportflag);
     }
 
     if (var->statuses || var->statusfmts || var->statusattrs)
         update_status_field(var, -1);
-
     return var;
+}
+
+Var *setstrvar(Var *var, conString *sval, int exportflag)
+{
+    Value value;
+    value.type = TYPE_STR;
+    value.sval = sval;
+    return setvar(var, &value, exportflag);
+}
+
+Var *setintvar(Var *var, long ival, int exportflag)
+{
+    Value value;
+    value.type = TYPE_INT;
+    value.u.ival = ival;
+    return setvar(var, &value, exportflag);
 }
 
 /* returns pointer to first character past valid variable name */
@@ -569,20 +612,20 @@ int setdelim(const char **pp)
 int do_set(const char *name, unsigned int hash, conString *value, int offset,
     int exportflag, int localflag)
 {
-    String *svalue;
+    conString *svalue;
     int result;
 
-    (svalue = Stringodup(value, offset))->links++;
+    (svalue = CS(Stringodup(value, offset)))->links++;
     if (!localflag) {
-        result = !!setvar(NULL, name, hash, TYPE_STR, svalue, exportflag);
+        result = !!set_str_var_by_namehash(name, hash, svalue, exportflag);
     } else if (!localvar->head) {
         eprintf("illegal at top level.");
         result = 0;
     } else {
-        setlocalvar(name, TYPE_STR, svalue);
+        setlocalstrvar(name, svalue);
         result = 1;
     }
-    Stringfree(svalue);
+    conStringfree(svalue);
     return result;
 }
 
@@ -705,12 +748,13 @@ int unsetvar(Var *var)
 
     if (var->func) {
 	switch (var->val.type & TYPES_BASIC) {
-	case TYPE_STR:   if (var->val.sval->len > 0) func = var->func; break;
-	case TYPE_ENUM:  /* fall through */
-	case TYPE_POS:   /* fall through */
-	case TYPE_INT:   if (var->val.u.ival != 0) func = var->func; break;
-	case TYPE_FLOAT: if (var->val.u.fval != 0.0) func = var->func; break;
-	case TYPE_ATIME: /* fall through */
+	case TYPE_STR:     if (var->val.sval->len > 0) func = var->func; break;
+	case TYPE_ENUM:    /* fall through */
+	case TYPE_POS:     /* fall through */
+	case TYPE_INT:     if (var->val.u.ival != 0) func = var->func; break;
+	case TYPE_FLOAT:   if (var->val.u.fval != 0.0) func = var->func; break;
+	case TYPE_DECIMAL: /* fall through */
+	case TYPE_ATIME:   /* fall through */
 	case TYPE_DTIME:
 	    if (var->val.u.tval.tv_sec || var->val.u.tval.tv_usec)
 		func = var->func;
@@ -752,45 +796,43 @@ void freevar(Var *var)
 /*********/
 
 /* Set a special variable, with proper coersion of the value. */
-static int set_special_var(Var *var, int type, void *value, int funcflag,
+static int set_special_var(Var *var, Value *value, int funcflag,
     int exportflag)
 {
     Value oldval;
-    long ival;
-    struct timeval tval;
 
     oldval = var->val;
-    var->val.type = 0;
+    var->val.type &= TYPES_BASIC;
     var->val.sval = NULL;
     var->val.u.ival = 0;
 
     oflush();   /* flush buffer now, in case variable affects flushing */
 
-    switch (oldval.type & TYPES_BASIC) {
+    switch (var->val.type) {
     case TYPE_ENUM:
-	var->val.type = TYPE_ENUM;
-        switch (type & TYPES_BASIC) {
+        switch (value->type & TYPES_BASIC) {
         case TYPE_STR:
-            var->val.u.ival = enum2int(((conString*)value)->data, 0,
+            var->val.u.ival = enum2int(value->sval->data, 0,
 		var->enumvec, var->val.name);
             break;
         case TYPE_INT:
         case TYPE_POS:
-            var->val.u.ival = enum2int(NULL, *(long*)value,
+            var->val.u.ival = enum2int(NULL, value->u.ival,
                 var->enumvec, var->val.name);
             break;
+        case TYPE_DECIMAL:
         case TYPE_ATIME:
         case TYPE_DTIME:
-            var->val.u.ival = enum2int(NULL,
-		(long)((struct timeval*)value)->tv_sec,
+            var->val.u.ival = enum2int(NULL, (long)value->u.tval.tv_sec,
                 var->enumvec, var->val.name);
             break;
         case TYPE_FLOAT:
-            var->val.u.ival = enum2int(NULL, (long)*(double*)value,
+            var->val.u.ival = enum2int(NULL, (long)value->u.fval,
                 var->enumvec, var->val.name);
             break;
 	default:
-	    internal_error(__FILE__, __LINE__, "invalid set type %d", type);
+	    internal_error(__FILE__, __LINE__, "invalid set type %d",
+		value->type);
 	    goto error;
         }
         if (var->val.u.ival < 0)
@@ -800,20 +842,13 @@ static int set_special_var(Var *var, int type, void *value, int funcflag,
         break;
 
     case TYPE_STR:
-        set_var_direct(var, type, value);
-        /* force var back to its correct type */
-        if (!var->val.sval) valstr(&var->val);
-        var->val.type = TYPE_STR;
+        if (!value->sval) valstr(value);
+	(var->val.sval = value->sval)->links++;
         break;
 
     case TYPE_POS:  /* must be > 0 */
     case TYPE_INT:  /* must be >= 0 (for Vars.  Values in expr.c can be <0.) */
-        set_var_direct(var, type, value);
-        /* force var back to its correct type */
-        ival = valint(&var->val);
-	clearval(&var->val);
-        var->val.type = oldval.type & TYPES_BASIC;
-        var->val.u.ival = ival;
+        var->val.u.ival = valint(value);
         /* validate */
         if (var->val.u.ival < (var->val.type==TYPE_POS)) {
             eprintf("%s must be an integer greater than or equal to %d",
@@ -823,14 +858,10 @@ static int set_special_var(Var *var, int type, void *value, int funcflag,
         funcflag = funcflag & (var->val.u.ival != oldval.u.ival);
         break;
 
+    case TYPE_DECIMAL:
     case TYPE_ATIME:
     case TYPE_DTIME:
-        set_var_direct(var, type, value);
-        /* force var back to its correct type */
-        valtime(&tval, &var->val);
-	clearval(&var->val);
-        var->val.type = oldval.type & TYPES_BASIC;
-        var->val.u.tval = tval;
+        valtime(&var->val.u.tval, value);
         funcflag = funcflag & timercmp(&var->val.u.tval, &oldval.u.tval, ==);
         break;
 
@@ -937,8 +968,8 @@ static int obsolete_prompt(Var *var)
 
 static int undocumented_var(Var *var)
 {
-    wprintf("%s is undocumented, and may be removed in a future version.",
-	var->val.name);
+    wprintf("%s is undocumented, possibly unstable, and may be removed in a "
+	"future version.", var->val.name);
     return 1;
 }
 

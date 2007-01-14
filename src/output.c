@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: output.c,v 35004.234 2005/04/18 03:15:36 kkeys Exp $";
+static const char RCSid[] = "$Id: output.c,v 35004.242 2007/01/14 00:44:19 kkeys Exp $";
 
 
 /*****************************************************************
@@ -966,16 +966,20 @@ static int screen_refilter(Screen *screen)
     PhysLine *pl;
     int want;
     Screen oldscreen;
+    ListEntry *lowestvisible;
 
     screen->needs_refilter = 0;
     if (!screen->bot)
 	if (!(screen->bot = screen->pline.tail))
 	    return 0;
     oldscreen = *screen;
-    while (!screen_filter(screen, (pl = screen->bot->datum)->str)) {
-	screen->bot = screen->bot->prev;
-	screen->nback++;
-	if (!screen->bot) {
+    /* NB: screen->bot should stay in the same place, for when the filter
+     * is removed or changed. */
+    lowestvisible = screen->bot;
+    while (!screen_filter(screen, (pl = lowestvisible->datum)->str)) {
+	pl->visible = 0;
+	lowestvisible = lowestvisible->prev;
+	if (!lowestvisible) {
 	    if (screen_has_filter(screen)) {
 		*screen = oldscreen; /* restore original state */
 		clear_screen_filter(screen);
@@ -984,11 +988,11 @@ static int screen_refilter(Screen *screen)
 	    return 0;
 	}
     }
-    (pl = screen->bot->datum)->visible = 1;
+    (pl = lowestvisible->datum)->visible = 1;
     /* recalculate top: start at bot and move top up until view is full */
     screen->viewsize = 1;
     screen->partialview = 0;
-    screen->top = screen->bot;
+    screen->top = lowestvisible;
     want = winlines();
     while ((screen->viewsize < want) && prevtop(screen))
 	/* empty loop */;
@@ -1312,19 +1316,19 @@ static const char *parse_statusfield(StatusField *field, const char *s)
 static Var *status_var(const char *type, const char *suffix)
 {
     STATIC_BUFFER(name);
-    Var *var;
     Stringcat(Stringcat(Stringcpy(name, "status_"), type), suffix);
-    var = ffindglobalvar(name->data);
-    return var ? var : set_var_by_name(name->data, NULL);
+    return findorcreateglobalvar(name->data);
 }
 
 conString *status_field_text(int row)
 {
     ListEntry *node;
     StatusField *f;
-    String *buf = Stringnew(NULL, -1, 0);
+    String *buf = Stringnew(NULL, columns, 0);
     int width;
 
+    if (row < 0 || row >= max_status_height)
+	return CS(buf);
     for (node = statusfield_list[row]->head; node; node = node->next) {
 	if (node != statusfield_list[row]->head)
 	    Stringadd(buf, ' ');
@@ -1363,8 +1367,7 @@ static void regen_status_fields(int row)
         f = (StatusField*)node->datum;
         if (f->var) { /* f->var == &bogusvar */
 	    if (f->var == &bogusvar) {
-		if (!(f->var = ffindglobalvar(f->name)))
-		    f->var = set_var_by_name(f->name, NULL);
+		f->var = findorcreateglobalvar(f->name);
 		FREE(f->name);
 		f->name = NULL;
 	    }
@@ -1408,8 +1411,8 @@ static void regen_status_fields(int row)
     if (row == 0) {
 	/* regenerate the value of %status_fields for backward compatibility */
 	conString *buf = status_field_text(row);
-	/* set_var_direct avoids error checking and recursion */
-	set_var_direct(&special_var[VAR_stat_fields], TYPE_STR, buf);
+	/* set_str_var_direct avoids error checking and recursion */
+	set_str_var_direct(&special_var[VAR_stat_fields], TYPE_STR, buf);
     }
 
     update_status_line(NULL);
@@ -1569,17 +1572,18 @@ status_add_error:
 struct Value *handle_status_add_command(String *args, int offset)
 {
     int opt, nodup = FALSE, row = -1, reset = 0;
-    long num, spacer = 1;
+    ValueUnion uval;
+    long spacer = 1;
     const char *ptr, *before = NULL, *after = NULL;
     ListEntry *where;
 
     startopt(CS(args), "A:B:s#r#xc");
-    while ((opt = nextopt(&ptr, &num, NULL, &offset))) {
+    while ((opt = nextopt(&ptr, &uval, NULL, &offset))) {
 	switch (opt) {
 	case 'A':  after = STRDUP(ptr);   before = NULL;  break;
 	case 'B':  before = STRDUP(ptr);  after = NULL;   break;
-	case 's':  spacer = num;  break;
-	case 'r':  row = num;     break;
+	case 's':  spacer = uval.ival;  break;
+	case 'r':  row = uval.ival;     break;
 	case 'x':  nodup = TRUE;  break;
 	case 'c':  reset = 1;     break;
         default:   return shareval(val_zero);
@@ -1641,14 +1645,15 @@ static int getspacer(ListEntry *node)
 
 struct Value *handle_status_rm_command(String *args, int offset)
 {
+    ValueUnion uval;
     long row = -1;
     int opt;
     ListEntry *node;
 
     startopt(CS(args), "r#");
-    while ((opt = nextopt(NULL, &row, NULL, &offset))) {
+    while ((opt = nextopt(NULL, &uval, NULL, &offset))) {
 	switch (opt) {
-	case 'r':  break;
+	case 'r':  row = uval.ival; break;
         default:   return shareval(val_zero);
 	}
     }
@@ -1676,15 +1681,16 @@ struct Value *handle_status_rm_command(String *args, int offset)
 
 struct Value *handle_status_edit_command(String *args, int offset)
 {
+    ValueUnion uval;
     long row = -1;
     int opt;
     StatusField *field;
     ListEntry *node;
 
     startopt(CS(args), "r#");
-    while ((opt = nextopt(NULL, &row, NULL, &offset))) {
+    while ((opt = nextopt(NULL, &uval, NULL, &offset))) {
 	switch (opt) {
-	case 'r':  break;
+	case 'r':  row = uval.ival; break;
         default:   return shareval(val_zero);
 	}
     }
@@ -2052,7 +2058,7 @@ int ch_visual(Var *var)
         need_redraw = resized = visual;
 #ifdef SCREEN
     } else {                              /* SIGWINCH */
-        need_redraw = visual;
+        need_redraw = 1;
 	resized = 1;
         cx = cy = -1;  /* unknown */
         top_margin = bottom_margin = -1;  /* unknown */
@@ -2134,6 +2140,7 @@ void minimal_fix_screen(void)
     outbuf->size = 0;
     output_disabled++;
     fix_screen();
+    fflush(stdout);
 }
 
 static void clear_lines(int start, int end)
@@ -2998,7 +3005,11 @@ int screen_end(int need_redraw)
     reset_outcount(screen);
     if (need_redraw) {
 	redraw_window(screen, 0);
-	update_status_field(NULL, STAT_MORE);
+	if (visual) {
+	    update_status_field(NULL, STAT_MORE);
+	} else {
+	    prompt = fgprompt();
+	}
     }
     return 1;
 }

@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: hooklist.h,v 35000.23 2005/04/18 03:15:35 kkeys Exp $ */
+/* $Id: hooklist.h,v 35000.24 2007/01/13 23:12:39 kkeys Exp $ */
 
 /* This keeps the constants and the array in the same place
  * so they can't get out of sync.

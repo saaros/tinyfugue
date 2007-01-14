@@ -1,7 +1,7 @@
-# $Id: rules.mak,v 1.20 2005/03/17 08:11:26 kkeys Exp $
+# $Id: rules.mak,v 1.21 2007/01/13 23:12:39 kkeys Exp $
 ########################################################################
 #  TinyFugue - programmable mud client
-#  Copyright (C) 1998, 1999, 2002 Ken Keys
+#  Copyright (C) 1998, 1999, 2002, 2006-2007 Ken Keys
 #
 #  TinyFugue (aka "tf") is protected under the terms of the GNU
 #  General Public License.  See the file "COPYING" for details.

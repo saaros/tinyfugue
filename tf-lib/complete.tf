@@ -8,7 +8,7 @@
 ;; %{completion_list}.  For example, add this to your ~/.tfrc file:
 ;;
 ;;    /load complete.tf
-;;    /set completion_list=Hawkeye TinyFugue ftp.tcp.com
+;;    /set completion_list=Hawkeye TinyFugue tinyfugue.sourceforge.net
 ;;
 ;; Completion keys:
 ;;

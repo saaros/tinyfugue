@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-static const char RCSid[] = "$Id: history.c,v 35004.112 2005/04/18 03:15:35 kkeys Exp $";
+static const char RCSid[] = "$Id: history.c,v 35004.114 2007/01/13 23:12:39 kkeys Exp $";
 
 
 /****************************************************************
@@ -683,7 +683,7 @@ struct Value *handle_recordline_command(String *args, int offset)
     History *history = globalhist;
     char opt;
     struct timeval tv, *tvp = NULL;
-    conString *line;
+    conString *line = NULL;
     int attrflag = 0;
     attr_t attrs = 0, tmpattrs;
     const char *ptr;
@@ -706,9 +706,10 @@ struct Value *handle_recordline_command(String *args, int offset)
     if (attrflag) {
 	line = CS(decode_attr(CS(args), attrs, offset));
 	/* if encoding was invalid, just copy without decoding */
-	if (!line) line = CS(Stringodup(CS(args), offset));
-    } else {
+    }
+    if (!line) {
 	line = CS(Stringodup(CS(args), offset));
+	line->attrs = adj_attr(line->attrs, attrs);
     }
     line->links++;
     if (tvp)

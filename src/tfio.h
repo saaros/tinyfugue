@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: tfio.h,v 35004.64 2005/04/18 03:15:36 kkeys Exp $ */
+/* $Id: tfio.h,v 35004.66 2007/01/13 23:12:39 kkeys Exp $ */
 
 #ifndef TFIO_H
 #define TFIO_H
@@ -158,6 +158,7 @@ extern char   igetchar(void);
 extern int    handle_tfopen_func(const char *name, const char *mode);
 extern TFILE *find_tfile(const char *handle);
 extern TFILE *find_usable_tfile(const char *handle, int mode);
+extern int    tfreadable(TFILE *file);
 extern struct String *tfgetS(struct String *str, TFILE *file);
 
 extern void   hide_screen(Screen *screen);

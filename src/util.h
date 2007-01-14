@@ -1,11 +1,11 @@
 /*************************************************************************
  *  TinyFugue - programmable mud client
- *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005 Ken Keys
+ *  Copyright (C) 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2002, 2003, 2004, 2005, 2006-2007 Ken Keys
  *
  *  TinyFugue (aka "tf") is protected under the terms of the GNU
  *  General Public License.  See the file "COPYING" for details.
  ************************************************************************/
-/* $Id: util.h,v 35004.60 2005/04/18 03:15:36 kkeys Exp $ */
+/* $Id: util.h,v 35004.63 2007/01/13 23:12:39 kkeys Exp $ */
 
 #ifndef UTIL_H
 #define UTIL_H
@@ -102,7 +102,7 @@ extern char  *stringarg(char **str, const char **end);
 extern int    stringliteral(struct String *dest, const char **str);
 extern char  *stripstr(char *s);
 extern void   startopt(const conString *args, const char *opts);
-extern char   nextopt(const char **arg, void *u, int *type, int *offp);
+extern char   nextopt(const char **arg, ValueUnion *u, int *type, int *offp);
 #if HAVE_TZSET
 extern int    ch_timezone(Var *var);
 #else
@@ -118,7 +118,7 @@ extern Value *parsenumber(const char *str, const char **caller_endp,
 		int typeset, Value *val);
 extern long   parsetime(const char *str, char **endp, int *istime);
 extern void   abstime(struct timeval *tv);
-extern void   append_usec(String *buf, long usec, int trunc);
+extern void   append_usec(String *buf, long usec, int truncflag);
 extern void   tftime(String *buf, const conString *fmt,
 		const struct timeval *tv);
 extern void   tvsub(struct timeval *a, const struct timeval *b,
