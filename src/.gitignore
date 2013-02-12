@@ -1,0 +1,7 @@
+default
+makehelp
+tf
+tfconfig.h
+tfdefs.h
+TF_LIBDIR.build
+*.o
